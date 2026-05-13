@@ -34,4 +34,4 @@ pnpm run example:groucho
 ## Docs and releases
 
 - Documentation index: [`docs/README.md`](./docs/README.md)
-- Publishing `@groucho/sdk`: [Changesets](https://github.com/changesets/changesets) — merge version PRs from `.github/workflows/release.yml`; configure the `NPM_TOKEN` repository secret for npm publishes.
+- Publishing `@groucho/sdk`: [Changesets](https://github.com/changesets/changesets) — merge version PRs from `.github/workflows/release.yml`; configure the `NPM_TOKEN` repository secret for npm publishes. 
