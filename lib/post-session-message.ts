@@ -12,6 +12,16 @@ import { REQUEST_ID_HEADER } from "@/lib/request-trace"
 import { supabase } from "@/lib/supabase"
 import { botSignalFromHeaders } from "@/lib/bot-signals"
 import { recordVerdictAndEnqueueWebhooks } from "@/lib/verdict-webhook"
+import {
+  gatekeeperResponseTool,
+  GATEKEEPER_STRUCTURED_SYSTEM_SUFFIX,
+  parseGatekeeperStructuredResponse,
+  type GatekeeperTerminalField,
+} from "@/lib/gatekeeper-structured-tool"
+import { computeTerminalStatusFromGatekeeperTurn } from "@/lib/gatekeeper-session-status"
+import {
+  withTerminalDecisionAppendix,
+} from "@/lib/terminal-decision-prompt"
 
 function traceJson(
   input: PostSessionMessageInput,
@@ -25,7 +35,7 @@ function traceJson(
 
 const client = new Anthropic()
 
-const DOORMAN_SYSTEM_PROMPT = `You are Lou. You work the door at Public Equity™.
+const DOORMAN_SYSTEM_PROMPT_CORE = `You are Lou. You work the door at Public Equity™.
 
 You are not friendly. You are not hostile. You are reading someone.
 
@@ -98,22 +108,11 @@ Example rejection:
 Culture as product. No personal stake. Rejected.
 
 > "I think it's so important to preserve these curated spaces for the community."
-Marketing language. Performed care. Rejected.
+Marketing language. Performed care. Rejected.`
 
----
-
-DECISION
-
-When ready:
-
-Pass: respond with exactly — Yeah. Here.
-Redirect: respond with exactly — REDIRECT
-Reject: respond with exactly — REJECTED
-
-Nothing else. No explanation. No softening.
-
-REDIRECT when the person is genuine but doesn't understand what's at stake — misaligned, not predatory.
-REJECTED when the person's values or presence would actively harm the space — extractive, commodifying, treating access as the point.`
+const DOORMAN_SYSTEM_PROMPT = withTerminalDecisionAppendix(
+  DOORMAN_SYSTEM_PROMPT_CORE,
+)
 
 const OPENING: Anthropic.MessageParam = {
   role: "assistant",
@@ -255,7 +254,10 @@ export async function postSessionMessage(
     defaultPersona = data as PersonaRow | null
   }
 
-  const systemPrompt = defaultPersona?.prompt ?? DOORMAN_SYSTEM_PROMPT
+  const baseSystem = defaultPersona
+    ? withTerminalDecisionAppendix(defaultPersona.prompt)
+    : DOORMAN_SYSTEM_PROMPT
+  const systemPrompt = `${baseSystem}\n\n${GATEKEEPER_STRUCTURED_SYSTEM_SUFFIX}`
   const resolvedPersonaId: string | null = defaultPersona?.id ?? null
   const passThreshold: number = defaultPersona?.pass_threshold ?? 0.65
   const rejectThreshold: number = defaultPersona?.reject_threshold ?? 0.25
@@ -345,17 +347,32 @@ export async function postSessionMessage(
     ...dbHistory.map((m) => ({ role: m.role, content: m.content })),
   ]
 
-  let assistantContent: string
+  let assistantContent = ""
+  let structuredToolSeen = false
+  let structuredTerminal: GatekeeperTerminalField | null = null
   try {
     const response = await client.messages.create({
       model: "claude-opus-4-6",
-      max_tokens: 256,
+      max_tokens: 512,
       system: systemPrompt,
       messages: claudeMessages,
+      tools: [gatekeeperResponseTool],
+      tool_choice: { type: "tool", name: gatekeeperResponseTool.name },
     })
 
-    const textBlock = response.content.find((b) => b.type === "text")
-    assistantContent = textBlock?.type === "text" ? textBlock.text.trim() : ""
+    const parsed = parseGatekeeperStructuredResponse(response.content)
+    assistantContent = parsed.reply
+    structuredToolSeen = parsed.toolSeen
+    structuredTerminal = parsed.terminal
+
+    if (!parsed.toolSeen) {
+      log.warn("gatekeeper_structured_tool_missing", {
+        requestId: input.requestId,
+        projectId,
+        sessionId,
+        preview: assistantContent.slice(0, 120),
+      })
+    }
   } catch (err) {
     log.error("llm_unavailable", {
       requestId: input.requestId,
@@ -376,12 +393,21 @@ export async function postSessionMessage(
     .update({ metadata: { scores } })
     .eq("id", userMsg.id)
 
+  const assistantMetadata =
+    structuredToolSeen && structuredTerminal !== null
+      ? {
+          gatekeeper_structured: true,
+          gatekeeper_terminal: structuredTerminal,
+        }
+      : null
+
   const { error: asstError } = await supabase.from("messages").insert({
     session_id: sessionRowId,
     organisation_id: organisationId,
     project_id: projectId,
     role: "assistant",
     content: assistantContent,
+    ...(assistantMetadata ? { metadata: assistantMetadata } : {}),
   })
 
   if (asstError) {
@@ -393,14 +419,14 @@ export async function postSessionMessage(
     })
   }
 
-  let status: "passed" | "redirected" | "rejected" | null = null
-  if (assistantContent === "Yeah. Here.") {
-    status = scores.overall >= passThreshold ? "passed" : "redirected"
-  } else if (assistantContent === "REDIRECT") {
-    status = "redirected"
-  } else if (assistantContent === "REJECTED") {
-    status = scores.overall <= rejectThreshold ? "rejected" : "redirected"
-  }
+  const status = computeTerminalStatusFromGatekeeperTurn({
+    assistantContent,
+    scores,
+    passThreshold,
+    rejectThreshold,
+    structuredTerminal,
+    structuredToolUsed: structuredToolSeen,
+  })
 
   let successSecret: string | null = null
   if (status === "passed") {

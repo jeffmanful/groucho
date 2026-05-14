@@ -391,6 +391,13 @@ export default function OrganisationDetailPage() {
   const [loadingSessionProfiles, setLoadingSessionProfiles] = useState(false)
   const [profilesExpandedSessionId, setProfilesExpandedSessionId] = useState<string | null>(null)
   const [profilesRevealedKeys, setProfilesRevealedKeys] = useState<Set<string>>(new Set())
+  const [projSettingsSessionMode, setProjSettingsSessionMode] = useState<"live" | "dry-run">("live")
+  const [projSettingsPassThreshold, setProjSettingsPassThreshold] = useState(0.65)
+  const [projSettingsRejectThreshold, setProjSettingsRejectThreshold] = useState(0.25)
+  const [projSettingsExtract, setProjSettingsExtract] = useState<
+    "default" | "off" | "passed_only"
+  >("default")
+  const [savingProjectSettings, setSavingProjectSettings] = useState(false)
   /** `platform` = allowlisted operator; otherwise org membership role. */
   const [accessRole, setAccessRole] = useState<"platform" | "owner" | "admin" | "member" | null>(
     null,
@@ -572,6 +579,27 @@ export default function OrganisationDetailPage() {
   }, [profilesExpandedSessionId])
 
   useEffect(() => {
+    if (!org?.projects?.length || !selectedProjectId) return
+    const p = org.projects.find((x) => x.id === selectedProjectId)
+    if (!p) return
+    const s = (p.settings ?? {}) as Record<string, unknown>
+    setProjSettingsSessionMode(s.session_mode === "dry-run" ? "dry-run" : "live")
+    const pt = s.pass_threshold
+    const rt = s.reject_threshold
+    setProjSettingsPassThreshold(
+      typeof pt === "number" && Number.isFinite(pt) ? Math.min(1, Math.max(0, pt)) : 0.65,
+    )
+    setProjSettingsRejectThreshold(
+      typeof rt === "number" && Number.isFinite(rt) ? Math.min(1, Math.max(0, rt)) : 0.25,
+    )
+    const pe = s.profile_extract_on
+    if (pe === false || pe === null) setProjSettingsExtract("off")
+    else if (Array.isArray(pe) && pe.length === 1 && pe[0] === "passed")
+      setProjSettingsExtract("passed_only")
+    else setProjSettingsExtract("default")
+  }, [org, selectedProjectId])
+
+  useEffect(() => {
     void loadTranscript()
   }, [loadTranscript])
 
@@ -660,6 +688,42 @@ export default function OrganisationDetailPage() {
         ? "This project is now the anon admin / Realtime scope (others cleared)."
         : "Anon read scope cleared for this project.",
     )
+    await loadOrg()
+  }
+
+  async function saveProjectSettings(e: React.FormEvent) {
+    e.preventDefault()
+    if (!canOrgAdmin || !selectedProjectId || !org) return
+    const p = org.projects.find((x) => x.id === selectedProjectId)
+    if (!p) return
+    setSavingProjectSettings(true)
+    setErr(null)
+    setMsg(null)
+    const merged: Record<string, unknown> = {
+      ...((p.settings ?? {}) as Record<string, unknown>),
+    }
+    merged.session_mode = projSettingsSessionMode
+    merged.pass_threshold = projSettingsPassThreshold
+    merged.reject_threshold = projSettingsRejectThreshold
+    if (projSettingsExtract === "off") merged.profile_extract_on = false
+    else if (projSettingsExtract === "passed_only") merged.profile_extract_on = ["passed"]
+    else delete merged.profile_extract_on
+
+    const res = await fetch(
+      `/api/admin/organisations/${orgId}/projects/${selectedProjectId}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ settings: merged }),
+      },
+    )
+    const b = await res.json().catch(() => ({}))
+    setSavingProjectSettings(false)
+    if (!res.ok) {
+      setErr(b.error ?? "Could not save project settings")
+      return
+    }
+    setMsg("Project settings saved.")
     await loadOrg()
   }
 
@@ -1167,6 +1231,130 @@ export default function OrganisationDetailPage() {
           ))}
         </ul>
       </section>
+
+      {selected && (
+        <section style={{ marginBottom: "2.5rem" }}>
+          <h2 style={{ ...label, marginBottom: "0.75rem" }}>PROJECT SETTINGS — {selected.name}</h2>
+          <p style={{ opacity: 0.35, fontSize: "0.75rem", marginBottom: "1rem", lineHeight: 1.45 }}>
+            Session mode, scoring thresholds, and profile extraction. Other keys in{" "}
+            <span style={{ fontFamily: "monospace" }}>settings</span> (use case, persona, webhooks
+            from the wizard) are preserved when you save.
+          </p>
+          {!canOrgAdmin ? (
+            <ul style={{ listStyle: "none", padding: 0, margin: 0, fontSize: "0.78rem", opacity: 0.5 }}>
+              <li>
+                session_mode:{" "}
+                {String((selected.settings as Record<string, unknown> | undefined)?.session_mode ?? "live")}
+              </li>
+              <li>
+                pass_threshold:{" "}
+                {String((selected.settings as Record<string, unknown> | undefined)?.pass_threshold ?? "—")}
+              </li>
+              <li>
+                reject_threshold:{" "}
+                {String((selected.settings as Record<string, unknown> | undefined)?.reject_threshold ?? "—")}
+              </li>
+              <li>
+                profile_extract_on:{" "}
+                {JSON.stringify((selected.settings as Record<string, unknown> | undefined)?.profile_extract_on ?? "default (unset)")}
+              </li>
+            </ul>
+          ) : (
+            <form onSubmit={(e) => void saveProjectSettings(e)}>
+              <div style={{ marginBottom: "1rem" }}>
+                <span style={{ ...label, display: "block" }}>SESSION MODE</span>
+                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.78rem", opacity: 0.75, marginBottom: "0.35rem" }}>
+                  <input
+                    type="radio"
+                    name="sessionMode"
+                    checked={projSettingsSessionMode === "live"}
+                    onChange={() => setProjSettingsSessionMode("live")}
+                  />
+                  Live — verdicts and profile extraction run
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.78rem", opacity: 0.75 }}>
+                  <input
+                    type="radio"
+                    name="sessionMode"
+                    checked={projSettingsSessionMode === "dry-run"}
+                    onChange={() => setProjSettingsSessionMode("dry-run")}
+                  />
+                  Dry-run — no verdict / extraction (testing)
+                </label>
+              </div>
+              <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", marginBottom: "1rem" }}>
+                <div>
+                  <label style={label}>PASS THRESHOLD (0–1)</label>
+                  <input
+                    style={{ ...input, maxWidth: "8rem" }}
+                    type="number"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={projSettingsPassThreshold}
+                    onChange={(e) => {
+                      const v = Number(e.target.value)
+                      setProjSettingsPassThreshold(
+                        Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0.65,
+                      )
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={label}>REJECT THRESHOLD (0–1)</label>
+                  <input
+                    style={{ ...input, maxWidth: "8rem" }}
+                    type="number"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={projSettingsRejectThreshold}
+                    onChange={(e) => {
+                      const v = Number(e.target.value)
+                      setProjSettingsRejectThreshold(
+                        Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0.25,
+                      )
+                    }}
+                  />
+                </div>
+              </div>
+              <div style={{ marginBottom: "1rem" }}>
+                <span style={{ ...label, display: "block" }}>PROFILE EXTRACTION</span>
+                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.78rem", opacity: 0.75, marginBottom: "0.35rem" }}>
+                  <input
+                    type="radio"
+                    name="profileExtract"
+                    checked={projSettingsExtract === "default"}
+                    onChange={() => setProjSettingsExtract("default")}
+                  />
+                  Default — passed, redirected, rejected
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.78rem", opacity: 0.75, marginBottom: "0.35rem" }}>
+                  <input
+                    type="radio"
+                    name="profileExtract"
+                    checked={projSettingsExtract === "passed_only"}
+                    onChange={() => setProjSettingsExtract("passed_only")}
+                  />
+                  Passed sessions only
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.78rem", opacity: 0.75 }}>
+                  <input
+                    type="radio"
+                    name="profileExtract"
+                    checked={projSettingsExtract === "off"}
+                    onChange={() => setProjSettingsExtract("off")}
+                  />
+                  Off
+                </label>
+              </div>
+              <button type="submit" style={btn(true)} disabled={savingProjectSettings}>
+                {savingProjectSettings ? "Saving…" : "Save project settings"}
+              </button>
+            </form>
+          )}
+        </section>
+      )}
 
       {selected && (
         <section style={{ marginBottom: "2.5rem" }}>

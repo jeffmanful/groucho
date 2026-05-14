@@ -33,7 +33,14 @@ vi.mock("@/lib/verdict-webhook", () => ({
 // Anthropic is used in two places; we mock the constructor + messages.create
 // and allow tests to override behaviour via a shared function.
 let anthropicCreateImpl: (args: unknown) => Promise<unknown> = async () => ({
-  content: [{ type: "text", text: "REDIRECT" }],
+  content: [
+    {
+      type: "tool_use",
+      id: "toolu_default",
+      name: "groucho_respond",
+      input: { reply: "REDIRECT", terminal: "redirect" },
+    },
+  ],
 })
 
 vi.mock("@anthropic-ai/sdk", () => {
@@ -161,12 +168,29 @@ describe("contract: postSessionMessage", () => {
     process.env.GROUCHO_RL_API_KEY_PER_MINUTE = "1000"
     process.env.GROUCHO_RL_SESSION_PER_MINUTE = "1000"
     anthropicCreateImpl = async () => ({
-      content: [{ type: "text", text: "REDIRECT" }],
+      content: [
+        {
+          type: "tool_use",
+          id: "toolu_default",
+          name: "groucho_respond",
+          input: { reply: "REDIRECT", terminal: "redirect" },
+        },
+      ],
     })
     recordVerdictMock.mockReset().mockResolvedValue({ profile: null })
   })
 
   it("forwards persona + transcript to verdict and surfaces profile in response", async () => {
+    anthropicCreateImpl = async () => ({
+      content: [
+        {
+          type: "tool_use",
+          id: "toolu_pass",
+          name: "groucho_respond",
+          input: { reply: "Yeah. Here.", terminal: "pass" },
+        },
+      ],
+    })
     recordVerdictMock.mockResolvedValueOnce({
       profile: {
         schema_version: 1,

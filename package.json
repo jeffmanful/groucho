@@ -13,6 +13,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
+    "backfill:session-decisions": "node --env-file=.env.local --import tsx scripts/backfill-session-decisions.ts",
     "sdk:codegen": "pnpm --filter @groucho-gatekeeper/sdk run codegen",
     "sdk:build": "pnpm --filter @groucho-gatekeeper/sdk run build",
     "sdk:test": "pnpm --filter @groucho-gatekeeper/sdk run test",
@@ -39,6 +40,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5",
     "vitest": "^4.1.5"
   }

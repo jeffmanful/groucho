@@ -1,6 +1,12 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import {
+  STRUCTURED_SESSION_OUTCOME_MARKER,
+  TERMINAL_DECISION_MARKER,
+  TERMINAL_DECISION_SYSTEM_APPENDIX,
+  withTerminalDecisionAppendix,
+} from "@/lib/terminal-decision-prompt"
 
 type Persona = {
   id: string
@@ -390,6 +396,60 @@ export default function PersonasPage() {
                 padding: "0.75rem",
               }}
             />
+            <div
+              style={{
+                fontSize: "0.65rem",
+                opacity: 0.4,
+                marginTop: "0.45rem",
+                lineHeight: 1.55,
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.5rem",
+              }}
+            >
+              <span>
+                At chat time the platform appends the session-outcome appendix when
+                your prompt does not already include{" "}
+                <code style={{ fontFamily: "monospace", opacity: 0.9 }}>
+                  {STRUCTURED_SESSION_OUTCOME_MARKER}
+                </code>{" "}
+                or the legacy line{" "}
+                <code style={{ fontFamily: "monospace", opacity: 0.9 }}>
+                  {TERMINAL_DECISION_MARKER}
+                </code>
+                . Outcomes are recorded via the{" "}
+                <code style={{ fontFamily: "monospace", opacity: 0.9 }}>
+                  groucho_respond
+                </code>{" "}
+                tool; the appendix explains semantic pass / redirect / reject. Merge
+                inserts it for editing; copy is appendix text only.
+              </span>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setForm((prev) => ({
+                      ...prev,
+                      prompt: withTerminalDecisionAppendix(prev.prompt),
+                    }))
+                  }
+                  style={btnStyle(false)}
+                >
+                  merge terminal decision block
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    void navigator.clipboard.writeText(
+                      TERMINAL_DECISION_SYSTEM_APPENDIX,
+                    )
+                  }
+                  style={btnStyle(false)}
+                >
+                  copy appendix only
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* Profile schema (paste-JSON) */}

@@ -181,6 +181,13 @@ export default function LiveConversations() {
         else console.log("[admin-live] status:", status)
       })
 
+    const devPoll =
+      process.env.NODE_ENV === "development"
+        ? window.setInterval(() => {
+            void load()
+          }, 8000)
+        : null
+
     const typingChannel = supabase
       .channel("pe-typing")
       .on("broadcast", { event: "typing" }, ({ payload }) => {
@@ -197,6 +204,7 @@ export default function LiveConversations() {
       .subscribe()
 
     return () => {
+      if (devPoll != null) window.clearInterval(devPoll)
       supabase.removeChannel(adminChannel)
       supabase.removeChannel(typingChannel)
     }

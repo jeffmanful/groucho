@@ -109,6 +109,7 @@ export default function DoorCheck() {
   const [sessionId, setSessionId] = useState("")
   const [personas, setPersonas] = useState<PersonaOption[]>([])
   const [selectedPersonaId, setSelectedPersonaId] = useState("")
+  const [signingOut, setSigningOut] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const typingChannelRef = useRef<ReturnType<SupabaseClient["channel"]> | null>(
@@ -278,6 +279,22 @@ export default function DoorCheck() {
     if (def) setSelectedPersonaId(def.id)
   }
 
+  async function signOut() {
+    setSigningOut(true)
+    try {
+      if (supabase) {
+        await supabase.auth.signOut()
+      }
+      await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" })
+    } catch {
+      /* still send user to login */
+    } finally {
+      restart()
+      setSigningOut(false)
+      router.push("/login")
+    }
+  }
+
   const personaName =
     personas.find((item) => item.id === selectedPersonaId)?.name ?? "Lou"
 
@@ -290,7 +307,17 @@ export default function DoorCheck() {
         damping: 30,
       }}
     >
-      <div className="flex h-screen min-h-0 flex-col">
+      <div className="relative flex h-screen min-h-0 flex-col">
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-end px-4 pt-4 md:px-8">
+          <button
+            type="button"
+            onClick={() => void signOut()}
+            disabled={signingOut}
+            className="pointer-events-auto rounded-md border border-white/15 bg-zinc-950/80 px-3 py-1.5 text-[0.68rem] font-normal uppercase tracking-[0.12em] text-white/50 backdrop-blur-sm transition-colors hover:border-white/25 hover:text-white/75 disabled:cursor-wait disabled:opacity-50"
+          >
+            {signingOut ? "Signing out…" : "Sign out"}
+          </button>
+        </div>
         <div
           className="mx-auto flex w-[80%] max-w-[1040px] flex-1 min-h-0 flex-col overflow-y-auto pt-12 pb-4 scrollbar-hidden"
           aria-busy={loading}
