@@ -1,4 +1,5 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr"
+import type { SupabaseClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
 import { verifyPeAuthEmail, isAllowedPlatformEmail } from "@/lib/pe-auth"
 import { nextWithRequestId } from "@/lib/with-request-trace"
@@ -57,6 +58,8 @@ export async function middleware(req: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   if (url && anon) {
+    // `createServerClient` return type can resolve `auth` too narrowly in middleware (Edge) checks;
+    // assert full client so `auth.getUser()` matches @supabase/supabase-js.
     const supabase = createServerClient(url, anon, {
       cookies: {
         getAll() {
@@ -66,7 +69,7 @@ export async function middleware(req: NextRequest) {
           cookiesToSet.forEach(({ name, value, options }) => res.cookies.set(name, value, options))
         },
       },
-    })
+    }) as SupabaseClient
     const {
       data: { user },
     } = await supabase.auth.getUser()
