@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useMemo, useCallback } from "react"
-import { createSupabaseBrowserClient } from "@/lib/supabase-browser"
+import { tryCreateSupabaseBrowserClient } from "@/lib/supabase-browser"
 
 type Score = {
   specificity: number
@@ -49,7 +49,7 @@ function parseMetadata(raw: unknown): Message["metadata"] {
 }
 
 export default function LiveConversations() {
-  const supabase = useMemo(() => createSupabaseBrowserClient(), [])
+  const supabase = useMemo(() => tryCreateSupabaseBrowserClient(), [])
 
   const [sessions, setSessions] = useState<LiveSession[]>([])
   const [filter, setFilter] = useState<string>("all")
@@ -58,6 +58,10 @@ export default function LiveConversations() {
   const [typingSessions, setTypingSessions] = useState<Record<string, number>>({})
 
   const load = useCallback(async () => {
+    if (!supabase) {
+      setSessions([])
+      return
+    }
     const { data: convs } = await supabase
       .from("sessions")
       .select("id, session_id, status, created_at, updated_at")
@@ -85,7 +89,7 @@ export default function LiveConversations() {
     setSessions(
       convs.map((c) => ({ ...c, messages: bySession[c.id] ?? [] }))
     )
-  }, [])
+  }, [supabase])
 
   // Auto-expire typing indicators after 3s of silence
   useEffect(() => {
@@ -103,6 +107,8 @@ export default function LiveConversations() {
   }, [])
 
   useEffect(() => {
+    if (!supabase) return
+
     load()
 
     const adminChannel = supabase
@@ -194,7 +200,7 @@ export default function LiveConversations() {
       supabase.removeChannel(adminChannel)
       supabase.removeChannel(typingChannel)
     }
-  }, [load])
+  }, [load, supabase])
 
   const stats = useMemo(() => {
     const total = sessions.length
@@ -276,6 +282,23 @@ export default function LiveConversations() {
         fontSize: "0.875rem",
       }}
     >
+      {!supabase ? (
+        <p
+          style={{
+            marginBottom: "1.5rem",
+            padding: "0.75rem 1rem",
+            border: "1px solid rgba(255,255,255,0.2)",
+            color: "rgba(255,255,255,0.65)",
+            fontSize: "0.8rem",
+          }}
+        >
+          Supabase is not configured (missing{" "}
+          <code style={{ opacity: 0.9 }}>NEXT_PUBLIC_SUPABASE_URL</code> or{" "}
+          <code style={{ opacity: 0.9 }}>NEXT_PUBLIC_SUPABASE_ANON_KEY</code>). Live
+          sessions and realtime updates are disabled until env is set.
+        </p>
+      ) : null}
+
       {/* Stats */}
       <div
         style={{

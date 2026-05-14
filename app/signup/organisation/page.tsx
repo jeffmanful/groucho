@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { createSupabaseBrowserClient } from "@/lib/supabase-browser"
+import { tryCreateSupabaseBrowserClient } from "@/lib/supabase-browser"
 import { useCallback, useEffect, useState } from "react"
 
 function slugify(str: string) {
@@ -42,7 +42,11 @@ export default function OrganisationSignupPage() {
   }, [])
 
   useEffect(() => {
-    const supabase = createSupabaseBrowserClient()
+    const supabase = tryCreateSupabaseBrowserClient()
+    if (!supabase) {
+      void refreshMe()
+      return
+    }
     void (async () => {
       const {
         data: { session },
@@ -60,7 +64,12 @@ export default function OrganisationSignupPage() {
     }
     setBusy(true)
     setMsg(null)
-    const supabase = createSupabaseBrowserClient()
+    const supabase = tryCreateSupabaseBrowserClient()
+    if (!supabase) {
+      setMsg("Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.")
+      setBusy(false)
+      return
+    }
     const origin =
       typeof window !== "undefined" ? `${window.location.origin}/signup/organisation` : undefined
     const { error } = await supabase.auth.signInWithOtp({
@@ -84,7 +93,12 @@ export default function OrganisationSignupPage() {
     if (!trimmed || code.trim().length < 6) return
     setBusy(true)
     setMsg(null)
-    const supabase = createSupabaseBrowserClient()
+    const supabase = tryCreateSupabaseBrowserClient()
+    if (!supabase) {
+      setMsg("Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.")
+      setBusy(false)
+      return
+    }
     const { error } = await supabase.auth.verifyOtp({
       email: trimmed,
       token: code.trim(),

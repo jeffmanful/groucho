@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useRef, useEffect, useCallback } from "react"
+import { useState, useRef, useEffect, useCallback, useMemo } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@supabase/supabase-js"
+import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 import {
   AnimatePresence,
   motion,
@@ -11,15 +11,17 @@ import {
 import { TextShimmer } from "@/components/doorcheck/TextShimmer"
 import { cn } from "@/lib/utils"
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  {
+function createDoorcheckSupabase(): SupabaseClient | null {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()
+  const realtimeKey = process.env.NEXT_PUBLIC_SUPABASE_REALTIME_KEY?.trim()
+  if (!url || !anon) return null
+  return createClient(url, anon, {
     realtime: {
-      params: { apikey: process.env.NEXT_PUBLIC_SUPABASE_REALTIME_KEY! },
+      params: { apikey: realtimeKey || anon },
     },
-  },
-)
+  })
+}
 
 type Message = {
   id: string
@@ -99,6 +101,7 @@ function resetSession(): string {
 }
 
 export default function DoorCheck() {
+  const supabase = useMemo(() => createDoorcheckSupabase(), [])
   const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES)
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
@@ -108,7 +111,7 @@ export default function DoorCheck() {
   const [selectedPersonaId, setSelectedPersonaId] = useState("")
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(
+  const typingChannelRef = useRef<ReturnType<SupabaseClient["channel"]> | null>(
     null,
   )
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -161,7 +164,7 @@ export default function DoorCheck() {
   }, [])
 
   useEffect(() => {
-    if (!sessionId) return
+    if (!sessionId || !supabase) return
     const ch = supabase.channel("pe-typing")
     ch.subscribe()
     typingChannelRef.current = ch
@@ -170,7 +173,7 @@ export default function DoorCheck() {
       supabase.removeChannel(ch)
       typingChannelRef.current = null
     }
-  }, [sessionId])
+  }, [sessionId, supabase])
 
   function broadcastTyping(isTyping: boolean) {
     typingChannelRef.current?.send({

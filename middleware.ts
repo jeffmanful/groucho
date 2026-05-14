@@ -54,7 +54,7 @@ export async function middleware(req: NextRequest) {
   }
 
   let res = NextResponse.next({ request: { headers: req.headers } })
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   if (url && anon) {
     const supabase = createServerClient(url, anon, {

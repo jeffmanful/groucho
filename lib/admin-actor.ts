@@ -1,6 +1,9 @@
 import { cookies } from "next/headers"
 import { verifyPeAuthEmail, isAllowedPlatformEmail } from "@/lib/pe-auth"
-import { createSupabaseServerClient } from "@/lib/supabase-server"
+import {
+  createSupabaseServerClient,
+  isSupabaseServerConfigured,
+} from "@/lib/supabase-server"
 
 export type AdminActor =
   | { kind: "platform"; email: string }
@@ -19,6 +22,10 @@ export async function resolveAdminActor(): Promise<AdminActor | null> {
     if (email && isAllowedPlatformEmail(email)) {
       return { kind: "platform", email }
     }
+  }
+
+  if (!isSupabaseServerConfigured()) {
+    return null
   }
 
   const supabase = await createSupabaseServerClient()
