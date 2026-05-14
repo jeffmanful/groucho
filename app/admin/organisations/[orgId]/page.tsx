@@ -54,6 +54,7 @@ type SessionRow = {
   status: string
   created_at: string
   updated_at: string
+  persona_id?: string | null
 }
 
 type InvitationRow = {
@@ -89,6 +90,22 @@ type ProfilePayload = {
   extraction:
     | { model: string; status: "ok" }
     | { model: string; status: "failed"; reason?: string }
+}
+
+type SessionProfileListRow = {
+  session: SessionRow
+  profile: ProfilePayload
+  personaSchema: unknown
+  verdictCreatedAt: string
+}
+
+function isProfilePayload(raw: unknown): raw is ProfilePayload {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false
+  const o = raw as Record<string, unknown>
+  const ext = o.extraction
+  if (!ext || typeof ext !== "object" || Array.isArray(ext)) return false
+  const st = (ext as Record<string, unknown>).status
+  return typeof o.schema_version === "number" && (st === "ok" || st === "failed")
 }
 
 function slugify(str: string) {
@@ -370,6 +387,10 @@ export default function OrganisationDetailPage() {
   const [profile, setProfile] = useState<ProfilePayload | null>(null)
   const [personaSchema, setPersonaSchema] = useState<unknown>(null)
   const [revealedCustomKeys, setRevealedCustomKeys] = useState<Set<string>>(new Set())
+  const [sessionProfileRows, setSessionProfileRows] = useState<SessionProfileListRow[]>([])
+  const [loadingSessionProfiles, setLoadingSessionProfiles] = useState(false)
+  const [profilesExpandedSessionId, setProfilesExpandedSessionId] = useState<string | null>(null)
+  const [profilesRevealedKeys, setProfilesRevealedKeys] = useState<Set<string>>(new Set())
   /** `platform` = allowlisted operator; otherwise org membership role. */
   const [accessRole, setAccessRole] = useState<"platform" | "owner" | "admin" | "member" | null>(
     null,
@@ -487,6 +508,43 @@ export default function OrganisationDetailPage() {
     }
   }, [orgId, selectedProjectId])
 
+  const loadSessionProfiles = useCallback(async () => {
+    if (!selectedProjectId) {
+      setSessionProfileRows([])
+      setLoadingSessionProfiles(false)
+      return
+    }
+    setLoadingSessionProfiles(true)
+    const res = await fetch(
+      `/api/admin/organisations/${orgId}/projects/${selectedProjectId}/session-profiles`,
+    )
+    if (res.ok) {
+      const j: {
+        rows?: {
+          session: SessionRow | null
+          profile: unknown
+          verdictCreatedAt: string
+          personaSchema: unknown
+        }[]
+      } = await res.json()
+      const out: SessionProfileListRow[] = []
+      for (const r of j.rows ?? []) {
+        if (!r.session?.id) continue
+        if (!isProfilePayload(r.profile)) continue
+        out.push({
+          session: r.session,
+          profile: r.profile,
+          personaSchema: r.personaSchema ?? null,
+          verdictCreatedAt: r.verdictCreatedAt,
+        })
+      }
+      setSessionProfileRows(out)
+    } else {
+      setSessionProfileRows([])
+    }
+    setLoadingSessionProfiles(false)
+  }, [orgId, selectedProjectId])
+
   useEffect(() => {
     setLoading(true)
     void loadAccess()
@@ -499,12 +557,19 @@ export default function OrganisationDetailPage() {
     void loadKeys()
     void loadWebhooks()
     void loadSessions()
-  }, [loadKeys, loadWebhooks, loadSessions])
+    void loadSessionProfiles()
+  }, [loadKeys, loadWebhooks, loadSessions, loadSessionProfiles])
 
   useEffect(() => {
     setSelectedSessionId(null)
     setTranscript([])
+    setProfilesExpandedSessionId(null)
+    setProfilesRevealedKeys(new Set())
   }, [selectedProjectId])
+
+  useEffect(() => {
+    setProfilesRevealedKeys(new Set())
+  }, [profilesExpandedSessionId])
 
   useEffect(() => {
     void loadTranscript()
@@ -1399,6 +1464,141 @@ export default function OrganisationDetailPage() {
                 />
               )}
             </div>
+          )}
+        </section>
+      )}
+
+      {selected && (
+        <section style={{ marginBottom: "2.5rem" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "baseline",
+              justifyContent: "space-between",
+              gap: "1rem",
+              flexWrap: "wrap",
+              marginBottom: "0.5rem",
+            }}
+          >
+            <h2 style={{ ...label, marginBottom: 0 }}>
+              EXTRACTED PROFILES — {selected.name}
+            </h2>
+            <button
+              type="button"
+              style={{ ...btn(false), fontSize: "0.62rem" }}
+              onClick={() => void loadSessionProfiles()}
+            >
+              refresh
+            </button>
+          </div>
+          <p style={{ fontSize: "0.75rem", opacity: 0.4, marginBottom: "1rem", lineHeight: 1.45 }}>
+            Structured profiles from completed sessions (verdict payload). Open a row for full core,
+            custom fields, and PII reveal. Use{" "}
+            <span style={{ fontFamily: "monospace", opacity: 0.7 }}>Open transcript</span> to jump
+            to the same session below.
+          </p>
+          {loadingSessionProfiles ? (
+            <p style={{ opacity: 0.35, fontSize: "0.78rem" }}>Loading profiles…</p>
+          ) : sessionProfileRows.length === 0 ? (
+            <p style={{ opacity: 0.35, fontSize: "0.78rem" }}>
+              No extracted profiles yet. Profiles appear after a session ends and extraction runs
+              (see project settings and persona <span style={{ fontFamily: "monospace" }}>profile_schema</span>
+              ).
+            </p>
+          ) : (
+            <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+              {sessionProfileRows.map((row) => {
+                const ext = row.profile.extraction
+                const preview =
+                  row.profile.core?.summary?.trim() ||
+                  (ext.status === "failed"
+                    ? `Extraction failed${"reason" in ext && ext.reason ? `: ${ext.reason}` : ""}`
+                    : "No summary.")
+                const expanded = profilesExpandedSessionId === row.session.id
+                return (
+                  <li
+                    key={row.session.id}
+                    style={{
+                      borderBottom: "1px solid rgba(255,255,255,0.06)",
+                      paddingBottom: "0.5rem",
+                      marginBottom: "0.5rem",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        alignItems: "center",
+                        gap: "0.75rem",
+                        fontSize: "0.75rem",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setProfilesExpandedSessionId((prev) =>
+                            prev === row.session.id ? null : row.session.id,
+                          )
+                        }
+                        style={{
+                          ...btn(expanded),
+                          fontFamily: "monospace",
+                          fontSize: "0.68rem",
+                        }}
+                      >
+                        {row.session.session_id.slice(0, 14)}…
+                      </button>
+                      <Chip>{row.session.status}</Chip>
+                      <Chip>
+                        profile: {ext.status}
+                      </Chip>
+                      <span style={{ opacity: 0.3, fontSize: "0.68rem", marginLeft: "auto" }}>
+                        {new Date(row.verdictCreatedAt).toLocaleString()}
+                      </span>
+                    </div>
+                    <p
+                      style={{
+                        fontSize: "0.72rem",
+                        opacity: 0.45,
+                        margin: "0.35rem 0 0.5rem",
+                        lineHeight: 1.35,
+                        maxWidth: "42rem",
+                      }}
+                    >
+                      {preview.length > 220 ? `${preview.slice(0, 220)}…` : preview}
+                    </p>
+                    <button
+                      type="button"
+                      style={{ ...btn(false), fontSize: "0.62rem", marginRight: "0.5rem" }}
+                      onClick={() => {
+                        setSelectedSessionId(row.session.id)
+                        setProfilesExpandedSessionId(null)
+                      }}
+                    >
+                      Open transcript
+                    </button>
+                    {expanded && (
+                      <div style={{ marginTop: "0.75rem" }}>
+                        <ProfilePanel
+                          profile={row.profile}
+                          personaSchema={row.personaSchema}
+                          canReveal={canOrgAdmin}
+                          revealedKeys={profilesRevealedKeys}
+                          onToggleReveal={(k) =>
+                            setProfilesRevealedKeys((prev) => {
+                              const next = new Set(prev)
+                              if (next.has(k)) next.delete(k)
+                              else next.add(k)
+                              return next
+                            })
+                          }
+                        />
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
           )}
         </section>
       )}
