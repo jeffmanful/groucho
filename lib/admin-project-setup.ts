@@ -1,7 +1,9 @@
 import {
   defaultOnboardingSteps,
   parseFlowConfig,
+  parseOnboardingExperience,
   parseProjectType,
+  type OnboardingExperience,
   type OnboardingFlowStep,
   type ProjectType,
 } from "@/lib/project-settings"
@@ -35,15 +37,31 @@ function parseFlowStepsForForm(settings: Record<string, unknown>): OnboardingFlo
       typeof o.profile_key === "string" && o.profile_key.trim()
         ? o.profile_key.trim()
         : id.replace(/-/g, "_")
-    steps.push({
+    const step: OnboardingFlowStep = {
       id,
       title,
       question,
       profile_key,
       required: o.required !== false,
-    })
+    }
+    if (typeof o.intro === "string" && o.intro.trim()) step.intro = o.intro.trim()
+    if (typeof o.hint === "string" && o.hint.trim()) step.hint = o.hint.trim()
+    if (typeof o.followup_prompt === "string" && o.followup_prompt.trim()) {
+      step.followup_prompt = o.followup_prompt.trim()
+    }
+    if (typeof o.min_answer_chars === "number" && Number.isFinite(o.min_answer_chars)) {
+      step.min_answer_chars = o.min_answer_chars
+    }
+    steps.push(step)
   }
   return steps
+}
+
+function parseWelcomeMessage(settings: Record<string, unknown>): string {
+  const fc = settings.flow_config
+  if (!fc || typeof fc !== "object" || Array.isArray(fc)) return ""
+  const wm = (fc as Record<string, unknown>).welcome_message
+  return typeof wm === "string" ? wm : ""
 }
 
 export const PROJECT_USE_CASES = [
@@ -64,6 +82,8 @@ export type ProjectSetupFormState = {
   sessionMode: "live" | "dry-run"
   personaId: string
   flowSteps: OnboardingFlowStep[]
+  welcomeMessage: string
+  onboardingExperience: OnboardingExperience
   webhookUrl: string
   webhookEvents: string[]
   passThreshold: number
@@ -141,11 +161,28 @@ export function formStateFromProject(row: {
           ? flowStepsFromDb
           : defaultOnboardingSteps()
         : [],
+    welcomeMessage: parseWelcomeMessage(settings),
+    onboardingExperience: parseOnboardingExperience(settings),
     webhookUrl,
     webhookEvents,
     passThreshold: parseThreshold(settings, "pass_threshold", 0.65),
     rejectThreshold: parseThreshold(settings, "reject_threshold", 0.25),
   }
+}
+
+function serializeStepForPayload(s: OnboardingFlowStep): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    id: s.id.trim(),
+    title: s.title.trim(),
+    question: s.question.trim(),
+    profile_key: s.profile_key.trim(),
+    required: s.required !== false,
+  }
+  if (s.intro?.trim()) out.intro = s.intro.trim()
+  if (s.hint?.trim()) out.hint = s.hint.trim()
+  if (s.followup_prompt?.trim()) out.followup_prompt = s.followup_prompt.trim()
+  if (s.min_answer_chars !== undefined) out.min_answer_chars = s.min_answer_chars
+  return out
 }
 
 /** Build settings JSON for POST/PATCH from form state (preserves unknown keys). */
@@ -167,7 +204,7 @@ export function buildProjectSettingsPayload(
   }
 
   if (form.projectType === "onboarding") {
-    settings.flow_config = {
+    const flowOut: Record<string, unknown> = {
       version:
         (base.flow_config &&
         typeof base.flow_config === "object" &&
@@ -175,16 +212,15 @@ export function buildProjectSettingsPayload(
         typeof (base.flow_config as Record<string, unknown>).version === "string"
           ? String((base.flow_config as Record<string, unknown>).version).trim()
           : null) || "2026-05-21",
-      steps: form.flowSteps.map((s) => ({
-        id: s.id.trim(),
-        title: s.title.trim(),
-        question: s.question.trim(),
-        profile_key: s.profile_key.trim(),
-        required: s.required !== false,
-      })),
+      steps: form.flowSteps.map(serializeStepForPayload),
     }
+    const wm = form.welcomeMessage.trim()
+    if (wm) flowOut.welcome_message = wm
+    settings.flow_config = flowOut
+    settings.onboarding_experience = { ...form.onboardingExperience }
   } else {
     delete settings.flow_config
+    delete settings.onboarding_experience
   }
 
   const url = form.webhookUrl.trim()

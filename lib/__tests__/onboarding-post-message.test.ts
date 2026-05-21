@@ -25,6 +25,23 @@ vi.mock("@/lib/project-resolution", () => ({
   touchApiKeyLastUsed: vi.fn(),
 }))
 
+vi.mock("@/lib/onboarding-turn-intelligence", () => ({
+  runOnboardingTurnIntelligence: vi.fn().mockResolvedValue(null),
+  shouldHeuristicFollowup: vi.fn().mockReturnValue(false),
+  defaultFollowupPrompt: vi.fn((s: { followup_prompt?: string }) =>
+    s.followup_prompt ?? "Follow up?",
+  ),
+  verbatimNextMessage: vi.fn((s: { question: string }) => s.question),
+  fallbackBridgeReply: vi.fn((s: { question: string }) => s.question),
+}))
+
+vi.mock("@/lib/onboarding-completion", () => ({
+  generateOnboardingCompletion: vi
+    .fn()
+    .mockResolvedValue("Thanks — you're all set."),
+  DEFAULT_CLOSING: "Thanks — you're all set.",
+}))
+
 function makeSupabaseMock(state: {
   sessions: FakeRow[]
   messages: FakeRow[]
@@ -120,6 +137,7 @@ vi.mock("@/lib/supabase", () => {
     personas: [
       {
         id: "persona1",
+        prompt: "You are a calm onboarding host.",
         profile_schema: null,
         profile_extractor_hint: null,
         is_active: true,
@@ -131,6 +149,12 @@ vi.mock("@/lib/supabase", () => {
 })
 
 const flowSteps = defaultOnboardingSteps()
+const experienceOff = {
+  bridge_enabled: false,
+  followup_enabled: false,
+  boundary_enabled: false,
+  personalized_completion: false,
+}
 
 describe("postOnboardingMessage", () => {
   beforeEach(() => {
@@ -167,12 +191,14 @@ describe("postOnboardingMessage", () => {
         settings: {
           projectType: "onboarding" as const,
           flowConfig: { version: "2026-05-21", steps: flowSteps },
+          onboardingExperience: experienceOff,
           raw: {},
         },
       },
       projectSettings: {
         projectType: "onboarding" as const,
         flowConfig: { version: "2026-05-21", steps: flowSteps },
+        onboardingExperience: experienceOff,
         raw: { persona_id: "persona1" },
       },
     }
@@ -235,12 +261,14 @@ describe("postOnboardingMessage", () => {
         settings: {
           projectType: "onboarding",
           flowConfig: { version: "1", steps: flowSteps },
+          onboardingExperience: experienceOff,
           raw: {},
         },
       },
       projectSettings: {
         projectType: "onboarding",
         flowConfig: { version: "1", steps: flowSteps },
+        onboardingExperience: experienceOff,
         raw: {},
       },
     })

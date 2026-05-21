@@ -121,6 +121,7 @@ describe("buildProjectSettingsPayload", () => {
         },
       ],
     })
+    expect(out.onboarding_experience).toBeDefined()
   })
 
   it("removes flow_config for gatekeeper", () => {

@@ -84,12 +84,14 @@ A reference consumer lives in [`examples/next-groucho`](./examples/next-groucho/
 
 ---
 
-### Onboarding flows (structured steps)
+### Onboarding flows (structured steps + bounded intelligence)
 
 - Projects with `settings.project_type = "onboarding"` and `settings.flow_config.steps` run a **server-enforced** step engine ([`lib/post-onboarding-message.ts`](./lib/post-onboarding-message.ts)).
-- The project wizard collects ordered questions (id, title, question, profile_key) and saves them in `flow_config`.
-- Sessions track `current_step_id` and `flow_version`; the assistant asks **one configured question per turn** until all steps are answered, then extracts `profile` and completes with `passed`.
-- `GET /v1/sessions/{id}` returns `projectType`, `flowVersion`, and `currentStep` while active.
+- The project wizard collects ordered questions (id, title, question, profile_key, optional intro/hint/follow-up fields) plus `flow_config.welcome_message` and `settings.onboarding_experience` toggles (bridge, follow-up, boundary, personalized completion — **default on**).
+- **`POST /v1/sessions/{id}/start`** (and playground **`POST /api/onboarding/start`**) bootstrap the session: first assistant message (welcome + Q1) without wasting a user turn.
+- Mid-flow, when intelligence is enabled, the linked persona **`prompt`** drives brief acknowledgements, optional one follow-up per step, and calm boundary replies; step order and `profile_key` mapping stay fixed.
+- Sessions track `current_step_id`, `flow_version`, and `onboarding_state` (follow-up sub-state); completion extracts `profile` and returns `passed`.
+- `GET /v1/sessions/{id}` returns `projectType`, `flowVersion`, `currentStep`, `stepHint`, `welcomeMessage`, and a capped `messages` transcript while active.
 
 ## What it does **not** yet do
 

@@ -33,10 +33,11 @@ export function PersonaSetupNote({ projectType, personaId, personas }: Props) {
       <span style={{ ...setupLabel, marginBottom: "0.35rem" }}>Prompt vs questions</span>
       {projectType === "onboarding" ? (
         <p style={{ margin: "0 0 0.5rem" }}>
-          <strong style={{ fontWeight: 400, opacity: 0.75 }}>Questions</strong> below are
-          sent word-for-word during the flow. The{" "}
+          <strong style={{ fontWeight: 400, opacity: 0.75 }}>Questions</strong> define step order
+          and profile keys. The{" "}
           <strong style={{ fontWeight: 400, opacity: 0.75 }}>persona prompt</strong> shapes
-          tone and how answers are extracted into a profile at the end.
+          acknowledgements, follow-ups, and boundaries when intelligence is enabled; it also
+          guides profile extraction at the end.
         </p>
       ) : (
         <p style={{ margin: "0 0 0.5rem" }}>

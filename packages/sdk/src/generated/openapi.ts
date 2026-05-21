@@ -27,6 +27,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sessions/{sessionId}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bootstrap an onboarding session (first question without a user message)
+         * @description Idempotent: creates the session and assistant opener when missing, or returns
+         *     the latest assistant message and `currentStep` for an active session.
+         *     Onboarding projects only.
+         */
+        post: operations["startOnboardingSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sessions/{sessionId}": {
         parameters: {
             query?: never;
@@ -98,6 +120,27 @@ export interface components {
             index: number;
             total: number;
         };
+        OnboardingFlags: {
+            followup?: boolean;
+            boundary?: boolean;
+        };
+        StartOnboardingResponse: {
+            message: string;
+            /** @enum {string} */
+            status: "active";
+            projectType: components["schemas"]["ProjectType"];
+            flowVersion?: string;
+            welcomeMessage?: string;
+            currentStep?: components["schemas"]["OnboardingCurrentStep"];
+            /** @description Host UI placeholder for the active step */
+            stepHint?: string;
+            bootstrapped?: boolean;
+        };
+        SessionMessage: {
+            /** @enum {string} */
+            role: "user" | "assistant";
+            content: string;
+        };
         PostMessageResponse: {
             /** @description Raw assistant text for this turn (may include terminal tokens) */
             message: string;
@@ -115,6 +158,11 @@ export interface components {
             flowVersion?: string;
             /** @description Present while onboarding session is active */
             currentStep?: components["schemas"]["OnboardingCurrentStep"];
+            /** @description Host UI placeholder for the active onboarding step */
+            stepHint?: string;
+            onboardingFlags?: components["schemas"]["OnboardingFlags"];
+            /** @description Project welcome line shown before the first question */
+            welcomeMessage?: string;
         };
         Session: {
             /** Format: uuid */
@@ -138,6 +186,10 @@ export interface components {
             flowVersion?: string | null;
             /** @description Active onboarding step while session status is active */
             currentStep?: components["schemas"]["OnboardingCurrentStep"] | null;
+            welcomeMessage?: string | null;
+            stepHint?: string | null;
+            /** @description Transcript for active onboarding sessions (capped) */
+            messages?: components["schemas"]["SessionMessage"][];
         };
         ProfileCore: {
             /** @description Short summary. Emails and phone numbers are auto-redacted. */
@@ -251,6 +303,49 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Error"];
                 };
+            };
+        };
+    };
+    startOnboardingSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["sessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    personaId?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description Session started or resumed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StartOnboardingResponse"];
+                };
+            };
+            /** @description Project is not onboarding */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Session already concluded */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

@@ -11,7 +11,16 @@ import {
   validateWizardStep1,
   validateWizardStep2,
 } from "@/lib/admin-project-wizard-validation"
-import { defaultOnboardingSteps, type OnboardingFlowStep } from "@/lib/project-settings"
+import {
+  buildProjectSettingsPayload,
+  type ProjectSetupFormState,
+} from "@/lib/admin-project-setup"
+import {
+  defaultOnboardingSteps,
+  DEFAULT_ONBOARDING_EXPERIENCE,
+  type OnboardingFlowStep,
+} from "@/lib/project-settings"
+import { OnboardingExperienceToggles } from "@/components/admin/OnboardingExperienceToggles"
 import { OnboardingFlowEditor } from "@/components/admin/OnboardingFlowEditor"
 import { PersonaSetupNote } from "@/components/admin/PersonaSetupNote"
 
@@ -104,6 +113,10 @@ export default function NewProjectWizardPage() {
   const [flowSteps, setFlowSteps] = useState<OnboardingFlowStep[]>(() =>
     defaultOnboardingSteps(),
   )
+  const [welcomeMessage, setWelcomeMessage] = useState("")
+  const [onboardingExperience, setOnboardingExperience] = useState({
+    ...DEFAULT_ONBOARDING_EXPERIENCE,
+  })
 
   const [environment, setEnvironment] = useState<"test" | "live">("test")
   const [sessionMode, setSessionMode] = useState<"live" | "dry-run">("dry-run")
@@ -291,27 +304,23 @@ export default function NewProjectWizardPage() {
     setCreating(true)
     clearAlert()
     showInfo("Creating project…")
-    const settings: Record<string, unknown> = {
-      project_type: projectType,
-      use_case: useCase,
+    const formForSettings: ProjectSetupFormState = {
+      name,
+      slug,
+      useCase,
+      projectType,
       environment,
-      session_mode: sessionMode,
-      persona_id: personaId,
-      pass_threshold: passThreshold,
-      reject_threshold: rejectThreshold,
+      sessionMode,
+      personaId,
+      flowSteps: stepsForSave,
+      welcomeMessage,
+      onboardingExperience,
+      webhookUrl,
+      webhookEvents,
+      passThreshold,
+      rejectThreshold,
     }
-    if (projectType === "onboarding") {
-      settings.flow_config = {
-        version: "2026-05-21",
-        steps: stepsForSave.map((s) => ({
-          id: s.id.trim(),
-          title: s.title.trim(),
-          question: s.question.trim(),
-          profile_key: s.profile_key.trim(),
-          required: s.required !== false,
-        })),
-      }
-    }
+    const settings = buildProjectSettingsPayload(undefined, formForSettings)
     if (webhookUrl.trim()) {
       try {
         const u = new URL(webhookUrl.trim())
@@ -563,11 +572,19 @@ export default function NewProjectWizardPage() {
           />
 
           {projectType === "onboarding" && (
-            <OnboardingFlowEditor
-              steps={flowSteps}
-              onChange={setFlowSteps}
-              registerFlush={registerFlowFlush}
-            />
+            <>
+              <OnboardingExperienceToggles
+                value={onboardingExperience}
+                onChange={setOnboardingExperience}
+              />
+              <OnboardingFlowEditor
+                steps={flowSteps}
+                welcomeMessage={welcomeMessage}
+                onWelcomeMessageChange={setWelcomeMessage}
+                onChange={setFlowSteps}
+                registerFlush={registerFlowFlush}
+              />
+            </>
           )}
 
           <button type="button" style={btn(false)} onClick={back}>

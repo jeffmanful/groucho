@@ -85,6 +85,40 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /v1/sessions/{sessionId}/start:
+    post:
+      tags: [Sessions]
+      summary: Bootstrap an onboarding session (first question without a user message)
+      description: |
+        Idempotent: creates the session and assistant opener when missing, or returns
+        the latest assistant message and `currentStep` for an active session.
+        Onboarding projects only.
+      operationId: startOnboardingSession
+      parameters:
+        - $ref: "#/components/parameters/sessionId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                personaId:
+                  type: string
+                  format: uuid
+                  nullable: true
+      responses:
+        "200":
+          description: Session started or resumed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StartOnboardingResponse"
+        "400":
+          description: Project is not onboarding
+        "409":
+          description: Session already concluded
+
   /v1/sessions/{sessionId}:
     get:
       tags: [Sessions]
@@ -217,6 +251,47 @@ components:
           type: integer
           minimum: 1
 
+    OnboardingFlags:
+      type: object
+      properties:
+        followup:
+          type: boolean
+        boundary:
+          type: boolean
+
+    StartOnboardingResponse:
+      type: object
+      required: [message, status, projectType]
+      properties:
+        message:
+          type: string
+        status:
+          type: string
+          enum: [active]
+        projectType:
+          $ref: "#/components/schemas/ProjectType"
+        flowVersion:
+          type: string
+        welcomeMessage:
+          type: string
+        currentStep:
+          $ref: "#/components/schemas/OnboardingCurrentStep"
+        stepHint:
+          type: string
+          description: Host UI placeholder for the active step
+        bootstrapped:
+          type: boolean
+
+    SessionMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+
     PostMessageResponse:
       type: object
       required: [message, status, scores]
@@ -244,6 +319,14 @@ components:
         currentStep:
           $ref: "#/components/schemas/OnboardingCurrentStep"
           description: Present while onboarding session is active
+        stepHint:
+          type: string
+          description: Host UI placeholder for the active onboarding step
+        onboardingFlags:
+          $ref: "#/components/schemas/OnboardingFlags"
+        welcomeMessage:
+          type: string
+          description: Project welcome line shown before the first question
 
     Session:
       type: object
@@ -284,6 +367,17 @@ components:
             - $ref: "#/components/schemas/OnboardingCurrentStep"
           nullable: true
           description: Active onboarding step while session status is active
+        welcomeMessage:
+          type: string
+          nullable: true
+        stepHint:
+          type: string
+          nullable: true
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionMessage"
+          description: Transcript for active onboarding sessions (capped)
 
     ProfileCore:
       type: object

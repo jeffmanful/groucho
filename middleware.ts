@@ -33,7 +33,8 @@ export async function middleware(req: NextRequest) {
   if (
     pathname.startsWith("/v1/") ||
     pathname === "/api/chat" ||
-    pathname === "/api/access"
+    pathname === "/api/access" ||
+    pathname === "/api/onboarding/start"
   ) {
     return nextWithRequestId(req)
   }

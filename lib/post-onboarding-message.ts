@@ -6,6 +6,8 @@ import { REQUEST_ID_HEADER } from "@/lib/request-trace"
 import { supabase } from "@/lib/supabase"
 import {
   buildOnboardingProfileSchema,
+  formatStepPrompt,
+  resolveRuntimeFlowConfig,
   type NormalizedProjectSettings,
   type OnboardingFlowStep,
 } from "@/lib/project-settings"
@@ -13,6 +15,17 @@ import type { ProjectContext } from "@/lib/project-resolution"
 import { touchApiKeyLastUsed } from "@/lib/project-resolution"
 import { recordVerdictAndEnqueueWebhooks } from "@/lib/verdict-webhook"
 import type { PostSessionMessageInput } from "@/lib/post-session-message"
+import {
+  DEFAULT_CLOSING,
+  generateOnboardingCompletion,
+} from "@/lib/onboarding-completion"
+import {
+  defaultFollowupPrompt,
+  fallbackBridgeReply,
+  runOnboardingTurnIntelligence,
+  shouldHeuristicFollowup,
+  verbatimNextMessage,
+} from "@/lib/onboarding-turn-intelligence"
 
 const NEUTRAL_SCORES = {
   specificity: 0.5,
@@ -20,6 +33,9 @@ const NEUTRAL_SCORES = {
   cultural_depth: 0.5,
   overall: 0.5,
 }
+
+const BOUNDARY_REPLY =
+  "I cannot treat that as a neutral position. We protect dignity and belonging first. If you'd like to continue, you're welcome to answer the question again."
 
 function traceJson(
   input: PostSessionMessageInput,
@@ -37,6 +53,29 @@ function stepIndex(steps: OnboardingFlowStep[], stepId: string): number {
   return steps.findIndex((s) => s.id === stepId)
 }
 
+function currentStepPayload(steps: OnboardingFlowStep[], stepId: string) {
+  const idx = stepIndex(steps, stepId)
+  if (idx < 0) return null
+  return {
+    id: steps[idx].id,
+    title: steps[idx].title,
+    index: idx,
+    total: steps.length,
+  }
+}
+
+type OnboardingState = {
+  followup_step_id?: string
+}
+
+function parseOnboardingState(raw: unknown): OnboardingState {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {}
+  const o = raw as Record<string, unknown>
+  const id =
+    typeof o.followup_step_id === "string" ? o.followup_step_id.trim() : undefined
+  return id ? { followup_step_id: id } : {}
+}
+
 export type PostOnboardingMessageInput = PostSessionMessageInput & {
   context: ProjectContext
   projectSettings: NormalizedProjectSettings
@@ -47,7 +86,8 @@ export async function postOnboardingMessage(
 ): Promise<NextResponse> {
   const { message, sessionId, personaId } = input
   const { organisationId, projectId, apiKeyId } = input.context
-  const flow = input.projectSettings.flowConfig
+  const flow = resolveRuntimeFlowConfig(input.projectSettings)
+  const experience = input.projectSettings.onboardingExperience
 
   if (!flow || flow.steps.length === 0) {
     log.error("onboarding_flow_missing", {
@@ -62,6 +102,7 @@ export async function postOnboardingMessage(
   }
 
   const steps = flow.steps
+  const welcome = flow.welcome_message?.trim() || undefined
 
   if (apiKeyId) touchApiKeyLastUsed(apiKeyId)
 
@@ -74,12 +115,13 @@ export async function postOnboardingMessage(
 
   type PersonaRow = {
     id: string
+    prompt: string
     profile_schema?: unknown
     profile_extractor_hint?: string | null
   }
 
   let personaForExtraction: PersonaRow | null = null
-  const personaCols = "id, profile_schema, profile_extractor_hint"
+  const personaCols = "id, prompt, profile_schema, profile_extractor_hint"
 
   if (personaLookupId) {
     const { data } = await supabase
@@ -103,6 +145,10 @@ export async function postOnboardingMessage(
     resolvedPersonaId = personaForExtraction?.id ?? null
   }
 
+  const personaPrompt =
+    personaForExtraction?.prompt?.trim() ||
+    "You are a calm, thoughtful onboarding host. Keep replies brief and human."
+
   const onboardingSchema = buildOnboardingProfileSchema(steps)
   const mergedPersona = {
     profile_schema:
@@ -115,13 +161,34 @@ export async function postOnboardingMessage(
   let sessionRowId: string
   let currentStepId: string | null = null
   let flowVersion: string | null = null
+  let onboardingState: OnboardingState = {}
 
-  const { data: existing } = await supabase
+  let existing: {
+    id: string
+    status: string
+    current_step_id: string | null
+    flow_version: string | null
+    onboarding_state?: unknown
+  } | null = null
+
+  const sessionSelect = await supabase
     .from("sessions")
-    .select("id, status, current_step_id, flow_version")
+    .select("id, status, current_step_id, flow_version, onboarding_state")
     .eq("session_id", sessionId)
     .eq("project_id", projectId)
     .maybeSingle()
+
+  if (sessionSelect.error?.message?.includes("onboarding_state")) {
+    const fallback = await supabase
+      .from("sessions")
+      .select("id, status, current_step_id, flow_version")
+      .eq("session_id", sessionId)
+      .eq("project_id", projectId)
+      .maybeSingle()
+    existing = fallback.data
+  } else {
+    existing = sessionSelect.data
+  }
 
   if (existing) {
     if (CONCLUDED.includes(existing.status)) {
@@ -130,6 +197,7 @@ export async function postOnboardingMessage(
     sessionRowId = existing.id
     currentStepId = existing.current_step_id ?? null
     flowVersion = existing.flow_version ?? flow.version
+    onboardingState = parseOnboardingState(existing.onboarding_state)
   } else {
     const { data: created, error: createError } = await supabase
       .from("sessions")
@@ -140,6 +208,7 @@ export async function postOnboardingMessage(
         project_id: projectId,
         flow_version: flow.version,
         current_step_id: null,
+        onboarding_state: null,
       })
       .select("id")
       .single()
@@ -156,48 +225,238 @@ export async function postOnboardingMessage(
     flowVersion = flow.version
   }
 
-  const { data: userMsg, error: userMsgError } = await supabase
-    .from("messages")
-    .insert({
+  let assistantContent: string
+  let nextCurrentStepId: string | null
+  let terminal = false
+  let onboardingFlags: { followup?: boolean; boundary?: boolean } | undefined
+  let stepHint: string | undefined
+
+  const userTrimmed = message.trim()
+
+  if (currentStepId === null) {
+    const { error: userMsgError } = await supabase.from("messages").insert({
       session_id: sessionRowId,
       organisation_id: organisationId,
       project_id: projectId,
       role: "user",
-      content: message.trim(),
-      metadata:
-        currentStepId !== null
-          ? { onboarding_step_id: currentStepId }
-          : {},
+      content: userTrimmed,
+      metadata: {},
     })
-    .select("id")
-    .single()
+    if (userMsgError) {
+      return traceJson(input, { error: "Database error" }, { status: 500 })
+    }
 
-  if (userMsgError || !userMsg) {
-    return traceJson(input, { error: "Database error" }, { status: 500 })
-  }
-
-  let assistantContent: string
-  let nextCurrentStepId: string | null
-  let terminal = false
-
-  if (currentStepId === null) {
-    assistantContent = steps[0].question
+    assistantContent = formatStepPrompt(steps[0], welcome)
     nextCurrentStepId = steps[0].id
+    stepHint = steps[0].hint
   } else {
     const idx = stepIndex(steps, currentStepId)
     if (idx < 0) {
       return traceJson(input, { error: "Invalid session step state" }, { status: 500 })
     }
-    const next = steps[idx + 1]
-    if (next) {
-      assistantContent = next.question
-      nextCurrentStepId = next.id
-    } else {
-      terminal = true
-      assistantContent =
-        "Thanks — you're all set. We'll use what you shared to personalise your experience."
-      nextCurrentStepId = null
+
+    const stepAnswered = steps[idx]
+    const inFollowup =
+      onboardingState.followup_step_id === currentStepId
+
+    const { error: userMsgError } = await supabase.from("messages").insert({
+      session_id: sessionRowId,
+      organisation_id: organisationId,
+      project_id: projectId,
+      role: "user",
+      content: userTrimmed,
+      metadata: {
+        onboarding_step_id: currentStepId,
+        ...(inFollowup ? { onboarding_followup: true } : {}),
+      },
+    })
+    if (userMsgError) {
+      return traceJson(input, { error: "Database error" }, { status: 500 })
     }
+
+    const next = steps[idx + 1]
+    let newOnboardingState: OnboardingState | null = null
+    let decided = false
+
+    const useIntelligence =
+      experience.bridge_enabled || experience.boundary_enabled
+
+    if (useIntelligence) {
+      const intel = await runOnboardingTurnIntelligence({
+        personaPrompt,
+        stepAnswered,
+        userAnswer: userTrimmed,
+        nextStep: next ?? null,
+        boundaryEnabled: experience.boundary_enabled,
+        followupEnabled: experience.followup_enabled && !inFollowup,
+        alreadyInFollowup: inFollowup,
+      })
+
+      if (intel?.action === "boundary" && experience.boundary_enabled) {
+        assistantContent = intel.reply || BOUNDARY_REPLY
+        nextCurrentStepId = currentStepId
+        onboardingFlags = { boundary: true }
+        newOnboardingState = null
+        decided = true
+      } else if (
+        intel?.action === "followup" &&
+        experience.followup_enabled &&
+        !inFollowup
+      ) {
+        assistantContent = intel.reply || defaultFollowupPrompt(stepAnswered)
+        nextCurrentStepId = currentStepId
+        onboardingFlags = { followup: true }
+        newOnboardingState = { followup_step_id: currentStepId }
+        decided = true
+      } else if (intel?.action === "continue") {
+        if (next) {
+          assistantContent = intel.reply
+          nextCurrentStepId = next.id
+          stepHint = next.hint
+        } else {
+          terminal = true
+          assistantContent = intel.reply
+          nextCurrentStepId = null
+        }
+        newOnboardingState = null
+        decided = true
+      }
+    }
+
+    if (!decided) {
+      if (
+        experience.followup_enabled &&
+        !inFollowup &&
+        shouldHeuristicFollowup(
+          stepAnswered,
+          userTrimmed,
+          inFollowup,
+          experience.followup_enabled,
+        )
+      ) {
+        assistantContent = defaultFollowupPrompt(stepAnswered)
+        nextCurrentStepId = currentStepId
+        onboardingFlags = { followup: true }
+        newOnboardingState = { followup_step_id: currentStepId }
+      } else if (next) {
+        if (experience.bridge_enabled) {
+          const intel = await runOnboardingTurnIntelligence({
+            personaPrompt,
+            stepAnswered,
+            userAnswer: userTrimmed,
+            nextStep: next,
+            boundaryEnabled: false,
+            followupEnabled: false,
+            alreadyInFollowup: inFollowup,
+          })
+          assistantContent =
+            intel?.reply ?? fallbackBridgeReply(next, undefined)
+        } else {
+          assistantContent = verbatimNextMessage(next)
+        }
+        nextCurrentStepId = next.id
+        stepHint = next.hint
+        newOnboardingState = null
+      } else {
+        terminal = true
+        nextCurrentStepId = null
+        newOnboardingState = null
+      }
+    }
+
+    await supabase
+      .from("sessions")
+      .update({
+        onboarding_state:
+          newOnboardingState && Object.keys(newOnboardingState).length > 0
+            ? newOnboardingState
+            : null,
+      })
+      .eq("id", sessionRowId)
+  }
+
+  if (terminal) {
+    const { data: history } = await supabase
+      .from("messages")
+      .select("role, content")
+      .eq("session_id", sessionRowId)
+      .order("sent_at", { ascending: true })
+
+    const transcript: ConversationMessage[] = (history ?? []).map((m) => ({
+      role: m.role as "user" | "assistant",
+      content: m.content,
+    }))
+
+    if (experience.personalized_completion) {
+      assistantContent = await generateOnboardingCompletion(
+        personaPrompt,
+        transcript,
+      )
+    } else {
+      assistantContent = DEFAULT_CLOSING
+    }
+
+    await supabase.from("messages").insert({
+      session_id: sessionRowId,
+      organisation_id: organisationId,
+      project_id: projectId,
+      role: "assistant",
+      content: assistantContent,
+      metadata: { onboarding_complete: true },
+    })
+
+    const successSecret = randomUUID()
+    await supabase
+      .from("sessions")
+      .update({
+        status: "passed",
+        success_secret: successSecret,
+        current_step_id: null,
+        flow_version: flowVersion,
+        onboarding_state: null,
+      })
+      .eq("id", sessionRowId)
+
+    let profile: Awaited<
+      ReturnType<typeof recordVerdictAndEnqueueWebhooks>
+    >["profile"] = null
+
+    try {
+      const result = await recordVerdictAndEnqueueWebhooks({
+        organisationId,
+        projectId,
+        sessionInternalId: sessionRowId,
+        clientSessionKey: sessionId,
+        terminalStatus: "passed",
+        scores: NEUTRAL_SCORES,
+        persona: mergedPersona,
+        transcript,
+      })
+      profile = result?.profile ?? null
+      if (profile) {
+        await supabase
+          .from("sessions")
+          .update({ profile })
+          .eq("id", sessionRowId)
+      }
+    } catch (err) {
+      log.error("onboarding_verdict_failed", {
+        requestId: input.requestId,
+        projectId,
+        sessionId,
+        detail: err instanceof Error ? err.message : String(err),
+      })
+    }
+
+    return traceJson(input, {
+      message: assistantContent,
+      status: "passed",
+      scores: NEUTRAL_SCORES,
+      secret: successSecret,
+      projectType: "onboarding",
+      flowVersion,
+      ...(profile ? { profile } : {}),
+    })
   }
 
   await supabase.from("messages").insert({
@@ -206,95 +465,29 @@ export async function postOnboardingMessage(
     project_id: projectId,
     role: "assistant",
     content: assistantContent,
-    metadata: terminal
-      ? { onboarding_complete: true }
-      : { onboarding_step_id: nextCurrentStepId },
+    metadata: { onboarding_step_id: nextCurrentStepId },
   })
 
-  if (!terminal) {
-    await supabase
-      .from("sessions")
-      .update({
-        current_step_id: nextCurrentStepId,
-        flow_version: flowVersion,
-      })
-      .eq("id", sessionRowId)
-
-    return traceJson(input, {
-      message: assistantContent,
-      status: "active",
-      scores: NEUTRAL_SCORES,
-      projectType: "onboarding",
-      flowVersion,
-      currentStep: {
-        id: nextCurrentStepId,
-        title: steps.find((s) => s.id === nextCurrentStepId)?.title ?? "",
-        index: stepIndex(steps, nextCurrentStepId!),
-        total: steps.length,
-      },
-    })
-  }
-
-  const { data: history } = await supabase
-    .from("messages")
-    .select("role, content")
-    .eq("session_id", sessionRowId)
-    .order("sent_at", { ascending: true })
-
-  const transcript: ConversationMessage[] = (history ?? []).map((m) => ({
-    role: m.role as "user" | "assistant",
-    content: m.content,
-  }))
-
-  const successSecret = randomUUID()
   await supabase
     .from("sessions")
     .update({
-      status: "passed",
-      success_secret: successSecret,
-      current_step_id: null,
+      current_step_id: nextCurrentStepId,
       flow_version: flowVersion,
     })
     .eq("id", sessionRowId)
 
-  let profile: Awaited<
-    ReturnType<typeof recordVerdictAndEnqueueWebhooks>
-  >["profile"] = null
-
-  try {
-    const result = await recordVerdictAndEnqueueWebhooks({
-      organisationId,
-      projectId,
-      sessionInternalId: sessionRowId,
-      clientSessionKey: sessionId,
-      terminalStatus: "passed",
-      scores: NEUTRAL_SCORES,
-      persona: mergedPersona,
-      transcript,
-    })
-    profile = result?.profile ?? null
-    if (profile) {
-      await supabase
-        .from("sessions")
-        .update({ profile })
-        .eq("id", sessionRowId)
-    }
-  } catch (err) {
-    log.error("onboarding_verdict_failed", {
-      requestId: input.requestId,
-      projectId,
-      sessionId,
-      detail: err instanceof Error ? err.message : String(err),
-    })
-  }
+  const currentStep = nextCurrentStepId
+    ? currentStepPayload(steps, nextCurrentStepId)
+    : null
 
   return traceJson(input, {
     message: assistantContent,
-    status: "passed",
+    status: "active",
     scores: NEUTRAL_SCORES,
-    secret: successSecret,
     projectType: "onboarding",
     flowVersion,
-    ...(profile ? { profile } : {}),
+    ...(currentStep ? { currentStep } : {}),
+    ...(stepHint ? { stepHint } : {}),
+    ...(onboardingFlags ? { onboardingFlags } : {}),
   })
 }

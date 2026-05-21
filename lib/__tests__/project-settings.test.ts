@@ -42,6 +42,46 @@ describe("validateProjectSettings", () => {
       expect(r.settings.project_type).toBe("onboarding")
       const fc = r.settings.flow_config as { steps: unknown[] }
       expect(fc.steps).toHaveLength(3)
+      expect(r.settings.onboarding_experience).toBeTruthy()
+    }
+  })
+
+  it("accepts welcome_message and step optional fields", () => {
+    const r = validateProjectSettings({
+      project_type: "onboarding",
+      flow_config: {
+        version: "2026-05-21",
+        welcome_message: "Welcome.",
+        steps: [
+          {
+            id: "intent",
+            title: "Intent",
+            question: "Why join?",
+            profile_key: "intent",
+            required: true,
+            intro: "First, intent.",
+            hint: "Be specific",
+            followup_prompt: "More detail?",
+            min_answer_chars: 30,
+          },
+        ],
+      },
+      onboarding_experience: {
+        bridge_enabled: false,
+        followup_enabled: true,
+        boundary_enabled: true,
+        personalized_completion: false,
+      },
+    })
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      const fc = r.settings.flow_config as {
+        welcome_message?: string
+        steps: Record<string, unknown>[]
+      }
+      expect(fc.welcome_message).toBe("Welcome.")
+      expect(fc.steps[0].intro).toBe("First, intent.")
+      expect(fc.steps[0].min_answer_chars).toBe(30)
     }
   })
 })

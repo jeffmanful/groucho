@@ -26,7 +26,7 @@ export async function GET(
   const { data: row, error } = await supabase
     .from("sessions")
     .select(
-      "id, session_id, status, created_at, updated_at, current_step_id, flow_version, profile",
+      "id, session_id, status, created_at, updated_at, current_step_id, flow_version, profile, onboarding_state",
     )
     .eq("session_id", clientKey)
     .eq("project_id", projectId)
@@ -69,12 +69,14 @@ export async function GET(
   }
 
   const steps: OnboardingFlowStep[] = settings.flowConfig?.steps ?? []
+  const welcomeMessage = settings.flowConfig?.welcome_message?.trim() || null
   let currentStep: {
     id: string
     title: string
     index: number
     total: number
   } | null = null
+  let stepHint: string | null = null
   if (
     settings.projectType === "onboarding" &&
     !concluded &&
@@ -89,6 +91,23 @@ export async function GET(
         index: idx,
         total: steps.length,
       }
+      stepHint = steps[idx].hint?.trim() || null
+    }
+  }
+
+  let messages: { role: string; content: string }[] | undefined
+  if (settings.projectType === "onboarding" && !concluded) {
+    const { data: msgRows } = await supabase
+      .from("messages")
+      .select("role, content")
+      .eq("session_id", row.id)
+      .order("sent_at", { ascending: true })
+      .limit(50)
+    if (msgRows?.length) {
+      messages = msgRows.map((m) => ({
+        role: m.role,
+        content: m.content,
+      }))
     }
   }
 
@@ -102,7 +121,10 @@ export async function GET(
     completedAt: concluded ? row.updated_at : null,
     projectType: settings.projectType,
     flowVersion: row.flow_version ?? settings.flowConfig?.version ?? null,
+    ...(welcomeMessage ? { welcomeMessage } : {}),
     ...(currentStep ? { currentStep } : {}),
+    ...(stepHint ? { stepHint } : {}),
+    ...(messages ? { messages } : {}),
     ...(profile ? { profile } : {}),
   })
 }

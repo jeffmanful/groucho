@@ -23,8 +23,14 @@ import {
   type OnboardingFlowStep,
   type ProjectType,
 } from "@/lib/project-settings"
+import { OnboardingExperienceToggles } from "@/components/admin/OnboardingExperienceToggles"
 import { OnboardingFlowEditor } from "@/components/admin/OnboardingFlowEditor"
 import { PersonaSetupNote } from "@/components/admin/PersonaSetupNote"
+import {
+  COLORS_PROFILE_EXTRACTOR_HINT,
+  COLORS_PROFILE_SCHEMA,
+} from "@/lib/onboarding-persona-template"
+import { DEFAULT_ONBOARDING_EXPERIENCE } from "@/lib/project-settings"
 import {
   isValidProjectSlug,
   setupBtn,
@@ -87,11 +93,14 @@ export default function EditProjectPage() {
     sessionMode: "live",
     personaId: "",
     flowSteps: [],
+    welcomeMessage: "",
+    onboardingExperience: { ...DEFAULT_ONBOARDING_EXPERIENCE },
     webhookUrl: "",
     webhookEvents: [],
     passThreshold: 0.65,
     rejectThreshold: 0.25,
   })
+  const [applyingTemplate, setApplyingTemplate] = useState(false)
 
   const patchForm = useCallback((patch: Partial<ProjectSetupFormState>) => {
     setForm((prev) => ({ ...prev, ...patch }))
@@ -504,12 +513,82 @@ export default function EditProjectPage() {
         />
 
         {form.projectType === "onboarding" && hydrated && (
-          <OnboardingFlowEditor
-            editorKey={flowEditorKey}
-            steps={form.flowSteps}
-            onChange={handleFlowStepsChange}
-            registerFlush={registerFlowFlush}
-          />
+          <>
+            <OnboardingExperienceToggles
+              value={form.onboardingExperience}
+              onChange={(onboardingExperience) => patchForm({ onboardingExperience })}
+            />
+            <button
+              type="button"
+              disabled={!form.personaId || applyingTemplate}
+              style={{
+                ...setupBtn(false),
+                fontSize: "0.65rem",
+                marginBottom: "1rem",
+                opacity: !form.personaId ? 0.4 : 1,
+              }}
+              onClick={async () => {
+                if (!form.personaId) return
+                setApplyingTemplate(true)
+                try {
+                  const listRes = await fetch("/api/admin/personas", {
+                    credentials: "same-origin",
+                  })
+                  const list = (await listRes.json()) as Array<{
+                    id: string
+                    name: string
+                    slug: string
+                    prompt: string
+                    is_active: boolean
+                    is_default: boolean
+                    pass_threshold: number
+                    reject_threshold: number
+                    profile_schema?: unknown
+                    profile_extractor_hint?: string | null
+                  }>
+                  const persona = list.find((p) => p.id === form.personaId)
+                  if (!persona) {
+                    showError("Persona not found")
+                    return
+                  }
+                  const putRes = await fetch(`/api/admin/personas/${persona.id}`, {
+                    method: "PUT",
+                    credentials: "same-origin",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      ...persona,
+                      profile_schema: COLORS_PROFILE_SCHEMA,
+                      profile_extractor_hint: COLORS_PROFILE_EXTRACTOR_HINT,
+                    }),
+                  })
+                  if (!putRes.ok) {
+                    const err = await putRes.json().catch(() => ({}))
+                    showError(
+                      typeof err.error === "string"
+                        ? err.error
+                        : "Failed to apply COLORS template",
+                    )
+                    return
+                  }
+                  showSuccess("COLORS profile schema and extractor hint applied to persona")
+                } catch {
+                  showError("Failed to apply COLORS template")
+                } finally {
+                  setApplyingTemplate(false)
+                }
+              }}
+            >
+              {applyingTemplate ? "Applying…" : "Apply COLORS persona template"}
+            </button>
+            <OnboardingFlowEditor
+              editorKey={flowEditorKey}
+              steps={form.flowSteps}
+              welcomeMessage={form.welcomeMessage}
+              onWelcomeMessageChange={(welcomeMessage) => patchForm({ welcomeMessage })}
+              onChange={handleFlowStepsChange}
+              registerFlush={registerFlowFlush}
+            />
+          </>
         )}
 
         <div style={{ marginTop: "1rem" }}>

@@ -1,5 +1,6 @@
 import type { OnboardingFlowStep } from "@/lib/project-settings"
 import { defaultOnboardingSteps } from "@/lib/project-settings"
+import { COLORS_DEFAULT_WELCOME } from "@/lib/onboarding-persona-template"
 
 /** COLORS forum onboarding — see COLORS_PERSONA_SPEC.md */
 export const COLORS_ONBOARDING_STEPS: OnboardingFlowStep[] = [
@@ -9,6 +10,7 @@ export const COLORS_ONBOARDING_STEPS: OnboardingFlowStep[] = [
     question: "What draws you to COLORS, beyond discovering new music?",
     profile_key: "intent",
     required: true,
+    hint: "Share what you are looking for, not just discovery.",
   },
   {
     id: "creative_relationship",
@@ -46,6 +48,7 @@ export type OnboardingFlowPreset = {
   id: string
   label: string
   description: string
+  welcome_message?: string
   steps: OnboardingFlowStep[]
 }
 
@@ -60,6 +63,7 @@ export const ONBOARDING_FLOW_PRESETS: OnboardingFlowPreset[] = [
     id: "colors",
     label: "COLORS forum (5 questions)",
     description: "Recommended flow from COLORS_PERSONA_SPEC.md.",
+    welcome_message: COLORS_DEFAULT_WELCOME,
     steps: COLORS_ONBOARDING_STEPS,
   },
 ]

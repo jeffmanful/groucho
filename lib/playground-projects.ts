@@ -4,7 +4,7 @@ import {
   contextFromIds,
   type ProjectContext,
 } from "@/lib/project-resolution"
-import { parseProjectType } from "@/lib/project-settings"
+import { parseFlowConfig, parseProjectType } from "@/lib/project-settings"
 import { supabase } from "@/lib/supabase"
 
 export type PlaygroundProjectOption = {
@@ -16,6 +16,7 @@ export type PlaygroundProjectOption = {
   projectType: "gatekeeper" | "onboarding"
   environment: "test" | "live" | null
   sessionMode: "live" | "dry-run" | null
+  welcomeMessage: string | null
 }
 
 function settingsField(settings: unknown, key: string): string | null {
@@ -51,6 +52,8 @@ export async function listPlaygroundProjects(
   return (projects ?? []).map((p) => {
     const env = settingsField(p.settings, "environment")
     const mode = settingsField(p.settings, "session_mode")
+    const flow = parseFlowConfig(p.settings)
+    const welcomeMessage = flow?.welcome_message?.trim() || null
     return {
       id: p.id,
       name: p.name,
@@ -61,6 +64,7 @@ export async function listPlaygroundProjects(
       environment: env === "live" ? "live" : env === "test" ? "test" : null,
       sessionMode:
         mode === "dry-run" ? "dry-run" : mode === "live" ? "live" : null,
+      welcomeMessage,
     }
   })
 }

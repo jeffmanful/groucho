@@ -45,6 +45,14 @@ type ProjectOption = {
   projectType: "gatekeeper" | "onboarding"
   environment: "test" | "live" | null
   sessionMode: "live" | "dry-run" | null
+  welcomeMessage: string | null
+}
+
+type OnboardingCurrentStep = {
+  id: string
+  title: string
+  index: number
+  total: number
 }
 
 const INITIAL_MESSAGES: Message[] = [
@@ -54,6 +62,7 @@ const INITIAL_MESSAGES: Message[] = [
 const SESSION_KEY = "pe_session_id"
 const SECRET_KEY = "pe_session_secret"
 const PROJECT_KEY = "pe_project_id"
+const PROFILE_KEY = "pe_session_profile"
 
 const pickerSelectStyle: React.CSSProperties = {
   display: "block",
@@ -139,6 +148,11 @@ export default function DoorCheck() {
   const [projects, setProjects] = useState<ProjectOption[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState("")
   const [signingOut, setSigningOut] = useState(false)
+  const [currentStep, setCurrentStep] = useState<OnboardingCurrentStep | null>(
+    null,
+  )
+  const [stepHint, setStepHint] = useState<string | null>(null)
+  const [bootstrapping, setBootstrapping] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const typingChannelRef = useRef<ReturnType<SupabaseClient["channel"]> | null>(
@@ -147,6 +161,7 @@ export default function DoorCheck() {
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   /** Bot reply is committed after the thinking row exits so layout doesn’t stack two tails */
   const assistantHandoffRef = useRef<Message | null>(null)
+  const bootstrapInFlightRef = useRef(false)
   const router = useRouter()
 
   const scrollToBottom = useCallback(() => {
@@ -209,16 +224,108 @@ export default function DoorCheck() {
       .catch(() => {})
   }, [])
 
+  const bootstrapOnboarding = useCallback(
+    async (sid: string, projectId: string, persona?: string) => {
+      if (bootstrapInFlightRef.current) return
+      bootstrapInFlightRef.current = true
+      setBootstrapping(true)
+      try {
+        const res = await fetch("/api/onboarding/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({
+            sessionId: sid,
+            projectId,
+            personaId: persona,
+          }),
+        })
+        const data = (await res.json().catch(() => ({}))) as Record<
+          string,
+          unknown
+        >
+        if (!res.ok) {
+          const err =
+            typeof data.error === "string"
+              ? data.error
+              : `Request failed (${res.status})`
+          const detail =
+            typeof data.detail === "string" ? ` — ${data.detail}` : ""
+          throw new Error(`${err}${detail}`)
+        }
+        if (typeof data.message !== "string") {
+          throw new Error("Invalid start response")
+        }
+        setMessages([
+          {
+            id: crypto.randomUUID(),
+            role: "bot",
+            content: data.message,
+          },
+        ])
+        setCurrentStep((data.currentStep as OnboardingCurrentStep) ?? null)
+        setStepHint(
+          typeof data.stepHint === "string" ? data.stepHint : null,
+        )
+      } catch (e) {
+        const msg =
+          e instanceof Error ? e.message : "Something went wrong starting onboarding."
+        setMessages([
+          {
+            id: crypto.randomUUID(),
+            role: "bot",
+            content: msg.startsWith("Request failed") || msg.includes("Database")
+              ? `${msg}. Check you are signed in, the project has onboarding steps, and DB migrations are applied.`
+              : msg,
+          },
+        ])
+        setCurrentStep(null)
+        setStepHint(null)
+      } finally {
+        bootstrapInFlightRef.current = false
+        setBootstrapping(false)
+      }
+    },
+    [],
+  )
+
   function applyProjectSelection(projectId: string) {
     setSelectedProjectId(projectId)
     localStorage.setItem(PROJECT_KEY, projectId)
     const newId = resetSession()
     setSessionId(newId)
     assistantHandoffRef.current = null
-    setMessages(INITIAL_MESSAGES)
     setInput("")
     setConcluded(false)
+    setCurrentStep(null)
+    setStepHint(null)
+    const proj = projects.find((p) => p.id === projectId)
+    if (proj?.projectType === "onboarding") {
+      void bootstrapOnboarding(newId, projectId, selectedPersonaId || undefined)
+    } else {
+      setMessages(INITIAL_MESSAGES)
+    }
   }
+
+  useEffect(() => {
+    if (!sessionId || !selectedProjectId || bootstrapping) return
+    const proj = projects.find((p) => p.id === selectedProjectId)
+    if (proj?.projectType !== "onboarding") return
+    if (messages.length !== 0 && messages[0]?.id !== "initial-hi") return
+    void bootstrapOnboarding(
+      sessionId,
+      selectedProjectId,
+      selectedPersonaId || undefined,
+    )
+  }, [
+    sessionId,
+    selectedProjectId,
+    projects,
+    bootstrapOnboarding,
+    selectedPersonaId,
+    messages,
+    bootstrapping,
+  ])
 
   useEffect(() => {
     if (!sessionId || !supabase) return
@@ -299,13 +406,40 @@ export default function DoorCheck() {
         content: data.message,
       }
 
+      if (data.currentStep) {
+        setCurrentStep(data.currentStep as OnboardingCurrentStep)
+      } else if (data.status === "passed") {
+        setCurrentStep(null)
+      }
+      setStepHint(
+        typeof data.stepHint === "string" ? data.stepHint : null,
+      )
+
       if (data.status === "passed") {
         setConcluded(true)
-        if (data.secret) localStorage.setItem(SECRET_KEY, data.secret)
-        setTimeout(
-          () => router.push(`/doorcheck/access?sid=${sessionId}`),
-          1400,
-        )
+        if (data.profile) {
+          try {
+            localStorage.setItem(PROFILE_KEY, JSON.stringify(data.profile))
+          } catch {
+            /* ignore */
+          }
+        }
+        const isOnboarding =
+          selectedProject?.projectType === "onboarding" ||
+          data.projectType === "onboarding"
+        if (isOnboarding) {
+          assistantHandoffRef.current = {
+            id: crypto.randomUUID(),
+            role: "bot",
+            content: "Thank you for your application.",
+          }
+        } else {
+          if (data.secret) localStorage.setItem(SECRET_KEY, data.secret)
+          setTimeout(
+            () => router.push(`/doorcheck/access?sid=${sessionId}`),
+            1400,
+          )
+        }
       } else if (data.status === "redirected" || data.status === "rejected") {
         setConcluded(true)
       }
@@ -330,13 +464,21 @@ export default function DoorCheck() {
   function restart() {
     const newId = resetSession()
     localStorage.removeItem(SECRET_KEY)
+    localStorage.removeItem(PROFILE_KEY)
     assistantHandoffRef.current = null
     setSessionId(newId)
-    setMessages(INITIAL_MESSAGES)
     setInput("")
     setConcluded(false)
+    setCurrentStep(null)
+    setStepHint(null)
     const def = personas.find((p) => p.is_default)
     if (def) setSelectedPersonaId(def.id)
+    const proj = projects.find((p) => p.id === selectedProjectId)
+    if (proj?.projectType === "onboarding" && selectedProjectId) {
+      void bootstrapOnboarding(newId, selectedProjectId, def?.id)
+    } else {
+      setMessages(INITIAL_MESSAGES)
+    }
     if (selectedProjectId) localStorage.setItem(PROJECT_KEY, selectedProjectId)
   }
 
@@ -391,9 +533,17 @@ export default function DoorCheck() {
         </div>
         <div
           className="mx-auto flex w-[80%] max-w-[1040px] flex-1 min-h-0 flex-col overflow-y-auto pt-12 pb-4 scrollbar-hidden"
-          aria-busy={loading}
+          aria-busy={loading || bootstrapping}
           aria-live="polite"
         >
+          {currentStep && !concluded && (
+            <p
+              className="mb-4 shrink-0 text-[0.68rem] tracking-[0.1em] text-white/35"
+              aria-live="polite"
+            >
+              {currentStep.title} · {currentStep.index + 1} of {currentStep.total}
+            </p>
+          )}
           <div className="mt-auto flex flex-col gap-5 pb-6">
             {messages.map((msg) => (
               <motion.div
@@ -531,7 +681,12 @@ export default function DoorCheck() {
                 onKeyDown={handleKeyDown}
                 autoFocus
                 disabled={loading}
-                placeholder="Type your message"
+                placeholder={
+                  stepHint?.trim() ||
+                  (selectedProject?.projectType === "onboarding"
+                    ? "Your answer"
+                    : "Type your message")
+                }
                 aria-disabled={loading}
                 className="w-full rounded-2xl border border-white/10 bg-zinc-950/70 py-3.5 pl-5 pr-5 font-inherit text-lg font-normal text-white/95 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] outline-none backdrop-blur-md transition-[border-color,box-shadow,background-color,opacity] duration-200 placeholder:text-white/38 selection:bg-white/20 selection:text-white focus:border-white/18 focus:bg-zinc-950/85 focus:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_0_0_1px_rgba(255,255,255,0.06)] focus:ring-2 focus:ring-white/10 disabled:cursor-wait disabled:opacity-55"
               />

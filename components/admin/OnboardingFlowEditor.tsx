@@ -18,6 +18,8 @@ const SYNC_DEBOUNCE_MS = 400
 type Props = {
   steps: OnboardingFlowStep[]
   onChange: (steps: OnboardingFlowStep[]) => void
+  welcomeMessage: string
+  onWelcomeMessageChange: (value: string) => void
   /** When this changes, re-hydrate local drafts from `steps` (initial load / save). */
   editorKey?: string
   /** Register flush — returns latest steps after applying pending edits (call before save). */
@@ -27,6 +29,8 @@ type Props = {
 export function OnboardingFlowEditor({
   steps,
   onChange,
+  welcomeMessage,
+  onWelcomeMessageChange,
   editorKey,
   registerFlush,
 }: Props) {
@@ -147,6 +151,7 @@ export function OnboardingFlowEditor({
     const next = preset.steps.map((s) => ({ ...s }))
     setDraftQuestions(questionsFromSteps(next))
     onChange(next)
+    if (preset.welcome_message) onWelcomeMessageChange(preset.welcome_message)
   }
 
   return (
@@ -189,13 +194,33 @@ export function OnboardingFlowEditor({
             Type freely — changes sync when you pause typing or leave a field. IDs update when
             you finish editing a question. Tone lives on the{" "}
             <strong style={{ fontWeight: 400, opacity: 0.7 }}>persona</strong> above.
+            Recommend 5–7 steps for onboarding (max 12).
           </>
         ) : (
           <>
             Full control over step id, title, question, and profile key (for integrations).
+            Recommend 5–7 steps (max 12).
           </>
         )}
       </p>
+
+      <div style={{ marginBottom: "1rem" }}>
+        <label style={setupLabel}>Welcome message (shown before first question)</label>
+        <textarea
+          value={welcomeMessage}
+          onChange={(e) => onWelcomeMessageChange(e.target.value)}
+          rows={2}
+          placeholder="Thanks for being here. A few short questions will help us understand how you want to participate."
+          style={{
+            ...setupInput,
+            maxWidth: "100%",
+            minHeight: "2.5rem",
+            resize: "vertical",
+            border: "1px solid rgba(255,255,255,0.1)",
+            padding: "0.45rem 0",
+          }}
+        />
+      </div>
 
       <div
         style={{
@@ -346,6 +371,48 @@ export function OnboardingFlowEditor({
                   onChange={(e) =>
                     updateFlowStep(index, { profile_key: e.target.value })
                   }
+                />
+              </div>
+              <div style={{ marginBottom: "0.5rem" }}>
+                <label style={setupLabel}>Intro (optional, before question)</label>
+                <input
+                  style={setupInput}
+                  value={flowStep.intro ?? ""}
+                  onChange={(e) => updateFlowStep(index, { intro: e.target.value })}
+                />
+              </div>
+              <div style={{ marginBottom: "0.5rem" }}>
+                <label style={setupLabel}>Input hint (host UI only)</label>
+                <input
+                  style={setupInput}
+                  value={flowStep.hint ?? ""}
+                  onChange={(e) => updateFlowStep(index, { hint: e.target.value })}
+                />
+              </div>
+              <div style={{ marginBottom: "0.5rem" }}>
+                <label style={setupLabel}>Follow-up prompt (optional)</label>
+                <input
+                  style={setupInput}
+                  value={flowStep.followup_prompt ?? ""}
+                  onChange={(e) =>
+                    updateFlowStep(index, { followup_prompt: e.target.value })
+                  }
+                />
+              </div>
+              <div style={{ marginBottom: "0.5rem" }}>
+                <label style={setupLabel}>Min answer chars (follow-up trigger)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={500}
+                  style={{ ...setupInput, maxWidth: "6rem" }}
+                  value={flowStep.min_answer_chars ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    updateFlowStep(index, {
+                      min_answer_chars: v === "" ? undefined : Number(v),
+                    })
+                  }}
                 />
               </div>
               {steps.length > 1 && (
