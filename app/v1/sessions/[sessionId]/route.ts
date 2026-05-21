@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import { log } from "@/lib/logger"
 import { getOrCreateRequestId } from "@/lib/request-trace"
 import { resolveProjectContext } from "@/lib/project-resolution"
+import type { OnboardingFlowStep } from "@/lib/project-settings"
 import { outcomeLabelFromDbStatus } from "@/lib/session-outcome"
 import { supabase } from "@/lib/supabase"
 import { tracedJson } from "@/lib/with-request-trace"
@@ -17,14 +18,16 @@ export async function GET(
       status: projectResolved.status,
     })
   }
-  const { projectId } = projectResolved.context
+  const { projectId, settings } = projectResolved.context
 
   const { sessionId: rawId } = await params
   const clientKey = decodeURIComponent(rawId).trim()
 
   const { data: row, error } = await supabase
     .from("sessions")
-    .select("id, session_id, status, created_at, updated_at")
+    .select(
+      "id, session_id, status, created_at, updated_at, current_step_id, flow_version, profile",
+    )
     .eq("session_id", clientKey)
     .eq("project_id", projectId)
     .maybeSingle()
@@ -50,8 +53,8 @@ export async function GET(
   const outcome = outcomeLabelFromDbStatus(row.status)
   const concluded = ["passed", "failed", "redirected", "rejected"].includes(row.status)
 
-  let profile: unknown = null
-  if (concluded) {
+  let profile: unknown = row.profile ?? null
+  if (concluded && !profile) {
     const { data: v } = await supabase
       .from("verdicts")
       .select("payload")
@@ -65,6 +68,30 @@ export async function GET(
     }
   }
 
+  const steps: OnboardingFlowStep[] = settings.flowConfig?.steps ?? []
+  let currentStep: {
+    id: string
+    title: string
+    index: number
+    total: number
+  } | null = null
+  if (
+    settings.projectType === "onboarding" &&
+    !concluded &&
+    row.current_step_id &&
+    steps.length
+  ) {
+    const idx = steps.findIndex((s) => s.id === row.current_step_id)
+    if (idx >= 0) {
+      currentStep = {
+        id: steps[idx].id,
+        title: steps[idx].title,
+        index: idx,
+        total: steps.length,
+      }
+    }
+  }
+
   return tracedJson(req, {
     id: row.id,
     clientSessionKey: row.session_id,
@@ -73,6 +100,9 @@ export async function GET(
     turnsUsed: turnCount ?? 0,
     startedAt: row.created_at,
     completedAt: concluded ? row.updated_at : null,
+    projectType: settings.projectType,
+    flowVersion: row.flow_version ?? settings.flowConfig?.version ?? null,
+    ...(currentStep ? { currentStep } : {}),
     ...(profile ? { profile } : {}),
   })
 }

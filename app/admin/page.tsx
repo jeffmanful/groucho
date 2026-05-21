@@ -1,5 +1,5 @@
-import LiveConversations from "@/components/admin/LiveConversations"
+import AdminDashboard from "@/components/admin/AdminDashboard"
 
 export default function AdminPage() {
-  return <LiveConversations />
+  return <AdminDashboard />
 }

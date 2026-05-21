@@ -30,6 +30,8 @@ export type VerdictPayload = {
   id: string
   occurred_at: string
   project: { id: string; organisation_id: string }
+  project_type?: "gatekeeper" | "onboarding"
+  flow_version?: string
   session: {
     client_session_key: string
     internal_id: string
@@ -81,6 +83,40 @@ export async function recordVerdictAndEnqueueWebhooks(opts: {
     .eq("id", opts.projectId)
     .maybeSingle()
 
+  const projectSettings = project?.settings
+  const projectTypeRaw =
+    projectSettings &&
+    typeof projectSettings === "object" &&
+    !Array.isArray(projectSettings)
+      ? (projectSettings as Record<string, unknown>).project_type
+      : undefined
+  const projectType =
+    projectTypeRaw === "onboarding" ? "onboarding" : "gatekeeper"
+  const flowVersionRaw =
+    projectSettings &&
+    typeof projectSettings === "object" &&
+    !Array.isArray(projectSettings)
+      ? (projectSettings as Record<string, unknown>).flow_config
+      : undefined
+  let flowVersion: string | undefined
+  if (
+    flowVersionRaw &&
+    typeof flowVersionRaw === "object" &&
+    !Array.isArray(flowVersionRaw)
+  ) {
+    const v = (flowVersionRaw as Record<string, unknown>).version
+    if (typeof v === "string") flowVersion = v
+  }
+
+  const { data: sessionRow } = await supabase
+    .from("sessions")
+    .select("flow_version")
+    .eq("id", opts.sessionInternalId)
+    .maybeSingle()
+  if (sessionRow?.flow_version && typeof sessionRow.flow_version === "string") {
+    flowVersion = sessionRow.flow_version
+  }
+
   if (isDryRun(project?.settings)) {
     return { profile: null }
   }
@@ -123,6 +159,8 @@ export async function recordVerdictAndEnqueueWebhooks(opts: {
     id: verdictId,
     occurred_at: occurredAt,
     project: { id: opts.projectId, organisation_id: opts.organisationId },
+    project_type: projectType,
+    ...(flowVersion ? { flow_version: flowVersion } : {}),
     session: {
       client_session_key: opts.clientSessionKey,
       internal_id: opts.sessionInternalId,

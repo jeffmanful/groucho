@@ -90,6 +90,14 @@ export interface components {
          * @enum {string}
          */
         SessionOutcome: "active" | "passed" | "redirected" | "rejected";
+        /** @enum {string} */
+        ProjectType: "gatekeeper" | "onboarding";
+        OnboardingCurrentStep: {
+            id: string;
+            title: string;
+            index: number;
+            total: number;
+        };
         PostMessageResponse: {
             /** @description Raw assistant text for this turn (may include terminal tokens) */
             message: string;
@@ -102,6 +110,11 @@ export interface components {
             secret?: string;
             /** @description Structured profile extracted on terminal turns; absent on non-terminal turns and when extraction is disabled. */
             profile?: components["schemas"]["Profile"];
+            projectType?: components["schemas"]["ProjectType"];
+            /** @description Onboarding flow_config version snapshot for this session */
+            flowVersion?: string;
+            /** @description Present while onboarding session is active */
+            currentStep?: components["schemas"]["OnboardingCurrentStep"];
         };
         Session: {
             /** Format: uuid */
@@ -121,6 +134,10 @@ export interface components {
             completedAt?: string | null;
             /** @description Structured profile from the latest verdict; present once the session has concluded. */
             profile?: components["schemas"]["Profile"];
+            projectType?: components["schemas"]["ProjectType"];
+            flowVersion?: string | null;
+            /** @description Active onboarding step while session status is active */
+            currentStep?: components["schemas"]["OnboardingCurrentStep"] | null;
         };
         ProfileCore: {
             /** @description Short summary. Emails and phone numbers are auto-redacted. */

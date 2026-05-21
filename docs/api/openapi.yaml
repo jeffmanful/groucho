@@ -198,6 +198,25 @@ components:
         - redirected
         - rejected
 
+    ProjectType:
+      type: string
+      enum: [gatekeeper, onboarding]
+
+    OnboardingCurrentStep:
+      type: object
+      required: [id, title, index, total]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        index:
+          type: integer
+          minimum: 0
+        total:
+          type: integer
+          minimum: 1
+
     PostMessageResponse:
       type: object
       required: [message, status, scores]
@@ -217,6 +236,14 @@ components:
           allOf:
             - $ref: "#/components/schemas/Profile"
           description: Structured profile extracted on terminal turns; absent on non-terminal turns and when extraction is disabled.
+        projectType:
+          $ref: "#/components/schemas/ProjectType"
+        flowVersion:
+          type: string
+          description: Onboarding flow_config version snapshot for this session
+        currentStep:
+          $ref: "#/components/schemas/OnboardingCurrentStep"
+          description: Present while onboarding session is active
 
     Session:
       type: object
@@ -247,6 +274,16 @@ components:
           allOf:
             - $ref: "#/components/schemas/Profile"
           description: Structured profile from the latest verdict; present once the session has concluded.
+        projectType:
+          $ref: "#/components/schemas/ProjectType"
+        flowVersion:
+          type: string
+          nullable: true
+        currentStep:
+          allOf:
+            - $ref: "#/components/schemas/OnboardingCurrentStep"
+          nullable: true
+          description: Active onboarding step while session status is active
 
     ProfileCore:
       type: object

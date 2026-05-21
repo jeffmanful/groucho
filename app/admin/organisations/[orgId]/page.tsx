@@ -1,8 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { useCallback, useEffect, useState } from "react"
-import { useParams } from "next/navigation"
+import { Suspense, useCallback, useEffect, useState } from "react"
+import { useParams, useSearchParams } from "next/navigation"
 
 type Project = {
   id: string
@@ -354,8 +354,9 @@ function ProfilePanel({
   )
 }
 
-export default function OrganisationDetailPage() {
+function OrganisationDetailPageInner() {
   const params = useParams()
+  const searchParams = useSearchParams()
   const orgId = params.orgId as string
 
   const [org, setOrg] = useState<OrgDetail | null>(null)
@@ -398,6 +399,7 @@ export default function OrganisationDetailPage() {
     "default" | "off" | "passed_only"
   >("default")
   const [savingProjectSettings, setSavingProjectSettings] = useState(false)
+  const [quickAddOpen, setQuickAddOpen] = useState(false)
   /** `platform` = allowlisted operator; otherwise org membership role. */
   const [accessRole, setAccessRole] = useState<"platform" | "owner" | "admin" | "member" | null>(
     null,
@@ -436,11 +438,18 @@ export default function OrganisationDetailPage() {
 
   useEffect(() => {
     if (!org?.projects?.length) return
+    const fromQuery = searchParams.get("project")?.trim()
     setSelectedProjectId((prev) => {
+      if (fromQuery && org.projects.some((p) => p.id === fromQuery)) return fromQuery
       if (prev && org.projects.some((p) => p.id === prev)) return prev
       return org.projects[0].id
     })
-  }, [org])
+  }, [org, searchParams])
+
+  useEffect(() => {
+    const sessionParam = searchParams.get("session")?.trim()
+    if (sessionParam) setSelectedSessionId(sessionParam)
+  }, [searchParams])
 
   const loadMembers = useCallback(async () => {
     const res = await fetch(`/api/admin/organisations/${orgId}/members`)
@@ -952,12 +961,20 @@ export default function OrganisationDetailPage() {
 
   return (
     <div style={{ padding: "2rem", fontFamily: "system-ui, sans-serif", maxWidth: "52rem" }}>
-      <Link
-        href="/admin/organisations"
-        style={{ fontSize: "0.7rem", opacity: 0.35, color: "#fff", textDecoration: "none" }}
-      >
-        ← organisations
-      </Link>
+      <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", fontSize: "0.7rem" }}>
+        <Link
+          href="/admin"
+          style={{ opacity: 0.35, color: "#fff", textDecoration: "none" }}
+        >
+          ← overview
+        </Link>
+        <Link
+          href="/admin/organisations"
+          style={{ opacity: 0.35, color: "#fff", textDecoration: "none" }}
+        >
+          organisations
+        </Link>
+      </div>
 
       <h1
         style={{
@@ -1135,11 +1152,11 @@ export default function OrganisationDetailPage() {
         <div
           style={{
             display: "flex",
-            alignItems: "baseline",
+            alignItems: "center",
             justifyContent: "space-between",
             flexWrap: "wrap",
             gap: "0.75rem",
-            marginBottom: "0.75rem",
+            marginBottom: "1rem",
           }}
         >
           <h2 style={{ ...label, marginBottom: 0 }}>PROJECTS</h2>
@@ -1147,40 +1164,81 @@ export default function OrganisationDetailPage() {
             <Link
               href={`/admin/organisations/${orgId}/projects/new`}
               style={{
-                fontSize: "0.68rem",
-                letterSpacing: "0.06em",
-                opacity: 0.45,
-                color: "#fff",
+                ...btn(true),
                 textDecoration: "none",
+                fontSize: "0.72rem",
               }}
             >
-              Guided setup →
+              Create project
             </Link>
           )}
         </div>
         {canOrgAdmin && (
-          <form onSubmit={addProject} style={{ marginBottom: "1.25rem" }}>
-            <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", alignItems: "flex-end" }}>
-              <div>
-                <label style={label}>NAME</label>
-                <input style={input} value={projName} onChange={(e) => setProjName(e.target.value)} />
-              </div>
-              <div>
-                <label style={label}>SLUG</label>
-                <input
-                  style={input}
-                  value={projSlug}
-                  onChange={(e) => {
-                    setProjSlugManual(true)
-                    setProjSlug(e.target.value)
+          <div style={{ marginBottom: "1.25rem" }}>
+            <button
+              type="button"
+              onClick={() => setQuickAddOpen((o) => !o)}
+              style={{
+                ...btn(false),
+                fontSize: "0.65rem",
+                opacity: 0.5,
+              }}
+            >
+              {quickAddOpen ? "▼" : "▶"} Quick create (name and slug only)
+            </button>
+            {quickAddOpen && (
+              <div style={{ marginTop: "1rem" }}>
+                <p
+                  style={{
+                    fontSize: "0.72rem",
+                    opacity: 0.4,
+                    marginBottom: "0.75rem",
+                    lineHeight: 1.45,
+                    maxWidth: "36rem",
                   }}
-                />
+                >
+                  Skips gatekeeper/onboarding configuration. Prefer{" "}
+                  <strong style={{ fontWeight: 400, opacity: 0.7 }}>
+                    Create project
+                  </strong>{" "}
+                  for the full wizard (flow type, persona, webhooks).
+                </p>
+                <form onSubmit={addProject}>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "1rem",
+                      flexWrap: "wrap",
+                      alignItems: "flex-end",
+                    }}
+                  >
+                    <div>
+                      <label style={label}>NAME</label>
+                      <input
+                        style={input}
+                        value={projName}
+                        onChange={(e) => setProjName(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label style={label}>SLUG</label>
+                      <input
+                        style={input}
+                        value={projSlug}
+                        onChange={(e) => {
+                          setProjSlugManual(true)
+                          setProjSlug(e.target.value)
+                        }}
+                      />
+                    </div>
+                    <button type="submit" style={btn(false)}>
+                      Add project
+                    </button>
+                  </div>
+                </form>
               </div>
-              <button type="submit" style={btn(true)}>
-                Add project
-              </button>
-            </div>
-          </form>
+            )}
+          </div>
         )}
 
         <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
@@ -1212,6 +1270,18 @@ export default function OrganisationDetailPage() {
                   {p.slug}
                 </span>
                 {canOrgAdmin && (
+                  <Link
+                    href={`/admin/organisations/${orgId}/projects/${p.id}/edit`}
+                    style={{
+                      ...btn(false),
+                      fontSize: "0.65rem",
+                      textDecoration: "none",
+                    }}
+                  >
+                    Edit
+                  </Link>
+                )}
+                {canOrgAdmin && (
                   <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.72rem", opacity: 0.55 }}>
                     <input
                       type="checkbox"
@@ -1234,11 +1304,34 @@ export default function OrganisationDetailPage() {
 
       {selected && (
         <section style={{ marginBottom: "2.5rem" }}>
-          <h2 style={{ ...label, marginBottom: "0.75rem" }}>PROJECT SETTINGS — {selected.name}</h2>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "0.75rem",
+              marginBottom: "0.75rem",
+            }}
+          >
+            <h2 style={{ ...label, marginBottom: 0 }}>PROJECT SETTINGS — {selected.name}</h2>
+            {canOrgAdmin && (
+              <Link
+                href={`/admin/organisations/${orgId}/projects/${selected.id}/edit`}
+                style={{
+                  ...btn(true),
+                  textDecoration: "none",
+                  fontSize: "0.72rem",
+                }}
+              >
+                Edit full setup
+              </Link>
+            )}
+          </div>
           <p style={{ opacity: 0.35, fontSize: "0.75rem", marginBottom: "1rem", lineHeight: 1.45 }}>
-            Session mode, scoring thresholds, and profile extraction. Other keys in{" "}
-            <span style={{ fontFamily: "monospace" }}>settings</span> (use case, persona, webhooks
-            from the wizard) are preserved when you save.
+            Quick tweaks below, or use <strong style={{ fontWeight: 400, opacity: 0.65 }}>Edit full setup</strong>{" "}
+            for name, type, onboarding steps, persona, and webhooks. Other keys in{" "}
+            <span style={{ fontFamily: "monospace" }}>settings</span> are preserved when you save.
           </p>
           {!canOrgAdmin ? (
             <ul style={{ listStyle: "none", padding: 0, margin: 0, fontSize: "0.78rem", opacity: 0.5 }}>
@@ -1814,5 +1907,19 @@ export default function OrganisationDetailPage() {
         </section>
       )}
     </div>
+  )
+}
+
+export default function OrganisationDetailPage() {
+  return (
+    <Suspense
+      fallback={
+        <div style={{ padding: "2rem", opacity: 0.4, fontFamily: "system-ui, sans-serif" }}>
+          Loading…
+        </div>
+      }
+    >
+      <OrganisationDetailPageInner />
+    </Suspense>
   )
 }

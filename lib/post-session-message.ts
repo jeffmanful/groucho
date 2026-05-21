@@ -2,10 +2,12 @@ import { randomUUID } from "crypto"
 import Anthropic from "@anthropic-ai/sdk"
 import { NextResponse } from "next/server"
 import { scoreMessage, type ConversationMessage } from "@/lib/scoring"
+import type { AdminActor } from "@/lib/admin-actor"
 import {
   resolveProjectContext,
   touchApiKeyLastUsed,
 } from "@/lib/project-resolution"
+import { resolvePlaygroundProjectContext } from "@/lib/playground-projects"
 import { checkRateLimit, readRateLimitConfig } from "@/lib/rate-limit"
 import { log } from "@/lib/logger"
 import { REQUEST_ID_HEADER } from "@/lib/request-trace"
@@ -19,6 +21,7 @@ import {
   type GatekeeperTerminalField,
 } from "@/lib/gatekeeper-structured-tool"
 import { computeTerminalStatusFromGatekeeperTurn } from "@/lib/gatekeeper-session-status"
+import { postOnboardingMessage } from "@/lib/post-onboarding-message"
 import {
   withTerminalDecisionAppendix,
 } from "@/lib/terminal-decision-prompt"
@@ -124,6 +127,9 @@ export type PostSessionMessageInput = {
   sessionId: string
   message: string
   personaId?: string | null
+  /** Playground (`/doorcheck`): explicit project when caller is authenticated. */
+  projectId?: string | null
+  playgroundActor?: AdminActor | null
   /** From `x-request-id` middleware; echoed on responses and included in structured logs. */
   requestId?: string
   /** When set, used for optional bot UA heuristics (`GROUPCHO_*` env). */
@@ -145,13 +151,35 @@ export async function postSessionMessage(
     )
   }
 
-  const projectResolved = await resolveProjectContext(input.authorization)
-  if (!projectResolved.ok) {
-    return traceJson(input, projectResolved.body, {
-      status: projectResolved.status,
-    })
+  const projectIdOverride = input.projectId?.trim() || null
+  let projectResolved: Awaited<ReturnType<typeof resolveProjectContext>>
+
+  if (projectIdOverride) {
+    if (!input.playgroundActor) {
+      return traceJson(
+        input,
+        { error: "Project selection requires a signed-in playground session" },
+        { status: 401 },
+      )
+    }
+    const playground = await resolvePlaygroundProjectContext(
+      input.playgroundActor,
+      projectIdOverride,
+    )
+    if (!playground.ok) {
+      return traceJson(input, playground.body, { status: playground.status })
+    }
+    projectResolved = playground
+  } else {
+    projectResolved = await resolveProjectContext(input.authorization)
+    if (!projectResolved.ok) {
+      return traceJson(input, projectResolved.body, {
+        status: projectResolved.status,
+      })
+    }
   }
-  const { organisationId, projectId, apiKeyId } = projectResolved.context
+  const { organisationId, projectId, apiKeyId, settings } =
+    projectResolved.context
 
   const botSignal = input.incomingHeaders
     ? botSignalFromHeaders(input.incomingHeaders)
@@ -217,6 +245,15 @@ export async function postSessionMessage(
       },
     )
   }
+
+  if (settings.projectType === "onboarding") {
+    return postOnboardingMessage({
+      ...input,
+      context: projectResolved.context,
+      projectSettings: settings,
+    })
+  }
+
   if (apiKeyId) {
     touchApiKeyLastUsed(apiKeyId)
   }

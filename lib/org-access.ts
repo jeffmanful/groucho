@@ -74,6 +74,26 @@ export async function requirePlatform(actor: AdminActor): Promise<NextResponse |
 }
 
 /** Personas list is needed for project wizard; restrict to platform or any org member. */
+/** Organisation ids the actor may access (all orgs for platform). */
+export async function listAccessibleOrgIds(actor: AdminActor): Promise<string[]> {
+  if (actor.kind === "platform") {
+    const { data, error } = await supabase
+      .from("organisations")
+      .select("id")
+      .order("created_at", { ascending: true })
+    if (error) throw error
+    return (data ?? []).map((o) => o.id)
+  }
+
+  const { data, error } = await supabase
+    .from("organisation_members")
+    .select("organisation_id")
+    .eq("user_id", actor.userId)
+
+  if (error) throw error
+  return [...new Set((data ?? []).map((m) => m.organisation_id))]
+}
+
 export async function requirePersonasReader(actor: AdminActor): Promise<NextResponse | null> {
   if (actor.kind === "platform") return null
   const { count, error } = await supabase

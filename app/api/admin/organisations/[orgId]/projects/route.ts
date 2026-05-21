@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { resolveAdminActor } from "@/lib/admin-actor"
 import { normalizeAdminSlug } from "@/lib/admin-slug"
 import { requireOrgAdmin, requireOrgMember, unauthorized } from "@/lib/org-access"
+import { validateProjectSettings } from "@/lib/project-settings"
 import { supabase } from "@/lib/supabase"
 
 async function orgExists(orgId: string): Promise<boolean> {
@@ -79,7 +80,13 @@ export async function POST(
     if (body.settings === null || typeof body.settings !== "object" || Array.isArray(body.settings)) {
       return NextResponse.json({ error: "settings must be a JSON object." }, { status: 400 })
     }
-    settings = body.settings as Record<string, unknown>
+    const validated = validateProjectSettings(
+      body.settings as Record<string, unknown>,
+    )
+    if (!validated.ok) {
+      return NextResponse.json({ error: validated.error }, { status: 400 })
+    }
+    settings = validated.settings
   }
 
   const { data, error } = await supabase

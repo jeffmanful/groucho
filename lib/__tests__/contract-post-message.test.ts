@@ -10,7 +10,16 @@ function jsonFromResponse(res: Response) {
 vi.mock("@/lib/project-resolution", () => ({
   resolveProjectContext: vi.fn(async () => ({
     ok: true,
-    context: { organisationId: "org1", projectId: "proj1", apiKeyId: "key1" },
+    context: {
+      organisationId: "org1",
+      projectId: "proj1",
+      apiKeyId: "key1",
+      settings: {
+        projectType: "gatekeeper" as const,
+        flowConfig: null,
+        raw: { project_type: "gatekeeper" },
+      },
+    },
   })),
   touchApiKeyLastUsed: vi.fn(),
 }))

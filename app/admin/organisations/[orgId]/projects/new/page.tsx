@@ -2,7 +2,18 @@
 
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import {
+  AdminFormAlert,
+  useAdminFeedback,
+} from "@/components/admin/AdminFeedback"
+import {
+  validateWizardStep1,
+  validateWizardStep2,
+} from "@/lib/admin-project-wizard-validation"
+import { defaultOnboardingSteps, type OnboardingFlowStep } from "@/lib/project-settings"
+import { OnboardingFlowEditor } from "@/components/admin/OnboardingFlowEditor"
+import { PersonaSetupNote } from "@/components/admin/PersonaSetupNote"
 
 type Persona = {
   id: string
@@ -20,6 +31,7 @@ const USE_CASES = [
 ] as const
 
 type UseCaseId = (typeof USE_CASES)[number]["id"]
+type ProjectType = "gatekeeper" | "onboarding"
 
 function slugify(str: string) {
   return str
@@ -80,12 +92,18 @@ export default function NewProjectWizardPage() {
   const [orgName, setOrgName] = useState("")
   const [step, setStep] = useState(1)
   const [personas, setPersonas] = useState<Persona[]>([])
-  const [err, setErr] = useState<string | null>(null)
+  const { alert, showError, showSuccess, showInfo, clearAlert } = useAdminFeedback()
+  const formTopRef = useRef<HTMLDivElement>(null)
+  const flowFlushRef = useRef<(() => OnboardingFlowStep[]) | null>(null)
 
   const [name, setName] = useState("")
   const [slug, setSlug] = useState("")
   const [slugManual, setSlugManual] = useState(false)
   const [useCase, setUseCase] = useState<UseCaseId>("community_gate")
+  const [projectType, setProjectType] = useState<ProjectType>("gatekeeper")
+  const [flowSteps, setFlowSteps] = useState<OnboardingFlowStep[]>(() =>
+    defaultOnboardingSteps(),
+  )
 
   const [environment, setEnvironment] = useState<"test" | "live">("test")
   const [sessionMode, setSessionMode] = useState<"live" | "dry-run">("dry-run")
@@ -143,7 +161,17 @@ export default function NewProjectWizardPage() {
     return n.length >= 2 && n.length <= 64 && isValidProjectSlug(slug)
   }, [name, slug])
 
-  const step2Valid = Boolean(personaId)
+  const step2Valid = useMemo(() => {
+    if (!personaId) return false
+    if (projectType === "gatekeeper") return true
+    return flowSteps.every(
+      (s) =>
+        s.id.trim() &&
+        s.title.trim() &&
+        s.question.trim() &&
+        s.profile_key.trim(),
+    )
+  }, [personaId, projectType, flowSteps])
 
   const eventToggle = (id: string) => {
     setWebhookEvents((prev) =>
@@ -151,20 +179,79 @@ export default function NewProjectWizardPage() {
     )
   }
 
-  function next() {
-    setErr(null)
-    setStep((s) => Math.min(4, s + 1))
+  const stepTitles: Record<number, string> = {
+    1: "What are you protecting?",
+    2: "Configuration",
+    3: "Webhooks",
+    4: "Review and create",
+  }
+
+  function scrollToFormTop() {
+    formTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }
+
+  function tryNext(fromStep: number) {
+    if (fromStep === 1) {
+      const problem = validateWizardStep1(name, slug)
+      if (problem) {
+        showError(problem)
+        return
+      }
+      clearAlert()
+      setStep(2)
+      showSuccess(`Step 2 — ${projectType === "onboarding" ? "Onboarding flow" : "Behaviour"}`)
+      scrollToFormTop()
+      return
+    }
+    if (fromStep === 2) {
+      const problem = validateWizardStep2({
+        name,
+        slug,
+        useCase,
+        projectType,
+        environment,
+        sessionMode,
+        personaId,
+        flowSteps,
+        webhookUrl,
+        webhookEvents,
+        passThreshold,
+        rejectThreshold,
+      })
+      if (problem) {
+        showError(problem)
+        return
+      }
+      clearAlert()
+      setStep(3)
+      showSuccess(`Step 3 — ${stepTitles[3]}`)
+      scrollToFormTop()
+      return
+    }
+    if (fromStep === 3) {
+      clearAlert()
+      setStep(4)
+      showSuccess(`Step 4 — ${stepTitles[4]}`)
+      scrollToFormTop()
+    }
   }
 
   function back() {
-    setErr(null)
-    setStep((s) => Math.max(1, s - 1))
+    clearAlert()
+    setStep((s) => {
+      const next = Math.max(1, s - 1)
+      if (next !== s) {
+        showInfo(`Step ${next}`)
+        scrollToFormTop()
+      }
+      return next
+    })
   }
 
   async function issueKeyForCreatedProject() {
     if (!createdProjectId) return
     setCreating(true)
-    setErr(null)
+    clearAlert()
     const keyRes = await fetch(
       `/api/admin/organisations/${orgId}/projects/${createdProjectId}/api-keys`,
       {
@@ -175,15 +262,20 @@ export default function NewProjectWizardPage() {
     )
     const keyBody = await keyRes.json().catch(() => ({}))
     if (!keyRes.ok || !keyBody.secret) {
-      setErr(keyBody.error ?? "Could not issue API key.")
+      showError(keyBody.error ?? "Could not issue API key.")
       setKeySecret(null)
       setCreating(false)
       return
     }
-    setErr(null)
+    clearAlert()
+    showSuccess("API key issued.")
     setKeySecret(keyBody.secret)
     setCreating(false)
   }
+
+  const registerFlowFlush = useCallback((flush: () => OnboardingFlowStep[]) => {
+    flowFlushRef.current = flush
+  }, [])
 
   async function createProjectAndKey() {
     if (!ackTraffic || !ackPermission) return
@@ -191,9 +283,16 @@ export default function NewProjectWizardPage() {
       await issueKeyForCreatedProject()
       return
     }
+    const stepsForSave =
+      projectType === "onboarding"
+        ? (flowFlushRef.current?.() ?? flowSteps)
+        : flowSteps
+
     setCreating(true)
-    setErr(null)
+    clearAlert()
+    showInfo("Creating project…")
     const settings: Record<string, unknown> = {
+      project_type: projectType,
       use_case: useCase,
       environment,
       session_mode: sessionMode,
@@ -201,18 +300,30 @@ export default function NewProjectWizardPage() {
       pass_threshold: passThreshold,
       reject_threshold: rejectThreshold,
     }
+    if (projectType === "onboarding") {
+      settings.flow_config = {
+        version: "2026-05-21",
+        steps: stepsForSave.map((s) => ({
+          id: s.id.trim(),
+          title: s.title.trim(),
+          question: s.question.trim(),
+          profile_key: s.profile_key.trim(),
+          required: s.required !== false,
+        })),
+      }
+    }
     if (webhookUrl.trim()) {
       try {
         const u = new URL(webhookUrl.trim())
         if (u.protocol !== "https:") {
-          setErr("Webhook URL must use https://")
+          showError("Webhook URL must use https://")
           setCreating(false)
           return
         }
         settings.webhook_url = webhookUrl.trim()
         settings.webhook_events = webhookEvents
       } catch {
-        setErr("Invalid webhook URL.")
+        showError("Invalid webhook URL.")
         setCreating(false)
         return
       }
@@ -229,10 +340,11 @@ export default function NewProjectWizardPage() {
     })
     const body = await res.json().catch(() => ({}))
     if (!res.ok) {
-      setErr(body.error ?? "Could not create project")
+      showError(body.error ?? "Could not create project")
       setCreating(false)
       return
     }
+    showSuccess("Project created. Issuing API key…")
     setCreatedProjectId(body.id)
 
     const keyRes = await fetch(
@@ -245,7 +357,7 @@ export default function NewProjectWizardPage() {
     )
     const keyBody = await keyRes.json().catch(() => ({}))
     if (!keyRes.ok || !keyBody.secret) {
-      setErr(
+      showError(
         keyBody.error ??
           "Project was created but the API key could not be issued. Retry below or add a key from the organisation page.",
       )
@@ -253,7 +365,8 @@ export default function NewProjectWizardPage() {
       setCreating(false)
       return
     }
-    setErr(null)
+    clearAlert()
+    showSuccess("Project and API key ready.")
     setKeySecret(keyBody.secret)
     setCreating(false)
   }
@@ -264,13 +377,27 @@ export default function NewProjectWizardPage() {
   }
 
   return (
-    <div style={{ padding: "2rem", fontFamily: "system-ui, sans-serif", maxWidth: "40rem" }}>
-      <Link
-        href={`/admin/organisations/${orgId}`}
-        style={{ fontSize: "0.7rem", opacity: 0.35, color: "#fff", textDecoration: "none" }}
-      >
-        ← {orgName || "organisation"}
-      </Link>
+    <div
+      ref={formTopRef}
+      style={{ padding: "2rem", fontFamily: "system-ui, sans-serif", maxWidth: "40rem" }}
+    >
+      <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", fontSize: "0.7rem" }}>
+        <Link
+          href="/admin"
+          style={{ opacity: 0.35, color: "#fff", textDecoration: "none" }}
+        >
+          Overview
+        </Link>
+        <span style={{ opacity: 0.2 }}>/</span>
+        <Link
+          href={`/admin/organisations/${orgId}`}
+          style={{ opacity: 0.35, color: "#fff", textDecoration: "none" }}
+        >
+          {orgName || "organisation"}
+        </Link>
+        <span style={{ opacity: 0.2 }}>/</span>
+        <span style={{ opacity: 0.45 }}>New project</span>
+      </div>
 
       <h1
         style={{
@@ -287,9 +414,7 @@ export default function NewProjectWizardPage() {
         Step {step} of 4 · intentional setup (see docs/platform-project-wizard.md)
       </p>
 
-      {err && (
-        <p style={{ color: "#f87171", fontSize: "0.85rem", marginBottom: "1rem" }}>{err}</p>
-      )}
+      <AdminFormAlert alert={alert} onDismiss={clearAlert} />
 
       {step === 1 && (
         <section>
@@ -316,7 +441,7 @@ export default function NewProjectWizardPage() {
               </p>
             )}
           </div>
-          <div style={{ marginBottom: "1.5rem" }}>
+          <div style={{ marginBottom: "1rem" }}>
             <label style={label}>Primary use case</label>
             <select
               value={useCase}
@@ -334,7 +459,32 @@ export default function NewProjectWizardPage() {
               ))}
             </select>
           </div>
-          <button type="button" style={btn(true)} disabled={!step1Valid} onClick={next}>
+          <div style={{ marginBottom: "1.5rem" }}>
+            <label style={label}>Conversation type</label>
+            <div style={{ display: "flex", gap: "1.25rem", fontSize: "0.82rem" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                <input
+                  type="radio"
+                  checked={projectType === "gatekeeper"}
+                  onChange={() => setProjectType("gatekeeper")}
+                />
+                Gatekeeper (qualify)
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                <input
+                  type="radio"
+                  checked={projectType === "onboarding"}
+                  onChange={() => setProjectType("onboarding")}
+                />
+                Onboarding (guided steps)
+              </label>
+            </div>
+          </div>
+          <button
+            type="button"
+            style={{ ...btn(true), opacity: step1Valid ? 1 : 0.55 }}
+            onClick={() => tryNext(1)}
+          >
             Continue
           </button>
         </section>
@@ -343,7 +493,7 @@ export default function NewProjectWizardPage() {
       {step === 2 && (
         <section>
           <h2 style={{ ...label, fontSize: "0.8rem", opacity: 0.55, marginBottom: "1rem" }}>
-            2 — How should the door behave?
+            2 — {projectType === "onboarding" ? "Onboarding flow" : "How should the door behave?"}
           </h2>
           <div style={{ marginBottom: "1rem" }}>
             <label style={label}>Environment</label>
@@ -387,8 +537,8 @@ export default function NewProjectWizardPage() {
               </label>
             </div>
           </div>
-          <div style={{ marginBottom: "1.5rem" }}>
-            <label style={label}>Persona</label>
+          <div style={{ marginBottom: "1rem" }}>
+            <label style={label}>Persona (tone + profile extraction)</label>
             <select
               value={personaId}
               onChange={(e) => setPersonaId(e.target.value)}
@@ -405,14 +555,28 @@ export default function NewProjectWizardPage() {
               ))}
             </select>
           </div>
+
+          <PersonaSetupNote
+            projectType={projectType}
+            personaId={personaId}
+            personas={personas}
+          />
+
+          {projectType === "onboarding" && (
+            <OnboardingFlowEditor
+              steps={flowSteps}
+              onChange={setFlowSteps}
+              registerFlush={registerFlowFlush}
+            />
+          )}
+
           <button type="button" style={btn(false)} onClick={back}>
             Back
           </button>
           <button
             type="button"
-            style={{ ...btn(true), marginLeft: "0.75rem" }}
-            disabled={!step2Valid}
-            onClick={next}
+            style={{ ...btn(true), marginLeft: "0.75rem", opacity: step2Valid ? 1 : 0.55 }}
+            onClick={() => tryNext(2)}
           >
             Continue
           </button>
@@ -429,7 +593,7 @@ export default function NewProjectWizardPage() {
             >
               {advOpen ? "▼" : "▶"} Advanced — misconfiguration can block real users
             </button>
-            {advOpen && (
+            {advOpen && projectType === "gatekeeper" && (
               <div style={{ marginTop: "1rem", opacity: 0.85 }}>
                 <label style={label}>Pass threshold (0–1)</label>
                 <input
@@ -500,7 +664,11 @@ export default function NewProjectWizardPage() {
           <button type="button" style={btn(false)} onClick={back}>
             Back
           </button>
-          <button type="button" style={{ ...btn(true), marginLeft: "0.75rem" }} onClick={next}>
+          <button
+            type="button"
+            style={{ ...btn(true), marginLeft: "0.75rem" }}
+            onClick={() => tryNext(3)}
+          >
             Continue
           </button>
         </section>
@@ -512,12 +680,12 @@ export default function NewProjectWizardPage() {
         </section>
       )}
 
-      {step === 4 && createdProjectId && !keySecret && !creating && err && (
+      {step === 4 && createdProjectId && !keySecret && !creating && alert?.type === "error" && (
         <section>
           <h2 style={{ ...label, fontSize: "0.8rem", opacity: 0.55, marginBottom: "1rem" }}>
             Project created
           </h2>
-          <p style={{ fontSize: "0.82rem", opacity: 0.5, marginBottom: "1rem" }}>{err}</p>
+          <AdminFormAlert alert={alert} onDismiss={clearAlert} />
           <button
             type="button"
             style={{ ...btn(true), marginRight: "0.75rem" }}
@@ -543,6 +711,14 @@ export default function NewProjectWizardPage() {
             <dd style={{ margin: "0 0 0.5rem 0", fontFamily: "monospace" }}>{slug}</dd>
             <dt style={{ opacity: 0.35 }}>Use case</dt>
             <dd style={{ margin: "0 0 0.5rem 0" }}>{useCase}</dd>
+            <dt style={{ opacity: 0.35 }}>Conversation type</dt>
+            <dd style={{ margin: "0 0 0.5rem 0" }}>{projectType}</dd>
+            {projectType === "onboarding" && (
+              <>
+                <dt style={{ opacity: 0.35 }}>Onboarding steps</dt>
+                <dd style={{ margin: "0 0 0.5rem 0" }}>{flowSteps.length}</dd>
+              </>
+            )}
             <dt style={{ opacity: 0.35 }}>Environment / mode</dt>
             <dd style={{ margin: "0 0 0.5rem 0" }}>
               {environment} · sessions {sessionMode}
@@ -646,9 +822,17 @@ export default function NewProjectWizardPage() {
             <input type="checkbox" checked={keyAck} onChange={(e) => setKeyAck(e.target.checked)} />
             I have copied the key to a secure location.
           </label>
-          <button type="button" style={btn(true)} disabled={!keyAck} onClick={finish}>
-            Continue to organisation
-          </button>
+          <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+            <button type="button" style={btn(true)} disabled={!keyAck} onClick={finish}>
+              Go to organisation
+            </button>
+            <Link
+              href="/admin"
+              style={{ ...btn(false), display: "inline-block", textDecoration: "none" }}
+            >
+              View dashboard
+            </Link>
+          </div>
         </section>
       )}
     </div>

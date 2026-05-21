@@ -36,12 +36,39 @@ type PersonaOption = {
   is_default: boolean
 }
 
+type ProjectOption = {
+  id: string
+  name: string
+  slug: string
+  organisationId: string
+  organisationName: string
+  projectType: "gatekeeper" | "onboarding"
+  environment: "test" | "live" | null
+  sessionMode: "live" | "dry-run" | null
+}
+
 const INITIAL_MESSAGES: Message[] = [
   { id: "initial-hi", role: "bot", content: "Hi." },
 ]
 
 const SESSION_KEY = "pe_session_id"
 const SECRET_KEY = "pe_session_secret"
+const PROJECT_KEY = "pe_project_id"
+
+const pickerSelectStyle: React.CSSProperties = {
+  display: "block",
+  marginTop: "0.5rem",
+  background: "transparent",
+  border: "none",
+  color: "rgba(255,255,255,0.3)",
+  outline: "none",
+  fontSize: "0.7rem",
+  fontFamily: "inherit",
+  letterSpacing: "0.06em",
+  cursor: "pointer",
+  padding: 0,
+  maxWidth: "100%",
+}
 
 /** Easings for handoff: thinking exit → reply enter */
 const EASE_OUT = [0.33, 1, 0.68, 1] as const
@@ -109,6 +136,8 @@ export default function DoorCheck() {
   const [sessionId, setSessionId] = useState("")
   const [personas, setPersonas] = useState<PersonaOption[]>([])
   const [selectedPersonaId, setSelectedPersonaId] = useState("")
+  const [projects, setProjects] = useState<ProjectOption[]>([])
+  const [selectedProjectId, setSelectedProjectId] = useState("")
   const [signingOut, setSigningOut] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -165,6 +194,33 @@ export default function DoorCheck() {
   }, [])
 
   useEffect(() => {
+    fetch("/api/doorcheck/projects")
+      .then((r) => r.json())
+      .then((data: ProjectOption[]) => {
+        if (!Array.isArray(data)) return
+        setProjects(data)
+        const saved = localStorage.getItem(PROJECT_KEY)?.trim()
+        const pick =
+          (saved && data.some((p) => p.id === saved) ? saved : null) ??
+          data[0]?.id ??
+          ""
+        if (pick) setSelectedProjectId(pick)
+      })
+      .catch(() => {})
+  }, [])
+
+  function applyProjectSelection(projectId: string) {
+    setSelectedProjectId(projectId)
+    localStorage.setItem(PROJECT_KEY, projectId)
+    const newId = resetSession()
+    setSessionId(newId)
+    assistantHandoffRef.current = null
+    setMessages(INITIAL_MESSAGES)
+    setInput("")
+    setConcluded(false)
+  }
+
+  useEffect(() => {
     if (!sessionId || !supabase) return
     const ch = supabase.channel("pe-typing")
     ch.subscribe()
@@ -210,10 +266,12 @@ export default function DoorCheck() {
 
     try {
       const personaId = selectedPersonaId || undefined
+      const projectId = selectedProjectId || undefined
       let res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, sessionId, personaId }),
+        credentials: "same-origin",
+        body: JSON.stringify({ message: text, sessionId, personaId, projectId }),
       })
 
       if (res.status === 409) {
@@ -222,10 +280,12 @@ export default function DoorCheck() {
         res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
           body: JSON.stringify({
             message: text,
             sessionId: freshId,
             personaId,
+            projectId,
           }),
         })
       }
@@ -277,6 +337,7 @@ export default function DoorCheck() {
     setConcluded(false)
     const def = personas.find((p) => p.is_default)
     if (def) setSelectedPersonaId(def.id)
+    if (selectedProjectId) localStorage.setItem(PROJECT_KEY, selectedProjectId)
   }
 
   async function signOut() {
@@ -297,6 +358,16 @@ export default function DoorCheck() {
 
   const personaName =
     personas.find((item) => item.id === selectedPersonaId)?.name ?? "Lou"
+
+  const selectedProject = projects.find((p) => p.id === selectedProjectId)
+
+  function projectLabel(p: ProjectOption): string {
+    const bits = [p.name]
+    if (p.organisationName) bits.push(p.organisationName)
+    if (p.projectType === "onboarding") bits.push("onboarding")
+    if (p.environment) bits.push(p.environment)
+    return bits.join(" · ")
+  }
 
   return (
     <MotionConfig
@@ -488,23 +559,26 @@ export default function DoorCheck() {
                 )}
               </AnimatePresence>
             </div>
+            {messages.length === 1 && projects.length >= 1 && (
+              <select
+                value={selectedProjectId}
+                onChange={(e) => applyProjectSelection(e.target.value)}
+                style={pickerSelectStyle}
+                aria-label="Project"
+              >
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id} style={{ background: "#000" }}>
+                    {projectLabel(p)}
+                  </option>
+                ))}
+              </select>
+            )}
             {messages.length === 1 && personas.length >= 1 && (
               <select
                 value={selectedPersonaId}
                 onChange={(e) => setSelectedPersonaId(e.target.value)}
-                style={{
-                  display: "block",
-                  marginTop: "0.75rem",
-                  background: "transparent",
-                  border: "none",
-                  color: "rgba(255,255,255,0.3)",
-                  outline: "none",
-                  fontSize: "0.7rem",
-                  fontFamily: "inherit",
-                  letterSpacing: "0.06em",
-                  cursor: "pointer",
-                  padding: 0,
-                }}
+                style={pickerSelectStyle}
+                aria-label="Persona"
               >
                 {personas.map((p) => (
                   <option key={p.id} value={p.id} style={{ background: "#000" }}>
@@ -512,6 +586,21 @@ export default function DoorCheck() {
                   </option>
                 ))}
               </select>
+            )}
+            {messages.length === 1 && selectedProject && (
+              <p
+                style={{
+                  marginTop: "0.5rem",
+                  fontSize: "0.62rem",
+                  opacity: 0.28,
+                  letterSpacing: "0.04em",
+                }}
+              >
+                {selectedProject.projectType}
+                {selectedProject.sessionMode
+                  ? ` · sessions ${selectedProject.sessionMode}`
+                  : ""}
+              </p>
             )}
           </motion.div>
         )}

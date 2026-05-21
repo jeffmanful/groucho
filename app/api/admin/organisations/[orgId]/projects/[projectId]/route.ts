@@ -1,8 +1,39 @@
 import { NextRequest, NextResponse } from "next/server"
 import { resolveAdminActor } from "@/lib/admin-actor"
 import { normalizeAdminSlug } from "@/lib/admin-slug"
-import { requireOrgAdmin, unauthorized } from "@/lib/org-access"
+import { requireOrgAdmin, requireOrgMember, unauthorized } from "@/lib/org-access"
+import { validateProjectSettings } from "@/lib/project-settings"
 import { supabase } from "@/lib/supabase"
+
+export async function GET(
+  _req: NextRequest,
+  {
+    params,
+  }: { params: Promise<{ orgId: string; projectId: string }> },
+) {
+  const actor = await resolveAdminActor()
+  if (!actor) return unauthorized()
+  const { orgId, projectId } = await params
+  const deny = await requireOrgMember(actor, orgId)
+  if (deny) return deny
+
+  const { data, error } = await supabase
+    .from("projects")
+    .select("id, name, slug, created_at, expose_to_anon_read, settings, organisation_id")
+    .eq("id", projectId)
+    .eq("organisation_id", orgId)
+    .maybeSingle()
+
+  if (error) {
+    console.error("project get:", error)
+    return NextResponse.json({ error: "Database error" }, { status: 500 })
+  }
+  if (!data) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 })
+  }
+
+  return NextResponse.json(data)
+}
 
 export async function PATCH(
   req: NextRequest,
@@ -30,7 +61,7 @@ export async function PATCH(
 
   const { data: project, error: findErr } = await supabase
     .from("projects")
-    .select("id, organisation_id")
+    .select("id, organisation_id, settings")
     .eq("id", projectId)
     .eq("organisation_id", orgId)
     .maybeSingle()
@@ -38,6 +69,13 @@ export async function PATCH(
   if (findErr || !project) {
     return NextResponse.json({ error: "Not found" }, { status: 404 })
   }
+
+  const existingSettings =
+    project.settings &&
+    typeof project.settings === "object" &&
+    !Array.isArray(project.settings)
+      ? (project.settings as Record<string, unknown>)
+      : {}
 
   const updates: {
     name?: string
@@ -63,7 +101,15 @@ export async function PATCH(
     if (body.settings === null || typeof body.settings !== "object" || Array.isArray(body.settings)) {
       return NextResponse.json({ error: "settings must be a JSON object." }, { status: 400 })
     }
-    updates.settings = body.settings as Record<string, unknown>
+    const merged = {
+      ...existingSettings,
+      ...(body.settings as Record<string, unknown>),
+    }
+    const validated = validateProjectSettings(merged)
+    if (!validated.ok) {
+      return NextResponse.json({ error: validated.error }, { status: 400 })
+    }
+    updates.settings = validated.settings
   }
 
   if (Object.keys(updates).length === 0) {

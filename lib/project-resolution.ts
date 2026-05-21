@@ -1,10 +1,38 @@
 import { hashApiKeySecret } from "@/lib/api-keys"
+import {
+  normalizeProjectSettings,
+  type NormalizedProjectSettings,
+} from "@/lib/project-settings"
 import { supabase } from "@/lib/supabase"
 
 export type ProjectContext = {
   organisationId: string
   projectId: string
   apiKeyId: string | null
+  settings: NormalizedProjectSettings
+}
+
+async function loadProjectSettings(
+  projectId: string,
+): Promise<NormalizedProjectSettings> {
+  const { data, error } = await supabase
+    .from("projects")
+    .select("settings")
+    .eq("id", projectId)
+    .maybeSingle()
+  if (error) {
+    console.warn("projects settings lookup:", error)
+  }
+  return normalizeProjectSettings(data?.settings ?? {})
+}
+
+export async function contextFromIds(
+  organisationId: string,
+  projectId: string,
+  apiKeyId: string | null,
+): Promise<ProjectContext> {
+  const settings = await loadProjectSettings(projectId)
+  return { organisationId, projectId, apiKeyId, settings }
 }
 
 /** Plaintext of the dev seed key in `20260410120000_phase1_multitenant_core.sql`. */
@@ -47,11 +75,11 @@ export async function resolveProjectContext(
     }
     return {
       ok: true,
-      context: {
-        organisationId: data.organisation_id,
-        projectId: data.project_id,
-        apiKeyId: data.id,
-      },
+      context: await contextFromIds(
+        data.organisation_id,
+        data.project_id,
+        data.id,
+      ),
     }
   }
 
@@ -76,11 +104,7 @@ export async function resolveProjectContext(
     }
     return {
       ok: true,
-      context: {
-        organisationId: row.organisation_id,
-        projectId: row.id,
-        apiKeyId: null,
-      },
+      context: await contextFromIds(row.organisation_id, row.id, null),
     }
   }
 
@@ -94,11 +118,11 @@ export async function resolveProjectContext(
   if (!arErr && anonReadProject) {
     return {
       ok: true,
-      context: {
-        organisationId: anonReadProject.organisation_id,
-        projectId: anonReadProject.id,
-        apiKeyId: null,
-      },
+      context: await contextFromIds(
+        anonReadProject.organisation_id,
+        anonReadProject.id,
+        null,
+      ),
     }
   }
   if (arErr) {
@@ -123,11 +147,11 @@ export async function resolveProjectContext(
 
   return {
     ok: true,
-    context: {
-      organisationId: project.organisation_id,
-      projectId: project.id,
-      apiKeyId: null,
-    },
+    context: await contextFromIds(
+      project.organisation_id,
+      project.id,
+      null,
+    ),
   }
 }
 
