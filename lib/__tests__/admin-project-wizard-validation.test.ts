@@ -3,6 +3,7 @@ import {
   validateWizardStep1,
   validateWizardStep2,
 } from "@/lib/admin-project-wizard-validation"
+import { DEFAULT_ONBOARDING_EXPERIENCE } from "@/lib/project-settings"
 
 describe("validateWizardStep1", () => {
   it("rejects short name", () => {
@@ -30,6 +31,8 @@ describe("validateWizardStep2", () => {
         sessionMode: "dry-run",
         personaId: "",
         flowSteps: [],
+        welcomeMessage: "",
+        onboardingExperience: { ...DEFAULT_ONBOARDING_EXPERIENCE },
         webhookUrl: "",
         webhookEvents: [],
         passThreshold: 0.65,

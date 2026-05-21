@@ -225,8 +225,8 @@ export async function postOnboardingMessage(
     flowVersion = flow.version
   }
 
-  let assistantContent: string
-  let nextCurrentStepId: string | null
+  let assistantContent = DEFAULT_CLOSING
+  let nextCurrentStepId: string | null = null
   let terminal = false
   let onboardingFlags: { followup?: boolean; boundary?: boolean } | undefined
   let stepHint: string | undefined

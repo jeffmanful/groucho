@@ -58,8 +58,9 @@ export async function startOnboardingSession(
     )
   }
 
-  const steps = flow.steps
-  const welcome = flow.welcome_message?.trim() || undefined
+  const activeFlow = flow
+  const steps = activeFlow.steps
+  const welcome = activeFlow.welcome_message?.trim() || undefined
 
   if (apiKeyId) touchApiKeyLastUsed(apiKeyId)
 
@@ -124,7 +125,7 @@ export async function startOnboardingSession(
       message: lastAssistant,
       status: "active",
       projectType: "onboarding",
-      flowVersion: existing.flow_version ?? flow.version,
+      flowVersion: existing.flow_version ?? activeFlow.version,
       ...(welcome ? { welcomeMessage: welcome } : {}),
       ...(currentStep ? { currentStep } : {}),
       stepHint: steps.find((s) => s.id === stepId)?.hint,
@@ -138,7 +139,7 @@ export async function startOnboardingSession(
       persona_id: resolvedPersonaId,
       organisation_id: organisationId,
       project_id: projectId,
-      flow_version: flow.version,
+      flow_version: activeFlow.version,
       current_step_id: firstStep.id,
     }
     if (includeOnboardingState) row.onboarding_state = null
@@ -178,7 +179,7 @@ export async function startOnboardingSession(
         message: lastAssistant,
         status: "active",
         projectType: "onboarding",
-        flowVersion: raced.flow_version ?? flow.version,
+        flowVersion: raced.flow_version ?? activeFlow.version,
         ...(welcome ? { welcomeMessage: welcome } : {}),
         ...(currentStep ? { currentStep } : {}),
         stepHint: steps.find((s) => s.id === stepId)?.hint,
@@ -222,7 +223,7 @@ export async function startOnboardingSession(
     message: bootstrapMessage,
     status: "active",
     projectType: "onboarding",
-    flowVersion: flow.version,
+    flowVersion: activeFlow.version,
     ...(welcome ? { welcomeMessage: welcome } : {}),
     ...(currentStep ? { currentStep } : {}),
     stepHint: firstStep.hint,

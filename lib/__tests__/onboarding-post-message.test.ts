@@ -170,8 +170,9 @@ describe("postOnboardingMessage", () => {
 
   async function loadState() {
     const supa = await import("@/lib/supabase")
-    const s = (supa as { __state: { sessions: FakeRow[]; messages: FakeRow[] } })
-      .__state
+    const s = (
+      supa as unknown as { __state: { sessions: FakeRow[]; messages: FakeRow[] } }
+    ).__state
     s.sessions = []
     s.messages = []
     return s

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest"
-import { defaultOnboardingSteps } from "@/lib/project-settings"
+import { defaultOnboardingSteps, DEFAULT_ONBOARDING_EXPERIENCE } from "@/lib/project-settings"
 import { COLORS_DEFAULT_WELCOME } from "@/lib/onboarding-persona-template"
 
 type FakeRow = Record<string, unknown>
@@ -112,7 +112,9 @@ const steps = defaultOnboardingSteps()
 describe("startOnboardingSession", () => {
   beforeEach(async () => {
     const supa = await import("@/lib/supabase")
-    const s = (supa as { __state: { sessions: FakeRow[]; messages: FakeRow[] } }).__state
+    const s = (
+      supa as unknown as { __state: { sessions: FakeRow[]; messages: FakeRow[] } }
+    ).__state
     s.sessions = []
     s.messages = []
   })
@@ -125,7 +127,16 @@ describe("startOnboardingSession", () => {
         organisationId: "org1",
         projectId: "proj1",
         apiKeyId: null,
-        settings: {},
+        settings: {
+          projectType: "onboarding",
+          flowConfig: {
+            version: "2026-05-21",
+            welcome_message: COLORS_DEFAULT_WELCOME,
+            steps,
+          },
+          onboardingExperience: { ...DEFAULT_ONBOARDING_EXPERIENCE },
+          raw: {},
+        },
       },
       projectSettings: {
         projectType: "onboarding",
@@ -153,7 +164,9 @@ describe("startOnboardingSession", () => {
 
   it("is idempotent for existing active session", async () => {
     const supa = await import("@/lib/supabase")
-    const s = (supa as { __state: { sessions: FakeRow[]; messages: FakeRow[] } }).__state
+    const s = (
+      supa as unknown as { __state: { sessions: FakeRow[]; messages: FakeRow[] } }
+    ).__state
     s.sessions.push({
       id: "s1",
       session_id: "start_sess_12345678",
@@ -176,7 +189,16 @@ describe("startOnboardingSession", () => {
         organisationId: "org1",
         projectId: "proj1",
         apiKeyId: null,
-        settings: {},
+        settings: {
+          projectType: "onboarding",
+          flowConfig: {
+            version: "2026-05-21",
+            welcome_message: COLORS_DEFAULT_WELCOME,
+            steps,
+          },
+          onboardingExperience: { ...DEFAULT_ONBOARDING_EXPERIENCE },
+          raw: {},
+        },
       },
       projectSettings: {
         projectType: "onboarding",

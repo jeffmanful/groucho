@@ -226,6 +226,8 @@ export default function NewProjectWizardPage() {
         sessionMode,
         personaId,
         flowSteps,
+        welcomeMessage,
+        onboardingExperience,
         webhookUrl,
         webhookEvents,
         passThreshold,

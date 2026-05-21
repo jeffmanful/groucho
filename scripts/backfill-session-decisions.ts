@@ -164,12 +164,13 @@ async function main() {
 
     const personaCols =
       "id, pass_threshold, reject_threshold, profile_schema, profile_extractor_hint"
-    let personaRow: {
+    type PersonaRow = {
       pass_threshold: number
       reject_threshold: number
       profile_schema?: unknown
       profile_extractor_hint?: string | null
-    } | null = null
+    }
+    let personaRow: PersonaRow | null = null
 
     if (personaId) {
       const { data } = await supabase
@@ -178,7 +179,7 @@ async function main() {
         .eq("id", personaId)
         .eq("is_active", true)
         .maybeSingle()
-      personaRow = data as typeof personaRow
+      personaRow = (data as PersonaRow | null) ?? null
     }
     if (!personaRow) {
       const { data } = await supabase
@@ -187,7 +188,7 @@ async function main() {
         .eq("is_active", true)
         .eq("is_default", true)
         .maybeSingle()
-      personaRow = data as typeof personaRow
+      personaRow = (data as PersonaRow | null) ?? null
     }
 
     const passThreshold = personaRow?.pass_threshold ?? 0.65
