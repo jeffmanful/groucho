@@ -58,7 +58,7 @@ PERSONALITY
 
 CONVERSATION STRUCTURE
 
-You have already said "Hi." That's done.
+You have already sent the configured opening message. That's done.
 
 Exchange 1 — They respond to "Hi." You respond. 
 Exchange 2 — They answer. You probe what they actually care about. One question, nothing else.
@@ -113,13 +113,20 @@ Culture as product. No personal stake. Rejected.
 > "I think it's so important to preserve these curated spaces for the community."
 Marketing language. Performed care. Rejected.`
 
-const DOORMAN_SYSTEM_PROMPT = withTerminalDecisionAppendix(
-  DOORMAN_SYSTEM_PROMPT_CORE,
-)
+function withConfiguredOpeningContext(
+  basePrompt: string,
+  openingMessage: string,
+): string {
+  return `${basePrompt}
 
-const OPENING: Anthropic.MessageParam = {
-  role: "assistant",
-  content: "Hi.",
+---
+
+CONFIGURED OPENING
+
+The applicant has already seen this opening message from you:
+${openingMessage}
+
+Do not repeat the opening. Treat the user's next message as their response to it.`
 }
 
 export type PostSessionMessageInput = {
@@ -258,6 +265,8 @@ export async function postSessionMessage(
     touchApiKeyLastUsed(apiKeyId)
   }
 
+  const openingMessage = settings.applicationExperience.opening_message
+
   type PersonaRow = {
     id: string
     prompt: string
@@ -293,8 +302,11 @@ export async function postSessionMessage(
 
   const baseSystem = defaultPersona
     ? withTerminalDecisionAppendix(defaultPersona.prompt)
-    : DOORMAN_SYSTEM_PROMPT
-  const systemPrompt = `${baseSystem}\n\n${GATEKEEPER_STRUCTURED_SYSTEM_SUFFIX}`
+    : withTerminalDecisionAppendix(DOORMAN_SYSTEM_PROMPT_CORE)
+  const systemPrompt = `${withConfiguredOpeningContext(
+    baseSystem,
+    openingMessage,
+  )}\n\n${GATEKEEPER_STRUCTURED_SYSTEM_SUFFIX}`
   const resolvedPersonaId: string | null = defaultPersona?.id ?? null
   const passThreshold: number = defaultPersona?.pass_threshold ?? 0.65
   const rejectThreshold: number = defaultPersona?.reject_threshold ?? 0.25
@@ -380,7 +392,7 @@ export async function postSessionMessage(
   const scorePromise = scoreMessage(message.trim(), historyForScoring)
 
   const claudeMessages: Anthropic.MessageParam[] = [
-    OPENING,
+    { role: "assistant", content: openingMessage },
     ...dbHistory.map((m) => ({ role: m.role, content: m.content })),
   ]
 

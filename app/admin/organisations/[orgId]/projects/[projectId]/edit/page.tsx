@@ -19,6 +19,8 @@ import {
   type ProjectUseCaseId,
 } from "@/lib/admin-project-setup"
 import {
+  DEFAULT_APPLICATION_OPENING_MESSAGE,
+  DEFAULT_ONBOARDING_EXPERIENCE,
   defaultOnboardingSteps,
   type OnboardingFlowStep,
   type ProjectType,
@@ -30,7 +32,6 @@ import {
   COLORS_PROFILE_EXTRACTOR_HINT,
   COLORS_PROFILE_SCHEMA,
 } from "@/lib/onboarding-persona-template"
-import { DEFAULT_ONBOARDING_EXPERIENCE } from "@/lib/project-settings"
 import {
   isValidProjectSlug,
   setupBtn,
@@ -92,6 +93,7 @@ export default function EditProjectPage() {
     environment: "test",
     sessionMode: "live",
     personaId: "",
+    applicationOpeningMessage: DEFAULT_APPLICATION_OPENING_MESSAGE,
     flowSteps: [],
     welcomeMessage: "",
     onboardingExperience: { ...DEFAULT_ONBOARDING_EXPERIENCE },
@@ -511,6 +513,32 @@ export default function EditProjectPage() {
           personaId={form.personaId}
           personas={personas}
         />
+
+        {form.projectType === "gatekeeper" && (
+          <div style={{ marginBottom: "1rem" }}>
+            <label style={setupLabel}>Opening message</label>
+            <textarea
+              value={form.applicationOpeningMessage}
+              onChange={(e) =>
+                patchForm({ applicationOpeningMessage: e.target.value })
+              }
+              rows={3}
+              placeholder={DEFAULT_APPLICATION_OPENING_MESSAGE}
+              style={{
+                ...setupInput,
+                maxWidth: "100%",
+                minHeight: "4rem",
+                resize: "vertical",
+                border: "1px solid rgba(255,255,255,0.1)",
+                padding: "0.45rem 0",
+              }}
+            />
+            <p style={{ fontSize: "0.72rem", opacity: 0.35, lineHeight: 1.45 }}>
+              Shown as the first assistant message before the applicant replies.
+              Tone and decision logic still live in the persona.
+            </p>
+          </div>
+        )}
 
         {form.projectType === "onboarding" && hydrated && (
           <>

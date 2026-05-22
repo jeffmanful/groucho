@@ -139,6 +139,24 @@ describe("buildProjectSettingsPayload", () => {
     expect(out.flow_config).toBeUndefined()
   })
 
+  it("serializes custom gatekeeper opening message", () => {
+    const form = formStateFromProject({
+      name: "G",
+      slug: "g",
+      settings: {
+        project_type: "gatekeeper",
+        persona_id: "p1",
+        application_experience: {
+          opening_message: "Welcome. A few questions first.",
+        },
+      },
+    })
+    const out = buildProjectSettingsPayload({}, form)
+    expect(out.application_experience).toEqual({
+      opening_message: "Welcome. A few questions first.",
+    })
+  })
+
   it("clears webhook fields when URL empty", () => {
     const existing = {
       webhook_url: "https://old.example/hook",

@@ -1,5 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from "vitest"
-import { defaultOnboardingSteps, DEFAULT_ONBOARDING_EXPERIENCE } from "@/lib/project-settings"
+import {
+  DEFAULT_APPLICATION_OPENING_MESSAGE,
+  DEFAULT_ONBOARDING_EXPERIENCE,
+  defaultOnboardingSteps,
+} from "@/lib/project-settings"
 import { COLORS_DEFAULT_WELCOME } from "@/lib/onboarding-persona-template"
 
 type FakeRow = Record<string, unknown>
@@ -129,6 +133,9 @@ describe("startOnboardingSession", () => {
         apiKeyId: null,
         settings: {
           projectType: "onboarding",
+          applicationExperience: {
+            opening_message: DEFAULT_APPLICATION_OPENING_MESSAGE,
+          },
           flowConfig: {
             version: "2026-05-21",
             welcome_message: COLORS_DEFAULT_WELCOME,
@@ -140,6 +147,9 @@ describe("startOnboardingSession", () => {
       },
       projectSettings: {
         projectType: "onboarding",
+        applicationExperience: {
+          opening_message: DEFAULT_APPLICATION_OPENING_MESSAGE,
+        },
         flowConfig: {
           version: "2026-05-21",
           welcome_message: COLORS_DEFAULT_WELCOME,
@@ -191,6 +201,9 @@ describe("startOnboardingSession", () => {
         apiKeyId: null,
         settings: {
           projectType: "onboarding",
+          applicationExperience: {
+            opening_message: DEFAULT_APPLICATION_OPENING_MESSAGE,
+          },
           flowConfig: {
             version: "2026-05-21",
             welcome_message: COLORS_DEFAULT_WELCOME,
@@ -202,6 +215,9 @@ describe("startOnboardingSession", () => {
       },
       projectSettings: {
         projectType: "onboarding",
+        applicationExperience: {
+          opening_message: DEFAULT_APPLICATION_OPENING_MESSAGE,
+        },
         flowConfig: { version: "2026-05-21", steps },
         onboardingExperience: {
           bridge_enabled: true,

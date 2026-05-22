@@ -16,7 +16,14 @@ vi.mock("@/lib/project-resolution", () => ({
       apiKeyId: "key1",
       settings: {
         projectType: "gatekeeper" as const,
+        applicationExperience: { opening_message: "Hi." },
         flowConfig: null,
+        onboardingExperience: {
+          bridge_enabled: true,
+          followup_enabled: true,
+          boundary_enabled: true,
+          personalized_completion: true,
+        },
         raw: { project_type: "gatekeeper" },
       },
     },

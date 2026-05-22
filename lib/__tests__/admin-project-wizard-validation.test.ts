@@ -30,6 +30,7 @@ describe("validateWizardStep2", () => {
         environment: "test",
         sessionMode: "dry-run",
         personaId: "",
+        applicationOpeningMessage: "Hi.",
         flowSteps: [],
         welcomeMessage: "",
         onboardingExperience: { ...DEFAULT_ONBOARDING_EXPERIENCE },

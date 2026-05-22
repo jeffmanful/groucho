@@ -45,6 +45,7 @@ type ProjectOption = {
   projectType: "gatekeeper" | "onboarding"
   environment: "test" | "live" | null
   sessionMode: "live" | "dry-run" | null
+  applicationOpeningMessage: string
   welcomeMessage: string | null
 }
 
@@ -58,6 +59,19 @@ type OnboardingCurrentStep = {
 const INITIAL_MESSAGES: Message[] = [
   { id: "initial-hi", role: "bot", content: "Hi." },
 ]
+
+function initialMessagesForProject(project?: ProjectOption): Message[] {
+  if (project?.projectType === "gatekeeper") {
+    return [
+      {
+        id: "initial-hi",
+        role: "bot",
+        content: project.applicationOpeningMessage || "Hi.",
+      },
+    ]
+  }
+  return INITIAL_MESSAGES
+}
 
 const SESSION_KEY = "pe_session_id"
 const SECRET_KEY = "pe_session_secret"
@@ -219,7 +233,13 @@ export default function DoorCheck() {
           (saved && data.some((p) => p.id === saved) ? saved : null) ??
           data[0]?.id ??
           ""
-        if (pick) setSelectedProjectId(pick)
+        if (pick) {
+          setSelectedProjectId(pick)
+          const pickedProject = data.find((p) => p.id === pick)
+          if (pickedProject?.projectType === "gatekeeper") {
+            setMessages(initialMessagesForProject(pickedProject))
+          }
+        }
       })
       .catch(() => {})
   }, [])
@@ -303,7 +323,7 @@ export default function DoorCheck() {
     if (proj?.projectType === "onboarding") {
       void bootstrapOnboarding(newId, projectId, selectedPersonaId || undefined)
     } else {
-      setMessages(INITIAL_MESSAGES)
+      setMessages(initialMessagesForProject(proj))
     }
   }
 
@@ -427,13 +447,7 @@ export default function DoorCheck() {
         const isOnboarding =
           selectedProject?.projectType === "onboarding" ||
           data.projectType === "onboarding"
-        if (isOnboarding) {
-          assistantHandoffRef.current = {
-            id: crypto.randomUUID(),
-            role: "bot",
-            content: "Thank you for your application.",
-          }
-        } else {
+        if (!isOnboarding) {
           if (data.secret) localStorage.setItem(SECRET_KEY, data.secret)
           setTimeout(
             () => router.push(`/doorcheck/access?sid=${sessionId}`),
@@ -477,7 +491,7 @@ export default function DoorCheck() {
     if (proj?.projectType === "onboarding" && selectedProjectId) {
       void bootstrapOnboarding(newId, selectedProjectId, def?.id)
     } else {
-      setMessages(INITIAL_MESSAGES)
+      setMessages(initialMessagesForProject(proj))
     }
     if (selectedProjectId) localStorage.setItem(PROJECT_KEY, selectedProjectId)
   }
@@ -538,7 +552,7 @@ export default function DoorCheck() {
         >
           {currentStep && !concluded && (
             <p
-              className="mb-4 shrink-0 text-[0.68rem] tracking-[0.1em] text-white/35"
+              className="mb-4 shrink-0 text-[0.68rem] tracking-widest text-white/35"
               aria-live="polite"
             >
               {currentStep.title} · {currentStep.index + 1} of {currentStep.total}

@@ -1,5 +1,7 @@
 import {
+  DEFAULT_APPLICATION_OPENING_MESSAGE,
   defaultOnboardingSteps,
+  parseApplicationExperience,
   parseFlowConfig,
   parseOnboardingExperience,
   parseProjectType,
@@ -81,6 +83,7 @@ export type ProjectSetupFormState = {
   environment: "test" | "live"
   sessionMode: "live" | "dry-run"
   personaId: string
+  applicationOpeningMessage: string
   flowSteps: OnboardingFlowStep[]
   welcomeMessage: string
   onboardingExperience: OnboardingExperience
@@ -155,6 +158,8 @@ export function formStateFromProject(row: {
     environment: parseEnvironment(settings),
     sessionMode: parseSessionMode(settings),
     personaId: typeof settings.persona_id === "string" ? settings.persona_id : "",
+    applicationOpeningMessage:
+      parseApplicationExperience(settings).opening_message,
     flowSteps:
       projectType === "onboarding"
         ? flowStepsFromDb.length > 0
@@ -218,9 +223,16 @@ export function buildProjectSettingsPayload(
     if (wm) flowOut.welcome_message = wm
     settings.flow_config = flowOut
     settings.onboarding_experience = { ...form.onboardingExperience }
+    delete settings.application_experience
   } else {
     delete settings.flow_config
     delete settings.onboarding_experience
+    const opening = form.applicationOpeningMessage.trim()
+    if (opening && opening !== DEFAULT_APPLICATION_OPENING_MESSAGE) {
+      settings.application_experience = { opening_message: opening }
+    } else {
+      delete settings.application_experience
+    }
   }
 
   const url = form.webhookUrl.trim()

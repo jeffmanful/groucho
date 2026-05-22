@@ -16,6 +16,7 @@ import {
   type ProjectSetupFormState,
 } from "@/lib/admin-project-setup"
 import {
+  DEFAULT_APPLICATION_OPENING_MESSAGE,
   defaultOnboardingSteps,
   DEFAULT_ONBOARDING_EXPERIENCE,
   type OnboardingFlowStep,
@@ -121,6 +122,9 @@ export default function NewProjectWizardPage() {
   const [environment, setEnvironment] = useState<"test" | "live">("test")
   const [sessionMode, setSessionMode] = useState<"live" | "dry-run">("dry-run")
   const [personaId, setPersonaId] = useState("")
+  const [applicationOpeningMessage, setApplicationOpeningMessage] = useState(
+    DEFAULT_APPLICATION_OPENING_MESSAGE,
+  )
 
   const [webhookUrl, setWebhookUrl] = useState("")
   const [webhookEvents, setWebhookEvents] = useState<string[]>([])
@@ -225,6 +229,7 @@ export default function NewProjectWizardPage() {
         environment,
         sessionMode,
         personaId,
+      applicationOpeningMessage,
         flowSteps,
         welcomeMessage,
         onboardingExperience,
@@ -314,6 +319,7 @@ export default function NewProjectWizardPage() {
       environment,
       sessionMode,
       personaId,
+      applicationOpeningMessage,
       flowSteps: stepsForSave,
       welcomeMessage,
       onboardingExperience,
@@ -572,6 +578,30 @@ export default function NewProjectWizardPage() {
             personaId={personaId}
             personas={personas}
           />
+
+          {projectType === "gatekeeper" && (
+            <div style={{ marginBottom: "1rem" }}>
+              <label style={label}>Opening message</label>
+              <textarea
+                value={applicationOpeningMessage}
+                onChange={(e) => setApplicationOpeningMessage(e.target.value)}
+                rows={3}
+                placeholder={DEFAULT_APPLICATION_OPENING_MESSAGE}
+                style={{
+                  ...input,
+                  maxWidth: "100%",
+                  minHeight: "4rem",
+                  resize: "vertical",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  padding: "0.45rem 0",
+                }}
+              />
+              <p style={{ fontSize: "0.72rem", opacity: 0.35, lineHeight: 1.45 }}>
+                Shown as the first assistant message before the applicant replies.
+                Tone and decision logic still live in the persona.
+              </p>
+            </div>
+          )}
 
           {projectType === "onboarding" && (
             <>

@@ -1,5 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from "vitest"
-import { defaultOnboardingSteps } from "@/lib/project-settings"
+import {
+  DEFAULT_APPLICATION_OPENING_MESSAGE,
+  defaultOnboardingSteps,
+} from "@/lib/project-settings"
 
 type FakeRow = Record<string, unknown>
 
@@ -191,6 +194,9 @@ describe("postOnboardingMessage", () => {
         apiKeyId: "key1",
         settings: {
           projectType: "onboarding" as const,
+          applicationExperience: {
+            opening_message: DEFAULT_APPLICATION_OPENING_MESSAGE,
+          },
           flowConfig: { version: "2026-05-21", steps: flowSteps },
           onboardingExperience: experienceOff,
           raw: {},
@@ -198,6 +204,9 @@ describe("postOnboardingMessage", () => {
       },
       projectSettings: {
         projectType: "onboarding" as const,
+        applicationExperience: {
+          opening_message: DEFAULT_APPLICATION_OPENING_MESSAGE,
+        },
         flowConfig: { version: "2026-05-21", steps: flowSteps },
         onboardingExperience: experienceOff,
         raw: { persona_id: "persona1" },
@@ -261,6 +270,9 @@ describe("postOnboardingMessage", () => {
         apiKeyId: null,
         settings: {
           projectType: "onboarding",
+          applicationExperience: {
+            opening_message: DEFAULT_APPLICATION_OPENING_MESSAGE,
+          },
           flowConfig: { version: "1", steps: flowSteps },
           onboardingExperience: experienceOff,
           raw: {},
@@ -268,6 +280,9 @@ describe("postOnboardingMessage", () => {
       },
       projectSettings: {
         projectType: "onboarding",
+        applicationExperience: {
+          opening_message: DEFAULT_APPLICATION_OPENING_MESSAGE,
+        },
         flowConfig: { version: "1", steps: flowSteps },
         onboardingExperience: experienceOff,
         raw: {},

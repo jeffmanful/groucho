@@ -16,6 +16,12 @@ export function validateWizardStep2(form: ProjectSetupFormState): string | null 
   if (!form.personaId) {
     return "Select a persona before continuing."
   }
+  if (
+    form.projectType === "gatekeeper" &&
+    form.applicationOpeningMessage.trim().length > 500
+  ) {
+    return "Application opening message must be 500 characters or fewer."
+  }
   if (form.projectType !== "onboarding") return null
 
   for (let i = 0; i < form.flowSteps.length; i++) {

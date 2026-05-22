@@ -1,8 +1,14 @@
 /**
- * Project settings helpers: `project_type`, onboarding `flow_config`, validation.
+ * Project settings helpers: `project_type`, application/onboarding experience, validation.
  */
 
 export type ProjectType = "gatekeeper" | "onboarding"
+
+export const DEFAULT_APPLICATION_OPENING_MESSAGE = "Hi."
+
+export type ApplicationExperience = {
+  opening_message: string
+}
 
 export type OnboardingFlowStep = {
   id: string
@@ -31,6 +37,7 @@ export type OnboardingExperience = {
 
 export type NormalizedProjectSettings = {
   projectType: ProjectType
+  applicationExperience: ApplicationExperience
   flowConfig: OnboardingFlowConfig | null
   onboardingExperience: OnboardingExperience
   raw: Record<string, unknown>
@@ -45,6 +52,26 @@ export const DEFAULT_ONBOARDING_EXPERIENCE: OnboardingExperience = {
   followup_enabled: true,
   boundary_enabled: true,
   personalized_completion: true,
+}
+
+export function parseApplicationExperience(
+  settings: unknown,
+): ApplicationExperience {
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
+    return { opening_message: DEFAULT_APPLICATION_OPENING_MESSAGE }
+  }
+  const raw = (settings as Record<string, unknown>).application_experience
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return { opening_message: DEFAULT_APPLICATION_OPENING_MESSAGE }
+  }
+  const opening = parseOptionalString(
+    raw as Record<string, unknown>,
+    "opening_message",
+    500,
+  )
+  return {
+    opening_message: opening ?? DEFAULT_APPLICATION_OPENING_MESSAGE,
+  }
 }
 
 export function parseOnboardingExperience(
@@ -173,10 +200,17 @@ export function normalizeProjectSettings(
       ? (settings as Record<string, unknown>)
       : {}
   const projectType = parseProjectType(raw)
+  const applicationExperience = parseApplicationExperience(raw)
   const flowConfig =
     projectType === "onboarding" ? parseFlowConfig(raw) : null
   const onboardingExperience = parseOnboardingExperience(raw)
-  return { projectType, flowConfig, onboardingExperience, raw }
+  return {
+    projectType,
+    applicationExperience,
+    flowConfig,
+    onboardingExperience,
+    raw,
+  }
 }
 
 /**
@@ -261,8 +295,18 @@ export function validateProjectSettings(
   if (projectType === "gatekeeper") {
     delete out.flow_config
     delete out.onboarding_experience
+    const app = parseApplicationExperience(settings)
+    if (app.opening_message !== DEFAULT_APPLICATION_OPENING_MESSAGE) {
+      out.application_experience = {
+        opening_message: app.opening_message,
+      }
+    } else {
+      delete out.application_experience
+    }
     return { ok: true, settings: out }
   }
+
+  delete out.application_experience
 
   const fc = settings.flow_config
   if (!fc || typeof fc !== "object" || Array.isArray(fc)) {

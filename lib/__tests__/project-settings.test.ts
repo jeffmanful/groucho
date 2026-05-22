@@ -17,6 +17,21 @@ describe("validateProjectSettings", () => {
     }
   })
 
+  it("accepts a gatekeeper opening message", () => {
+    const r = validateProjectSettings({
+      project_type: "gatekeeper",
+      application_experience: {
+        opening_message: "Welcome. A few questions first.",
+      },
+    })
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.settings.application_experience).toEqual({
+        opening_message: "Welcome. A few questions first.",
+      })
+    }
+  })
+
   it("rejects onboarding without steps", () => {
     const r = validateProjectSettings({ project_type: "onboarding" })
     expect(r.ok).toBe(false)
