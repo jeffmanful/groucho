@@ -200,4 +200,27 @@ describe("createClient — JSON parsing", () => {
     expect(res.status).toBe("passed")
     expect(res.profile?.schema_version).toBe(1)
   })
+
+  it("throws a useful error when a successful response is not JSON", async () => {
+    const fakeFetch = vi.fn(async () => textResponse("ok", 200))
+    const client = createClient({ baseUrl: "/api/groucho", fetch: fakeFetch })
+
+    await expect(client.sendMessage("abc", { message: "hi" })).rejects.toMatchObject({
+      name: "GrouchoApiError",
+      status: 200,
+      message: expect.stringContaining("Expected JSON response"),
+    })
+  })
+
+  it("throws a useful error when message response JSON has the wrong shape", async () => {
+    const fakeFetch = vi.fn(async () => jsonResponse({ ok: true }, 200))
+    const client = createClient({ baseUrl: "/api/groucho", fetch: fakeFetch })
+
+    await expect(client.sendMessage("abc", { message: "hi" })).rejects.toMatchObject({
+      name: "GrouchoApiError",
+      status: 200,
+      message: "Invalid Groucho API response: missing message or status",
+      body: { ok: true },
+    })
+  })
 })

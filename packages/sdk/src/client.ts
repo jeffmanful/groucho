@@ -63,6 +63,39 @@ function errorMessage(status: number, body: unknown): string {
   return `HTTP ${status}`
 }
 
+function isJsonResponse(res: Response): boolean {
+  return res.headers.get("content-type")?.includes("application/json") ?? false
+}
+
+function invalidJsonResponseError(res: Response): GrouchoApiError {
+  return new GrouchoApiError(
+    `Expected JSON response from Groucho API but received ${res.status} ${res.statusText || "OK"}`,
+    res.status,
+  )
+}
+
+function assertPostMessageResponse(
+  value: unknown,
+  status: number,
+): asserts value is PostMessageResponse {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new GrouchoApiError(
+      "Invalid Groucho API response: expected an object",
+      status,
+      value,
+    )
+  }
+
+  const body = value as Record<string, unknown>
+  if (typeof body.message !== "string" || typeof body.status !== "string") {
+    throw new GrouchoApiError(
+      "Invalid Groucho API response: missing message or status",
+      status,
+      value,
+    )
+  }
+}
+
 export function createClient(options: GrouchoClientOptions): GrouchoClient {
   const fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis)
   const { apiKey } = options
@@ -80,11 +113,10 @@ export function createClient(options: GrouchoClientOptions): GrouchoClient {
       const body = await readErrorBody(res)
       throw new GrouchoApiError(errorMessage(res.status, body), res.status, body)
     }
-    const ct = res.headers.get("content-type")
-    if (ct?.includes("application/json")) {
+    if (isJsonResponse(res)) {
       return (await res.json()) as T
     }
-    return undefined as T
+    throw invalidJsonResponseError(res)
   }
 
   async function requestVoid(url: string, init: RequestInit): Promise<void> {
@@ -101,7 +133,7 @@ export function createClient(options: GrouchoClientOptions): GrouchoClient {
         options.baseUrl,
         `/v1/sessions/${encodeURIComponent(sessionId)}/messages`,
       )
-      return requestJson<PostMessageResponse>(url, {
+      const res = await requestJson<PostMessageResponse>(url, {
         method: "POST",
         headers: headers(undefined),
         body: JSON.stringify({
@@ -110,6 +142,8 @@ export function createClient(options: GrouchoClientOptions): GrouchoClient {
           ...(input.applicant ? { applicant: input.applicant } : {}),
         }),
       })
+      assertPostMessageResponse(res, 200)
+      return res
     },
 
     async getSession(sessionId) {
