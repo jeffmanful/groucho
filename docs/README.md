@@ -9,6 +9,7 @@
 | [organisations.md](./organisations.md) | How organisations, members, invitations, and org-level access work |
 | [personas.md](./personas.md) | How personas drive tone, decisions, thresholds, and profile extraction |
 | [projects.md](./projects.md) | How projects configure gatekeeper and onboarding flows, keys, and webhooks |
+| [client-integration-guide.md](./client-integration-guide.md) | Host app integration pattern: multiple Groucho projects, explicit session IDs, SDK mounts, and webhook-driven decisions |
 | [platform-project-wizard.md](./platform-project-wizard.md) | Multi-step project creation epic |
 | [api/openapi.yaml](./api/openapi.yaml) | Public Project HTTP API (sessions / messages / access) |
 | [sdk-surface.md](./sdk-surface.md) | `@groucho/sdk` exports and React API |

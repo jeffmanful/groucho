@@ -6,6 +6,7 @@ Groucho is a conversational doorman: it qualifies a user across 3–5 short turn
 
 - API contract: [`docs/api/openapi.yaml`](https://github.com/thompson-mcdonald/groucho/blob/main/docs/api/openapi.yaml)
 - Deeper surface notes: [`docs/sdk-surface.md`](https://github.com/thompson-mcdonald/groucho/blob/main/docs/sdk-surface.md)
+- Client integration guide: [`docs/client-integration-guide.md`](https://github.com/thompson-mcdonald/groucho/blob/main/docs/client-integration-guide.md)
 - Profile contract: [`docs/profile-payload.schema.json`](https://github.com/thompson-mcdonald/groucho/blob/main/docs/profile-payload.schema.json)
 - Reference example: [`examples/next-groucho`](https://github.com/thompson-mcdonald/groucho/tree/main/examples/next-groucho)
 
