@@ -43,6 +43,7 @@ export async function POST(req: NextRequest) {
   return startOnboardingSession({
     sessionId,
     personaId: body.personaId?.trim() || undefined,
+    allowMissingApplicantIdentity: true,
     requestId,
     context: resolved.context,
     projectSettings: settings,

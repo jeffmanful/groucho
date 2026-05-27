@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server"
+import { parseApplicantIdentity } from "@/lib/applicant-identity"
 import { postSessionMessage } from "@/lib/post-session-message"
 import { getOrCreateRequestId } from "@/lib/request-trace"
 import { tracedJson } from "@/lib/with-request-trace"
@@ -14,7 +15,7 @@ export async function POST(
     return tracedJson(req, { error: "Invalid sessionId" }, { status: 400 })
   }
 
-  let body: { message?: string; personaId?: string | null }
+  let body: { message?: string; personaId?: string | null; applicant?: unknown }
   try {
     body = await req.json()
   } catch {
@@ -26,11 +27,17 @@ export async function POST(
     return tracedJson(req, { error: "message is required" }, { status: 400 })
   }
 
+  const applicant = parseApplicantIdentity(body.applicant)
+  if (!applicant.ok) {
+    return tracedJson(req, { error: applicant.error }, { status: 400 })
+  }
+
   return postSessionMessage({
     authorization: req.headers.get("authorization"),
     sessionId,
     message,
     personaId: body.personaId ?? undefined,
+    applicantIdentity: applicant.value,
     requestId,
     incomingHeaders: req.headers,
   })

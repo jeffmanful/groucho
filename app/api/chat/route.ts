@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server"
+import { parseApplicantIdentity } from "@/lib/applicant-identity"
 import { resolveAdminActor } from "@/lib/admin-actor"
 import { postSessionMessage } from "@/lib/post-session-message"
 import { getOrCreateRequestId } from "@/lib/request-trace"
@@ -11,6 +12,7 @@ export async function POST(req: NextRequest) {
     sessionId: string
     personaId?: string
     projectId?: string
+    applicant?: unknown
   }
   try {
     body = await req.json()
@@ -27,6 +29,11 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  const applicant = parseApplicantIdentity(body.applicant)
+  if (!applicant.ok) {
+    return tracedJson(req, { error: applicant.error }, { status: 400 })
+  }
+
   const projectIdTrimmed = projectId?.trim() || undefined
   const playgroundActor = projectIdTrimmed
     ? await resolveAdminActor()
@@ -37,6 +44,7 @@ export async function POST(req: NextRequest) {
     sessionId: sessionId.trim(),
     message: message.trim(),
     personaId: personaId?.trim() || undefined,
+    applicantIdentity: applicant.value,
     projectId: projectIdTrimmed,
     playgroundActor,
     requestId,

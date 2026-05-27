@@ -92,6 +92,12 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description First-class applicant contact captured outside configurable flow/profile answers. */
+        ApplicantIdentity: {
+            /** Format: email */
+            email: string;
+            name?: string;
+        };
         PostMessageRequest: {
             /** @description User message for this turn */
             message: string;
@@ -100,6 +106,7 @@ export interface components {
              * @description Optional persona override; must belong to the same project and be active.
              */
             personaId?: string | null;
+            applicant?: components["schemas"]["ApplicantIdentity"];
         };
         ScoreBreakdown: {
             specificity: number;
@@ -180,6 +187,7 @@ export interface components {
             startedAt?: string;
             /** Format: date-time */
             completedAt?: string | null;
+            applicant?: components["schemas"]["ApplicantIdentity"];
             /** @description Structured profile from the latest verdict; present once the session has concluded. */
             profile?: components["schemas"]["Profile"];
             projectType?: components["schemas"]["ProjectType"];
@@ -320,6 +328,7 @@ export interface operations {
                 "application/json": {
                     /** Format: uuid */
                     personaId?: string | null;
+                    applicant?: components["schemas"]["ApplicantIdentity"];
                 };
             };
         };

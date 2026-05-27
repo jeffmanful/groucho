@@ -33,9 +33,10 @@ export async function GET(
 
   const { data, error, count } = await supabase
     .from("sessions")
-    .select("id, session_id, status, persona_id, created_at, updated_at", {
-      count: "exact",
-    })
+    .select(
+      "id, session_id, status, persona_id, created_at, updated_at, applicant_email, applicant_name",
+      { count: "exact" },
+    )
     .eq("project_id", projectId)
     .order("created_at", { ascending: false })
     .range(offset, offset + PAGE_SIZE - 1)

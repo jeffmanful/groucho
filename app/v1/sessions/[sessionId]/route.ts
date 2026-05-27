@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server"
+import { applicantIdentityFromRow } from "@/lib/applicant-identity"
 import { log } from "@/lib/logger"
 import { getOrCreateRequestId } from "@/lib/request-trace"
 import { resolveProjectContext } from "@/lib/project-resolution"
@@ -26,7 +27,7 @@ export async function GET(
   const { data: row, error } = await supabase
     .from("sessions")
     .select(
-      "id, session_id, status, created_at, updated_at, current_step_id, flow_version, profile, onboarding_state",
+      "id, session_id, status, created_at, updated_at, current_step_id, flow_version, profile, onboarding_state, applicant_email, applicant_name",
     )
     .eq("session_id", clientKey)
     .eq("project_id", projectId)
@@ -52,6 +53,7 @@ export async function GET(
 
   const outcome = outcomeLabelFromDbStatus(row.status)
   const concluded = ["passed", "failed", "redirected", "rejected"].includes(row.status)
+  const applicant = applicantIdentityFromRow(row)
 
   let profile: unknown = row.profile ?? null
   if (concluded && !profile) {
@@ -119,6 +121,7 @@ export async function GET(
     turnsUsed: turnCount ?? 0,
     startedAt: row.created_at,
     completedAt: concluded ? row.updated_at : null,
+    ...(applicant ? { applicant } : {}),
     projectType: settings.projectType,
     flowVersion: row.flow_version ?? settings.flowConfig?.version ?? null,
     ...(welcomeMessage ? { welcomeMessage } : {}),

@@ -112,7 +112,7 @@ Multi-step wizard (see [platform-project-wizard.md](./platform-project-wizard.md
 
 ### 5.4 Applicant (gatekeeper)
 
-1. Opens embedded or linked experience → **session** starts (live or dry-run).  
+1. Opens embedded or linked experience → supplies **applicant identity** (`email`, optional `name`) before or at **session** start (live or dry-run).  
 2. Exchanges messages → scores persisted on user messages (when scoring enabled).  
 3. Terminal assistant message → **verdict** + session outcome; webhook fired if configured; pass → optional **email** on access page.
 
@@ -133,6 +133,7 @@ Multi-step wizard (see [platform-project-wizard.md](./platform-project-wizard.md
 
 | Req | Description | Acceptance criteria |
 |-----|-------------|---------------------|
+| FR-CONV-0 | Gatekeeper/application sessions persist first-class **applicant identity** (`applicant_email`, optional `applicant_name`) separately from configurable flow/profile answers. | Public API accepts `applicant` on session start/first message; admin/session/webhook payloads expose the normalized envelope. |
 | FR-CONV-1 | Assistant follows brevity and structure in [05-conversation-logic.md](../prompts/05-conversation-logic.md). | Prompt versioned per project/persona; max 2 lines per turn enforced in tests or post-check (**gatekeeper**). |
 | FR-CONV-2 | Pass phrase exactly `Yeah. Here.` (or project-configured equivalent stored server-side). | Integration test: exact string → pass path when scores meet threshold. |
 | FR-CONV-3 | Redirect phrase `REDIRECT`; reject phrase `REJECTED` (align DB enum `REJECT` vs string in migration note). | Mapping table in code + OpenAPI enum documented. |

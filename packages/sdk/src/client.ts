@@ -8,6 +8,7 @@ export type SessionOutcome = components["schemas"]["SessionOutcome"]
 export type Profile = components["schemas"]["Profile"]
 export type ProfileCore = components["schemas"]["ProfileCore"]
 export type ProfileExtraction = components["schemas"]["ProfileExtraction"]
+export type ApplicantIdentity = components["schemas"]["ApplicantIdentity"]
 
 export type GrouchoClientOptions = {
   /** API origin + optional path prefix, e.g. `https://api.example.com` or `https://app.example.com/api/groucho` */
@@ -23,7 +24,11 @@ export type GrouchoClientOptions = {
 export interface GrouchoClient {
   sendMessage(
     sessionId: string,
-    input: { message: string; personaId?: string | null },
+    input: {
+      message: string
+      personaId?: string | null
+      applicant?: ApplicantIdentity | null
+    },
   ): Promise<PostMessageResponse>
 
   getSession(sessionId: string): Promise<Session>
@@ -102,6 +107,7 @@ export function createClient(options: GrouchoClientOptions): GrouchoClient {
         body: JSON.stringify({
           message: input.message,
           personaId: input.personaId ?? null,
+          ...(input.applicant ? { applicant: input.applicant } : {}),
         }),
       })
     },

@@ -59,7 +59,7 @@ export async function POST(
 
   const { data: session, error: sErr } = await supabase
     .from("sessions")
-    .select("id, status, success_secret")
+    .select("id, status, success_secret, applicant_email")
     .eq("session_id", clientKey)
     .eq("project_id", projectId)
     .maybeSingle()
@@ -83,6 +83,21 @@ export async function POST(
 
   if (session.success_secret && body.secret?.trim() !== session.success_secret) {
     return tracedJson(req, { error: "Invalid or missing secret" }, { status: 400 })
+  }
+
+  if (session.applicant_email && session.applicant_email !== email) {
+    return tracedJson(
+      req,
+      { error: "Email does not match this application" },
+      { status: 400 },
+    )
+  }
+
+  if (!session.applicant_email) {
+    await supabase
+      .from("sessions")
+      .update({ applicant_email: email })
+      .eq("id", session.id)
   }
 
   const { data: profile, error: pErr } = await supabase

@@ -57,6 +57,9 @@ paths:
                 value:
                   message: "Hey."
                   personaId: null
+                  applicant:
+                    email: "applicant@example.com"
+                    name: "Applicant Name"
       responses:
         "200":
           description: Assistant reply and session status
@@ -107,6 +110,8 @@ paths:
                   type: string
                   format: uuid
                   nullable: true
+                applicant:
+                  $ref: "#/components/schemas/ApplicantIdentity"
       responses:
         "200":
           description: Session started or resumed
@@ -187,6 +192,19 @@ components:
         type: string
 
   schemas:
+    ApplicantIdentity:
+      type: object
+      required: [email]
+      description: First-class applicant contact captured outside configurable flow/profile answers.
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 320
+        name:
+          type: string
+          maxLength: 160
+
     PostMessageRequest:
       type: object
       required: [message]
@@ -201,6 +219,8 @@ components:
           format: uuid
           nullable: true
           description: Optional persona override; must belong to the same project and be active.
+        applicant:
+          $ref: "#/components/schemas/ApplicantIdentity"
 
     ScoreBreakdown:
       type: object
@@ -353,6 +373,8 @@ components:
           type: string
           format: date-time
           nullable: true
+        applicant:
+          $ref: "#/components/schemas/ApplicantIdentity"
         profile:
           allOf:
             - $ref: "#/components/schemas/Profile"

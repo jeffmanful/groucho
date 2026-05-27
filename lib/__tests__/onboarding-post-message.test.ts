@@ -188,6 +188,7 @@ describe("postOnboardingMessage", () => {
     const base = {
       authorization: "Bearer gk_test_x",
       sessionId: "onboard_sess_12345678",
+      applicantIdentity: { email: "applicant@example.com" },
       context: {
         organisationId: "org1",
         projectId: "proj1",

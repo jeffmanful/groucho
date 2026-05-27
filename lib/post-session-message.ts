@@ -1,6 +1,11 @@
 import { randomUUID } from "crypto"
 import Anthropic from "@anthropic-ai/sdk"
 import { NextResponse } from "next/server"
+import {
+  applicantIdentityFromRow,
+  applicantIdentityPayload,
+  type ApplicantIdentity,
+} from "@/lib/applicant-identity"
 import { scoreMessage, type ConversationMessage } from "@/lib/scoring"
 import type { AdminActor } from "@/lib/admin-actor"
 import {
@@ -134,6 +139,7 @@ export type PostSessionMessageInput = {
   sessionId: string
   message: string
   personaId?: string | null
+  applicantIdentity?: ApplicantIdentity | null
   /** Playground (`/doorcheck`): explicit project when caller is authenticated. */
   projectId?: string | null
   playgroundActor?: AdminActor | null
@@ -149,7 +155,7 @@ export type PostSessionMessageInput = {
 export async function postSessionMessage(
   input: PostSessionMessageInput,
 ): Promise<NextResponse> {
-  const { message, sessionId, personaId } = input
+  const { message, sessionId, personaId, applicantIdentity } = input
   if (!message?.trim() || !sessionId?.trim()) {
     return traceJson(
       input,
@@ -312,10 +318,11 @@ export async function postSessionMessage(
   const rejectThreshold: number = defaultPersona?.reject_threshold ?? 0.25
 
   let sessionRowId: string
+  let sessionApplicantIdentity: ApplicantIdentity | null = applicantIdentity ?? null
 
   const { data: existing } = await supabase
     .from("sessions")
-    .select("id, status")
+    .select("id, status, applicant_email, applicant_name")
     .eq("session_id", sessionId)
     .eq("project_id", projectId)
     .maybeSingle()
@@ -330,8 +337,33 @@ export async function postSessionMessage(
         { status: 409 },
       )
     }
+    if (
+      applicantIdentity?.email &&
+      existing.applicant_email &&
+      existing.applicant_email !== applicantIdentity.email
+    ) {
+      return traceJson(
+        input,
+        { error: "Applicant identity does not match this session" },
+        { status: 409 },
+      )
+    }
+    if (applicantIdentity && !existing.applicant_email) {
+      await supabase
+        .from("sessions")
+        .update(applicantIdentityPayload(applicantIdentity))
+        .eq("id", existing.id)
+    }
+    sessionApplicantIdentity = applicantIdentity ?? applicantIdentityFromRow(existing)
     sessionRowId = existing.id
   } else {
+    if (!applicantIdentity && !projectIdOverride) {
+      return traceJson(
+        input,
+        { error: "applicant.email is required to start a session" },
+        { status: 400 },
+      )
+    }
     const { data: created, error: createError } = await supabase
       .from("sessions")
       .insert({
@@ -339,6 +371,7 @@ export async function postSessionMessage(
         persona_id: resolvedPersonaId,
         organisation_id: organisationId,
         project_id: projectId,
+        ...applicantIdentityPayload(applicantIdentity),
       })
       .select("id")
       .single()
@@ -509,6 +542,7 @@ export async function postSessionMessage(
             }
           : null,
         transcript: transcriptForExtraction,
+        applicant: sessionApplicantIdentity,
       })
       profile = result?.profile ?? null
     } catch (err) {

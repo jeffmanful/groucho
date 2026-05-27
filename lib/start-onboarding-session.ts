@@ -1,4 +1,8 @@
 import { NextResponse } from "next/server"
+import {
+  applicantIdentityPayload,
+  type ApplicantIdentity,
+} from "@/lib/applicant-identity"
 import { log } from "@/lib/logger"
 import { REQUEST_ID_HEADER } from "@/lib/request-trace"
 import { supabase } from "@/lib/supabase"
@@ -38,6 +42,8 @@ function currentStepPayload(steps: OnboardingFlowStep[], stepId: string) {
 export type StartOnboardingSessionInput = {
   sessionId: string
   personaId?: string
+  applicantIdentity?: ApplicantIdentity | null
+  allowMissingApplicantIdentity?: boolean
   requestId?: string
   context: ProjectContext
   projectSettings: NormalizedProjectSettings
@@ -46,7 +52,13 @@ export type StartOnboardingSessionInput = {
 export async function startOnboardingSession(
   input: StartOnboardingSessionInput,
 ): Promise<NextResponse> {
-  const { sessionId, context, projectSettings } = input
+  const {
+    sessionId,
+    context,
+    projectSettings,
+    applicantIdentity,
+    allowMissingApplicantIdentity,
+  } = input
   const { organisationId, projectId, apiKeyId } = context
   const flow = resolveRuntimeFlowConfig(projectSettings)
 
@@ -95,7 +107,7 @@ export async function startOnboardingSession(
 
   const { data: existing } = await supabase
     .from("sessions")
-    .select("id, status, current_step_id, flow_version")
+    .select("id, status, current_step_id, flow_version, applicant_email, applicant_name")
     .eq("session_id", sessionId)
     .eq("project_id", projectId)
     .maybeSingle()
@@ -103,6 +115,23 @@ export async function startOnboardingSession(
   if (existing) {
     if (CONCLUDED.includes(existing.status)) {
       return traceJson(input, { error: "Session concluded" }, { status: 409 })
+    }
+    if (
+      applicantIdentity?.email &&
+      existing.applicant_email &&
+      existing.applicant_email !== applicantIdentity.email
+    ) {
+      return traceJson(
+        input,
+        { error: "Applicant identity does not match this session" },
+        { status: 409 },
+      )
+    }
+    if (applicantIdentity && !existing.applicant_email) {
+      await supabase
+        .from("sessions")
+        .update(applicantIdentityPayload(applicantIdentity))
+        .eq("id", existing.id)
     }
 
     const { data: lastMsg } = await supabase
@@ -134,6 +163,15 @@ export async function startOnboardingSession(
   }
 
   async function insertSession(includeOnboardingState: boolean) {
+    if (!applicantIdentity && !allowMissingApplicantIdentity) {
+      return {
+        data: null,
+        error: {
+          code: "GROUCHO_APPLICANT_REQUIRED",
+          message: "applicant.email is required to start a session",
+        },
+      }
+    }
     const row: Record<string, unknown> = {
       session_id: sessionId,
       persona_id: resolvedPersonaId,
@@ -141,6 +179,7 @@ export async function startOnboardingSession(
       project_id: projectId,
       flow_version: activeFlow.version,
       current_step_id: firstStep.id,
+      ...applicantIdentityPayload(applicantIdentity),
     }
     if (includeOnboardingState) row.onboarding_state = null
     return supabase.from("sessions").insert(row).select("id").single()
@@ -156,10 +195,14 @@ export async function startOnboardingSession(
     ;({ data: created, error: createError } = await insertSession(false))
   }
 
+  if (createError?.code === "GROUCHO_APPLICANT_REQUIRED") {
+    return traceJson(input, { error: createError.message }, { status: 400 })
+  }
+
   if (createError?.code === "23505") {
     const { data: raced } = await supabase
       .from("sessions")
-      .select("id, status, current_step_id, flow_version")
+      .select("id, status, current_step_id, flow_version, applicant_email, applicant_name")
       .eq("session_id", sessionId)
       .eq("project_id", projectId)
       .maybeSingle()

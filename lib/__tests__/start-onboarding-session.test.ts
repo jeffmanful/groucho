@@ -127,6 +127,7 @@ describe("startOnboardingSession", () => {
     const { startOnboardingSession } = await import("@/lib/start-onboarding-session")
     const res = await startOnboardingSession({
       sessionId: "start_sess_12345678",
+      applicantIdentity: { email: "applicant@example.com" },
       context: {
         organisationId: "org1",
         projectId: "proj1",

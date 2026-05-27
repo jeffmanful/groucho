@@ -1,4 +1,5 @@
 import { createHmac, randomBytes, randomUUID } from "crypto"
+import type { ApplicantIdentity } from "@/lib/applicant-identity"
 import type { ConversationMessage, Score } from "@/lib/scoring"
 import { supabase } from "@/lib/supabase"
 import {
@@ -37,6 +38,7 @@ export type VerdictPayload = {
     internal_id: string
     status: string
   }
+  applicant?: ApplicantIdentity
   outcome: "PASS" | "REDIRECT" | "REJECT"
   scores?: Score
   profile?: Profile
@@ -76,6 +78,7 @@ export async function recordVerdictAndEnqueueWebhooks(opts: {
   persona?: PersonaForExtraction | null
   /** Full conversation transcript to feed the extractor. */
   transcript?: ConversationMessage[]
+  applicant?: ApplicantIdentity | null
 }): Promise<{ profile: Profile | null }> {
   const { data: project } = await supabase
     .from("projects")
@@ -166,6 +169,7 @@ export async function recordVerdictAndEnqueueWebhooks(opts: {
       internal_id: opts.sessionInternalId,
       status: opts.terminalStatus,
     },
+    ...(opts.applicant ? { applicant: opts.applicant } : {}),
     outcome,
     scores: opts.scores,
     ...(profile ? { profile } : {}),

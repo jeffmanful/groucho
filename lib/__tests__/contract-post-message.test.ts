@@ -41,6 +41,7 @@ vi.mock("@/lib/scoring", () => ({
 }))
 
 const recordVerdictMock = vi.fn().mockResolvedValue({ profile: null })
+const testApplicant = { email: "applicant@example.com", name: "Test Applicant" }
 
 vi.mock("@/lib/verdict-webhook", () => ({
   recordVerdictAndEnqueueWebhooks: (...args: unknown[]) => recordVerdictMock(...args),
@@ -221,6 +222,7 @@ describe("contract: postSessionMessage", () => {
       authorization: "Bearer gk_test_x",
       sessionId: "sess_profile_path_1",
       message: "hello",
+      applicantIdentity: testApplicant,
     })
     expect(res.status).toBe(200)
     const body = await jsonFromResponse(res as any)
@@ -237,6 +239,7 @@ describe("contract: postSessionMessage", () => {
       authorization: "Bearer gk_test_x",
       sessionId: "sess_12345678",
       message: "hello",
+      applicantIdentity: testApplicant,
     })
     expect(res.status).toBe(200)
     const body = await jsonFromResponse(res as any)
@@ -248,6 +251,18 @@ describe("contract: postSessionMessage", () => {
       cultural_depth: 0.5,
       overall: 0.5,
     })
+  })
+
+  it("400: new public sessions require applicant email", async () => {
+    const { postSessionMessage } = await import("@/lib/post-session-message")
+    const res = await postSessionMessage({
+      authorization: "Bearer gk_test_x",
+      sessionId: "sess_missing_applicant",
+      message: "hello",
+    })
+    expect(res.status).toBe(400)
+    const body = await jsonFromResponse(res as any)
+    expect(body.error).toBe("applicant.email is required to start a session")
   })
 
   it("409: session concluded", async () => {
@@ -279,6 +294,7 @@ describe("contract: postSessionMessage", () => {
       authorization: "Bearer gk_test_x",
       sessionId: "sess_12345679",
       message: "hello",
+      applicantIdentity: testApplicant,
     })
     expect(res.status).toBe(503)
     const body = await jsonFromResponse(res as any)
@@ -294,6 +310,7 @@ describe("contract: postSessionMessage", () => {
       authorization: "Bearer gk_test_x",
       sessionId: "sess_rl_12345678",
       message: "hello",
+      applicantIdentity: testApplicant,
     }
     expect((await postSessionMessage(base as any)).status).toBe(200)
     expect((await postSessionMessage(base as any)).status).toBe(200)

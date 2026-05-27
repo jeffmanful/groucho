@@ -73,6 +73,42 @@
   align-items: flex-end;
 }
 
+.groucho-applicant-form {
+  border: 1px solid var(--groucho-border);
+  border-radius: 4px;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.groucho-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.groucho-field__label {
+  color: var(--groucho-muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+}
+
+.groucho-field__input {
+  background: transparent;
+  border: 1px solid var(--groucho-border);
+  border-radius: 4px;
+  color: var(--groucho-fg);
+  padding: 0.5rem 0.65rem;
+  font: inherit;
+  font-size: 0.88rem;
+}
+
+.groucho-field__input:focus {
+  outline: 2px solid var(--groucho-accent);
+  outline-offset: 1px;
+}
+
 .groucho-composer__input {
   flex: 1;
   resize: vertical;

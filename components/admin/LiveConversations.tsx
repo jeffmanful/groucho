@@ -27,6 +27,8 @@ type LiveSession = {
   status: "active" | "passed" | "failed" | "redirected" | "rejected"
   created_at: string
   updated_at: string
+  applicant_email: string | null
+  applicant_name: string | null
   messages: Message[]
 }
 
@@ -64,7 +66,7 @@ export default function LiveConversations() {
     }
     const { data: convs } = await supabase
       .from("sessions")
-      .select("id, session_id, status, created_at, updated_at")
+      .select("id, session_id, status, created_at, updated_at, applicant_email, applicant_name")
       .order("created_at", { ascending: false })
 
     if (!convs?.length) {
@@ -238,7 +240,13 @@ export default function LiveConversations() {
     () =>
       sessions.filter((c) => {
         if (filter !== "all" && c.status !== filter) return false
-        if (search && !c.session_id.toLowerCase().includes(search.toLowerCase()))
+        const q = search.toLowerCase()
+        const contact = `${c.applicant_email ?? ""} ${c.applicant_name ?? ""}`.toLowerCase()
+        if (
+          search &&
+          !c.session_id.toLowerCase().includes(q) &&
+          !contact.includes(q)
+        )
           return false
         return true
       }),
@@ -248,7 +256,11 @@ export default function LiveConversations() {
   function toggle(id: string) {
     setExpanded((prev) => {
       const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
       return next
     })
   }
@@ -258,6 +270,8 @@ export default function LiveConversations() {
       "session_id",
       "status",
       "created_at",
+      "applicant_email",
+      "applicant_name",
       "message_count",
       "avg_overall_score",
     ]
@@ -269,7 +283,15 @@ export default function LiveConversations() {
         scores.length > 0
           ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2)
           : ""
-      return [c.session_id, c.status, c.created_at, c.messages.length, avg]
+      return [
+        c.session_id,
+        c.status,
+        c.created_at,
+        c.applicant_email ?? "",
+        c.applicant_name ?? "",
+        c.messages.length,
+        avg,
+      ]
     })
     const csv = [header, ...rows].map((r) => r.join(",")).join("\n")
     const blob = new Blob([csv], { type: "text/csv" })
@@ -358,7 +380,7 @@ export default function LiveConversations() {
 
         <input
           type="text"
-          placeholder="search session id"
+          placeholder="search session id or email"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           style={{
@@ -440,6 +462,18 @@ export default function LiveConversations() {
                 >
                   {conv.status}
                 </span>
+
+                {(conv.applicant_name || conv.applicant_email) && (
+                  <span
+                    style={{
+                      opacity: 0.35,
+                      fontSize: "0.7rem",
+                      fontFamily: "monospace",
+                    }}
+                  >
+                    {conv.applicant_name || conv.applicant_email}
+                  </span>
+                )}
 
                 {isTyping && (
                   <span

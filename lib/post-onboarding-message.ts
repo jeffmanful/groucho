@@ -1,5 +1,10 @@
 import { randomUUID } from "crypto"
 import { NextResponse } from "next/server"
+import {
+  applicantIdentityFromRow,
+  applicantIdentityPayload,
+  type ApplicantIdentity,
+} from "@/lib/applicant-identity"
 import type { ConversationMessage } from "@/lib/scoring"
 import { log } from "@/lib/logger"
 import { REQUEST_ID_HEADER } from "@/lib/request-trace"
@@ -159,6 +164,8 @@ export async function postOnboardingMessage(
   }
 
   let sessionRowId: string
+  let sessionApplicantIdentity: ApplicantIdentity | null =
+    input.applicantIdentity ?? null
   let currentStepId: string | null = null
   let flowVersion: string | null = null
   let onboardingState: OnboardingState = {}
@@ -168,12 +175,16 @@ export async function postOnboardingMessage(
     status: string
     current_step_id: string | null
     flow_version: string | null
+    applicant_email?: string | null
+    applicant_name?: string | null
     onboarding_state?: unknown
   } | null = null
 
   const sessionSelect = await supabase
     .from("sessions")
-    .select("id, status, current_step_id, flow_version, onboarding_state")
+    .select(
+      "id, status, current_step_id, flow_version, applicant_email, applicant_name, onboarding_state",
+    )
     .eq("session_id", sessionId)
     .eq("project_id", projectId)
     .maybeSingle()
@@ -181,7 +192,7 @@ export async function postOnboardingMessage(
   if (sessionSelect.error?.message?.includes("onboarding_state")) {
     const fallback = await supabase
       .from("sessions")
-      .select("id, status, current_step_id, flow_version")
+      .select("id, status, current_step_id, flow_version, applicant_email, applicant_name")
       .eq("session_id", sessionId)
       .eq("project_id", projectId)
       .maybeSingle()
@@ -194,11 +205,37 @@ export async function postOnboardingMessage(
     if (CONCLUDED.includes(existing.status)) {
       return traceJson(input, { error: "Session concluded" }, { status: 409 })
     }
+    if (
+      input.applicantIdentity?.email &&
+      existing.applicant_email &&
+      existing.applicant_email !== input.applicantIdentity.email
+    ) {
+      return traceJson(
+        input,
+        { error: "Applicant identity does not match this session" },
+        { status: 409 },
+      )
+    }
+    if (input.applicantIdentity && !existing.applicant_email) {
+      await supabase
+        .from("sessions")
+        .update(applicantIdentityPayload(input.applicantIdentity))
+        .eq("id", existing.id)
+    }
     sessionRowId = existing.id
+    sessionApplicantIdentity =
+      input.applicantIdentity ?? applicantIdentityFromRow(existing)
     currentStepId = existing.current_step_id ?? null
     flowVersion = existing.flow_version ?? flow.version
     onboardingState = parseOnboardingState(existing.onboarding_state)
   } else {
+    if (!input.applicantIdentity && !input.projectId) {
+      return traceJson(
+        input,
+        { error: "applicant.email is required to start a session" },
+        { status: 400 },
+      )
+    }
     const { data: created, error: createError } = await supabase
       .from("sessions")
       .insert({
@@ -209,6 +246,7 @@ export async function postOnboardingMessage(
         flow_version: flow.version,
         current_step_id: null,
         onboarding_state: null,
+        ...applicantIdentityPayload(input.applicantIdentity),
       })
       .select("id")
       .single()
@@ -431,6 +469,7 @@ export async function postOnboardingMessage(
         scores: NEUTRAL_SCORES,
         persona: mergedPersona,
         transcript,
+        applicant: sessionApplicantIdentity,
       })
       profile = result?.profile ?? null
       if (profile) {

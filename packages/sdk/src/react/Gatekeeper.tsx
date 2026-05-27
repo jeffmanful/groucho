@@ -1,7 +1,12 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
-import type { Profile, ScoreBreakdown, SessionOutcome } from "../client.js"
+import type {
+  ApplicantIdentity,
+  Profile,
+  ScoreBreakdown,
+  SessionOutcome,
+} from "../client.js"
 import { GrouchoApiError } from "../errors.js"
 import { useGroucho } from "./context.js"
 import { Composer } from "./Composer.js"
@@ -10,6 +15,7 @@ import { ThinkingIndicator } from "./ThinkingIndicator.js"
 import { Transcript, type TranscriptLine } from "./Transcript.js"
 
 const STORAGE_PREFIX = "groucho.session:"
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export type GatekeeperProps = {
   sessionId?: string
@@ -17,8 +23,15 @@ export type GatekeeperProps = {
   personaId?: string | null
   onOutcome?: (
     outcome: SessionOutcome,
-    meta: { scores: ScoreBreakdown; secret?: string; profile?: Profile },
+    meta: {
+      scores: ScoreBreakdown
+      secret?: string
+      profile?: Profile
+      applicant?: ApplicantIdentity
+    },
   ) => void
+  applicant?: ApplicantIdentity | null
+  collectApplicant?: boolean
   renderHeader?: () => ReactNode
   renderFooter?: () => ReactNode
   className?: string
@@ -32,6 +45,8 @@ export function Gatekeeper({
   onSessionId,
   personaId,
   onOutcome,
+  applicant: applicantProp,
+  collectApplicant = true,
   renderHeader,
   renderFooter,
   className,
@@ -59,6 +74,10 @@ export function Gatekeeper({
   }, [sessionId, onSessionId])
 
   const [draft, setDraft] = useState("")
+  const [applicantEmail, setApplicantEmail] = useState(applicantProp?.email ?? "")
+  const [applicantName, setApplicantName] = useState(applicantProp?.name ?? "")
+  const [submittedApplicant, setSubmittedApplicant] =
+    useState<ApplicantIdentity | null>(applicantProp ?? null)
   const [lines, setLines] = useState<ChatLine[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -69,9 +88,27 @@ export function Gatekeeper({
     outcome === "redirected" ||
     outcome === "rejected"
 
+  const activeApplicant = applicantProp ?? submittedApplicant
+  const needsApplicant = collectApplicant && !activeApplicant
+
+  const submitApplicant = useCallback(() => {
+    const email = applicantEmail.trim().toLowerCase()
+    if (!email) {
+      setError("Email is required to start this application.")
+      return
+    }
+    if (!EMAIL_RE.test(email)) {
+      setError("Enter a valid email address.")
+      return
+    }
+    const name = applicantName.trim()
+    setError(null)
+    setSubmittedApplicant({ email, ...(name ? { name } : {}) })
+  }, [applicantEmail, applicantName])
+
   const send = useCallback(async () => {
     const text = draft.trim()
-    if (!text || !sessionId || loading || terminal) return
+    if (!text || !sessionId || loading || terminal || needsApplicant) return
 
     setError(null)
     setLoading(true)
@@ -87,6 +124,7 @@ export function Gatekeeper({
       const res = await client.sendMessage(sessionId, {
         message: text,
         personaId: personaId ?? null,
+        applicant: activeApplicant,
       })
       const assistantLine: ChatLine = {
         id: `a_${Date.now()}`,
@@ -100,6 +138,7 @@ export function Gatekeeper({
           scores: res.scores,
           ...(res.secret !== undefined ? { secret: res.secret } : {}),
           ...(res.profile !== undefined ? { profile: res.profile } : {}),
+          ...(activeApplicant ? { applicant: activeApplicant } : {}),
         })
       }
     } catch (e) {
@@ -132,6 +171,8 @@ export function Gatekeeper({
     personaId,
     sessionId,
     sessionIdProp,
+    activeApplicant,
+    needsApplicant,
     terminal,
   ])
 
@@ -159,15 +200,52 @@ export function Gatekeeper({
           {error}
         </p>
       ) : null}
-      <Transcript lines={transcriptLines} label={transcriptLabel} />
-      <ThinkingIndicator visible={loading} />
-      <Composer
-        value={draft}
-        onChange={setDraft}
-        onSubmit={() => void send()}
-        disabled={loading || terminal}
-        inputLabel={transcriptLabel ? `${transcriptLabel} input` : "Your message"}
-      />
+      {needsApplicant ? (
+        <form
+          className="groucho-applicant-form"
+          onSubmit={(e) => {
+            e.preventDefault()
+            submitApplicant()
+          }}
+        >
+          <label className="groucho-field">
+            <span className="groucho-field__label">Email</span>
+            <input
+              className="groucho-field__input"
+              type="email"
+              value={applicantEmail}
+              onChange={(e) => setApplicantEmail(e.target.value)}
+              autoComplete="email"
+              required
+            />
+          </label>
+          <label className="groucho-field">
+            <span className="groucho-field__label">Name</span>
+            <input
+              className="groucho-field__input"
+              type="text"
+              value={applicantName}
+              onChange={(e) => setApplicantName(e.target.value)}
+              autoComplete="name"
+            />
+          </label>
+          <button type="submit" className="groucho-composer__send">
+            Start
+          </button>
+        </form>
+      ) : (
+        <>
+          <Transcript lines={transcriptLines} label={transcriptLabel} />
+          <ThinkingIndicator visible={loading} />
+          <Composer
+            value={draft}
+            onChange={setDraft}
+            onSubmit={() => void send()}
+            disabled={loading || terminal}
+            inputLabel={transcriptLabel ? `${transcriptLabel} input` : "Your message"}
+          />
+        </>
+      )}
       {renderFooter?.()}
     </div>
   )

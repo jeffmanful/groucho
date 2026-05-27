@@ -55,6 +55,8 @@ type SessionRow = {
   created_at: string
   updated_at: string
   persona_id?: string | null
+  applicant_email?: string | null
+  applicant_name?: string | null
 }
 
 type InvitationRow = {
@@ -1671,6 +1673,9 @@ function OrganisationDetailPageInner() {
                 >
                   <span style={{ opacity: 0.45 }}>{s.session_id.slice(0, 12)}…</span>
                   <span style={{ opacity: 0.35 }}>{s.status}</span>
+                  <span style={{ opacity: 0.35 }}>
+                    {s.applicant_name || s.applicant_email || "anonymous"}
+                  </span>
                   <span style={{ opacity: 0.25, marginLeft: "auto" }}>
                     {new Date(s.created_at).toLocaleString()}
                   </span>

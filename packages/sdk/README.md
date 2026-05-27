@@ -92,7 +92,10 @@ const groucho = createServerClient({
   apiKey: process.env.GROUPCHO_API_KEY!,
 })
 
-const res = await groucho.sendMessage("sess_abc", { message: "Hi." })
+const res = await groucho.sendMessage("sess_abc", {
+  message: "Hi.",
+  applicant: { email: "applicant@example.com", name: "Applicant Name" },
+})
 if (res.status !== "active") {
   // res.profile carries the extracted profile on terminal turns
 }
@@ -120,7 +123,9 @@ import {
 | `sessionId` | `string` | auto-generated `crypto.randomUUID()` | Persisted in `sessionStorage` per page. |
 | `onSessionId` | `(id: string) => void` | — | Notified once the session id is decided. |
 | `personaId` | `string \| null` | `null` | Optional persona override; must belong to the project and be active. |
-| `onOutcome` | `(outcome, { scores, secret?, profile? }) => void` | — | Fires once when the session reaches a terminal state. |
+| `applicant` | `{ email: string; name?: string }` | — | First-class applicant identity. When omitted, the default UI asks for email and optional name before chat. |
+| `collectApplicant` | `boolean` | `true` | Set `false` only when the host app has already collected identity elsewhere. |
+| `onOutcome` | `(outcome, { scores, secret?, profile?, applicant? }) => void` | — | Fires once when the session reaches a terminal state. |
 | `renderHeader` / `renderFooter` | `() => ReactNode` | — | Slots for host branding. |
 | `className` | `string` | — | Appended to the root `groucho-root groucho-gatekeeper` class list. |
 | `transcriptLabel` | `string` | — | aria-label for the transcript region. |
@@ -144,7 +149,10 @@ const groucho = createClient({
 })
 
 try {
-  const res = await groucho.sendMessage("sess_abc", { message: "Hi." })
+  const res = await groucho.sendMessage("sess_abc", {
+    message: "Hi.",
+    applicant: { email: "applicant@example.com" },
+  })
 } catch (e) {
   if (e instanceof GrouchoApiError && e.status === 409) {
     // session already concluded — start a new one
