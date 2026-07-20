@@ -1,5 +1,4 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr"
-import type { SupabaseClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
 import { verifyPeAuthEmail, isAllowedPlatformEmail } from "@/lib/pe-auth"
 import { nextWithRequestId } from "@/lib/with-request-trace"
@@ -15,6 +14,10 @@ const PUBLIC_PATHS = [
   "/api/me/",
 ]
 const STATIC_PREFIXES = ["/_next/", "/favicon.ico"]
+
+type MiddlewareAuthClient = {
+  getUser(): Promise<{ data: { user: { id: string } | null } }>
+}
 
 function authFailure(req: NextRequest) {
   const { pathname } = req.nextUrl
@@ -55,12 +58,10 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  let res = NextResponse.next({ request: { headers: req.headers } })
+  const res = NextResponse.next({ request: { headers: req.headers } })
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   if (url && anon) {
-    // `createServerClient` return type can resolve `auth` too narrowly in middleware (Edge) checks;
-    // assert full client so `auth.getUser()` matches @supabase/supabase-js.
     const supabase = createServerClient(url, anon, {
       cookies: {
         getAll() {
@@ -70,10 +71,11 @@ export async function middleware(req: NextRequest) {
           cookiesToSet.forEach(({ name, value, options }) => res.cookies.set(name, value, options))
         },
       },
-    }) as SupabaseClient
+    })
+    const auth = supabase.auth as unknown as MiddlewareAuthClient
     const {
       data: { user },
-    } = await supabase.auth.getUser()
+    } = await auth.getUser()
     if (user) {
       return res
     }

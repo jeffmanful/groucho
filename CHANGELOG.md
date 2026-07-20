@@ -68,6 +68,9 @@ will follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   differs from the configured browser client key.
 - Preserved legacy full-transcript behavior for sessions created before compact
   application signal metadata was available.
+- Fixed Vercel middleware typechecking when Supabase resolves `auth` to its
+  narrower internal client declaration, while retaining server-verified
+  `getUser()` authentication.
 
 ### Performance
 
