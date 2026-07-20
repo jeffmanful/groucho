@@ -2,6 +2,9 @@ import type { components } from "./generated/openapi.js"
 import { GrouchoApiError } from "./errors.js"
 
 export type PostMessageResponse = components["schemas"]["PostMessageResponse"]
+export type GrouchoInteractionUi = components["schemas"]["GrouchoInteractionUi"]
+export type OpeningInteraction = components["schemas"]["OpeningInteraction"]
+export type StartSessionResponse = components["schemas"]["StartSessionResponse"]
 export type Session = components["schemas"]["Session"]
 export type ScoreBreakdown = components["schemas"]["ScoreBreakdown"]
 export type SessionOutcome = components["schemas"]["SessionOutcome"]
@@ -37,6 +40,16 @@ export interface GrouchoClient {
     sessionId: string,
     input: { email: string; secret?: string },
   ): Promise<void>
+
+  startSession(
+    sessionId: string,
+    input?: {
+      personaId?: string | null
+      applicant?: ApplicantIdentity | null
+      openingMessage?: string | null
+      openingInteraction?: OpeningInteraction | null
+    },
+  ): Promise<StartSessionResponse>
 }
 
 function joinUrl(base: string, path: string): string {
@@ -90,6 +103,32 @@ function assertPostMessageResponse(
   if (typeof body.message !== "string" || typeof body.status !== "string") {
     throw new GrouchoApiError(
       "Invalid Groucho API response: missing message or status",
+      status,
+      value,
+    )
+  }
+}
+
+function assertStartSessionResponse(
+  value: unknown,
+  status: number,
+): asserts value is StartSessionResponse {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new GrouchoApiError(
+      "Invalid Groucho API response: expected an object",
+      status,
+      value,
+    )
+  }
+
+  const body = value as Record<string, unknown>
+  if (
+    typeof body.message !== "string" ||
+    typeof body.status !== "string" ||
+    typeof body.projectType !== "string"
+  ) {
+    throw new GrouchoApiError(
+      "Invalid Groucho API response: missing message, status, or projectType",
       status,
       value,
     )
@@ -170,6 +209,27 @@ export function createClient(options: GrouchoClientOptions): GrouchoClient {
           ...(input.secret !== undefined ? { secret: input.secret } : {}),
         }),
       })
+    },
+
+    async startSession(sessionId, input = {}) {
+      const url = joinUrl(
+        options.baseUrl,
+        `/v1/sessions/${encodeURIComponent(sessionId)}/start`,
+      )
+      const res = await requestJson<StartSessionResponse>(url, {
+        method: "POST",
+        headers: headers(undefined),
+        body: JSON.stringify({
+          personaId: input.personaId ?? null,
+          ...(input.applicant ? { applicant: input.applicant } : {}),
+          ...(input.openingMessage ? { openingMessage: input.openingMessage } : {}),
+          ...(input.openingInteraction
+            ? { openingInteraction: input.openingInteraction }
+            : {}),
+        }),
+      })
+      assertStartSessionResponse(res, 200)
+      return res
     },
   }
 }

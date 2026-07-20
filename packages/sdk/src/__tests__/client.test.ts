@@ -33,7 +33,17 @@ describe("createClient — URL composition", () => {
     calls = []
     fakeFetch = vi.fn(async (url: string, init?: RequestInit) => {
       calls.push({ url, init })
-      return jsonResponse({ status: "active", scores: {}, message: "ok" })
+      const isStart = url.endsWith("/start")
+      return jsonResponse(
+        isStart
+          ? {
+              message: "Hi.",
+              status: "active",
+              projectType: "gatekeeper",
+              bootstrapped: true,
+            }
+          : { status: "active", scores: {}, message: "ok" },
+      )
     })
   })
 
@@ -62,13 +72,15 @@ describe("createClient — URL composition", () => {
     await client.sendMessage("abc", { message: "hi" })
     await client.getSession("abc")
     await client.submitAccessEmail("abc", { email: "u@example.com" })
+    await client.startSession("abc", { applicant: { email: "u@example.com" } })
 
     expect(calls.map((c) => c.url)).toEqual([
       "/api/groucho/v1/sessions/abc/messages",
       "/api/groucho/v1/sessions/abc",
       "/api/groucho/v1/sessions/abc/access",
+      "/api/groucho/v1/sessions/abc/start",
     ])
-    expect(calls.map((c) => c.init?.method)).toEqual(["POST", "GET", "POST"])
+    expect(calls.map((c) => c.init?.method)).toEqual(["POST", "GET", "POST", "POST"])
   })
 })
 
@@ -80,7 +92,17 @@ describe("createClient — headers and body", () => {
     calls = []
     fakeFetch = vi.fn(async (url: string, init?: RequestInit) => {
       calls.push({ url, init })
-      return jsonResponse({ status: "active", scores: {}, message: "ok" })
+      const isStart = url.endsWith("/start")
+      return jsonResponse(
+        isStart
+          ? {
+              message: "Hi.",
+              status: "active",
+              projectType: "gatekeeper",
+              bootstrapped: true,
+            }
+          : { status: "active", scores: {}, message: "ok" },
+      )
     })
   })
 
@@ -132,6 +154,76 @@ describe("createClient — headers and body", () => {
     await client.submitAccessEmail("abc", { email: "u@example.com", secret: "s_1" })
     const body = JSON.parse(fetchVoid.mock.calls[0][1].body as string)
     expect(body).toEqual({ email: "u@example.com", secret: "s_1" })
+  })
+
+  it("sends startSession body with personaId and applicant", async () => {
+    const fetchStart = vi.fn(async () =>
+      jsonResponse({
+        message: "Hi.",
+        status: "active",
+        projectType: "gatekeeper",
+        bootstrapped: true,
+      }),
+    )
+    const client = createClient({ baseUrl: "/api/groucho", fetch: fetchStart })
+    const res = await client.startSession("abc", {
+      personaId: "p1",
+      applicant: { email: "u@example.com", name: "User" },
+    })
+    const body = JSON.parse(fetchStart.mock.calls[0][1].body as string)
+    expect(body).toEqual({
+      personaId: "p1",
+      applicant: { email: "u@example.com", name: "User" },
+    })
+    expect(res.message).toBe("Hi.")
+    expect(res.projectType).toBe("gatekeeper")
+  })
+
+  it("sends openingMessage when provided", async () => {
+    const fetchStart = vi.fn(async () =>
+      jsonResponse({
+        message: "Welcome.",
+        status: "active",
+        projectType: "gatekeeper",
+        bootstrapped: true,
+      }),
+    )
+    const client = createClient({ baseUrl: "/api/groucho", fetch: fetchStart })
+    await client.startSession("abc", {
+      openingMessage: "Welcome.",
+    })
+    const body = JSON.parse(fetchStart.mock.calls[0][1].body as string)
+    expect(body.openingMessage).toBe("Welcome.")
+  })
+
+  it("sends openingInteraction when provided", async () => {
+    const fetchStart = vi.fn(async () =>
+      jsonResponse({
+        message: "Welcome.",
+        status: "active",
+        projectType: "gatekeeper",
+        ui: {
+          intent: "probe",
+          inputType: "singleSelect",
+          emotionalState: "neutral",
+          visualState: "curious",
+          options: ["Artist", "Curator"],
+        },
+        bootstrapped: true,
+      }),
+    )
+    const client = createClient({ baseUrl: "/api/groucho", fetch: fetchStart })
+    await client.startSession("abc", {
+      openingInteraction: {
+        inputType: "singleSelect",
+        options: ["Artist", "Curator"],
+      },
+    })
+    const body = JSON.parse(fetchStart.mock.calls[0][1].body as string)
+    expect(body.openingInteraction).toEqual({
+      inputType: "singleSelect",
+      options: ["Artist", "Curator"],
+    })
   })
 })
 

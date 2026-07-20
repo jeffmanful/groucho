@@ -44,13 +44,9 @@ export function computeTerminalStatusFromGatekeeperTurn(opts: {
   } = opts
 
   if (structuredToolUsed && structuredTerminal !== null) {
-    if (structuredTerminal === "pass") {
-      return scores.overall >= passThreshold ? "passed" : "redirected"
-    }
+    if (structuredTerminal === "pass") return "passed"
     if (structuredTerminal === "redirect") return "redirected"
-    if (structuredTerminal === "reject") {
-      return scores.overall <= rejectThreshold ? "rejected" : "redirected"
-    }
+    if (structuredTerminal === "reject") return "rejected"
     return null
   }
 

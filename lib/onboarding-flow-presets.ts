@@ -2,45 +2,70 @@ import type { OnboardingFlowStep } from "@/lib/project-settings"
 import { defaultOnboardingSteps } from "@/lib/project-settings"
 import { COLORS_DEFAULT_WELCOME } from "@/lib/onboarding-persona-template"
 
-/** COLORS forum onboarding — see COLORS_PERSONA_SPEC.md */
+/** COLORS forum application intake — static, lightweight flow; see COLORS_PERSONA_SPEC.md */
 export const COLORS_ONBOARDING_STEPS: OnboardingFlowStep[] = [
   {
     id: "intent",
     title: "Intent",
-    question: "What draws you to COLORS, beyond discovering new music?",
+    question: "What brought you here?",
     profile_key: "intent",
     required: true,
-    hint: "Share what you are looking for, not just discovery.",
+    interaction: {
+      inputType: "singleSelect",
+      options: ["Discover", "Community", "Share Work"],
+    },
   },
   {
-    id: "creative_relationship",
-    title: "Creative Relationship",
-    question: "What kind of creative expression tends to stay with you, and why?",
-    profile_key: "creative_relationship",
-    required: true,
-  },
-  {
-    id: "community_care",
-    title: "Community Care",
+    id: "artist_reference",
+    title: "Artist Reference",
     question:
-      "When you enter a creative community, what do you think people should protect for each other?",
-    profile_key: "community_care",
+      "Name an artist more people should know about. What would you want someone hearing them for the first time to notice?",
+    profile_key: "artist_reference",
     required: true,
+    min_answer_chars: 18,
   },
   {
-    id: "belonging",
-    title: "Belonging",
-    question: "What helps you feel safe, respected, and able to show up as yourself?",
-    profile_key: "belonging",
-    required: true,
-  },
-  {
-    id: "contribution",
-    title: "Contribution",
+    id: "recommendation",
+    title: "Recommendation",
     question:
-      "How would you want to contribute to the COLORS world without adding noise?",
-    profile_key: "contribution",
+      "What's the last song you recommended, and why did you think it was worth sharing?",
+    profile_key: "recommendation",
     required: true,
+    min_answer_chars: 18,
+  },
+  {
+    id: "community_value",
+    title: "Community Value",
+    question:
+      "Someone shares unfinished music that isn't really for you. How would you respond?",
+    profile_key: "community_value",
+    required: true,
+    min_answer_chars: 18,
+  },
+  {
+    id: "participation_style",
+    title: "Participation Style",
+    question: "Which sounds most like you?",
+    profile_key: "participation_style",
+    required: true,
+    interaction: {
+      inputType: "singleSelect",
+      options: [
+        "I mostly listen",
+        "I like discussing music",
+        "I enjoy giving feedback",
+        "I regularly share discoveries",
+      ],
+    },
+  },
+  {
+    id: "forum_contribution",
+    title: "Forum Contribution",
+    question:
+      "What's one thing you could realistically contribute in your first month?",
+    profile_key: "forum_contribution",
+    required: true,
+    min_answer_chars: 18,
   },
 ]
 
@@ -61,8 +86,8 @@ export const ONBOARDING_FLOW_PRESETS: OnboardingFlowPreset[] = [
   },
   {
     id: "colors",
-    label: "COLORS forum (5 questions)",
-    description: "Recommended flow from COLORS_PERSONA_SPEC.md.",
+    label: "COLORS forum application (6 inputs)",
+    description: "Static intake flow for early COLORS forum applications.",
     welcome_message: COLORS_DEFAULT_WELCOME,
     steps: COLORS_ONBOARDING_STEPS,
   },

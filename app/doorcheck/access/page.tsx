@@ -44,28 +44,30 @@ export default function Access() {
       }}
     >
       <div style={{ maxWidth: "360px", textAlign: "center" }}>
-        <p
-          style={{
-            fontSize: "1rem",
-            lineHeight: 1.55,
-            letterSpacing: "0.02em",
-            margin: 0,
-          }}
-        >
-          Thank you for your application.
-        </p>
         {welcomeLine ? (
           <p
             style={{
-              fontSize: "0.8rem",
+              fontSize: "1rem",
               lineHeight: 1.55,
-              opacity: 0.5,
-              marginTop: "1.25rem",
+              letterSpacing: "0.02em",
+              margin: 0,
             }}
           >
             {welcomeLine}
           </p>
-        ) : null}
+        ) : (
+          <p
+            style={{
+              fontSize: "1rem",
+              lineHeight: 1.55,
+              letterSpacing: "0.02em",
+              margin: 0,
+              opacity: 0.75,
+            }}
+          >
+            You&apos;re in.
+          </p>
+        )}
       </div>
     </div>
   )

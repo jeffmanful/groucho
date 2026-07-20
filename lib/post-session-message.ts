@@ -6,7 +6,7 @@ import {
   applicantIdentityPayload,
   type ApplicantIdentity,
 } from "@/lib/applicant-identity"
-import { scoreMessage, type ConversationMessage } from "@/lib/scoring"
+import type { ConversationMessage, Score } from "@/lib/scoring"
 import type { AdminActor } from "@/lib/admin-actor"
 import {
   resolveProjectContext,
@@ -25,11 +25,26 @@ import {
   parseGatekeeperStructuredResponse,
   type GatekeeperTerminalField,
 } from "@/lib/gatekeeper-structured-tool"
+import { DEFAULT_INTERACTION_SPEC } from "@/lib/gatekeeper-interaction-spec"
 import { computeTerminalStatusFromGatekeeperTurn } from "@/lib/gatekeeper-session-status"
 import { postOnboardingMessage } from "@/lib/post-onboarding-message"
 import {
   withTerminalDecisionAppendix,
 } from "@/lib/terminal-decision-prompt"
+import { buildApplicationExperiencePromptAppendix } from "@/lib/application-experience-prompt"
+import { DEFAULT_APPLICATION_CLOSING_MESSAGE } from "@/lib/project-settings"
+import { gatekeeperConversationModel } from "@/lib/gatekeeper-models"
+import {
+  applicationSignalDefinitions,
+  applicationSignalMetadata,
+  buildCompactApplicationStateMessage,
+  collectApplicationSignalAnswers,
+  expectedApplicationSignal,
+  hasLegacyUntaggedAnswers,
+  resolveNextApplicationSignal,
+  withCurrentSignalAnswer,
+  type ApplicationSignalMessage,
+} from "@/lib/application-signal-state"
 
 function traceJson(
   input: PostSessionMessageInput,
@@ -65,9 +80,9 @@ CONVERSATION STRUCTURE
 
 You have already sent the configured opening message. That's done.
 
-Exchange 1 — They respond to "Hi." You respond. 
-Exchange 2 — They answer. You probe what they actually care about. One question, nothing else.
-Exchange 3 — They answer. You test whether they understand loss — what disappears, why it matters, what their presence costs. One question or observation.
+Exchange 1 — They respond to your configured opening question. Read what they reveal and ask the next necessary question.
+Exchange 2 — They answer. Probe what they actually care about. One question, nothing else.
+Exchange 3 — They answer. Test whether they understand loss — what disappears, why it matters, what their presence costs. One question or observation.
 Exchange 4 — You've heard enough. Make your call.
 
 You can decide after exchange 3 if it's obvious. Don't drag it out past 4.
@@ -309,10 +324,6 @@ export async function postSessionMessage(
   const baseSystem = defaultPersona
     ? withTerminalDecisionAppendix(defaultPersona.prompt)
     : withTerminalDecisionAppendix(DOORMAN_SYSTEM_PROMPT_CORE)
-  const systemPrompt = `${withConfiguredOpeningContext(
-    baseSystem,
-    openingMessage,
-  )}\n\n${GATEKEEPER_STRUCTURED_SYSTEM_SUFFIX}`
   const resolvedPersonaId: string | null = defaultPersona?.id ?? null
   const passThreshold: number = defaultPersona?.pass_threshold ?? 0.65
   const rejectThreshold: number = defaultPersona?.reject_threshold ?? 0.25
@@ -412,30 +423,96 @@ export async function postSessionMessage(
 
   const { data: history } = await supabase
     .from("messages")
-    .select("role, content")
+    .select("role, content, metadata")
     .eq("session_id", sessionRowId)
     .order("sent_at", { ascending: true })
 
-  const dbHistory: ConversationMessage[] = (history ?? []).map((m) => ({
+  const historyRows: ApplicationSignalMessage[] = (history ?? []).map((m) => ({
     role: m.role as "user" | "assistant",
     content: m.content,
+    metadata: m.metadata,
+  }))
+  const dbHistory: ConversationMessage[] = historyRows.map(({ role, content }) => ({
+    role,
+    content,
   }))
 
-  const historyForScoring = dbHistory.slice(0, -1)
-  const scorePromise = scoreMessage(message.trim(), historyForScoring)
+  const priorHistory = historyRows.slice(0, -1)
+  const signalDefinitions = applicationSignalDefinitions(
+    settings.applicationExperience.required_signals,
+  )
+  const storedSignalAnswers = collectApplicationSignalAnswers(
+    priorHistory,
+    signalDefinitions,
+  )
+  const useCompactSignalState =
+    signalDefinitions.length > 0 &&
+    !hasLegacyUntaggedAnswers(priorHistory, signalDefinitions)
+  const currentSignal = useCompactSignalState
+    ? expectedApplicationSignal(
+        priorHistory,
+        signalDefinitions,
+        storedSignalAnswers,
+      )
+    : null
+  const compactSignalAnswers = withCurrentSignalAnswer(
+    storedSignalAnswers,
+    currentSignal,
+    message.trim(),
+  )
 
-  const claudeMessages: Anthropic.MessageParam[] = [
-    { role: "assistant", content: openingMessage },
-    ...dbHistory.map((m) => ({ role: m.role, content: m.content })),
-  ]
+  const hasPersistedOpener =
+    dbHistory.length > 0 && dbHistory[0].role === "assistant"
+  const effectiveOpeningMessage = hasPersistedOpener
+    ? dbHistory[0].content
+    : openingMessage
+  const applicationAppendix = buildApplicationExperiencePromptAppendix(
+    settings.applicationExperience,
+  )
+  const systemPrompt = `${withConfiguredOpeningContext(
+    baseSystem,
+    effectiveOpeningMessage,
+  )}${applicationAppendix}\n\n${GATEKEEPER_STRUCTURED_SYSTEM_SUFFIX}`
+
+  const previousAssistant = [...priorHistory]
+    .reverse()
+    .find((entry) => entry.role === "assistant")
+  const currentQuestion = previousAssistant?.content ?? effectiveOpeningMessage
+  const claudeMessages: Anthropic.MessageParam[] = useCompactSignalState
+    ? [
+        {
+          role: "user",
+          content: buildCompactApplicationStateMessage({
+            definitions: signalDefinitions,
+            answers: compactSignalAnswers,
+            currentSignal,
+            currentQuestion,
+            currentAnswer: message.trim(),
+          }),
+        },
+      ]
+    : hasPersistedOpener
+      ? dbHistory.map((m) => ({ role: m.role, content: m.content }))
+      : [
+          { role: "assistant", content: effectiveOpeningMessage },
+          ...dbHistory.map((m) => ({ role: m.role, content: m.content })),
+        ]
 
   let assistantContent = ""
   let structuredToolSeen = false
   let structuredTerminal: GatekeeperTerminalField | null = null
+  let parsedNextSignalKey: string | null = null
+  let interactionSpec = DEFAULT_INTERACTION_SPEC
+  let scores: Score = {
+    specificity: 0.5,
+    authenticity: 0.5,
+    cultural_depth: 0.5,
+    overall: 0.5,
+  }
   try {
     const response = await client.messages.create({
-      model: "claude-opus-4-6",
-      max_tokens: 512,
+      model: gatekeeperConversationModel(),
+      max_tokens: 256,
       system: systemPrompt,
       messages: claudeMessages,
       tools: [gatekeeperResponseTool],
@@ -446,6 +523,9 @@ export async function postSessionMessage(
     assistantContent = parsed.reply
     structuredToolSeen = parsed.toolSeen
     structuredTerminal = parsed.terminal
+    parsedNextSignalKey = parsed.nextSignalKey
+    interactionSpec = parsed.interaction
+    scores = parsed.scores
 
     if (!parsed.toolSeen) {
       log.warn("gatekeeper_structured_tool_missing", {
@@ -469,35 +549,23 @@ export async function postSessionMessage(
     )
   }
 
-  const scores = await scorePromise
-  await supabase
+  const { error: userMetadataError } = await supabase
     .from("messages")
-    .update({ metadata: { scores } })
+    .update({
+      metadata: {
+        scores,
+        ...(useCompactSignalState && currentSignal
+          ? { application_signal: applicationSignalMetadata(currentSignal) }
+          : {}),
+      },
+    })
     .eq("id", userMsg.id)
-
-  const assistantMetadata =
-    structuredToolSeen && structuredTerminal !== null
-      ? {
-          gatekeeper_structured: true,
-          gatekeeper_terminal: structuredTerminal,
-        }
-      : null
-
-  const { error: asstError } = await supabase.from("messages").insert({
-    session_id: sessionRowId,
-    organisation_id: organisationId,
-    project_id: projectId,
-    role: "assistant",
-    content: assistantContent,
-    ...(assistantMetadata ? { metadata: assistantMetadata } : {}),
-  })
-
-  if (asstError) {
-    log.error("assistant_message_insert_failed", {
+  if (userMetadataError) {
+    log.error("user_message_metadata_update_failed", {
       requestId: input.requestId,
       projectId,
       sessionId,
-      detail: asstError.message,
+      detail: userMetadataError.message,
     })
   }
 
@@ -509,6 +577,62 @@ export async function postSessionMessage(
     structuredTerminal,
     structuredToolUsed: structuredToolSeen,
   })
+  const nextSignal =
+    status === null && useCompactSignalState
+      ? resolveNextApplicationSignal(
+          parsedNextSignalKey,
+          signalDefinitions,
+          compactSignalAnswers,
+          currentSignal,
+        )
+      : null
+  const assistantMetadata =
+    structuredToolSeen && structuredTerminal !== null
+      ? {
+          gatekeeper_structured: true,
+          gatekeeper_terminal: structuredTerminal,
+          ui: interactionSpec,
+          ...(nextSignal
+            ? { application_next_signal: applicationSignalMetadata(nextSignal) }
+            : {}),
+        }
+      : null
+
+  const modelAssistantContent = assistantContent
+  const applicationClosingMessage =
+    settings.applicationExperience.closing_message?.trim() ||
+    DEFAULT_APPLICATION_CLOSING_MESSAGE
+  const userVisibleAssistantContent =
+    status !== null
+      ? applicationClosingMessage
+      : modelAssistantContent
+
+  const persistedAssistantMetadata =
+    status !== null
+      ? {
+          ...(assistantMetadata ?? {}),
+          gatekeeper_model_reply: modelAssistantContent,
+          application_closing: true,
+        }
+      : assistantMetadata
+
+  const { error: asstError } = await supabase.from("messages").insert({
+    session_id: sessionRowId,
+    organisation_id: organisationId,
+    project_id: projectId,
+    role: "assistant",
+    content: userVisibleAssistantContent,
+    ...(persistedAssistantMetadata ? { metadata: persistedAssistantMetadata } : {}),
+  })
+
+  if (asstError) {
+    log.error("assistant_message_insert_failed", {
+      requestId: input.requestId,
+      projectId,
+      sessionId,
+      detail: asstError.message,
+    })
+  }
 
   let successSecret: string | null = null
   if (status === "passed") {
@@ -525,7 +649,7 @@ export async function postSessionMessage(
   if (status !== null) {
     const transcriptForExtraction: ConversationMessage[] = [
       ...dbHistory,
-      { role: "assistant", content: assistantContent },
+      { role: "assistant", content: userVisibleAssistantContent },
     ]
     try {
       const result = await recordVerdictAndEnqueueWebhooks({
@@ -556,9 +680,10 @@ export async function postSessionMessage(
   }
 
   return traceJson(input, {
-    message: assistantContent,
+    message: userVisibleAssistantContent,
     status: status ?? "active",
     scores,
+    ...(structuredToolSeen ? { ui: interactionSpec } : {}),
     ...(successSecret ? { secret: successSecret } : {}),
     ...(profile ? { profile } : {}),
   })

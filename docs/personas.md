@@ -13,8 +13,8 @@ The `personas` table stores:
 - `prompt` - System prompt used by the conversation engine.
 - `is_active` - Whether the persona can be selected.
 - `is_default` - Fallback persona when a project or request does not specify one.
-- `pass_threshold` - Gatekeeper score threshold for `pass`.
-- `reject_threshold` - Gatekeeper score threshold for `reject`.
+- `pass_threshold` - Legacy fallback threshold when an old plain-text pass token is returned.
+- `reject_threshold` - Legacy fallback threshold when an old plain-text reject token is returned.
 - `profile_schema` - Optional JSON object defining custom extracted profile fields.
 - `profile_extractor_hint` - Optional natural-language extraction guidance.
 
@@ -27,7 +27,7 @@ Gatekeeper projects:
 - The persona prompt drives tone, questioning style, and semantic pass/redirect/reject judgment.
 - The runtime appends Groucho's structured outcome instructions.
 - The model must call `groucho_respond` with `reply` and `terminal`.
-- `pass_threshold` and `reject_threshold` are used when normalising terminal decisions.
+- The structured `terminal` value is authoritative. `pass_threshold` and `reject_threshold` only normalize legacy plain-text decision tokens.
 
 Onboarding projects:
 
@@ -51,7 +51,7 @@ Example gatekeeper persona:
 {
   "name": "COLORS Application Host",
   "slug": "colors-application-host",
-  "prompt": "You are the COLORS application host. You are calm, selective, and direct. Ask short questions that reveal whether someone understands creative community, attention, care, and contribution. Do not reward polish or name-dropping. Look for specificity, humility, and awareness of others. End with a clear decision when you have heard enough.",
+  "prompt": "You are the COLORS application host. You are calm, selective, and direct. Follow the project's ordered application signals and ask question labels verbatim. Do not reward polish or name-dropping. Never ask who received or was sent a music recommendation; ask only what was recommended and why it felt worth sharing. Keep internal outcomes private and use the configured neutral closing message.",
   "is_active": true,
   "is_default": false,
   "pass_threshold": 0.65,

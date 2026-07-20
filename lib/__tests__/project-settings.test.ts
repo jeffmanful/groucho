@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest"
 import {
+  DEFAULT_APPLICATION_CLOSING_MESSAGE,
+  DEFAULT_ONBOARDING_EXPERIENCE,
   defaultOnboardingSteps,
+  parseApplicationExperience,
   validateProjectSettings,
 } from "@/lib/project-settings"
 
@@ -32,6 +35,67 @@ describe("validateProjectSettings", () => {
     }
   })
 
+  it("accepts full gatekeeper application experience config", () => {
+    const r = validateProjectSettings({
+      project_type: "gatekeeper",
+      application_experience: {
+        opening_message: "Welcome to COLORS.",
+        closing_message: "Thanks. We'll follow up soon.",
+        opening_interaction: {
+          inputType: "singleSelect",
+          options: ["Artist", "Curator"],
+        },
+        required_signals: ["intent", "contribution"],
+        preferred_input_types: ["text", "singleSelect"],
+        max_turns: 4,
+      },
+    })
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.settings.application_experience).toEqual({
+        opening_message: "Welcome to COLORS.",
+        closing_message: "Thanks. We'll follow up soon.",
+        opening_interaction: {
+          inputType: "singleSelect",
+          options: ["Artist", "Curator"],
+        },
+        required_signals: ["intent", "contribution"],
+        preferred_input_types: ["text", "singleSelect"],
+        max_turns: 4,
+      })
+    }
+  })
+
+  it("preserves full application questions used as ordered signals", () => {
+    const question =
+      "Name an artist more people should know about. What would you want someone hearing them for the first time to notice?"
+    const parsed = parseApplicationExperience({
+      application_experience: { required_signals: [question] },
+    })
+    expect(parsed.required_signals).toEqual([question])
+  })
+
+  it("applies the default neutral application closing message", () => {
+    const r = validateProjectSettings({
+      project_type: "gatekeeper",
+      application_experience: {
+        opening_message: "Welcome.",
+      },
+    })
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.settings.application_experience).toEqual({
+        opening_message: "Welcome.",
+      })
+    }
+
+    expect(
+      parseApplicationExperience({
+        application_experience: { opening_message: "Welcome." },
+      }).closing_message,
+    ).toBe(DEFAULT_APPLICATION_CLOSING_MESSAGE)
+  })
+
   it("rejects onboarding without steps", () => {
     const r = validateProjectSettings({ project_type: "onboarding" })
     expect(r.ok).toBe(false)
@@ -57,7 +121,9 @@ describe("validateProjectSettings", () => {
       expect(r.settings.project_type).toBe("onboarding")
       const fc = r.settings.flow_config as { steps: unknown[] }
       expect(fc.steps).toHaveLength(3)
-      expect(r.settings.onboarding_experience).toBeTruthy()
+      expect(r.settings.onboarding_experience).toEqual(
+        DEFAULT_ONBOARDING_EXPERIENCE,
+      )
     }
   })
 
@@ -76,6 +142,10 @@ describe("validateProjectSettings", () => {
             required: true,
             intro: "First, intent.",
             hint: "Be specific",
+            interaction: {
+              inputType: "singleSelect",
+              options: ["Discover", "Community", "Share Work"],
+            },
             followup_prompt: "More detail?",
             min_answer_chars: 30,
           },
@@ -96,6 +166,10 @@ describe("validateProjectSettings", () => {
       }
       expect(fc.welcome_message).toBe("Welcome.")
       expect(fc.steps[0].intro).toBe("First, intent.")
+      expect(fc.steps[0].interaction).toEqual({
+        inputType: "singleSelect",
+        options: ["Discover", "Community", "Share Work"],
+      })
       expect(fc.steps[0].min_answer_chars).toBe(30)
     }
   })

@@ -1,39 +1,37 @@
 /** COLORS persona template — see COLORS_PERSONA_SPEC.md */
 
 export const COLORS_PROFILE_EXTRACTOR_HINT =
-  "Extract practical, human-readable fields that help COLORS understand intent, creative relationship, community care, belonging needs, contribution style, and any safety context. Do not invent details. Keep sensitive identity details only when explicitly shared and relevant."
+  "Extract practical, human-readable fields that help COLORS understand why the person came, their artist reference, recommendation taste, community values, participation style, and likely forum contribution. Do not invent details."
 
 export const COLORS_PROFILE_SCHEMA: Record<string, unknown> = {
   type: "object",
   properties: {
     intent: {
       type: "string",
-      description: "Why the person is drawn to COLORS beyond music discovery.",
+      description: "What brought the person to the forum.",
     },
-    creative_relationship: {
+    artist_reference: {
       type: "string",
       description:
-        "What kind of creative expression resonates with them and why.",
+        "The artist they named and why they think more people should know about them.",
     },
-    community_care: {
+    recommendation: {
       type: "string",
       description:
-        "What they believe people should protect for each other in creative community.",
+        "The last song they recommended and why they thought it was worth sharing.",
     },
-    belonging: {
+    community_value: {
       type: "string",
       description:
-        "What helps them feel safe, respected, and able to show up fully.",
+        "How they would respond constructively to unfinished music that is not for them.",
     },
-    contribution: {
+    participation_style: {
       type: "string",
-      description: "How they want to contribute without adding noise.",
+      description: "The selected participation style.",
     },
-    safety_context: {
+    forum_contribution: {
       type: "string",
-      description:
-        "Relevant safety, care, access, or wellbeing context explicitly shared by the user.",
-      "x-pii": true,
+      description: "What they say they would add to the forum.",
     },
   },
   additionalProperties: false,

@@ -50,12 +50,17 @@ const DEFAULT_PROFILE_EXTRACT_STATUSES: TerminalSessionStatus[] = [
   "rejected",
 ]
 
-function resolveExtractStatuses(settings: unknown): TerminalSessionStatus[] | null {
+function resolveExtractStatuses(
+  settings: unknown,
+  projectType: "gatekeeper" | "onboarding",
+): TerminalSessionStatus[] | null {
   if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
-    return DEFAULT_PROFILE_EXTRACT_STATUSES
+    return projectType === "onboarding" ? null : DEFAULT_PROFILE_EXTRACT_STATUSES
   }
   const raw = (settings as Record<string, unknown>).profile_extract_on
-  if (raw === undefined) return DEFAULT_PROFILE_EXTRACT_STATUSES
+  if (raw === undefined) {
+    return projectType === "onboarding" ? null : DEFAULT_PROFILE_EXTRACT_STATUSES
+  }
   if (raw === false || raw === null) return null
   if (Array.isArray(raw)) {
     const filtered = raw.filter(
@@ -129,7 +134,7 @@ export async function recordVerdictAndEnqueueWebhooks(opts: {
   const verdictId = randomUUID()
 
   let profile: Profile | null = null
-  const extractStatuses = resolveExtractStatuses(project?.settings)
+  const extractStatuses = resolveExtractStatuses(project?.settings, projectType)
   const shouldExtract =
     extractStatuses !== null &&
     extractStatuses.includes(opts.terminalStatus) &&

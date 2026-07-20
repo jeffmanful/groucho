@@ -19,6 +19,7 @@ import {
   type ProjectUseCaseId,
 } from "@/lib/admin-project-setup"
 import {
+  DEFAULT_APPLICATION_CLOSING_MESSAGE,
   DEFAULT_APPLICATION_OPENING_MESSAGE,
   DEFAULT_ONBOARDING_EXPERIENCE,
   defaultOnboardingSteps,
@@ -28,6 +29,7 @@ import {
 import { OnboardingExperienceToggles } from "@/components/admin/OnboardingExperienceToggles"
 import { OnboardingFlowEditor } from "@/components/admin/OnboardingFlowEditor"
 import { PersonaSetupNote } from "@/components/admin/PersonaSetupNote"
+import { ApplicationExperienceFields } from "@/components/admin/ApplicationExperienceFields"
 import {
   COLORS_PROFILE_EXTRACTOR_HINT,
   COLORS_PROFILE_SCHEMA,
@@ -94,6 +96,12 @@ export default function EditProjectPage() {
     sessionMode: "live",
     personaId: "",
     applicationOpeningMessage: DEFAULT_APPLICATION_OPENING_MESSAGE,
+    applicationClosingMessage: DEFAULT_APPLICATION_CLOSING_MESSAGE,
+    applicationOpeningInputType: "",
+    applicationOpeningOptions: "",
+    applicationRequiredSignals: "",
+    applicationPreferredInputTypes: [],
+    applicationMaxTurns: "",
     flowSteps: [],
     welcomeMessage: "",
     onboardingExperience: { ...DEFAULT_ONBOARDING_EXPERIENCE },
@@ -515,29 +523,40 @@ export default function EditProjectPage() {
         />
 
         {form.projectType === "gatekeeper" && (
-          <div style={{ marginBottom: "1rem" }}>
-            <label style={setupLabel}>Opening message</label>
-            <textarea
-              value={form.applicationOpeningMessage}
-              onChange={(e) =>
-                patchForm({ applicationOpeningMessage: e.target.value })
+          <ApplicationExperienceFields
+            openingMessage={form.applicationOpeningMessage}
+            closingMessage={form.applicationClosingMessage}
+            openingInputType={form.applicationOpeningInputType}
+            openingOptions={form.applicationOpeningOptions}
+            requiredSignals={form.applicationRequiredSignals}
+            preferredInputTypes={form.applicationPreferredInputTypes}
+            maxTurns={form.applicationMaxTurns}
+            onChange={(patch) => {
+              if (patch.openingMessage !== undefined) {
+                patchForm({ applicationOpeningMessage: patch.openingMessage })
               }
-              rows={3}
-              placeholder={DEFAULT_APPLICATION_OPENING_MESSAGE}
-              style={{
-                ...setupInput,
-                maxWidth: "100%",
-                minHeight: "4rem",
-                resize: "vertical",
-                border: "1px solid rgba(255,255,255,0.1)",
-                padding: "0.45rem 0",
-              }}
-            />
-            <p style={{ fontSize: "0.72rem", opacity: 0.35, lineHeight: 1.45 }}>
-              Shown as the first assistant message before the applicant replies.
-              Tone and decision logic still live in the persona.
-            </p>
-          </div>
+              if (patch.closingMessage !== undefined) {
+                patchForm({ applicationClosingMessage: patch.closingMessage })
+              }
+              if (patch.openingInputType !== undefined) {
+                patchForm({ applicationOpeningInputType: patch.openingInputType })
+              }
+              if (patch.openingOptions !== undefined) {
+                patchForm({ applicationOpeningOptions: patch.openingOptions })
+              }
+              if (patch.requiredSignals !== undefined) {
+                patchForm({ applicationRequiredSignals: patch.requiredSignals })
+              }
+              if (patch.preferredInputTypes !== undefined) {
+                patchForm({
+                  applicationPreferredInputTypes: patch.preferredInputTypes,
+                })
+              }
+              if (patch.maxTurns !== undefined) {
+                patchForm({ applicationMaxTurns: patch.maxTurns })
+              }
+            }}
+          />
         )}
 
         {form.projectType === "onboarding" && hydrated && (

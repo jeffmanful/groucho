@@ -1,10 +1,13 @@
 import {
-  DEFAULT_APPLICATION_OPENING_MESSAGE,
+  buildApplicationExperienceFromForm,
+  DEFAULT_APPLICATION_CLOSING_MESSAGE,
   defaultOnboardingSteps,
   parseApplicationExperience,
   parseFlowConfig,
   parseOnboardingExperience,
   parseProjectType,
+  serializeApplicationExperienceForStorage,
+  type ApplicationOpeningInputType,
   type OnboardingExperience,
   type OnboardingFlowStep,
   type ProjectType,
@@ -48,6 +51,10 @@ function parseFlowStepsForForm(settings: Record<string, unknown>): OnboardingFlo
     }
     if (typeof o.intro === "string" && o.intro.trim()) step.intro = o.intro.trim()
     if (typeof o.hint === "string" && o.hint.trim()) step.hint = o.hint.trim()
+    const interaction = parseApplicationExperience({
+      application_experience: { opening_interaction: o.interaction },
+    }).opening_interaction
+    if (interaction) step.interaction = interaction
     if (typeof o.followup_prompt === "string" && o.followup_prompt.trim()) {
       step.followup_prompt = o.followup_prompt.trim()
     }
@@ -84,6 +91,12 @@ export type ProjectSetupFormState = {
   sessionMode: "live" | "dry-run"
   personaId: string
   applicationOpeningMessage: string
+  applicationClosingMessage: string
+  applicationOpeningInputType: "" | ApplicationOpeningInputType
+  applicationOpeningOptions: string
+  applicationRequiredSignals: string
+  applicationPreferredInputTypes: ApplicationOpeningInputType[]
+  applicationMaxTurns: number | ""
   flowSteps: OnboardingFlowStep[]
   welcomeMessage: string
   onboardingExperience: OnboardingExperience
@@ -150,6 +163,8 @@ export function formStateFromProject(row: {
     )
   }
 
+  const applicationExperience = parseApplicationExperience(settings)
+
   return {
     name: row.name ?? "",
     slug: row.slug ?? "",
@@ -158,8 +173,18 @@ export function formStateFromProject(row: {
     environment: parseEnvironment(settings),
     sessionMode: parseSessionMode(settings),
     personaId: typeof settings.persona_id === "string" ? settings.persona_id : "",
-    applicationOpeningMessage:
-      parseApplicationExperience(settings).opening_message,
+    applicationOpeningMessage: applicationExperience.opening_message,
+    applicationClosingMessage:
+      applicationExperience.closing_message ?? DEFAULT_APPLICATION_CLOSING_MESSAGE,
+    applicationOpeningInputType:
+      applicationExperience.opening_interaction?.inputType ?? "",
+    applicationOpeningOptions:
+      applicationExperience.opening_interaction?.options?.join("\n") ?? "",
+    applicationRequiredSignals:
+      applicationExperience.required_signals?.join("\n") ?? "",
+    applicationPreferredInputTypes:
+      applicationExperience.preferred_input_types ?? [],
+    applicationMaxTurns: applicationExperience.max_turns ?? "",
     flowSteps:
       projectType === "onboarding"
         ? flowStepsFromDb.length > 0
@@ -185,6 +210,12 @@ function serializeStepForPayload(s: OnboardingFlowStep): Record<string, unknown>
   }
   if (s.intro?.trim()) out.intro = s.intro.trim()
   if (s.hint?.trim()) out.hint = s.hint.trim()
+  if (s.interaction) {
+    out.interaction = {
+      inputType: s.interaction.inputType,
+      ...(s.interaction.options?.length ? { options: s.interaction.options } : {}),
+    }
+  }
   if (s.followup_prompt?.trim()) out.followup_prompt = s.followup_prompt.trim()
   if (s.min_answer_chars !== undefined) out.min_answer_chars = s.min_answer_chars
   return out
@@ -227,9 +258,18 @@ export function buildProjectSettingsPayload(
   } else {
     delete settings.flow_config
     delete settings.onboarding_experience
-    const opening = form.applicationOpeningMessage.trim()
-    if (opening && opening !== DEFAULT_APPLICATION_OPENING_MESSAGE) {
-      settings.application_experience = { opening_message: opening }
+    const applicationExperience = buildApplicationExperienceFromForm({
+      openingMessage: form.applicationOpeningMessage,
+      closingMessage: form.applicationClosingMessage,
+      openingInputType: form.applicationOpeningInputType,
+      openingOptions: form.applicationOpeningOptions,
+      requiredSignals: form.applicationRequiredSignals,
+      preferredInputTypes: form.applicationPreferredInputTypes,
+      maxTurns: form.applicationMaxTurns,
+    })
+    const serialized = serializeApplicationExperienceForStorage(applicationExperience)
+    if (serialized) {
+      settings.application_experience = serialized
     } else {
       delete settings.application_experience
     }

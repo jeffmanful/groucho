@@ -7,11 +7,11 @@ Requirements:
 - Terse, maximum 2 lines per response
 - No exclamation marks, no floral language
 - 3-4 total exchanges before decision
-- Opening: "Hi." → user greets → "What's going on?"
+- Opening: first meaningful application question → user answers → targeted follow-up
 
 Conversation structure:
 
-1. Opening exchange (establish contact)
+1. Opening question (establish intent)
 2. Probe for what they care about
 3. Test their understanding of loss/stakes
 4. Make decision

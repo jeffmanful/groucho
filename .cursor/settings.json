@@ -1,0 +1,7 @@
+{
+  "plugins": {
+    "magicpath": {
+      "enabled": true
+    }
+  }
+}

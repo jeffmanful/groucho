@@ -77,6 +77,7 @@ export async function GET(
     title: string
     index: number
     total: number
+    interaction?: OnboardingFlowStep["interaction"]
   } | null = null
   let stepHint: string | null = null
   if (
@@ -92,6 +93,7 @@ export async function GET(
         title: steps[idx].title,
         index: idx,
         total: steps.length,
+        ...(steps[idx].interaction ? { interaction: steps[idx].interaction } : {}),
       }
       stepHint = steps[idx].hint?.trim() || null
     }

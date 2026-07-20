@@ -16,6 +16,7 @@ import {
   type ProjectSetupFormState,
 } from "@/lib/admin-project-setup"
 import {
+  DEFAULT_APPLICATION_CLOSING_MESSAGE,
   DEFAULT_APPLICATION_OPENING_MESSAGE,
   defaultOnboardingSteps,
   DEFAULT_ONBOARDING_EXPERIENCE,
@@ -24,6 +25,7 @@ import {
 import { OnboardingExperienceToggles } from "@/components/admin/OnboardingExperienceToggles"
 import { OnboardingFlowEditor } from "@/components/admin/OnboardingFlowEditor"
 import { PersonaSetupNote } from "@/components/admin/PersonaSetupNote"
+import { ApplicationExperienceFields } from "@/components/admin/ApplicationExperienceFields"
 
 type Persona = {
   id: string
@@ -125,6 +127,19 @@ export default function NewProjectWizardPage() {
   const [applicationOpeningMessage, setApplicationOpeningMessage] = useState(
     DEFAULT_APPLICATION_OPENING_MESSAGE,
   )
+  const [applicationClosingMessage, setApplicationClosingMessage] = useState(
+    DEFAULT_APPLICATION_CLOSING_MESSAGE,
+  )
+  const [applicationOpeningInputType, setApplicationOpeningInputType] = useState<
+    ProjectSetupFormState["applicationOpeningInputType"]
+  >("")
+  const [applicationOpeningOptions, setApplicationOpeningOptions] = useState("")
+  const [applicationRequiredSignals, setApplicationRequiredSignals] = useState("")
+  const [applicationPreferredInputTypes, setApplicationPreferredInputTypes] =
+    useState<ProjectSetupFormState["applicationPreferredInputTypes"]>([])
+  const [applicationMaxTurns, setApplicationMaxTurns] = useState<
+    ProjectSetupFormState["applicationMaxTurns"]
+  >("")
 
   const [webhookUrl, setWebhookUrl] = useState("")
   const [webhookEvents, setWebhookEvents] = useState<string[]>([])
@@ -229,7 +244,13 @@ export default function NewProjectWizardPage() {
         environment,
         sessionMode,
         personaId,
-      applicationOpeningMessage,
+        applicationOpeningMessage,
+        applicationClosingMessage,
+        applicationOpeningInputType,
+        applicationOpeningOptions,
+        applicationRequiredSignals,
+        applicationPreferredInputTypes,
+        applicationMaxTurns,
         flowSteps,
         welcomeMessage,
         onboardingExperience,
@@ -320,6 +341,12 @@ export default function NewProjectWizardPage() {
       sessionMode,
       personaId,
       applicationOpeningMessage,
+      applicationClosingMessage,
+      applicationOpeningInputType,
+      applicationOpeningOptions,
+      applicationRequiredSignals,
+      applicationPreferredInputTypes,
+      applicationMaxTurns,
       flowSteps: stepsForSave,
       welcomeMessage,
       onboardingExperience,
@@ -580,27 +607,40 @@ export default function NewProjectWizardPage() {
           />
 
           {projectType === "gatekeeper" && (
-            <div style={{ marginBottom: "1rem" }}>
-              <label style={label}>Opening message</label>
-              <textarea
-                value={applicationOpeningMessage}
-                onChange={(e) => setApplicationOpeningMessage(e.target.value)}
-                rows={3}
-                placeholder={DEFAULT_APPLICATION_OPENING_MESSAGE}
-                style={{
-                  ...input,
-                  maxWidth: "100%",
-                  minHeight: "4rem",
-                  resize: "vertical",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  padding: "0.45rem 0",
-                }}
-              />
-              <p style={{ fontSize: "0.72rem", opacity: 0.35, lineHeight: 1.45 }}>
-                Shown as the first assistant message before the applicant replies.
-                Tone and decision logic still live in the persona.
-              </p>
-            </div>
+            <ApplicationExperienceFields
+              openingMessage={applicationOpeningMessage}
+              closingMessage={applicationClosingMessage}
+              openingInputType={applicationOpeningInputType}
+              openingOptions={applicationOpeningOptions}
+              requiredSignals={applicationRequiredSignals}
+              preferredInputTypes={applicationPreferredInputTypes}
+              maxTurns={applicationMaxTurns}
+              onChange={(patch) => {
+                if (patch.openingMessage !== undefined) {
+                  setApplicationOpeningMessage(patch.openingMessage)
+                }
+                if (patch.closingMessage !== undefined) {
+                  setApplicationClosingMessage(patch.closingMessage)
+                }
+                if (patch.openingInputType !== undefined) {
+                  setApplicationOpeningInputType(patch.openingInputType)
+                }
+                if (patch.openingOptions !== undefined) {
+                  setApplicationOpeningOptions(patch.openingOptions)
+                }
+                if (patch.requiredSignals !== undefined) {
+                  setApplicationRequiredSignals(patch.requiredSignals)
+                }
+                if (patch.preferredInputTypes !== undefined) {
+                  setApplicationPreferredInputTypes(patch.preferredInputTypes)
+                }
+                if (patch.maxTurns !== undefined) {
+                  setApplicationMaxTurns(patch.maxTurns)
+                }
+              }}
+              labelStyle={label}
+              inputStyle={input}
+            />
           )}
 
           {projectType === "onboarding" && (

@@ -42,12 +42,12 @@ From the **repository root**:
    |---------|----------------|
    | `NEXT_PUBLIC_SUPABASE_URL` | API URL (e.g. `http://127.0.0.1:54321`) |
    | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `anon` **public** key |
-   | `NEXT_PUBLIC_SUPABASE_REALTIME_KEY` | Same as anon key if your app passes it for Realtime (see existing doorcheck code) |
    | `SUPABASE_SERVICE_KEY` | **`service_role` key — server only**, never expose to the browser |
 
 4. **Set app auth env vars** (demo login / middleware), still required for the full app:
 
    - `AUTH_SECRET`, `ALLOWED_EMAILS`, `ADMIN_PASSWORD`, `ANTHROPIC_API_KEY` (see `.env.example`).
+   - Gatekeeper conversational turns default to the pinned `claude-haiku-4-5-20251001` model. Set `GROUCHO_GATEKEEPER_CONVERSATION_MODEL` server-side to test another model without changing code.
 
 5. **Smoke check:** open Supabase **Studio** (URL from `supabase status`) → **Table Editor** → confirm `personas` has the seeded Lou row and tables exist.
 

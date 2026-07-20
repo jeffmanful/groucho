@@ -1,6 +1,6 @@
 # Groucho
 
-A conversational **doorman**: a configurable, LLM-driven gatekeeper that qualifies users across a handful of short turns and emits an auditable terminal outcome — `passed`, `redirected`, or `rejected` — plus structured metadata (per-turn scores and an extracted `profile`) that the host application can hang downstream behaviour off (email capture, role assignment, recommendations, CRM enrichment, etc.).
+A conversational **doorman**: a configurable, LLM-driven gatekeeper that qualifies users across a handful of short turns and emits an auditable terminal outcome — `passed`, `redirected`, or `rejected` — plus structured metadata (an accumulated assessment and an extracted `profile`) that the host application can hang downstream behaviour off (email capture, role assignment, recommendations, CRM enrichment, etc.).
 
 It is shipped as a **monorepo** with two products:
 
@@ -15,7 +15,7 @@ Source of truth for the broader vision lives in [`docs/PRD.md`](./docs/PRD.md); 
 
 Teams need to qualify visitors for culture-, community-, or premium-access surfaces — and increasingly to **onboard** new members into a community — without resorting to long static forms or opaque black-box rules. Groucho gives them:
 
-- **Explainable outcomes** — every session has a transcript, a per-turn score breakdown, and a recorded verdict.
+- **Explainable outcomes** — every session has a transcript, accumulated assessments, and a recorded verdict.
 - **A stable, versioned HTTP API** — embeddable behind a host proxy so the secret `gk_*` key never reaches the browser.
 - **Tenant isolation** — orgs, projects, members, invitations, API keys, webhooks, all scoped by Supabase RLS.
 - **Structured output** — a JSON `profile` extracted from the conversation against a persona-defined schema, ready to feed downstream systems.
@@ -27,9 +27,11 @@ Teams need to qualify visitors for culture-, community-, or premium-access surfa
 ### Conversation engine (gatekeeper mode)
 
 - A terse assistant persona ("Lou", on the door at Public Equity™) implemented in [`lib/post-session-message.ts`](./lib/post-session-message.ts) — max 2 lines per turn, ~3–4 exchanges before a decision.
-- Per-user-turn scoring on three dimensions (`specificity`, `authenticity`, `cultural_depth`) plus a weighted `overall`, run via the Anthropic SDK and stored on `messages.metadata.scores` ([`lib/scoring.ts`](./lib/scoring.ts)).
-- Deterministic terminal phrases mapped to outcomes (`passed` / `redirected` / `rejected`); rejected sessions return `409` on further posts.
-- Personas with configurable thresholds and an optional `profile_schema` for structured extraction (Supabase migration [`20260511220000_personas_profile_schema.sql`](./supabase/migrations/20260511220000_personas_profile_schema.sql)).
+- The main structured response includes accumulated `specificity`, `authenticity`, `cultural_depth`, and `overall` assessments, which are stored on `messages.metadata.scores` without a second model request.
+- Conversational gatekeeper turns use the pinned `claude-haiku-4-5-20251001` model by default and can be overridden server-side with `GROUCHO_GATEKEEPER_CONVERSATION_MODEL` for evaluation.
+- Configured application signals are stored alongside answers in message metadata. Each model turn receives compact JSON signal state and the current answer; unconfigured projects and legacy sessions retain transcript fallback.
+- Structured terminal decisions map directly to `passed`, `redirected`, or `rejected`; concluded sessions return `409` on further posts.
+- Personas have legacy fallback thresholds and an optional `profile_schema` for structured extraction (Supabase migration [`20260511220000_personas_profile_schema.sql`](./supabase/migrations/20260511220000_personas_profile_schema.sql)).
 
 ### Public Project HTTP API (under `/v1`)
 
@@ -87,11 +89,15 @@ A reference consumer lives in [`examples/next-groucho`](./examples/next-groucho/
 ### Onboarding flows (structured steps + bounded intelligence)
 
 - Projects with `settings.project_type = "onboarding"` and `settings.flow_config.steps` run a **server-enforced** step engine ([`lib/post-onboarding-message.ts`](./lib/post-onboarding-message.ts)).
-- The project wizard collects ordered questions (id, title, question, profile_key, optional intro/hint/follow-up fields) plus `flow_config.welcome_message` and `settings.onboarding_experience` toggles (bridge, follow-up, boundary, personalized completion — **default on**).
+- The project wizard collects ordered questions (id, title, question, profile_key, optional interaction/intro/hint/follow-up fields) plus `flow_config.welcome_message` and `settings.onboarding_experience` toggles. Onboarding is static by default: bridge, boundary, personalized completion, and implicit profile extraction are opt-in.
 - **`POST /v1/sessions/{id}/start`** (and playground **`POST /api/onboarding/start`**) bootstrap the session: first assistant message (welcome + Q1) without wasting a user turn.
 - Mid-flow, when intelligence is enabled, the linked persona **`prompt`** drives brief acknowledgements, optional one follow-up per step, and calm boundary replies; step order and `profile_key` mapping stay fixed.
 - Sessions track `current_step_id`, `flow_version`, and `onboarding_state` (follow-up sub-state); completion extracts `profile` and returns `passed`.
 - `GET /v1/sessions/{id}` returns `projectType`, `flowVersion`, `currentStep`, `stepHint`, `welcomeMessage`, and a capped `messages` transcript while active.
+
+## v1 focus
+
+Groucho v1 is gatekeeper-first. Static onboarding remains available for deterministic intake/profile collection, but the primary decisioning surface is the gatekeeper flow.
 
 ## What it does **not** yet do
 

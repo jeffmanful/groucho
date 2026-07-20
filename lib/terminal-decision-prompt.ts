@@ -23,7 +23,7 @@ Use \`terminal\`:
 - \`redirect\` — Genuine but not aligned for this space; abstract care, no skin in the game; not predatory.
 - \`reject\` — Extractive, commodifying, access-as-the-point, marketing energy; their presence would harm the space.
 
-\`reply\` is only what the applicant reads (follow persona length and tone). When you set \`terminal\` to something other than \`none\`, this is your final turn.`
+\`reply\` is only what the applicant reads. When you set \`terminal\` to something other than \`none\`, do not reveal pass, redirect, reject, acceptance, refusal, or access. Use the configured neutral application closing message.`
 
 /**
  * Appends {@link TERMINAL_DECISION_SYSTEM_APPENDIX} when the base prompt does

@@ -4,11 +4,37 @@
 
 export type ProjectType = "gatekeeper" | "onboarding"
 
-export const DEFAULT_APPLICATION_OPENING_MESSAGE = "Hi."
+export const DEFAULT_APPLICATION_OPENING_MESSAGE =
+  "What brings you here, and what do you think you would add?"
+export const DEFAULT_APPLICATION_CLOSING_MESSAGE =
+  "Thank you. We'll get in touch about your application soon."
+
+export type ApplicationOpeningInputType = "text" | "singleSelect" | "multiSelect"
+
+export type ApplicationOpeningInteraction = {
+  inputType: ApplicationOpeningInputType
+  options?: string[]
+}
 
 export type ApplicationExperience = {
   opening_message: string
+  closing_message?: string
+  opening_interaction?: ApplicationOpeningInteraction
+  required_signals?: string[]
+  preferred_input_types?: ApplicationOpeningInputType[]
+  max_turns?: number
 }
+
+export const MAX_REQUIRED_SIGNALS = 12
+export const MAX_SIGNAL_LENGTH = 240
+export const MIN_APPLICATION_MAX_TURNS = 1
+export const MAX_APPLICATION_MAX_TURNS = 12
+
+const APPLICATION_INPUT_TYPES = new Set<ApplicationOpeningInputType>([
+  "text",
+  "singleSelect",
+  "multiSelect",
+])
 
 export type OnboardingFlowStep = {
   id: string
@@ -16,6 +42,7 @@ export type OnboardingFlowStep = {
   question: string
   profile_key: string
   required: boolean
+  interaction?: ApplicationOpeningInteraction
   intro?: string
   hint?: string
   followup_prompt?: string
@@ -48,29 +75,201 @@ const PROFILE_KEY_RE = /^[a-z][a-z0-9_]{0,47}$/
 const DEFAULT_MIN_ANSWER_CHARS = 24
 
 export const DEFAULT_ONBOARDING_EXPERIENCE: OnboardingExperience = {
-  bridge_enabled: true,
+  bridge_enabled: false,
   followup_enabled: true,
-  boundary_enabled: true,
-  personalized_completion: true,
+  boundary_enabled: false,
+  personalized_completion: false,
+}
+
+function parseApplicationOpeningInteraction(
+  raw: unknown,
+): ApplicationOpeningInteraction | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined
+  const o = raw as Record<string, unknown>
+  const inputType =
+    typeof o.inputType === "string" &&
+    APPLICATION_INPUT_TYPES.has(o.inputType as ApplicationOpeningInputType)
+      ? (o.inputType as ApplicationOpeningInputType)
+      : null
+  if (!inputType) return undefined
+
+  if (inputType === "text") {
+    return { inputType: "text" }
+  }
+
+  const optionsRaw = o.options
+  if (!Array.isArray(optionsRaw)) return undefined
+  const options = optionsRaw
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 12)
+  if (!options.length) return undefined
+
+  return { inputType, options }
+}
+
+function parseRequiredSignals(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const signals = raw
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, MAX_REQUIRED_SIGNALS)
+    .map((item) => item.slice(0, MAX_SIGNAL_LENGTH))
+  return signals.length > 0 ? signals : undefined
+}
+
+function parsePreferredInputTypes(
+  raw: unknown,
+): ApplicationOpeningInputType[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const types = raw.filter(
+    (item): item is ApplicationOpeningInputType =>
+      typeof item === "string" &&
+      APPLICATION_INPUT_TYPES.has(item as ApplicationOpeningInputType),
+  )
+  const unique = [...new Set(types)]
+  return unique.length > 0 ? unique : undefined
+}
+
+function parseApplicationMaxTurns(raw: unknown): number | undefined {
+  if (typeof raw !== "number" || !Number.isFinite(raw)) return undefined
+  const turns = Math.floor(raw)
+  if (turns < MIN_APPLICATION_MAX_TURNS || turns > MAX_APPLICATION_MAX_TURNS) {
+    return undefined
+  }
+  return turns
 }
 
 export function parseApplicationExperience(
   settings: unknown,
 ): ApplicationExperience {
   if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
-    return { opening_message: DEFAULT_APPLICATION_OPENING_MESSAGE }
+    return {
+      opening_message: DEFAULT_APPLICATION_OPENING_MESSAGE,
+      closing_message: DEFAULT_APPLICATION_CLOSING_MESSAGE,
+    }
   }
   const raw = (settings as Record<string, unknown>).application_experience
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    return { opening_message: DEFAULT_APPLICATION_OPENING_MESSAGE }
+    return {
+      opening_message: DEFAULT_APPLICATION_OPENING_MESSAGE,
+      closing_message: DEFAULT_APPLICATION_CLOSING_MESSAGE,
+    }
   }
-  const opening = parseOptionalString(
-    raw as Record<string, unknown>,
-    "opening_message",
-    500,
-  )
+  const o = raw as Record<string, unknown>
+  const opening = parseOptionalString(o, "opening_message", 500)
+  const closing = parseOptionalString(o, "closing_message", 500)
+  const opening_interaction = parseApplicationOpeningInteraction(o.opening_interaction)
+  const required_signals = parseRequiredSignals(o.required_signals)
+  const preferred_input_types = parsePreferredInputTypes(o.preferred_input_types)
+  const max_turns = parseApplicationMaxTurns(o.max_turns)
+
   return {
     opening_message: opening ?? DEFAULT_APPLICATION_OPENING_MESSAGE,
+    closing_message: closing ?? DEFAULT_APPLICATION_CLOSING_MESSAGE,
+    ...(opening_interaction ? { opening_interaction } : {}),
+    ...(required_signals ? { required_signals } : {}),
+    ...(preferred_input_types ? { preferred_input_types } : {}),
+    ...(max_turns !== undefined ? { max_turns } : {}),
+  }
+}
+
+export function serializeApplicationExperienceForStorage(
+  app: ApplicationExperience,
+): Record<string, unknown> | undefined {
+  const out: Record<string, unknown> = {}
+  if (app.opening_message !== DEFAULT_APPLICATION_OPENING_MESSAGE) {
+    out.opening_message = app.opening_message
+  }
+  if (
+    app.closing_message &&
+    app.closing_message !== DEFAULT_APPLICATION_CLOSING_MESSAGE
+  ) {
+    out.closing_message = app.closing_message
+  }
+  if (app.opening_interaction) {
+    out.opening_interaction = {
+      inputType: app.opening_interaction.inputType,
+      ...(app.opening_interaction.options?.length
+        ? { options: app.opening_interaction.options }
+        : {}),
+    }
+  }
+  if (app.required_signals?.length) {
+    out.required_signals = app.required_signals
+  }
+  if (app.preferred_input_types?.length) {
+    out.preferred_input_types = app.preferred_input_types
+  }
+  if (app.max_turns !== undefined) {
+    out.max_turns = app.max_turns
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+export type ApplicationExperienceFormInput = {
+  openingMessage: string
+  closingMessage: string
+  openingInputType: "" | ApplicationOpeningInputType
+  openingOptions: string
+  requiredSignals: string
+  preferredInputTypes: ApplicationOpeningInputType[]
+  maxTurns: number | ""
+}
+
+export function buildApplicationExperienceFromForm(
+  input: ApplicationExperienceFormInput,
+): ApplicationExperience {
+  const opening_message =
+    input.openingMessage.trim() || DEFAULT_APPLICATION_OPENING_MESSAGE
+  const closing_message =
+    input.closingMessage.trim() || DEFAULT_APPLICATION_CLOSING_MESSAGE
+
+  let opening_interaction: ApplicationOpeningInteraction | undefined
+  if (input.openingInputType === "text") {
+    opening_interaction = { inputType: "text" }
+  } else if (
+    input.openingInputType === "singleSelect" ||
+    input.openingInputType === "multiSelect"
+  ) {
+    const options = input.openingOptions
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .slice(0, 12)
+    if (options.length) {
+      opening_interaction = {
+        inputType: input.openingInputType,
+        options,
+      }
+    }
+  }
+
+  const required_signals = parseRequiredSignals(
+    input.requiredSignals
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean),
+  )
+
+  const preferred_input_types = input.preferredInputTypes.length
+    ? [...new Set(input.preferredInputTypes)]
+    : undefined
+
+  const max_turns =
+    typeof input.maxTurns === "number" && Number.isFinite(input.maxTurns)
+      ? parseApplicationMaxTurns(Math.floor(input.maxTurns))
+      : undefined
+
+  return {
+    opening_message,
+    closing_message,
+    ...(opening_interaction ? { opening_interaction } : {}),
+    ...(required_signals ? { required_signals } : {}),
+    ...(preferred_input_types ? { preferred_input_types } : {}),
+    ...(max_turns !== undefined ? { max_turns } : {}),
   }
 }
 
@@ -86,10 +285,22 @@ export function parseOnboardingExperience(
   }
   const o = raw as Record<string, unknown>
   return {
-    bridge_enabled: o.bridge_enabled !== false,
-    followup_enabled: o.followup_enabled !== false,
-    boundary_enabled: o.boundary_enabled !== false,
-    personalized_completion: o.personalized_completion !== false,
+    bridge_enabled:
+      typeof o.bridge_enabled === "boolean"
+        ? o.bridge_enabled
+        : DEFAULT_ONBOARDING_EXPERIENCE.bridge_enabled,
+    followup_enabled:
+      typeof o.followup_enabled === "boolean"
+        ? o.followup_enabled
+        : DEFAULT_ONBOARDING_EXPERIENCE.followup_enabled,
+    boundary_enabled:
+      typeof o.boundary_enabled === "boolean"
+        ? o.boundary_enabled
+        : DEFAULT_ONBOARDING_EXPERIENCE.boundary_enabled,
+    personalized_completion:
+      typeof o.personalized_completion === "boolean"
+        ? o.personalized_completion
+        : DEFAULT_ONBOARDING_EXPERIENCE.personalized_completion,
   }
 }
 
@@ -133,6 +344,7 @@ function parseStep(raw: unknown, index: number): OnboardingFlowStep | string {
   const intro = parseOptionalString(o, "intro", 200)
   const hint = parseOptionalString(o, "hint", 120)
   const followup_prompt = parseOptionalString(o, "followup_prompt", 300)
+  const interaction = parseApplicationOpeningInteraction(o.interaction)
 
   let min_answer_chars: number | undefined
   if (typeof o.min_answer_chars === "number" && Number.isFinite(o.min_answer_chars)) {
@@ -148,6 +360,7 @@ function parseStep(raw: unknown, index: number): OnboardingFlowStep | string {
   }
   if (intro) step.intro = intro
   if (hint) step.hint = hint
+  if (interaction) step.interaction = interaction
   if (followup_prompt) step.followup_prompt = followup_prompt
   if (min_answer_chars !== undefined) step.min_answer_chars = min_answer_chars
 
@@ -275,6 +488,12 @@ function serializeStep(s: OnboardingFlowStep): Record<string, unknown> {
   }
   if (s.intro) out.intro = s.intro
   if (s.hint) out.hint = s.hint
+  if (s.interaction) {
+    out.interaction = {
+      inputType: s.interaction.inputType,
+      ...(s.interaction.options?.length ? { options: s.interaction.options } : {}),
+    }
+  }
   if (s.followup_prompt) out.followup_prompt = s.followup_prompt
   if (s.min_answer_chars !== undefined) out.min_answer_chars = s.min_answer_chars
   return out
@@ -296,10 +515,9 @@ export function validateProjectSettings(
     delete out.flow_config
     delete out.onboarding_experience
     const app = parseApplicationExperience(settings)
-    if (app.opening_message !== DEFAULT_APPLICATION_OPENING_MESSAGE) {
-      out.application_experience = {
-        opening_message: app.opening_message,
-      }
+    const serialized = serializeApplicationExperienceForStorage(app)
+    if (serialized) {
+      out.application_experience = serialized
     } else {
       delete out.application_experience
     }

@@ -9,9 +9,9 @@ export type OutcomeBannerProps = {
 
 const COPY: Record<SessionOutcome, string> = {
   active: "",
-  passed: "You’re in.",
-  redirected: "Not the right fit.",
-  rejected: "Not tonight.",
+  passed: "Application received.",
+  redirected: "Application received.",
+  rejected: "Application received.",
 }
 
 export function OutcomeBanner({ status, className }: OutcomeBannerProps) {

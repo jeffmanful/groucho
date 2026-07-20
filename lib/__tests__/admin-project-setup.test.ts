@@ -100,6 +100,10 @@ describe("buildProjectSettingsPayload", () => {
               question: "Q?",
               profile_key: "a",
               required: true,
+              interaction: {
+                inputType: "singleSelect",
+                options: ["One", "Two"],
+              },
             },
           ],
         },
@@ -118,6 +122,10 @@ describe("buildProjectSettingsPayload", () => {
           question: "Q?",
           profile_key: "a",
           required: true,
+          interaction: {
+            inputType: "singleSelect",
+            options: ["One", "Two"],
+          },
         },
       ],
     })
@@ -148,12 +156,54 @@ describe("buildProjectSettingsPayload", () => {
         persona_id: "p1",
         application_experience: {
           opening_message: "Welcome. A few questions first.",
+          closing_message: "Thanks. We'll follow up.",
         },
       },
     })
     const out = buildProjectSettingsPayload({}, form)
     expect(out.application_experience).toEqual({
       opening_message: "Welcome. A few questions first.",
+      closing_message: "Thanks. We'll follow up.",
+    })
+  })
+
+  it("round-trips gatekeeper application experience fields", () => {
+    const form = formStateFromProject({
+      name: "G",
+      slug: "g",
+      settings: {
+        project_type: "gatekeeper",
+        persona_id: "p1",
+        application_experience: {
+          opening_message: "Welcome to COLORS.",
+          closing_message: "Thanks. We'll follow up.",
+          opening_interaction: {
+            inputType: "multiSelect",
+            options: ["Artist", "Curator"],
+          },
+          required_signals: ["intent", "contribution"],
+          preferred_input_types: ["text", "multiSelect"],
+          max_turns: 5,
+        },
+      },
+    })
+    expect(form.applicationOpeningInputType).toBe("multiSelect")
+    expect(form.applicationOpeningOptions).toBe("Artist\nCurator")
+    expect(form.applicationRequiredSignals).toBe("intent\ncontribution")
+    expect(form.applicationPreferredInputTypes).toEqual(["text", "multiSelect"])
+    expect(form.applicationMaxTurns).toBe(5)
+
+    const out = buildProjectSettingsPayload({}, form)
+    expect(out.application_experience).toEqual({
+      opening_message: "Welcome to COLORS.",
+      closing_message: "Thanks. We'll follow up.",
+      opening_interaction: {
+        inputType: "multiSelect",
+        options: ["Artist", "Curator"],
+      },
+      required_signals: ["intent", "contribution"],
+      preferred_input_types: ["text", "multiSelect"],
+      max_turns: 5,
     })
   })
 

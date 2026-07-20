@@ -124,7 +124,7 @@ import {
 | `sessionId` | `string` | auto-generated `crypto.randomUUID()` | Persisted in `sessionStorage` per page. |
 | `onSessionId` | `(id: string) => void` | — | Notified once the session id is decided. |
 | `personaId` | `string \| null` | `null` | Optional persona override; must belong to the project and be active. |
-| `applicant` | `{ email: string; name?: string }` | — | First-class applicant identity. When omitted, the default UI asks for email and optional name before chat. |
+| `applicant` | `{ email: string; name?: string }` | — | First-class applicant identity. When omitted, the default UI asks for email before chat. Hosts may still provide a known name. |
 | `collectApplicant` | `boolean` | `true` | Set `false` only when the host app has already collected identity elsewhere. |
 | `onOutcome` | `(outcome, { scores, secret?, profile?, applicant? }) => void` | — | Fires once when the session reaches a terminal state. |
 | `renderHeader` / `renderFooter` | `() => ReactNode` | — | Slots for host branding. |

@@ -39,7 +39,7 @@ export function OnboardingExperienceToggles({ value, onChange }: Props) {
   return (
     <div style={{ marginBottom: "1.25rem" }}>
       <span style={{ ...setupLabel, display: "block", marginBottom: "0.5rem" }}>
-        Onboarding intelligence (default on)
+        Onboarding intelligence (optional)
       </span>
       <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
         {TOGGLES.map((t) => (

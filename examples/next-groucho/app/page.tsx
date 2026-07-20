@@ -1,6 +1,6 @@
 "use client"
 
-import { Gatekeeper, GrouchoProvider } from "@groucho-gatekeeper/sdk/react"
+import { GatekeeperV2, GrouchoProvider } from "@groucho-gatekeeper/sdk/react"
 
 export default function Home() {
   return (
@@ -13,7 +13,7 @@ export default function Home() {
         <code style={{ opacity: 0.7 }}>/api/groucho</code>.
       </p>
       <GrouchoProvider proxyBasePath="/api/groucho">
-        <Gatekeeper transcriptLabel="Door conversation" />
+        <GatekeeperV2 />
       </GrouchoProvider>
     </div>
   )

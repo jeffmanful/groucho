@@ -12,7 +12,7 @@ describe("computeTerminalStatusFromGatekeeperTurn", () => {
     overall: 0.9,
   }
 
-  it("uses structured pass with threshold", () => {
+  it("uses the structured terminal decision directly", () => {
     expect(
       computeTerminalStatusFromGatekeeperTurn({
         assistantContent: "ok",
@@ -22,7 +22,7 @@ describe("computeTerminalStatusFromGatekeeperTurn", () => {
         structuredToolUsed: true,
         structuredTerminal: "pass",
       }),
-    ).toBe("redirected")
+    ).toBe("passed")
     expect(
       computeTerminalStatusFromGatekeeperTurn({
         assistantContent: "ok",
@@ -33,6 +33,16 @@ describe("computeTerminalStatusFromGatekeeperTurn", () => {
         structuredTerminal: "pass",
       }),
     ).toBe("passed")
+    expect(
+      computeTerminalStatusFromGatekeeperTurn({
+        assistantContent: "ok",
+        scores: { ...scores, overall: 0.9 },
+        passThreshold: 0.65,
+        rejectThreshold: 0.25,
+        structuredToolUsed: true,
+        structuredTerminal: "reject",
+      }),
+    ).toBe("rejected")
   })
 
   it("falls back to legacy Yeah. Here.", () => {

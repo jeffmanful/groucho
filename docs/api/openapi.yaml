@@ -91,12 +91,14 @@ paths:
   /v1/sessions/{sessionId}/start:
     post:
       tags: [Sessions]
-      summary: Bootstrap an onboarding session (first question without a user message)
+      summary: Bootstrap a session (Groucho speaks first)
       description: |
         Idempotent: creates the session and assistant opener when missing, or returns
-        the latest assistant message and `currentStep` for an active session.
-        Onboarding projects only.
-      operationId: startOnboardingSession
+        the latest assistant message for an active session.
+
+        - **gatekeeper** — persists the application opening message (project config, or optional `openingMessage` in the request body).
+        - **onboarding** — persists welcome + first question and returns `currentStep`.
+      operationId: startSession
       parameters:
         - $ref: "#/components/parameters/sessionId"
       requestBody:
@@ -112,15 +114,24 @@ paths:
                   nullable: true
                 applicant:
                   $ref: "#/components/schemas/ApplicantIdentity"
+                openingMessage:
+                  type: string
+                  maxLength: 500
+                  description: |
+                    Optional gatekeeper opener for new sessions. Overrides the project's
+                    `application_experience.opening_message` when the session is first created.
+                    Ignored when resuming an active session that already has an opener.
+                openingInteraction:
+                  $ref: "#/components/schemas/OpeningInteraction"
       responses:
         "200":
           description: Session started or resumed
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StartOnboardingResponse"
+                $ref: "#/components/schemas/StartSessionResponse"
         "400":
-          description: Project is not onboarding
+          description: Invalid request or missing applicant identity
         "409":
           description: Session already concluded
 
@@ -256,6 +267,52 @@ components:
       type: string
       enum: [gatekeeper, onboarding]
 
+    GrouchoIntent:
+      type: string
+      enum: [probe, clarify, challenge, acknowledge, decide, redirect, reject]
+
+    GrouchoInputType:
+      type: string
+      enum: [text, voice, singleSelect, multiSelect, ranking]
+
+    GrouchoEmotionalState:
+      type: string
+      enum: [neutral, curious, interested, skeptical, evaluating, decisive]
+
+    GrouchoVisualState:
+      type: string
+      enum: [idle, listening, thinking, curious, interested, evaluating, decision]
+
+    GrouchoInteractionUi:
+      type: object
+      required: [intent, inputType, emotionalState, visualState]
+      properties:
+        intent:
+          $ref: "#/components/schemas/GrouchoIntent"
+        inputType:
+          $ref: "#/components/schemas/GrouchoInputType"
+        emotionalState:
+          $ref: "#/components/schemas/GrouchoEmotionalState"
+        visualState:
+          $ref: "#/components/schemas/GrouchoVisualState"
+        options:
+          type: array
+          items:
+            type: string
+
+    OpeningInteraction:
+      type: object
+      required: [inputType]
+      properties:
+        inputType:
+          type: string
+          enum: [text, singleSelect, multiSelect]
+        options:
+          type: array
+          items:
+            type: string
+          description: Required when `inputType` is `singleSelect` or `multiSelect`
+
     OnboardingCurrentStep:
       type: object
       required: [id, title, index, total]
@@ -270,6 +327,9 @@ components:
         total:
           type: integer
           minimum: 1
+        interaction:
+          $ref: "#/components/schemas/OpeningInteraction"
+          description: Optional input control for this onboarding step.
 
     OnboardingFlags:
       type: object
@@ -279,7 +339,7 @@ components:
         boundary:
           type: boolean
 
-    StartOnboardingResponse:
+    StartSessionResponse:
       type: object
       required: [message, status, projectType]
       properties:
@@ -290,6 +350,8 @@ components:
           enum: [active]
         projectType:
           $ref: "#/components/schemas/ProjectType"
+        ui:
+          $ref: "#/components/schemas/GrouchoInteractionUi"
         flowVersion:
           type: string
         welcomeMessage:
@@ -318,11 +380,14 @@ components:
       properties:
         message:
           type: string
-          description: Raw assistant text for this turn (may include terminal tokens)
+          description: Assistant text for this turn. Terminal application turns return the configured neutral closing message, while `status` carries the internal outcome.
         status:
           $ref: "#/components/schemas/SessionOutcome"
         scores:
           $ref: "#/components/schemas/ScoreBreakdown"
+        ui:
+          $ref: "#/components/schemas/GrouchoInteractionUi"
+          description: V2 interaction spec for client rendering (gatekeeper turns)
         secret:
           type: string
           format: uuid

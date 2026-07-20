@@ -66,6 +66,7 @@ function currentStepPayload(steps: OnboardingFlowStep[], stepId: string) {
     title: steps[idx].title,
     index: idx,
     total: steps.length,
+    ...(steps[idx].interaction ? { interaction: steps[idx].interaction } : {}),
   }
 }
 

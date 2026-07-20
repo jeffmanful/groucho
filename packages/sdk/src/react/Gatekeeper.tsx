@@ -1,8 +1,9 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import type {
   ApplicantIdentity,
+  OpeningInteraction,
   Profile,
   ScoreBreakdown,
   SessionOutcome,
@@ -21,6 +22,10 @@ export type GatekeeperProps = {
   sessionId?: string
   onSessionId?: (id: string) => void
   personaId?: string | null
+  /** Gatekeeper opener for new sessions; falls back to project config when omitted */
+  openingMessage?: string
+  /** Initial input shape for new gatekeeper sessions */
+  openingInteraction?: OpeningInteraction | null
   onOutcome?: (
     outcome: SessionOutcome,
     meta: {
@@ -44,6 +49,8 @@ export function Gatekeeper({
   sessionId: sessionIdProp,
   onSessionId,
   personaId,
+  openingMessage,
+  openingInteraction,
   onOutcome,
   applicant: applicantProp,
   collectApplicant = true,
@@ -75,13 +82,15 @@ export function Gatekeeper({
 
   const [draft, setDraft] = useState("")
   const [applicantEmail, setApplicantEmail] = useState(applicantProp?.email ?? "")
-  const [applicantName, setApplicantName] = useState(applicantProp?.name ?? "")
   const [submittedApplicant, setSubmittedApplicant] =
     useState<ApplicantIdentity | null>(applicantProp ?? null)
   const [lines, setLines] = useState<ChatLine[]>([])
   const [loading, setLoading] = useState(false)
+  const [bootstrapping, setBootstrapping] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [outcome, setOutcome] = useState<SessionOutcome>("active")
+  const bootstrappedSessionRef = useRef<string | null>(null)
+  const bootstrapInFlightRef = useRef(false)
 
   const terminal =
     outcome === "passed" ||
@@ -101,10 +110,71 @@ export function Gatekeeper({
       setError("Enter a valid email address.")
       return
     }
-    const name = applicantName.trim()
     setError(null)
-    setSubmittedApplicant({ email, ...(name ? { name } : {}) })
-  }, [applicantEmail, applicantName])
+    setSubmittedApplicant({ email })
+  }, [applicantEmail])
+
+  useEffect(() => {
+    if (!sessionId || needsApplicant || terminal) return
+    if (bootstrappedSessionRef.current === sessionId) return
+    if (bootstrapInFlightRef.current) return
+
+    bootstrapInFlightRef.current = true
+    setBootstrapping(true)
+    setError(null)
+
+    void client
+      .startSession(sessionId, {
+        personaId: personaId ?? null,
+        applicant: activeApplicant,
+        ...(openingMessage ? { openingMessage } : {}),
+        ...(openingInteraction ? { openingInteraction } : {}),
+      })
+      .then((res) => {
+        bootstrappedSessionRef.current = sessionId
+        setLines([
+          {
+            id: `a_bootstrap_${sessionId}`,
+            role: "assistant",
+            content: res.message,
+          },
+        ])
+      })
+      .catch((e) => {
+        if (e instanceof GrouchoApiError && e.status === 409) {
+          setOutcome("active")
+          setLines([])
+          bootstrappedSessionRef.current = null
+          if (typeof window !== "undefined") {
+            const key = STORAGE_PREFIX + window.location.pathname
+            if (!sessionIdProp) {
+              const newId = crypto.randomUUID()
+              sessionStorage.setItem(key, newId)
+              setInternalId(newId)
+              setError("This session has ended — starting a new one.")
+            } else {
+              setError("This session has ended. Start a new session id from your host.")
+            }
+          }
+          return
+        }
+        setError(e instanceof Error ? e.message : "Something went wrong.")
+      })
+      .finally(() => {
+        bootstrapInFlightRef.current = false
+        setBootstrapping(false)
+      })
+  }, [
+    sessionId,
+    needsApplicant,
+    terminal,
+    client,
+    personaId,
+    activeApplicant,
+    sessionIdProp,
+    openingMessage,
+    openingInteraction,
+  ])
 
   const send = useCallback(async () => {
     const text = draft.trim()
@@ -219,16 +289,6 @@ export function Gatekeeper({
               required
             />
           </label>
-          <label className="groucho-field">
-            <span className="groucho-field__label">Name</span>
-            <input
-              className="groucho-field__input"
-              type="text"
-              value={applicantName}
-              onChange={(e) => setApplicantName(e.target.value)}
-              autoComplete="name"
-            />
-          </label>
           <button type="submit" className="groucho-composer__send">
             Start
           </button>
@@ -236,12 +296,12 @@ export function Gatekeeper({
       ) : (
         <>
           <Transcript lines={transcriptLines} label={transcriptLabel} />
-          <ThinkingIndicator visible={loading} />
+          <ThinkingIndicator visible={loading || bootstrapping} />
           <Composer
             value={draft}
             onChange={setDraft}
             onSubmit={() => void send()}
-            disabled={loading || terminal}
+            disabled={loading || bootstrapping || terminal}
             inputLabel={transcriptLabel ? `${transcriptLabel} input` : "Your message"}
           />
         </>

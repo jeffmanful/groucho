@@ -113,7 +113,7 @@ Multi-step wizard (see [platform-project-wizard.md](./platform-project-wizard.md
 ### 5.4 Applicant (gatekeeper)
 
 1. Opens embedded or linked experience → supplies **applicant identity** (`email`, optional `name`) before or at **session** start (live or dry-run).  
-2. Exchanges messages → scores persisted on user messages (when scoring enabled).  
+2. Exchanges messages → the main structured response returns an accumulated assessment, persisted on user messages.
 3. Terminal assistant message → **verdict** + session outcome; webhook fired if configured; pass → optional **email** on access page.
 
 ### 5.5 Applicant (onboarding flow)
@@ -139,21 +139,21 @@ Multi-step wizard (see [platform-project-wizard.md](./platform-project-wizard.md
 | FR-CONV-3 | Redirect phrase `REDIRECT`; reject phrase `REJECTED` (align DB enum `REJECT` vs string in migration note). | Mapping table in code + OpenAPI enum documented. |
 | FR-CONV-4 | ~3–4 exchanges before decision unless model ends early per policy. | `turns_used` / message count enforced or soft-guided in prompt + optional server cap (**gatekeeper**). |
 
-**Current implementation note:** [app/api/chat/route.ts](../app/api/chat/route.ts) uses persona thresholds to refine pass/reject vs redirect; v1 PRD keeps this as **configurable policy** per **gatekeeper** project.
+**Current implementation note:** structured `terminal` decisions are authoritative. Persona thresholds remain only for legacy plain-text decision tokens.
 
 ### 6.2 Scoring (FR-SCORE)
 
 | Req | Description | Acceptance criteria |
 |-----|-------------|---------------------|
-| FR-SCORE-1 | Dimensions 0–1: specificity, authenticity, cultural_depth; overall weighted. | Documented weights in project config or code constants + PRD appendix. |
-| FR-SCORE-2 | Scorer uses model API with structured JSON output. | JSON schema validated; invalid → neutral scores. |
-| FR-SCORE-3 | Scores attached to **user** message record. | `messages.metadata.scores` populated before assistant reply persisted (current behaviour). |
+| FR-SCORE-1 | Dimensions 0–1: specificity, authenticity, cultural_depth, and overall. | Main response tool schema defines and validates all dimensions. |
+| FR-SCORE-2 | The conversational model returns an accumulated assessment in `groucho_respond`. | Invalid or missing values normalize to neutral scores without another model request. |
+| FR-SCORE-3 | Scores attached to **user** message record. | `messages.metadata.scores` populated before assistant reply persisted. |
 
 ### 6.3 Chat pipeline (FR-CHAT)
 
 | Req | Description | Acceptance criteria |
 |-----|-------------|---------------------|
-| FR-CHAT-1 | Order: persist user → score → model → persist assistant → update session/outcome → optional verdict row. | Idempotent where possible; documented in OpenAPI. |
+| FR-CHAT-1 | Order: persist user → model response with accumulated assessment → persist assistant → update session/outcome → optional verdict row. | Ordinary gatekeeper turns make one model request; idempotent where possible. |
 | FR-CHAT-2 | New session / conversation on first user message. | No empty conversation rows (matches current “create on first message” pattern). |
 | FR-CHAT-3 | Concluded session rejects further posts with 409. | Same as current `Session concluded` response from `/api/chat`. |
 | FR-CHAT-4 | Rapid sends: serialise or debounce per `session_id`. | Load test: no double terminal states. |

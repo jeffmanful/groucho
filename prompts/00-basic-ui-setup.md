@@ -34,13 +34,13 @@ Simple holding page:
 Visual reference:
 
 ```
-Hi.
+What brings you here, and what do you think you would add?
 
-                                                Hey
+                                                I want to apply
 
-What's going on?
+What would you protect here?
 
-                                    Heard about this shirt
+                                    Community, mostly
 ```
 
 ### 3. Email Collection (app/doorcheck/access/page.tsx)

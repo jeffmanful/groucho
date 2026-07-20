@@ -45,7 +45,7 @@ They:
 - Start with a configured opening message.
 - Let the persona decide what to ask.
 - End with `passed`, `redirected`, or `rejected`.
-- Use per-turn scores and persona thresholds.
+- Return a private accumulated assessment in the same structured response as each conversational turn.
 - Can return a `secret` when passed for downstream access capture.
 
 ### Onboarding Projects
@@ -57,10 +57,10 @@ They:
 - Use `flow_config.steps` as the source of truth.
 - Bootstrap the first assistant message with `POST /v1/sessions/{id}/start`.
 - Advance through fixed steps in order.
-- Can ask one follow-up per step when enabled.
-- Can issue boundary responses when enabled.
+- Can ask one cheap heuristic follow-up per step when enabled.
+- Can opt into LLM bridge, boundary, completion, or profile extraction, but these are off by default.
 - Complete as `passed` after the final configured step.
-- Extract a profile using the onboarding step keys and persona schema.
+- Extract a profile using the onboarding step keys and persona schema only when `profile_extract_on` is explicitly configured.
 
 ## Common Settings
 
@@ -86,30 +86,51 @@ Fields:
 - `environment` - `test` or `live`.
 - `session_mode` - `dry-run` or `live`.
 - `persona_id` - Preferred persona for the project.
-- `pass_threshold` - Used by gatekeeper terminal normalization.
-- `reject_threshold` - Used by gatekeeper terminal normalization.
-- `profile_extract_on` - Optional profile extraction control. Defaults to all terminal statuses. Use `["passed"]` to extract only on passes, or `false` / `null` to disable extraction.
+- `pass_threshold` - Used only to normalize legacy plain-text pass tokens.
+- `reject_threshold` - Used only to normalize legacy plain-text reject tokens.
+- `profile_extract_on` - Optional profile extraction control. Gatekeeper projects default to all terminal statuses. Onboarding projects default to no extraction so static intake does not call an LLM unless this is explicitly set. Use `["passed"]` to extract only on passes, or `false` / `null` to disable extraction.
 
 ## Gatekeeper Configuration
 
-Gatekeeper projects can configure the initial assistant message:
+Gatekeeper projects can configure the application experience:
 
 ```json
 {
   "project_type": "gatekeeper",
   "persona_id": "11111111-1111-1111-1111-111111111111",
   "application_experience": {
-    "opening_message": "Welcome. A few questions first.\n\nWe are looking for people who understand care, creativity, and community beyond access."
+    "opening_message": "Welcome. A few questions first.\n\nWe are looking for people who understand care, creativity, and community beyond access.",
+    "closing_message": "Thank you. We'll get in touch about your application soon.",
+    "opening_interaction": {
+      "inputType": "singleSelect",
+      "options": ["Artist", "Curator", "Organiser"]
+    },
+    "required_signals": [
+      "Why they want to join",
+      "What they would contribute",
+      "How they understand community care"
+    ],
+    "preferred_input_types": ["text", "singleSelect"],
+    "max_turns": 4
   },
   "pass_threshold": 0.65,
   "reject_threshold": 0.25
 }
 ```
 
+`application_experience` fields:
+
+- `opening_message` - First assistant message before the applicant replies. Defaults to a first application question when missing.
+- `closing_message` - Final applicant-facing application message. Defaults to a neutral thank-you/follow-up message. Groucho still records the internal `passed`, `redirected`, or `rejected` outcome for webhooks and admin review, but the applicant should not see a definitive judgment.
+- `opening_interaction` - Optional first-turn input control (`text`, `singleSelect`, or `multiSelect`). Clients can override per session via `startSession({ openingInteraction })`.
+- `required_signals` - Ordered application signals Groucho should learn before deciding. Groucho stores answers against stable derived keys and sends compact signal state, rather than the full transcript, on configured application turns.
+- `preferred_input_types` - Hints for when to use open text vs structured inputs.
+- `max_turns` - Optional guidance for how many assistant turns to target before deciding.
+
 If `application_experience.opening_message` is missing or empty, Groucho uses:
 
 ```text
-Hi.
+What brings you here, and what do you think you would add?
 ```
 
 The opening message is shown to the user before their first reply. The runtime also seeds the model history with that opener so the persona treats the user's first message as a response to it.
@@ -130,6 +151,24 @@ The final gatekeeper message is persona-driven. The assistant calls the structur
 ```
 
 When `terminal` is not `none`, the session ends.
+
+The applicant-facing terminal `message` is always normalized to `application_experience.closing_message`, regardless of the internal terminal value. Do not use copy such as "Welcome in", "Rejected", or "Not the right fit" for application endings.
+
+Applicants do not need an account before applying. The default SDK experience
+collects their email before starting the conversation, and public API clients
+provide the normalized `applicant.email` envelope at session start. Groucho
+stores it as `sessions.applicant_email` so approved applicants can receive an
+account invitation after review. `/doorcheck` mirrors this lifecycle by
+collecting a fresh email before each preview application and attaching it to the
+session.
+
+### Artist reference enrichment
+
+When the previous assistant turn asked for an artist or creative reference and the applicant replies with a short name, Groucho may enrich that reference server-side with brief LLM-generated context before generating the next follow-up.
+
+This enrichment is used only to help Doorman ask a sharper personal follow-up. It is **not** used to verify that the artist exists and is **not** a pass/fail criterion.
+
+Enriched context is stored on the user message metadata as `artist_context` for audit/debugging. It is not exposed in the public message API response in v1.
 
 ## Onboarding Configuration
 
@@ -168,10 +207,10 @@ Onboarding projects require `flow_config.steps`.
     ]
   },
   "onboarding_experience": {
-    "bridge_enabled": true,
+    "bridge_enabled": false,
     "followup_enabled": true,
-    "boundary_enabled": true,
-    "personalized_completion": true
+    "boundary_enabled": false,
+    "personalized_completion": false
   }
 }
 ```
@@ -185,15 +224,16 @@ Step fields:
 - `required` - Stored for configuration; current runtime asks configured steps in order.
 - `intro` - Optional short text shown before the question.
 - `hint` - Optional host UI input hint for the active step.
+- `interaction` - Optional step input control (`text`, `singleSelect`, or `multiSelect`) with `options` for select inputs.
 - `followup_prompt` - Optional custom follow-up if an answer is brief or vague.
 - `min_answer_chars` - Optional heuristic threshold for follow-up prompts. Defaults to 24.
 
 `onboarding_experience` fields:
 
-- `bridge_enabled` - Allows short persona-voiced acknowledgements between steps.
-- `followup_enabled` - Allows one clarifying follow-up per step.
-- `boundary_enabled` - Allows calm pushback when answers undermine dignity or safety.
-- `personalized_completion` - Generates a short personalized closing after the final answer. When disabled, Groucho uses the default closing.
+- `bridge_enabled` - Allows LLM-generated persona-voiced acknowledgements between steps. Default off.
+- `followup_enabled` - Allows one clarifying follow-up per step, using the cheap length heuristic when LLM intelligence is otherwise off. Default on.
+- `boundary_enabled` - Allows LLM-generated calm pushback when answers undermine dignity or safety. Default off.
+- `personalized_completion` - Generates an LLM-written closing line after the final answer. When disabled, Groucho uses the default closing. Default off.
 
 ## API Keys
 
@@ -248,7 +288,22 @@ Rules:
   "session_mode": "dry-run",
   "persona_id": "colors-application-persona-id",
   "application_experience": {
-    "opening_message": "Welcome. A few questions first.\n\nWe are looking for people who understand care, creativity, and community beyond access."
+    "opening_message": "What brought you here?",
+    "closing_message": "Thank you. We'll get in touch about your application soon.",
+    "opening_interaction": {
+      "inputType": "singleSelect",
+      "options": ["Discover", "Community", "Share Work"]
+    },
+    "required_signals": [
+      "What brought you here?",
+      "Name an artist more people should know about. What would you want someone hearing them for the first time to notice?",
+      "What's the last song you recommended, and why did you think it was worth sharing?",
+      "Someone shares unfinished music that isn't really for you. How would you respond?",
+      "Which sounds most like you?",
+      "What's one thing you could realistically contribute in your first month?"
+    ],
+    "preferred_input_types": ["text", "singleSelect"],
+    "max_turns": 6
   },
   "pass_threshold": 0.65,
   "reject_threshold": 0.25,
@@ -274,37 +329,70 @@ Use this when the user is applying for access and Groucho should make a decision
       {
         "id": "intent",
         "title": "Intent",
-        "question": "What draws you to COLORS, beyond discovering new music?",
+        "question": "What brought you here?",
         "profile_key": "intent",
+        "required": true,
+        "interaction": {
+          "inputType": "singleSelect",
+          "options": ["Discover", "Community", "Share Work"]
+        }
+      },
+      {
+        "id": "artist_reference",
+        "title": "Artist Reference",
+        "question": "Name an artist more people should know about. What would you want someone hearing them for the first time to notice?",
+        "profile_key": "artist_reference",
         "required": true
       },
       {
-        "id": "belonging",
-        "title": "Belonging",
-        "question": "What helps you feel safe, respected, and able to show up as yourself?",
-        "profile_key": "belonging",
+        "id": "recommendation",
+        "title": "Recommendation",
+        "question": "What's the last song you recommended, and why did you think it was worth sharing?",
+        "profile_key": "recommendation",
         "required": true
       },
       {
-        "id": "contribution",
-        "title": "Contribution",
-        "question": "How would you want to contribute to the COLORS world without adding noise?",
-        "profile_key": "contribution",
+        "id": "community_value",
+        "title": "Community Value",
+        "question": "Someone shares unfinished music that isn't really for you. How would you respond?",
+        "profile_key": "community_value",
+        "required": true
+      },
+      {
+        "id": "participation_style",
+        "title": "Participation Style",
+        "question": "Which sounds most like you?",
+        "profile_key": "participation_style",
+        "required": true,
+        "interaction": {
+          "inputType": "singleSelect",
+          "options": [
+            "I mostly listen",
+            "I like discussing music",
+            "I enjoy giving feedback",
+            "I regularly share discoveries"
+          ]
+        }
+      },
+      {
+        "id": "forum_contribution",
+        "title": "Forum Contribution",
+        "question": "What's one thing you could realistically contribute in your first month?",
+        "profile_key": "forum_contribution",
         "required": true
       }
     ]
   },
   "onboarding_experience": {
-    "bridge_enabled": true,
+    "bridge_enabled": false,
     "followup_enabled": true,
-    "boundary_enabled": true,
-    "personalized_completion": true
-  },
-  "profile_extract_on": ["passed"]
+    "boundary_enabled": false,
+    "personalized_completion": false
+  }
 }
 ```
 
-Use this after access has been granted, or when the product goal is structured onboarding rather than selection.
+Use this only for static intake or after access has been granted. For selection, use the gatekeeper project above.
 
 ## Runtime Endpoints
 

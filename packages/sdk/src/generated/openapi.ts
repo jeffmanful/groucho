@@ -37,12 +37,14 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Bootstrap an onboarding session (first question without a user message)
+         * Bootstrap a session (Groucho speaks first)
          * @description Idempotent: creates the session and assistant opener when missing, or returns
-         *     the latest assistant message and `currentStep` for an active session.
-         *     Onboarding projects only.
+         *     the latest assistant message for an active session.
+         *
+         *     - **gatekeeper** — persists the application opening message (project config, or optional `openingMessage` in the request body).
+         *     - **onboarding** — persists welcome + first question and returns `currentStep`.
          */
-        post: operations["startOnboardingSession"];
+        post: operations["startSession"];
         delete?: never;
         options?: never;
         head?: never;
@@ -121,21 +123,45 @@ export interface components {
         SessionOutcome: "active" | "passed" | "redirected" | "rejected";
         /** @enum {string} */
         ProjectType: "gatekeeper" | "onboarding";
+        /** @enum {string} */
+        GrouchoIntent: "probe" | "clarify" | "challenge" | "acknowledge" | "decide" | "redirect" | "reject";
+        /** @enum {string} */
+        GrouchoInputType: "text" | "voice" | "singleSelect" | "multiSelect" | "ranking";
+        /** @enum {string} */
+        GrouchoEmotionalState: "neutral" | "curious" | "interested" | "skeptical" | "evaluating" | "decisive";
+        /** @enum {string} */
+        GrouchoVisualState: "idle" | "listening" | "thinking" | "curious" | "interested" | "evaluating" | "decision";
+        GrouchoInteractionUi: {
+            intent: components["schemas"]["GrouchoIntent"];
+            inputType: components["schemas"]["GrouchoInputType"];
+            emotionalState: components["schemas"]["GrouchoEmotionalState"];
+            visualState: components["schemas"]["GrouchoVisualState"];
+            options?: string[];
+        };
+        OpeningInteraction: {
+            /** @enum {string} */
+            inputType: "text" | "singleSelect" | "multiSelect";
+            /** @description Required when `inputType` is `singleSelect` or `multiSelect` */
+            options?: string[];
+        };
         OnboardingCurrentStep: {
             id: string;
             title: string;
             index: number;
             total: number;
+            /** @description Optional input control for this onboarding step. */
+            interaction?: components["schemas"]["OpeningInteraction"];
         };
         OnboardingFlags: {
             followup?: boolean;
             boundary?: boolean;
         };
-        StartOnboardingResponse: {
+        StartSessionResponse: {
             message: string;
             /** @enum {string} */
             status: "active";
             projectType: components["schemas"]["ProjectType"];
+            ui?: components["schemas"]["GrouchoInteractionUi"];
             flowVersion?: string;
             welcomeMessage?: string;
             currentStep?: components["schemas"]["OnboardingCurrentStep"];
@@ -149,10 +175,12 @@ export interface components {
             content: string;
         };
         PostMessageResponse: {
-            /** @description Raw assistant text for this turn (may include terminal tokens) */
+            /** @description Assistant text for this turn. Terminal application turns return the configured neutral closing message, while `status` carries the internal outcome. */
             message: string;
             status: components["schemas"]["SessionOutcome"];
             scores: components["schemas"]["ScoreBreakdown"];
+            /** @description V2 interaction spec for client rendering (gatekeeper turns) */
+            ui?: components["schemas"]["GrouchoInteractionUi"];
             /**
              * Format: uuid
              * @description Present only when `status` is `passed` and access gating requires a secret
@@ -314,7 +342,7 @@ export interface operations {
             };
         };
     };
-    startOnboardingSession: {
+    startSession: {
         parameters: {
             query?: never;
             header?: never;
@@ -329,6 +357,13 @@ export interface operations {
                     /** Format: uuid */
                     personaId?: string | null;
                     applicant?: components["schemas"]["ApplicantIdentity"];
+                    /**
+                     * @description Optional gatekeeper opener for new sessions. Overrides the project's
+                     *     `application_experience.opening_message` when the session is first created.
+                     *     Ignored when resuming an active session that already has an opener.
+                     */
+                    openingMessage?: string;
+                    openingInteraction?: components["schemas"]["OpeningInteraction"];
                 };
             };
         };
@@ -339,10 +374,10 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["StartOnboardingResponse"];
+                    "application/json": components["schemas"]["StartSessionResponse"];
                 };
             };
-            /** @description Project is not onboarding */
+            /** @description Invalid request or missing applicant identity */
             400: {
                 headers: {
                     [name: string]: unknown;
