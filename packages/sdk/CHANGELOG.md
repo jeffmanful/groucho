@@ -1,5 +1,13 @@
 # @groucho/sdk
 
+## 0.1.1
+
+### Patch Changes
+
+- 4095771: Initial
+- Update intro logic
+- e701c66: Groucho v1
+
 Changelog. Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
 ## 0.1.0

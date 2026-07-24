@@ -1,10 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import type { Mock } from "vitest"
 import { createClient } from "../client.js"
 import { GrouchoApiError } from "../errors.js"
 
 type CapturedCall = {
   url: string
   init: RequestInit | undefined
+}
+
+type FetchMock = Mock<typeof fetch>
+
+function mockFetch(handler: (url: string, init?: RequestInit) => Promise<Response>): FetchMock {
+  return vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+    handler(String(input), init),
+  )
+}
+
+function requestBody(fetchMock: FetchMock): string {
+  const init = fetchMock.mock.calls[0]?.[1]
+  if (!init?.body) throw new Error("Expected fetch request body")
+  return init.body as string
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -27,11 +42,11 @@ function emptyResponse(status = 204): Response {
 
 describe("createClient — URL composition", () => {
   let calls: CapturedCall[]
-  let fakeFetch: ReturnType<typeof vi.fn>
+  let fakeFetch: FetchMock
 
   beforeEach(() => {
     calls = []
-    fakeFetch = vi.fn(async (url: string, init?: RequestInit) => {
+    fakeFetch = mockFetch(async (url, init) => {
       calls.push({ url, init })
       const isStart = url.endsWith("/start")
       return jsonResponse(
@@ -86,11 +101,11 @@ describe("createClient — URL composition", () => {
 
 describe("createClient — headers and body", () => {
   let calls: CapturedCall[]
-  let fakeFetch: ReturnType<typeof vi.fn>
+  let fakeFetch: FetchMock
 
   beforeEach(() => {
     calls = []
-    fakeFetch = vi.fn(async (url: string, init?: RequestInit) => {
+    fakeFetch = mockFetch(async (url, init) => {
       calls.push({ url, init })
       const isStart = url.endsWith("/start")
       return jsonResponse(
@@ -140,24 +155,24 @@ describe("createClient — headers and body", () => {
   })
 
   it("omits secret from access body when not provided", async () => {
-    const fetchVoid = vi.fn(async () => emptyResponse())
+    const fetchVoid = mockFetch(async () => emptyResponse())
     const client = createClient({ baseUrl: "/api/groucho", fetch: fetchVoid })
     await client.submitAccessEmail("abc", { email: "u@example.com" })
-    const body = JSON.parse(fetchVoid.mock.calls[0][1].body as string)
+    const body = JSON.parse(requestBody(fetchVoid))
     expect(body).toEqual({ email: "u@example.com" })
     expect("secret" in body).toBe(false)
   })
 
   it("includes secret in access body when provided", async () => {
-    const fetchVoid = vi.fn(async () => emptyResponse())
+    const fetchVoid = mockFetch(async () => emptyResponse())
     const client = createClient({ baseUrl: "/api/groucho", fetch: fetchVoid })
     await client.submitAccessEmail("abc", { email: "u@example.com", secret: "s_1" })
-    const body = JSON.parse(fetchVoid.mock.calls[0][1].body as string)
+    const body = JSON.parse(requestBody(fetchVoid))
     expect(body).toEqual({ email: "u@example.com", secret: "s_1" })
   })
 
   it("sends startSession body with personaId and applicant", async () => {
-    const fetchStart = vi.fn(async () =>
+    const fetchStart = mockFetch(async () =>
       jsonResponse({
         message: "Hi.",
         status: "active",
@@ -170,7 +185,7 @@ describe("createClient — headers and body", () => {
       personaId: "p1",
       applicant: { email: "u@example.com", name: "User" },
     })
-    const body = JSON.parse(fetchStart.mock.calls[0][1].body as string)
+    const body = JSON.parse(requestBody(fetchStart))
     expect(body).toEqual({
       personaId: "p1",
       applicant: { email: "u@example.com", name: "User" },
@@ -180,7 +195,7 @@ describe("createClient — headers and body", () => {
   })
 
   it("sends openingMessage when provided", async () => {
-    const fetchStart = vi.fn(async () =>
+    const fetchStart = mockFetch(async () =>
       jsonResponse({
         message: "Welcome.",
         status: "active",
@@ -192,12 +207,12 @@ describe("createClient — headers and body", () => {
     await client.startSession("abc", {
       openingMessage: "Welcome.",
     })
-    const body = JSON.parse(fetchStart.mock.calls[0][1].body as string)
+    const body = JSON.parse(requestBody(fetchStart))
     expect(body.openingMessage).toBe("Welcome.")
   })
 
   it("sends openingInteraction when provided", async () => {
-    const fetchStart = vi.fn(async () =>
+    const fetchStart = mockFetch(async () =>
       jsonResponse({
         message: "Welcome.",
         status: "active",
@@ -219,7 +234,7 @@ describe("createClient — headers and body", () => {
         options: ["Artist", "Curator"],
       },
     })
-    const body = JSON.parse(fetchStart.mock.calls[0][1].body as string)
+    const body = JSON.parse(requestBody(fetchStart))
     expect(body.openingInteraction).toEqual({
       inputType: "singleSelect",
       options: ["Artist", "Curator"],

@@ -1,6 +1,6 @@
 {
   "name": "@groucho-gatekeeper/sdk",
-  "version": "0.1.1-next.1",
+  "version": "0.1.1",
   "description": "Headless client, server helper, and React UI for the Groucho gatekeeper API.",
   "license": "MIT",
   "homepage": "https://github.com/thompson-mcdonald/groucho/tree/main/packages/sdk#readme",
