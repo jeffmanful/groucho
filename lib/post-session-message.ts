@@ -288,52 +288,9 @@ export async function postSessionMessage(
 
   const openingMessage = settings.applicationExperience.opening_message
 
-  type PersonaRow = {
-    id: string
-    prompt: string
-    pass_threshold: number
-    reject_threshold: number
-    profile_schema?: unknown
-    profile_extractor_hint?: string | null
-  }
-
-  let defaultPersona: PersonaRow | null = null
-  const personaCols =
-    "id, prompt, pass_threshold, reject_threshold, profile_schema, profile_extractor_hint"
-
-  if (personaId) {
-    const { data } = await supabase
-      .from("personas")
-      .select(personaCols)
-      .eq("id", personaId)
-      .eq("is_active", true)
-      .single()
-    defaultPersona = data as PersonaRow | null
-  }
-
-  if (!defaultPersona) {
-    const { data } = await supabase
-      .from("personas")
-      .select(personaCols)
-      .eq("is_active", true)
-      .eq("is_default", true)
-      .single()
-    defaultPersona = data as PersonaRow | null
-  }
-
-  const baseSystem = defaultPersona
-    ? withTerminalDecisionAppendix(defaultPersona.prompt)
-    : withTerminalDecisionAppendix(DOORMAN_SYSTEM_PROMPT_CORE)
-  const resolvedPersonaId: string | null = defaultPersona?.id ?? null
-  const passThreshold: number = defaultPersona?.pass_threshold ?? 0.65
-  const rejectThreshold: number = defaultPersona?.reject_threshold ?? 0.25
-
-  let sessionRowId: string
-  let sessionApplicantIdentity: ApplicantIdentity | null = applicantIdentity ?? null
-
   const { data: existing } = await supabase
     .from("sessions")
-    .select("id, status, applicant_email, applicant_name")
+    .select("id, status, persona_id, applicant_email, applicant_name")
     .eq("session_id", sessionId)
     .eq("project_id", projectId)
     .maybeSingle()
@@ -359,6 +316,64 @@ export async function postSessionMessage(
         { status: 409 },
       )
     }
+  }
+
+  type PersonaRow = {
+    id: string
+    prompt: string
+    pass_threshold: number
+    reject_threshold: number
+    profile_schema?: unknown
+    profile_extractor_hint?: string | null
+  }
+
+  let resolvedPersona: PersonaRow | null = null
+  const personaCols =
+    "id, prompt, pass_threshold, reject_threshold, profile_schema, profile_extractor_hint"
+  const projectPersonaId =
+    typeof settings.raw.persona_id === "string"
+      ? settings.raw.persona_id.trim()
+      : ""
+  const personaCandidates = [
+    personaId?.trim(),
+    typeof existing?.persona_id === "string" ? existing.persona_id.trim() : "",
+    projectPersonaId,
+  ].filter((id, index, ids): id is string => Boolean(id) && ids.indexOf(id) === index)
+
+  for (const candidateId of personaCandidates) {
+    const { data } = await supabase
+      .from("personas")
+      .select(personaCols)
+      .eq("id", candidateId)
+      .eq("is_active", true)
+      .maybeSingle()
+    if (data) {
+      resolvedPersona = data as PersonaRow
+      break
+    }
+  }
+
+  if (!resolvedPersona) {
+    const { data } = await supabase
+      .from("personas")
+      .select(personaCols)
+      .eq("is_active", true)
+      .eq("is_default", true)
+      .single()
+    resolvedPersona = data as PersonaRow | null
+  }
+
+  const baseSystem = resolvedPersona
+    ? withTerminalDecisionAppendix(resolvedPersona.prompt)
+    : withTerminalDecisionAppendix(DOORMAN_SYSTEM_PROMPT_CORE)
+  const resolvedPersonaId: string | null = resolvedPersona?.id ?? null
+  const passThreshold: number = resolvedPersona?.pass_threshold ?? 0.65
+  const rejectThreshold: number = resolvedPersona?.reject_threshold ?? 0.25
+
+  let sessionRowId: string
+  let sessionApplicantIdentity: ApplicantIdentity | null = applicantIdentity ?? null
+
+  if (existing) {
     if (applicantIdentity && !existing.applicant_email) {
       await supabase
         .from("sessions")
@@ -659,10 +674,11 @@ export async function postSessionMessage(
         clientSessionKey: sessionId,
         terminalStatus: status,
         scores,
-        persona: defaultPersona
+        persona: resolvedPersona
           ? {
-              profile_schema: defaultPersona.profile_schema ?? null,
-              profile_extractor_hint: defaultPersona.profile_extractor_hint ?? null,
+              profile_schema: resolvedPersona.profile_schema ?? null,
+              profile_extractor_hint:
+                resolvedPersona.profile_extractor_hint ?? null,
             }
           : null,
         transcript: transcriptForExtraction,

@@ -138,10 +138,8 @@ function makeSupabaseMock(state: {
       if (table === "sessions") {
         const id = `s_${state.sessions.length + 1}`
         state.sessions.push({
+          ...payload,
           id,
-          session_id: payload.session_id,
-          project_id: payload.project_id,
-          organisation_id: payload.organisation_id,
           status: "active",
           created_at: "2026-01-01T00:00:00Z",
           updated_at: "2026-01-01T00:00:00Z",
@@ -213,6 +211,178 @@ describe("contract: postSessionMessage", () => {
     const state = (supa as any).__state
     state.sessions = []
     state.messages = []
+    state.personas = [
+      {
+        id: "persona1",
+        prompt: "x",
+        pass_threshold: 0.65,
+        reject_threshold: 0.25,
+        profile_schema: null,
+        profile_extractor_hint: null,
+        is_active: true,
+        is_default: true,
+      },
+    ]
+  })
+
+  it("continues an active session with its stored persona", async () => {
+    const { resolveProjectContext } = await import("@/lib/project-resolution")
+    vi.mocked(resolveProjectContext).mockResolvedValueOnce({
+      ok: true,
+      context: {
+        organisationId: "org1",
+        projectId: "proj1",
+        apiKeyId: "key1",
+        settings: {
+          projectType: "gatekeeper" as const,
+          applicationExperience: { opening_message: "Hi." },
+          flowConfig: null,
+          onboardingExperience: {
+            bridge_enabled: true,
+            followup_enabled: true,
+            boundary_enabled: true,
+            personalized_completion: true,
+          },
+          raw: {
+            project_type: "gatekeeper",
+            persona_id: "project-persona",
+          },
+        },
+      },
+    })
+    const supa = await import("@/lib/supabase")
+    const state = (supa as any).__state
+    state.sessions.push({
+      id: "s_persona",
+      session_id: "sess_stored_persona_1",
+      project_id: "proj1",
+      persona_id: "session-persona",
+      applicant_email: testApplicant.email,
+      status: "active",
+    })
+    state.personas.push(
+      {
+        id: "session-persona",
+        prompt: "SESSION PERSONA PROMPT",
+        pass_threshold: 0.7,
+        reject_threshold: 0.2,
+        is_active: true,
+        is_default: false,
+      },
+      {
+        id: "project-persona",
+        prompt: "PROJECT PERSONA PROMPT",
+        pass_threshold: 0.7,
+        reject_threshold: 0.2,
+        is_active: true,
+        is_default: false,
+      },
+    )
+
+    let capturedSystem = ""
+    anthropicCreateImpl = async (args: unknown) => {
+      capturedSystem = (args as { system?: string }).system ?? ""
+      return {
+        content: [
+          {
+            type: "tool_use",
+            id: "toolu_persona",
+            name: "groucho_respond",
+            input: {
+              reply: "Tell me more.",
+              terminal: "none",
+              intent: "probe",
+              inputType: "text",
+              emotionalState: "curious",
+              visualState: "curious",
+            },
+          },
+        ],
+      }
+    }
+
+    const { postSessionMessage } = await import("@/lib/post-session-message")
+    const res = await postSessionMessage({
+      authorization: "Bearer gk_test_x",
+      sessionId: "sess_stored_persona_1",
+      message: "hello",
+      applicantIdentity: testApplicant,
+    })
+
+    expect(res.status).toBe(200)
+    expect(capturedSystem).toContain("SESSION PERSONA PROMPT")
+    expect(capturedSystem).not.toContain("PROJECT PERSONA PROMPT")
+  })
+
+  it("starts public message sessions with the project persona", async () => {
+    const { resolveProjectContext } = await import("@/lib/project-resolution")
+    vi.mocked(resolveProjectContext).mockResolvedValueOnce({
+      ok: true,
+      context: {
+        organisationId: "org1",
+        projectId: "proj1",
+        apiKeyId: "key1",
+        settings: {
+          projectType: "gatekeeper" as const,
+          applicationExperience: { opening_message: "Hi." },
+          flowConfig: null,
+          onboardingExperience: {
+            bridge_enabled: true,
+            followup_enabled: true,
+            boundary_enabled: true,
+            personalized_completion: true,
+          },
+          raw: {
+            project_type: "gatekeeper",
+            persona_id: "project-persona",
+          },
+        },
+      },
+    })
+    const supa = await import("@/lib/supabase")
+    const state = (supa as any).__state
+    state.personas.push({
+      id: "project-persona",
+      prompt: "PROJECT PERSONA PROMPT",
+      pass_threshold: 0.7,
+      reject_threshold: 0.2,
+      is_active: true,
+      is_default: false,
+    })
+
+    let capturedSystem = ""
+    anthropicCreateImpl = async (args: unknown) => {
+      capturedSystem = (args as { system?: string }).system ?? ""
+      return {
+        content: [
+          {
+            type: "tool_use",
+            id: "toolu_project_persona",
+            name: "groucho_respond",
+            input: {
+              reply: "Tell me more.",
+              terminal: "none",
+              intent: "probe",
+              inputType: "text",
+              emotionalState: "curious",
+              visualState: "curious",
+            },
+          },
+        ],
+      }
+    }
+
+    const { postSessionMessage } = await import("@/lib/post-session-message")
+    const res = await postSessionMessage({
+      authorization: "Bearer gk_test_x",
+      sessionId: "sess_project_persona_1",
+      message: "hello",
+      applicantIdentity: testApplicant,
+    })
+
+    expect(res.status).toBe(200)
+    expect(capturedSystem).toContain("PROJECT PERSONA PROMPT")
+    expect(state.sessions[0]?.persona_id).toBe("project-persona")
   })
 
   it("forwards persona + transcript to verdict and surfaces profile in response", async () => {
