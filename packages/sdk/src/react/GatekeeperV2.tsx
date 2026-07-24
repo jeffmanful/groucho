@@ -23,18 +23,15 @@ import {
   shouldShowQuestion,
 } from "./decision-moment.js"
 import { DotMatrixPresence } from "./DotMatrixPresence.js"
+import {
+  DEFAULT_GATEKEEPER_UI,
+  turnFromStartResponse,
+} from "./gatekeeper-turn.js"
 import { InteractionInput } from "./InteractionInput.js"
 import { OutcomeBanner } from "./OutcomeBanner.js"
 
 const STORAGE_PREFIX = "groucho.session:"
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
-const BOOTSTRAP_UI: GrouchoInteractionUi = {
-  intent: "probe",
-  inputType: "text",
-  emotionalState: "neutral",
-  visualState: "idle",
-}
 
 type TurnState = {
   message: string
@@ -133,7 +130,7 @@ export function GatekeeperV2({
     loading,
     bootstrapping,
     decisionPhase,
-    turnVisualState: turn?.ui.visualState ?? BOOTSTRAP_UI.visualState,
+    turnVisualState: turn?.ui.visualState ?? DEFAULT_GATEKEEPER_UI.visualState,
   })
 
   const submitApplicant = useCallback(() => {
@@ -187,10 +184,7 @@ export function GatekeeperV2({
       .then((res) => {
         bootstrappedSessionRef.current = sessionId
         setDecisionPhase("none")
-        setTurn({
-          message: res.message,
-          ui: BOOTSTRAP_UI,
-        })
+        setTurn(turnFromStartResponse(res))
       })
       .catch((e) => {
         if (e instanceof GrouchoApiError && e.status === 409) {
@@ -261,7 +255,7 @@ export function GatekeeperV2({
 
         const nextTurn: TurnState = {
           message: res.message,
-          ui: res.ui ?? BOOTSTRAP_UI,
+          ui: res.ui ?? DEFAULT_GATEKEEPER_UI,
         }
 
         setOutcome(res.status)

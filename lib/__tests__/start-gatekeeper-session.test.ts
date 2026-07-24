@@ -259,6 +259,21 @@ describe("startGatekeeperSession", () => {
       session_id: "s1",
       role: "assistant",
       content: "Existing opener",
+      metadata: {
+        ui: {
+          intent: "probe",
+          inputType: "singleSelect",
+          emotionalState: "neutral",
+          visualState: "curious",
+          options: ["Discover", "Community", "Share Work"],
+        },
+      },
+    })
+    s.messages.push({
+      id: "m2",
+      session_id: "s1",
+      role: "user",
+      content: "A response that has not received an assistant turn yet",
     })
 
     const { startGatekeeperSession } = await import("@/lib/start-gatekeeper-session")
@@ -274,7 +289,14 @@ describe("startGatekeeperSession", () => {
     })
     const body = await jsonFromResponse(res as Response)
     expect(body.message).toBe("Existing opener")
-    expect(s.messages).toHaveLength(1)
+    expect(body.ui).toEqual({
+      intent: "probe",
+      inputType: "singleSelect",
+      emotionalState: "neutral",
+      visualState: "curious",
+      options: ["Discover", "Community", "Share Work"],
+    })
+    expect(s.messages).toHaveLength(2)
   })
 
   it("rejects concluded session", async () => {
