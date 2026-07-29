@@ -29,6 +29,7 @@ Teams need to qualify visitors for culture-, community-, or premium-access surfa
 - A terse assistant persona ("Lou", on the door at Public Equity™) implemented in [`lib/post-session-message.ts`](./lib/post-session-message.ts) — max 2 lines per turn, ~3–4 exchanges before a decision.
 - The main structured response includes accumulated `specificity`, `authenticity`, `cultural_depth`, and `overall` assessments, which are stored on `messages.metadata.scores` without a second model request.
 - Conversational gatekeeper turns use the pinned `claude-haiku-4-5-20251001` model by default and can be overridden server-side with `GROUCHO_GATEKEEPER_CONVERSATION_MODEL` for evaluation.
+- Profile extraction, onboarding turn intelligence, onboarding completion, and artist enrichment also default to the low-cost Haiku model unless overridden with their `GROUCHO_*_MODEL` env vars. Successful LLM calls emit `llm_usage` logs with token counts and estimated cost.
 - Configured application signals are stored alongside answers in message metadata. Each model turn receives compact JSON signal state and the current answer; unconfigured projects and legacy sessions retain transcript fallback.
 - Structured terminal decisions map directly to `passed`, `redirected`, or `rejected`; concluded sessions return `409` on further posts.
 - Personas have legacy fallback thresholds and an optional `profile_schema` for structured extraction (Supabase migration [`20260511220000_personas_profile_schema.sql`](./supabase/migrations/20260511220000_personas_profile_schema.sql)).

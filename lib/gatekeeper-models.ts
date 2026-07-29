@@ -1,5 +1,7 @@
+import { DEFAULT_LOW_COST_ANTHROPIC_MODEL } from "@/lib/llm-usage"
+
 export const DEFAULT_GATEKEEPER_CONVERSATION_MODEL =
-  "claude-haiku-4-5-20251001"
+  DEFAULT_LOW_COST_ANTHROPIC_MODEL
 
 export function gatekeeperConversationModel(
   configuredModel: string | undefined =

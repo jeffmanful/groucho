@@ -1,5 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk"
 import {
+  DEFAULT_LOW_COST_ANTHROPIC_MODEL,
+  logLlmUsage,
+  modelFromEnv,
+} from "@/lib/llm-usage"
+import {
   ONBOARDING_RESPONSE_TOOL_NAME,
   ONBOARDING_STRUCTURED_SYSTEM_SUFFIX,
   onboardingResponseTool,
@@ -9,7 +14,7 @@ import {
 import type { OnboardingFlowStep } from "@/lib/project-settings"
 import { stepMinAnswerChars } from "@/lib/project-settings"
 
-const ONBOARDING_TURN_MODEL = "claude-sonnet-4-20250514"
+const ONBOARDING_TURN_MODEL_ENV = "GROUCHO_ONBOARDING_TURN_MODEL"
 const MAX_TOKENS = 400
 
 let client: Anthropic | null = null
@@ -26,6 +31,10 @@ export type OnboardingTurnContext = {
   boundaryEnabled: boolean
   followupEnabled: boolean
   alreadyInFollowup: boolean
+  requestId?: string
+  organisationId?: string
+  projectId?: string
+  sessionId?: string
 }
 
 function buildUserPayload(ctx: OnboardingTurnContext): string {
@@ -109,13 +118,27 @@ export async function runOnboardingTurnIntelligence(
       : "\n\nDo not use action `followup` — either continue or boundary.")
 
   try {
+    const model = modelFromEnv(
+      ONBOARDING_TURN_MODEL_ENV,
+      DEFAULT_LOW_COST_ANTHROPIC_MODEL,
+    )
     const response = await getClient().messages.create({
-      model: ONBOARDING_TURN_MODEL,
+      model,
       max_tokens: MAX_TOKENS,
       system,
       tools: [onboardingResponseTool],
       tool_choice: { type: "tool", name: ONBOARDING_RESPONSE_TOOL_NAME },
       messages: [{ role: "user", content: buildUserPayload(ctx) }],
+    })
+    logLlmUsage({
+      operation: "onboarding_turn_intelligence",
+      provider: "anthropic",
+      model,
+      usage: response.usage,
+      requestId: ctx.requestId,
+      organisationId: ctx.organisationId,
+      projectId: ctx.projectId,
+      sessionId: ctx.sessionId,
     })
 
     const parsed = parseOnboardingStructuredResponse(response.content)

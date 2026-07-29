@@ -1,4 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk"
+import {
+  DEFAULT_LOW_COST_ANTHROPIC_MODEL,
+  logLlmUsage,
+  modelFromEnv,
+} from "@/lib/llm-usage"
 
 export type ArtistContextConfidence = "high" | "medium" | "low" | "unknown"
 
@@ -10,7 +15,7 @@ export type ArtistContext = {
   confidence: ArtistContextConfidence
 }
 
-const ENRICHMENT_MODEL = "claude-sonnet-4-20250514"
+const ENRICHMENT_MODEL_ENV = "GROUCHO_ARTIST_ENRICHMENT_MODEL"
 const MAX_GENRES = 5
 const MAX_CULTURAL_NOTES = 4
 
@@ -77,8 +82,12 @@ export async function enrichArtistContext(query: string): Promise<ArtistContext 
   if (!trimmed) return null
 
   try {
+    const model = modelFromEnv(
+      ENRICHMENT_MODEL_ENV,
+      DEFAULT_LOW_COST_ANTHROPIC_MODEL,
+    )
     const response = await getClient().messages.create({
-      model: ENRICHMENT_MODEL,
+      model,
       max_tokens: 256,
       system: ENRICHMENT_SYSTEM,
       messages: [
@@ -87,6 +96,12 @@ export async function enrichArtistContext(query: string): Promise<ArtistContext 
           content: `Artist or creative figure named by applicant: ${trimmed}`,
         },
       ],
+    })
+    logLlmUsage({
+      operation: "artist_context_enrichment",
+      provider: "anthropic",
+      model,
+      usage: response.usage,
     })
 
     const textBlock = response.content.find((block) => block.type === "text")

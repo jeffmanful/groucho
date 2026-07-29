@@ -34,6 +34,7 @@ import {
 import { buildApplicationExperiencePromptAppendix } from "@/lib/application-experience-prompt"
 import { DEFAULT_APPLICATION_CLOSING_MESSAGE } from "@/lib/project-settings"
 import { gatekeeperConversationModel } from "@/lib/gatekeeper-models"
+import { logLlmUsage } from "@/lib/llm-usage"
 import {
   applicationSignalDefinitions,
   applicationSignalMetadata,
@@ -525,13 +526,24 @@ export async function postSessionMessage(
     overall: 0.5,
   }
   try {
+    const model = gatekeeperConversationModel()
     const response = await client.messages.create({
-      model: gatekeeperConversationModel(),
+      model,
       max_tokens: 256,
       system: systemPrompt,
       messages: claudeMessages,
       tools: [gatekeeperResponseTool],
       tool_choice: { type: "tool", name: gatekeeperResponseTool.name },
+    })
+    logLlmUsage({
+      operation: "gatekeeper_turn",
+      provider: "anthropic",
+      model,
+      usage: response.usage,
+      requestId: input.requestId,
+      organisationId,
+      projectId,
+      sessionId,
     })
 
     const parsed = parseGatekeeperStructuredResponse(response.content)
@@ -674,6 +686,7 @@ export async function postSessionMessage(
         clientSessionKey: sessionId,
         terminalStatus: status,
         scores,
+        requestId: input.requestId,
         persona: resolvedPersona
           ? {
               profile_schema: resolvedPersona.profile_schema ?? null,

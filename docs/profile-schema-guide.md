@@ -134,8 +134,12 @@ shape. Existing verdict rows are not migrated.
 
 - Each field's value is clamped at ~1KB by the extractor's JSON budget.
 - `core.summary` ≤ 280 chars; `core.intent_tags` ≤ 5; `core.interests` ≤ 10.
-- The extractor uses `claude-opus-4-6` with `max_tokens: 1024`. Aim for ≤ 10 custom
-  fields; more is allowed but extraction quality degrades.
+- The extractor defaults to `claude-haiku-4-5-20251001` with `max_tokens: 1024` to
+  keep terminal-session costs low. Set `GROUCHO_PROFILE_EXTRACTION_MODEL` only
+  when evals show a larger model materially improves extraction quality.
+- Aim for ≤ 10 custom fields; more is allowed but extraction quality degrades.
+- Successful extraction calls emit an `llm_usage` structured log event with token
+  counts and `estimatedCostUsd` when pricing is known for the configured model.
 
 ## Disabling extraction
 

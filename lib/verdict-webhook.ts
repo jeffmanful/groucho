@@ -79,6 +79,7 @@ export async function recordVerdictAndEnqueueWebhooks(opts: {
   clientSessionKey: string
   terminalStatus: TerminalSessionStatus
   scores: Score
+  requestId?: string
   /** Persona row used to decide custom profile extraction. */
   persona?: PersonaForExtraction | null
   /** Full conversation transcript to feed the extractor. */
@@ -146,6 +147,11 @@ export async function recordVerdictAndEnqueueWebhooks(opts: {
       profile = await extractProfile({
         transcript: opts.transcript!,
         persona: opts.persona ?? null,
+        requestId: opts.requestId,
+        organisationId: opts.organisationId,
+        projectId: opts.projectId,
+        sessionId: opts.sessionInternalId,
+        terminalStatus: opts.terminalStatus,
       })
       log.info("profile_extracted", {
         projectId: opts.projectId,

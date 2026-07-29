@@ -329,6 +329,10 @@ export async function postOnboardingMessage(
         boundaryEnabled: experience.boundary_enabled,
         followupEnabled: experience.followup_enabled && !inFollowup,
         alreadyInFollowup: inFollowup,
+        requestId: input.requestId,
+        organisationId,
+        projectId,
+        sessionId,
       })
 
       if (intel?.action === "boundary" && experience.boundary_enabled) {
@@ -387,6 +391,10 @@ export async function postOnboardingMessage(
             boundaryEnabled: false,
             followupEnabled: false,
             alreadyInFollowup: inFollowup,
+            requestId: input.requestId,
+            organisationId,
+            projectId,
+            sessionId,
           })
           assistantContent =
             intel?.reply ?? fallbackBridgeReply(next, undefined)
@@ -430,6 +438,12 @@ export async function postOnboardingMessage(
       assistantContent = await generateOnboardingCompletion(
         personaPrompt,
         transcript,
+        {
+          requestId: input.requestId,
+          organisationId,
+          projectId,
+          sessionId,
+        },
       )
     } else {
       assistantContent = DEFAULT_CLOSING
@@ -468,6 +482,7 @@ export async function postOnboardingMessage(
         clientSessionKey: sessionId,
         terminalStatus: "passed",
         scores: NEUTRAL_SCORES,
+        requestId: input.requestId,
         persona: mergedPersona,
         transcript,
         applicant: sessionApplicantIdentity,

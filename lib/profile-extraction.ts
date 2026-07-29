@@ -1,5 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk"
 import type { ConversationMessage } from "@/lib/scoring"
+import {
+  DEFAULT_LOW_COST_ANTHROPIC_MODEL,
+  logLlmUsage,
+  modelFromEnv,
+} from "@/lib/llm-usage"
 
 /**
  * Profile v1 — versioned `core` extracted from every completed session,
@@ -10,7 +15,7 @@ import type { ConversationMessage } from "@/lib/scoring"
  */
 
 export const PROFILE_SCHEMA_VERSION = 1 as const
-const EXTRACTION_MODEL = "claude-opus-4-6"
+const PROFILE_EXTRACTION_MODEL_ENV = "GROUCHO_PROFILE_EXTRACTION_MODEL"
 
 export type Sentiment = "positive" | "neutral" | "negative"
 export type Engagement = "high" | "medium" | "low"
@@ -184,6 +189,11 @@ function getClient(): Anthropic {
 export type ExtractProfileOpts = {
   transcript: ConversationMessage[]
   persona: PersonaForExtraction | null
+  requestId?: string
+  organisationId?: string
+  projectId?: string
+  sessionId?: string
+  terminalStatus?: string
 }
 
 export async function extractProfile(opts: ExtractProfileOpts): Promise<Profile> {
@@ -195,10 +205,14 @@ export async function extractProfile(opts: ExtractProfileOpts): Promise<Profile>
     CORE_INSTRUCTIONS +
     describeCustomFields(personaSchema) +
     (hint ? `\n\nAdditional brand hint: ${hint}` : "")
+  const model = modelFromEnv(
+    PROFILE_EXTRACTION_MODEL_ENV,
+    DEFAULT_LOW_COST_ANTHROPIC_MODEL,
+  )
 
   try {
     const response = await getClient().messages.create({
-      model: EXTRACTION_MODEL,
+      model,
       max_tokens: 1024,
       system,
       messages: [
@@ -207,6 +221,17 @@ export async function extractProfile(opts: ExtractProfileOpts): Promise<Profile>
           content: transcriptToUserMessage(opts.transcript),
         },
       ],
+    })
+    logLlmUsage({
+      operation: "profile_extraction",
+      provider: "anthropic",
+      model,
+      usage: response.usage,
+      requestId: opts.requestId,
+      organisationId: opts.organisationId,
+      projectId: opts.projectId,
+      sessionId: opts.sessionId,
+      terminalStatus: opts.terminalStatus,
     })
 
     const textBlock = response.content.find((b) => b.type === "text")
@@ -231,20 +256,20 @@ export async function extractProfile(opts: ExtractProfileOpts): Promise<Profile>
       schema_version: PROFILE_SCHEMA_VERSION,
       core,
       custom,
-      extraction: { model: EXTRACTION_MODEL, status: "ok" },
+      extraction: { model, status: "ok" },
     }
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e)
-    return failed(reason.slice(0, 200))
+    return failed(reason.slice(0, 200), model)
   }
 }
 
-function failed(reason: string): Profile {
+function failed(reason: string, model = modelFromEnv(PROFILE_EXTRACTION_MODEL_ENV)): Profile {
   return {
     schema_version: PROFILE_SCHEMA_VERSION,
     core: null,
     custom: null,
-    extraction: { model: EXTRACTION_MODEL, status: "failed", reason },
+    extraction: { model, status: "failed", reason },
   }
 }
 

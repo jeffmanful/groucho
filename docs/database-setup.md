@@ -48,6 +48,12 @@ From the **repository root**:
 
    - `AUTH_SECRET`, `ALLOWED_EMAILS`, `ADMIN_PASSWORD`, `ANTHROPIC_API_KEY` (see `.env.example`).
    - Gatekeeper conversational turns default to the pinned `claude-haiku-4-5-20251001` model. Set `GROUCHO_GATEKEEPER_CONVERSATION_MODEL` server-side to test another model without changing code.
+   - Cost-sensitive LLM work defaults to the same Haiku model. Override only when evals justify it:
+     - `GROUCHO_PROFILE_EXTRACTION_MODEL`
+     - `GROUCHO_ONBOARDING_TURN_MODEL`
+     - `GROUCHO_ONBOARDING_COMPLETION_MODEL`
+     - `GROUCHO_ARTIST_ENRICHMENT_MODEL`
+   - Successful model calls emit structured `llm_usage` log lines with token counts and `estimatedCostUsd` when the model is in Groucho's pricing map.
 
 5. **Smoke check:** open Supabase **Studio** (URL from `supabase status`) → **Table Editor** → confirm `personas` has the seeded Lou row and tables exist.
 
