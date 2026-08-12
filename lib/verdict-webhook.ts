@@ -9,6 +9,7 @@ import {
   type Profile,
 } from "@/lib/profile-extraction"
 import { log } from "@/lib/logger"
+import type { ReviewerReport } from "@/lib/reviewer-report"
 
 export type TerminalSessionStatus = "passed" | "redirected" | "rejected"
 
@@ -42,6 +43,7 @@ export type VerdictPayload = {
   outcome: "PASS" | "REDIRECT" | "REJECT"
   scores?: Score
   profile?: Profile
+  reviewer_report?: ReviewerReport
 }
 
 const DEFAULT_PROFILE_EXTRACT_STATUSES: TerminalSessionStatus[] = [
@@ -79,6 +81,7 @@ export async function recordVerdictAndEnqueueWebhooks(opts: {
   clientSessionKey: string
   terminalStatus: TerminalSessionStatus
   scores: Score
+  reviewerReport?: ReviewerReport | null
   requestId?: string
   /** Persona row used to decide custom profile extraction. */
   persona?: PersonaForExtraction | null
@@ -184,6 +187,7 @@ export async function recordVerdictAndEnqueueWebhooks(opts: {
     outcome,
     scores: opts.scores,
     ...(profile ? { profile } : {}),
+    ...(opts.reviewerReport ? { reviewer_report: opts.reviewerReport } : {}),
   }
 
   const { data: verdict, error: vErr } = await supabase

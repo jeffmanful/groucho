@@ -6,13 +6,18 @@ static onboarding is outside this work unless a later requirement depends on it.
 
 ## Goals
 
-- Keep the application to six applicant inputs or fewer.
+- Keep the application to nine applicant-facing questions or fewer, including follow-ups.
 - Gather useful evidence about curiosity, generosity, participation, and community care.
 - Make the conversation feel attentive without adding unnecessary turns.
 - Keep internal outcomes private and always finish with the configured neutral closing message.
+- Produce private advisory COLORS recommendations: `recommend`, `human_review`, or `decline`.
+- Produce a reviewer-facing applicant report or bio with a confidence score for every completed application.
+- Keep the final community decision human-owned by COLORS/the client.
 - Reduce active-turn and terminal-turn latency without weakening application quality.
 
-## Target Flow
+## Core Signal Path
+
+The standard path is six core questions. Groucho may finish early once it has enough evidence, or ask targeted follow-ups when an answer is too vague to score. The hard cap is nine applicant-facing questions total.
 
 | Step | Applicant-facing question | Input | Signal |
 | --- | --- | --- | --- |
@@ -29,26 +34,43 @@ static onboarding is outside this work unless a later requirement depends on it.
 - Keep acknowledgements short and specific to the answer. Do not use a routine
   acknowledgement such as "Interesting" on every turn.
 - Do not add a follow-up when the current answer already provides the required signal.
+- Ask no more than two follow-ups for any one core question.
+- If two follow-ups still do not produce usable evidence, record `insufficient_evidence` for that signal.
+- Do not exceed nine applicant-facing questions total; the total cap overrides the per-question follow-up allowance.
+- Groucho may finish early when the available evidence is enough for a private recommendation.
 - Do not reward polished writing, fluency, status, or famous references over substance.
 - Do not verify or judge whether an artist is sufficiently well known.
 - Never ask who received, was sent, or was recommended the song. The recommendation signal is about the music and why it felt worth sharing.
-- Never expose pass, redirect, or reject decisions to the applicant.
+- Never expose `recommend`, `human_review`, `decline`, `passed`, `redirected`, or `rejected` decisions to the applicant.
+- Do not use name or location as scored decision evidence.
 - End every terminal path with `application_experience.closing_message`. The fallback is:
   "Thank you. We'll get in touch about your application soon."
+- The final close may mention an accurate, non-evaluative detail from the applicant's answers, but must not imply acceptance.
 
 ## Architecture Direction
 
-Use a hybrid flow:
+Use a bounded evidence-gathering flow:
 
 1. Groucho deterministically selects the next configured question and interaction type.
 2. An LLM may produce a short, answer-specific acknowledgement or a targeted clarification.
-3. A clarification does not create an extra turn unless the answer is unusable or a safety boundary is required.
-4. The application is evaluated once after the final answer, with an early terminal decision reserved for clear safety cases.
+3. A clarification consumes part of the nine-question budget.
+4. The application is evaluated once Groucho has enough evidence, reaches the question cap, or encounters a safety boundary.
 5. Profile extraction and webhook delivery happen after the applicant-facing response through durable background work.
 
 This keeps the journey predictable while retaining judgment where it is useful. The
 current `required_signals` configuration describes goals rather than enforcing a fixed
-sequence, so the implementation needs explicit application-step state.
+sequence, so the implementation needs explicit application-step state and follow-up
+budget state.
+
+Reviewer-facing COLORS recommendations are advisory only:
+
+| COLORS recommendation | Current Groucho terminal | Review meaning |
+| --- | --- | --- |
+| `recommend` | `passed` | Evidence supports approval, but the client still makes the final decision. |
+| `human_review` | `redirected` | Evidence is incomplete, contradictory, borderline, or uncertain. |
+| `decline` | `rejected` | Evidence suggests poor fit, but the client still makes the final decision. |
+
+The applicant must never see either the COLORS recommendation or the raw Groucho terminal status. The forum must not grant access, reject an applicant, send an invitation, or update final community status solely from Groucho's recommendation.
 
 ## Implementation Tracker
 
@@ -66,16 +88,33 @@ sequence, so the implementation needs explicit application-step state.
 - [ ] Store the current application step on the session or derive it reliably from persisted step metadata.
 - [ ] Return the configured question and input type rather than asking the model to invent the next question.
 - [ ] Permit a targeted clarification without losing or repeating the configured step.
+- [ ] Track a nine-question total budget and a maximum of two follow-ups per core question.
+- [ ] Persist `insufficient_evidence` when a signal remains unusable after two follow-ups.
+- [ ] Allow early completion once the evaluator has enough evidence for a private recommendation.
 - [x] Replace the COLORS community-quality question with the unfinished-music scenario.
 - [x] Update the artist, recommendation, and contribution question copy to the target flow above, without asking who received the recommendation.
-- [ ] Add contract tests covering question order, structured options, refresh/resume behavior, and the six-input maximum.
+- [ ] Add contract tests covering question order, structured options, refresh/resume behavior, early finish, follow-up limits, and the nine-question maximum.
 
 ### P1: Remove Redundant Model Work
 
 - [x] Stop calling the standalone scoring model on every turn. The main structured response now returns the accumulated assessment.
-- [ ] Evaluate the complete application once at the end, returning private outcome, evidence by signal, confidence, and safety flags as structured data.
+- [ ] Evaluate the application when enough evidence exists or the cap is reached, returning private COLORS recommendation, applicant bio/report, evidence by signal, confidence score, missing signals, reviewer focus, and safety flags as structured data.
 - [ ] Keep early safety termination available without running the full final evaluation.
 - [ ] Compare the final evaluator against representative accepted, uncertain, and unsuitable applications before changing production decisions.
+- [ ] Ensure every completed application is reviewable by a human regardless of advisory recommendation.
+
+### P1: Complete The COLORS Evaluation Rubric
+
+- [ ] Ask COLORS for representative examples of `recommend`, `human_review`, and `decline` applications.
+- [ ] Define maker and multiplier evidence with concrete examples.
+- [ ] Define the minimum evidence required for early `recommend`.
+- [ ] Define when weak evidence should produce `human_review` versus private `decline`.
+- [ ] Decide whether the participation-style answer is scored or descriptive profile data only.
+- [ ] Confirm safety boundaries that should force human review or private decline.
+- [ ] Convert the final rubric into structured evaluator instructions with examples.
+- [ ] Define the reviewer packet fields, including applicant bio, confidence score, evidence summary, weak signals, flags, and reviewer focus.
+
+See [colors-evaluation-rubric-discovery.md](./colors-evaluation-rubric-discovery.md).
 
 ### P1: Shorten The Critical Path
 
@@ -105,14 +144,19 @@ sequence, so the implementation needs explicit application-step state.
 
 ## Acceptance Criteria
 
-- The standard COLORS application contains no more than six applicant inputs.
+- The standard COLORS application contains no more than nine applicant-facing questions, including follow-ups.
 - The same answers produce the same question order and interaction controls after refresh or resume.
 - The LLM cannot silently skip a required step or add routine conversational turns.
-- No applicant-facing response reveals acceptance, rejection, redirect, or access status.
+- Groucho can finish early when the answer set already provides enough evidence.
+- Groucho asks no more than two follow-ups per core question.
+- Signals can be recorded as `insufficient_evidence` after two unsuccessful follow-ups.
+- No applicant-facing response reveals acceptance, rejection, redirect, access status, raw terminal status, or private COLORS recommendation.
+- Every completed application produces a reviewer-facing report or bio with confidence score.
+- No final community decision is automated from Groucho's advisory recommendation.
 - Ordinary turns require no more than one model call; deterministic turns may require none.
 - Terminal profile extraction and webhook setup do not delay the applicant-facing closing message.
 - Stage-level p50 and p95 latency are observable without logging application content.
-- Automated tests cover the complete happy path, a clarification, a safety termination, and every private terminal outcome.
+- Automated tests cover the complete happy path, early finish, follow-up limits, insufficient evidence, a safety termination, and every private COLORS recommendation.
 
 ## Rollout
 
@@ -129,5 +173,11 @@ sequence, so the implementation needs explicit application-step state.
 | --- | --- | --- |
 | 2026-07-20 | Keep COLORS V1 focused on gatekeeper applications. | Onboarding is mostly static and does not currently need an LLM. |
 | 2026-07-20 | Use neutral, configurable terminal copy for every outcome. | Application decisions remain private until the client follows up. |
-| 2026-07-20 | Prefer a deterministic six-step journey with one final evaluation. | It improves consistency, testability, cost, and response latency. |
+| 2026-07-20 | Prefer a deterministic six-step journey with one final evaluation. | Superseded by the 2026-07-30 bounded evidence-gathering rule. |
 | 2026-07-20 | Default conversational turns to pinned Claude Haiku 4.5. | The interaction is bounded and concise; a larger final evaluator will only be added if offline testing demonstrates a material quality gain. |
+| 2026-07-30 | Use private COLORS recommendations: `recommend`, `human_review`, and `decline`. | The applicant-facing experience stays neutral while reviewers get more useful product language. |
+| 2026-07-30 | Treat `decline` as an internal recommendation only. | Negative recommendations still require human confirmation before any applicant-facing action. |
+| 2026-07-30 | Cap the application at nine applicant-facing questions, including follow-ups. | This preserves brevity while allowing targeted clarification when a signal is weak. |
+| 2026-07-30 | Allow no more than two follow-ups per core question. | Repeated probing creates friction; after two failed attempts, the signal should become `insufficient_evidence`. |
+| 2026-07-30 | Allow early finish once enough evidence exists. | Groucho should not keep asking questions just because a default sequence exists. |
+| 2026-08-12 | Treat Groucho as an advisory reporting layer, not the final decision-maker. | The client wants a report/bio with confidence for every applicant, while final community decisions remain human-owned. |

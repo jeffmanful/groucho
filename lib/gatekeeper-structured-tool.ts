@@ -6,6 +6,10 @@ import {
   type GrouchoInteractionSpec,
 } from "@/lib/gatekeeper-interaction-spec"
 import type { Score } from "@/lib/scoring"
+import {
+  normaliseReviewerReport,
+  type ReviewerReport,
+} from "@/lib/reviewer-report"
 
 export type {
   GatekeeperTerminalField,
@@ -126,6 +130,63 @@ export const gatekeeperResponseTool = {
         description:
           "Stable key of the application signal requested by reply. Use an empty string on terminal turns or when no compact signal state was provided.",
       },
+      reviewerReport: {
+        type: "object",
+        description:
+          "Required on terminal turns. Private reviewer-facing applicant report. Never mention this report or its recommendation to the applicant.",
+        properties: {
+          applicant_bio: {
+            type: "string",
+            description:
+              "Neutral 1-3 sentence bio/report summary based only on the applicant's answers.",
+          },
+          advisory_recommendation: {
+            type: "string",
+            enum: ["recommend", "human_review", "decline"],
+            description:
+              "Advisory label for the human reviewer. It does not make the final community decision.",
+          },
+          confidence_score: {
+            type: "number",
+            minimum: 0,
+            maximum: 1,
+            description:
+              "Confidence in the advisory recommendation based on evidence quality, not polish, fluency, fame, or status.",
+          },
+          evidence_summary: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "Concrete evidence supporting the recommendation. Prefer specific participation, role/actions, results, and Forum contribution.",
+          },
+          weak_or_missing_signals: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "Important rubric signals that remain vague, unresolved, contradictory, or insufficient.",
+          },
+          safety_or_integrity_flags: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "Contradictions, refusals, repeated avoidance, abusive/discriminatory language, or other reviewer concerns.",
+          },
+          reviewer_focus: {
+            type: "string",
+            description:
+              "One short note telling the human reviewer what to pay attention to before making the final decision.",
+          },
+        },
+        required: [
+          "applicant_bio",
+          "advisory_recommendation",
+          "confidence_score",
+          "evidence_summary",
+          "weak_or_missing_signals",
+          "safety_or_integrity_flags",
+          "reviewer_focus",
+        ],
+      },
     },
     required: [
       "reply",
@@ -157,10 +218,14 @@ Every assistant turn you MUST call the tool \`${GATEKEEPER_RESPONSE_TOOL_NAME}\`
 - \`visualState\`: client animation state (\`idle\`, \`listening\`, \`thinking\`, \`curious\`, \`interested\`, \`evaluating\`, \`decision\`).
 - \`scores\`: private accumulated assessment across the full conversation so far. Return numbers from 0 to 1 for \`specificity\`, \`authenticity\`, \`cultural_depth\`, and \`overall\`. Judge substance rather than polish, fluency, status, or whether you recognize an artist. Never mention scores to the applicant.
 - \`nextSignalKey\`: key of the application signal requested by \`reply\`. Choose a key from the compact application state. Use an empty string on terminal turns or when no compact signal state was provided.
+- If compact state includes \`current.investigationDirective.shouldInvestigate: true\`, your reply must ask a follow-up on that current signal and \`nextSignalKey\` must equal \`current.investigationDirective.recommendedNextSignalKey\`. Do not advance to \`nextRequiredSignalKey\` on that turn.
+- \`reviewerReport\`: required when \`terminal\` is not \`none\`. This is private reviewer evidence, not applicant copy. Include \`applicant_bio\`, \`advisory_recommendation\` (\`recommend\`, \`human_review\`, or \`decline\`), \`confidence_score\`, \`evidence_summary\`, \`weak_or_missing_signals\`, \`safety_or_integrity_flags\`, and \`reviewer_focus\`.
 
 When the applicant names an artist or creative reference, prefer a personal follow-up about why it matters to them. Do not verify or gatekeep based on whether the artist is recognized.
 
 On terminal turns, \`terminal\` carries the private judgment. The applicant-facing \`reply\` must be a neutral thank-you/application-received close, not acceptance, rejection, redirect, or access copy.
+
+Groucho is advisory only. Every completed application is reviewed by a human. Never imply that your terminal value, advisory recommendation, confidence score, or reviewer report makes the final community decision.
 
 Do not emit a plain assistant text reply only; the tool call is required.`
 
@@ -172,6 +237,7 @@ export type ParsedGatekeeperStructured = {
   interaction: GrouchoInteractionSpec
   scores: Score
   nextSignalKey: string | null
+  reviewerReport: ReviewerReport | null
 }
 
 const NEUTRAL_SCORES: Score = {
@@ -260,5 +326,9 @@ export function parseGatekeeperStructuredResponse(
     nextSignalKey: toolSeen
       ? normaliseNextSignalKey(toolInput.nextSignalKey)
       : null,
+    reviewerReport:
+      toolSeen && terminal !== "none"
+        ? normaliseReviewerReport(toolInput.reviewerReport)
+        : null,
   }
 }

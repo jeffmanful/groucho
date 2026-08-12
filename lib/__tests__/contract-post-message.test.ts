@@ -429,6 +429,61 @@ describe("contract: postSessionMessage", () => {
     expect(Array.isArray(opts.transcript)).toBe(true)
   })
 
+  it("surfaces terminal reviewer report and forwards it to verdict payload creation", async () => {
+    const reviewerReport = {
+      applicant_bio:
+        "Runs a monthly listening session and writes context notes for artists.",
+      advisory_recommendation: "recommend",
+      confidence_score: 0.86,
+      evidence_summary: [
+        "Specific recurring maker/multiplier participation",
+        "Clear role selecting artists and writing context",
+      ],
+      weak_or_missing_signals: ["Reviewer may want to confirm first-month capacity."],
+      safety_or_integrity_flags: [],
+      reviewer_focus: "Check whether their proposed weekly artist thread fits the Forum.",
+    }
+
+    anthropicCreateImpl = async () => ({
+      content: [
+        {
+          type: "tool_use",
+          id: "toolu_report",
+          name: "groucho_respond",
+          input: {
+            reply: "Thanks. We'll be in touch.",
+            terminal: "pass",
+            intent: "decide",
+            inputType: "text",
+            emotionalState: "decisive",
+            visualState: "decision",
+            scores: {
+              specificity: 0.9,
+              authenticity: 0.82,
+              cultural_depth: 0.84,
+              overall: 0.87,
+            },
+            reviewerReport,
+          },
+        },
+      ],
+    })
+
+    const { postSessionMessage } = await import("@/lib/post-session-message")
+    const res = await postSessionMessage({
+      authorization: "Bearer gk_test_x",
+      sessionId: "sess_reviewer_report_1",
+      message: "hello",
+      applicantIdentity: testApplicant,
+    })
+
+    expect(res.status).toBe(200)
+    const body = await jsonFromResponse(res as any)
+    expect(body.reviewerReport).toEqual(reviewerReport)
+    const [opts] = recordVerdictMock.mock.calls[0] as [Record<string, unknown>]
+    expect(opts.reviewerReport).toEqual(reviewerReport)
+  })
+
   it("200: returns message/status/scores", async () => {
     const { postSessionMessage } = await import("@/lib/post-session-message")
     const res = await postSessionMessage({
@@ -498,7 +553,7 @@ describe("contract: postSessionMessage", () => {
     expect(modelCalls).toBe(1)
     expect(capturedRequest).toMatchObject({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 256,
+      max_tokens: 640,
     })
     expect(body.status).toBe("active")
     expect(body.scores).toEqual({

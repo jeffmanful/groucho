@@ -254,6 +254,49 @@ components:
           minimum: 0
           maximum: 1
 
+    ReviewerReport:
+      type: object
+      required:
+        - applicant_bio
+        - advisory_recommendation
+        - confidence_score
+        - evidence_summary
+        - weak_or_missing_signals
+        - safety_or_integrity_flags
+        - reviewer_focus
+      description: Private reviewer-facing applicant report. Advisory only; final decisions remain human-owned by the host/client.
+      properties:
+        applicant_bio:
+          type: string
+          description: Neutral applicant bio/report summary based on conversation evidence.
+        advisory_recommendation:
+          type: string
+          enum: [recommend, human_review, decline]
+          description: Advisory recommendation for the human reviewer.
+        confidence_score:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Confidence in the advisory recommendation based on evidence quality.
+        evidence_summary:
+          type: array
+          items:
+            type: string
+          description: Concrete evidence supporting the advisory recommendation.
+        weak_or_missing_signals:
+          type: array
+          items:
+            type: string
+          description: Signals that remain vague, unresolved, contradictory, or insufficient.
+        safety_or_integrity_flags:
+          type: array
+          items:
+            type: string
+          description: Contradictions, refusals, repeated avoidance, abusive/discriminatory language, or other reviewer concerns.
+        reviewer_focus:
+          type: string
+          description: What the human reviewer should pay attention to before making the final decision.
+
     SessionOutcome:
       type: string
       description: Normalised outcome after thresholds (see chat route)
@@ -396,6 +439,10 @@ components:
           allOf:
             - $ref: "#/components/schemas/Profile"
           description: Structured profile extracted on terminal turns; absent on non-terminal turns and when extraction is disabled.
+        reviewerReport:
+          allOf:
+            - $ref: "#/components/schemas/ReviewerReport"
+          description: Private reviewer-facing report produced on terminal gatekeeper turns when available.
         projectType:
           $ref: "#/components/schemas/ProjectType"
         flowVersion:
@@ -444,6 +491,10 @@ components:
           allOf:
             - $ref: "#/components/schemas/Profile"
           description: Structured profile from the latest verdict; present once the session has concluded.
+        reviewerReport:
+          allOf:
+            - $ref: "#/components/schemas/ReviewerReport"
+          description: Private reviewer-facing report from the latest verdict, when available.
         projectType:
           $ref: "#/components/schemas/ProjectType"
         flowVersion:

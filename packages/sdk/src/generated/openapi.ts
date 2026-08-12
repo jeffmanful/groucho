@@ -116,6 +116,26 @@ export interface components {
             cultural_depth: number;
             overall: number;
         };
+        /** @description Private reviewer-facing applicant report. Advisory only; final decisions remain human-owned by the host/client. */
+        ReviewerReport: {
+            /** @description Neutral applicant bio/report summary based on conversation evidence. */
+            applicant_bio: string;
+            /**
+             * @description Advisory recommendation for the human reviewer.
+             * @enum {string}
+             */
+            advisory_recommendation: "recommend" | "human_review" | "decline";
+            /** @description Confidence in the advisory recommendation based on evidence quality. */
+            confidence_score: number;
+            /** @description Concrete evidence supporting the advisory recommendation. */
+            evidence_summary: string[];
+            /** @description Signals that remain vague, unresolved, contradictory, or insufficient. */
+            weak_or_missing_signals: string[];
+            /** @description Contradictions, refusals, repeated avoidance, abusive/discriminatory language, or other reviewer concerns. */
+            safety_or_integrity_flags: string[];
+            /** @description What the human reviewer should pay attention to before making the final decision. */
+            reviewer_focus: string;
+        };
         /**
          * @description Normalised outcome after thresholds (see chat route)
          * @enum {string}
@@ -188,6 +208,8 @@ export interface components {
             secret?: string;
             /** @description Structured profile extracted on terminal turns; absent on non-terminal turns and when extraction is disabled. */
             profile?: components["schemas"]["Profile"];
+            /** @description Private reviewer-facing report produced on terminal gatekeeper turns when available. */
+            reviewerReport?: components["schemas"]["ReviewerReport"];
             projectType?: components["schemas"]["ProjectType"];
             /** @description Onboarding flow_config version snapshot for this session */
             flowVersion?: string;
@@ -218,6 +240,8 @@ export interface components {
             applicant?: components["schemas"]["ApplicantIdentity"];
             /** @description Structured profile from the latest verdict; present once the session has concluded. */
             profile?: components["schemas"]["Profile"];
+            /** @description Private reviewer-facing report from the latest verdict, when available. */
+            reviewerReport?: components["schemas"]["ReviewerReport"];
             projectType?: components["schemas"]["ProjectType"];
             flowVersion?: string | null;
             /** @description Active onboarding step while session status is active */

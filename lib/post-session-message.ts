@@ -33,7 +33,17 @@ import {
 } from "@/lib/terminal-decision-prompt"
 import { buildApplicationExperiencePromptAppendix } from "@/lib/application-experience-prompt"
 import { DEFAULT_APPLICATION_CLOSING_MESSAGE } from "@/lib/project-settings"
+import {
+  fallbackReviewerReport,
+  type ReviewerReport,
+} from "@/lib/reviewer-report"
 import { gatekeeperConversationModel } from "@/lib/gatekeeper-models"
+import {
+  createLocalGatekeeperTestTurn,
+  inferLocalGatekeeperAnswers,
+  localGatekeeperTestSignalDefinitions,
+  localGatekeeperTestModeEnabled,
+} from "@/lib/local-gatekeeper-test-turn"
 import { logLlmUsage } from "@/lib/llm-usage"
 import {
   applicationSignalDefinitions,
@@ -454,9 +464,13 @@ export async function postSessionMessage(
   }))
 
   const priorHistory = historyRows.slice(0, -1)
-  const signalDefinitions = applicationSignalDefinitions(
+  const localTestMode = localGatekeeperTestModeEnabled()
+  const configuredSignalDefinitions = applicationSignalDefinitions(
     settings.applicationExperience.required_signals,
   )
+  const signalDefinitions = localTestMode
+    ? localGatekeeperTestSignalDefinitions(configuredSignalDefinitions)
+    : configuredSignalDefinitions
   const storedSignalAnswers = collectApplicationSignalAnswers(
     priorHistory,
     signalDefinitions,
@@ -504,6 +518,11 @@ export async function postSessionMessage(
             currentSignal,
             currentQuestion,
             currentAnswer: message.trim(),
+            answeredQuestionCount: dbHistory.filter(
+              (entry) => entry.role === "user",
+            ).length,
+            maxQuestions: settings.applicationExperience.max_turns,
+            maxFollowupsPerSignal: 2,
           }),
         },
       ]
@@ -518,6 +537,7 @@ export async function postSessionMessage(
   let structuredToolSeen = false
   let structuredTerminal: GatekeeperTerminalField | null = null
   let parsedNextSignalKey: string | null = null
+  let reviewerReport: ReviewerReport | null = null
   let interactionSpec = DEFAULT_INTERACTION_SPEC
   let scores: Score = {
     specificity: 0.5,
@@ -525,55 +545,85 @@ export async function postSessionMessage(
     cultural_depth: 0.5,
     overall: 0.5,
   }
-  try {
-    const model = gatekeeperConversationModel()
-    const response = await client.messages.create({
-      model,
-      max_tokens: 256,
-      system: systemPrompt,
-      messages: claudeMessages,
-      tools: [gatekeeperResponseTool],
-      tool_choice: { type: "tool", name: gatekeeperResponseTool.name },
+  if (localTestMode) {
+    const localState = useCompactSignalState
+      ? { answers: compactSignalAnswers, currentSignal }
+      : inferLocalGatekeeperAnswers({
+          definitions: signalDefinitions,
+          messages: historyRows,
+        })
+    const localTurn = createLocalGatekeeperTestTurn({
+      definitions: signalDefinitions,
+      answers: localState.answers,
+      currentSignal: localState.currentSignal,
+      userAnswerCount: dbHistory.filter((entry) => entry.role === "user").length,
+      maxTurns: settings.applicationExperience.max_turns,
     })
-    logLlmUsage({
-      operation: "gatekeeper_turn",
-      provider: "anthropic",
-      model,
-      usage: response.usage,
+    assistantContent = localTurn.assistantContent
+    structuredToolSeen = true
+    structuredTerminal = localTurn.structuredTerminal
+    parsedNextSignalKey = localTurn.parsedNextSignalKey
+    reviewerReport = localTurn.reviewerReport
+    interactionSpec = localTurn.interactionSpec
+    scores = localTurn.scores
+    log.info("local_gatekeeper_test_turn", {
       requestId: input.requestId,
-      organisationId,
       projectId,
       sessionId,
+      terminal: structuredTerminal,
     })
+  } else {
+    try {
+      const model = gatekeeperConversationModel()
+      const response = await client.messages.create({
+        model,
+        max_tokens: 640,
+        system: systemPrompt,
+        messages: claudeMessages,
+        tools: [gatekeeperResponseTool],
+        tool_choice: { type: "tool", name: gatekeeperResponseTool.name },
+      })
+      logLlmUsage({
+        operation: "gatekeeper_turn",
+        provider: "anthropic",
+        model,
+        usage: response.usage,
+        requestId: input.requestId,
+        organisationId,
+        projectId,
+        sessionId,
+      })
 
-    const parsed = parseGatekeeperStructuredResponse(response.content)
-    assistantContent = parsed.reply
-    structuredToolSeen = parsed.toolSeen
-    structuredTerminal = parsed.terminal
-    parsedNextSignalKey = parsed.nextSignalKey
-    interactionSpec = parsed.interaction
-    scores = parsed.scores
+      const parsed = parseGatekeeperStructuredResponse(response.content)
+      assistantContent = parsed.reply
+      structuredToolSeen = parsed.toolSeen
+      structuredTerminal = parsed.terminal
+      parsedNextSignalKey = parsed.nextSignalKey
+      reviewerReport = parsed.reviewerReport
+      interactionSpec = parsed.interaction
+      scores = parsed.scores
 
-    if (!parsed.toolSeen) {
-      log.warn("gatekeeper_structured_tool_missing", {
+      if (!parsed.toolSeen) {
+        log.warn("gatekeeper_structured_tool_missing", {
+          requestId: input.requestId,
+          projectId,
+          sessionId,
+          preview: assistantContent.slice(0, 120),
+        })
+      }
+    } catch (err) {
+      log.error("llm_unavailable", {
         requestId: input.requestId,
         projectId,
         sessionId,
-        preview: assistantContent.slice(0, 120),
+        detail: err instanceof Error ? err.message : String(err),
       })
+      return traceJson(
+        input,
+        { error: "AI service unavailable" },
+        { status: 503 },
+      )
     }
-  } catch (err) {
-    log.error("llm_unavailable", {
-      requestId: input.requestId,
-      projectId,
-      sessionId,
-      detail: err instanceof Error ? err.message : String(err),
-    })
-    return traceJson(
-      input,
-      { error: "AI service unavailable" },
-      { status: 503 },
-    )
   }
 
   const { error: userMetadataError } = await supabase
@@ -604,6 +654,9 @@ export async function postSessionMessage(
     structuredTerminal,
     structuredToolUsed: structuredToolSeen,
   })
+  if (status !== null && !reviewerReport) {
+    reviewerReport = fallbackReviewerReport({ terminalStatus: status, scores })
+  }
   const nextSignal =
     status === null && useCompactSignalState
       ? resolveNextApplicationSignal(
@@ -619,6 +672,7 @@ export async function postSessionMessage(
           gatekeeper_structured: true,
           gatekeeper_terminal: structuredTerminal,
           ui: interactionSpec,
+          ...(reviewerReport ? { reviewer_report: reviewerReport } : {}),
           ...(nextSignal
             ? { application_next_signal: applicationSignalMetadata(nextSignal) }
             : {}),
@@ -674,10 +728,12 @@ export async function postSessionMessage(
 
   let profile: Awaited<ReturnType<typeof recordVerdictAndEnqueueWebhooks>>["profile"] = null
   if (status !== null) {
-    const transcriptForExtraction: ConversationMessage[] = [
-      ...dbHistory,
-      { role: "assistant", content: userVisibleAssistantContent },
-    ]
+    const transcriptForExtraction: ConversationMessage[] = localTestMode
+      ? []
+      : [
+          ...dbHistory,
+          { role: "assistant", content: userVisibleAssistantContent },
+        ]
     try {
       const result = await recordVerdictAndEnqueueWebhooks({
         organisationId,
@@ -686,6 +742,7 @@ export async function postSessionMessage(
         clientSessionKey: sessionId,
         terminalStatus: status,
         scores,
+        reviewerReport,
         requestId: input.requestId,
         persona: resolvedPersona
           ? {
@@ -715,5 +772,6 @@ export async function postSessionMessage(
     ...(structuredToolSeen ? { ui: interactionSpec } : {}),
     ...(successSecret ? { secret: successSecret } : {}),
     ...(profile ? { profile } : {}),
+    ...(reviewerReport ? { reviewerReport } : {}),
   })
 }

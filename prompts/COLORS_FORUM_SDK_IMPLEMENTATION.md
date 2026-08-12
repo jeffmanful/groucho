@@ -15,8 +15,17 @@ adapt the framework-specific files.
 - Groucho API key: server-only `gk_*` secret
 - Applicant identity: email collected before session bootstrap
 - Applicant-facing terminal behavior: neutral configured thank-you message
+- Private advisory COLORS recommendation: `recommend` | `human_review` | `decline`
+- Reviewer packet: applicant report/bio, confidence score, evidence summary, weak signals, and flags
 - Durable decision source: verified `session.completed` webhook
-- Forum account creation and invitation sending: owned by the COLORS forum
+- Forum account creation, final decisions, and invitation sending: owned by the COLORS forum/client
+
+Until Groucho exposes project-specific terminal enums, map raw Groucho outcomes to
+COLORS reviewer recommendations as:
+
+- `passed` -> `recommend`
+- `redirected` -> `human_review`
+- `rejected` -> `decline`
 
 Do not install `@groucho-gatekeeper/sdk@next`; as of 2026-07-24 that tag still
 points to an older prerelease. Pin the exact version above.
@@ -50,8 +59,11 @@ Important product constraints:
 - Applicants do not have forum accounts yet.
 - We need their email so approved applicants can receive an invitation later.
 - Groucho evaluates the application, but the COLORS forum owns review status,
-  account invitations, roles, and permissions.
-- Never render pass, redirect, or reject to an applicant.
+  final decisions, account invitations, roles, and permissions.
+- Groucho recommendations are advisory report fields. Do not automate final
+  community decisions from them.
+- Never render raw pass/redirect/reject outcomes or private
+  recommend/human_review/decline recommendations to an applicant.
 - Every terminal path must show only Groucho's configured neutral thank-you
   message.
 - Do not build onboarding. This integration is the gatekeeper application only.
@@ -215,6 +227,12 @@ Applicant-facing behavior:
 
 Expected project-configured COLORS flow:
 
+This is the core signal path. Groucho may finish early once it has enough
+evidence, and may ask targeted follow-ups when a signal is too vague,
+contradictory, access-first, or interesting enough to pressure-test. It must
+ask no more than nine applicant-facing questions total, including follow-ups,
+and no more than two follow-ups for any one core question.
+
 1. What brought you here?
    Single select: Discover, Community, Share Work
 2. Name an artist more people should know about. What would you want someone
@@ -287,7 +305,13 @@ Add or adapt a host-side table with fields equivalent to:
 - groucho_verdict_id, unique
 - groucho_session_key, unique
 - applicant_email
-- groucho_outcome: PASS | REDIRECT | REJECT
+- groucho_outcome: passed | redirected | rejected
+- colors_recommendation: recommend | human_review | decline
+- colors_confidence_score
+- colors_applicant_bio
+- colors_evidence_summary JSON
+- colors_weak_signals JSON
+- colors_safety_flags JSON
 - groucho_scores JSON, private
 - groucho_profile JSON, private and nullable
 - review_status: pending_review | approved | declined | invited | accepted
@@ -309,7 +333,9 @@ Webhook endpoint requirements:
 6. Validate the payload shape before persistence.
 7. Upsert idempotently using the webhook/verdict `id`.
 8. Store `payload.applicant.email` as the invitation contact.
-9. Store outcomes, scores, and profile as private reviewer data.
+9. Store outcomes, scores, profile, advisory recommendation, confidence, report
+   bio, evidence summary, weak signals, and flags as private reviewer data when
+   present.
 10. Return 2xx for already-processed valid deliveries.
 11. Do not send invitations in the webhook request.
 12. Do not log the raw payload, answers, email, signature, API key, or profile.
@@ -329,6 +355,12 @@ The webhook payload includes:
 - scores
 - optional profile
 
+Derive `colors_recommendation` from `outcome` using the current mapping:
+`passed` -> `recommend`, `redirected` -> `human_review`, and `rejected` ->
+`decline`. `decline` is private reviewer guidance only; do not send an
+applicant-facing rejection from the webhook request. The host must still require
+an explicit human reviewer decision for every application.
+
 Configure the webhook URL and signing secret in the Groucho Forum Applications
 project. Add tests for valid signatures, invalid signatures, malformed payloads,
 duplicate delivery, and persistence failure.
@@ -345,11 +377,14 @@ Requirements:
 - Only authorized forum reviewers can see private Groucho outcomes, scores,
   profile data, or transcript references.
 - Add a review queue for completed applications with applicant email,
-  submission date, private outcome, concise profile summary, and review status.
+  submission date, private outcome, advisory COLORS recommendation, confidence
+  score, applicant bio/report, evidence summary, weak signals, flags, and review
+  status.
 - Keep the forum database as the source of truth for review and invitation state.
 - Do not automatically create an account from a Groucho outcome.
-- Require an explicit reviewer action to approve and send an invitation unless
-  the existing product has a separately approved automation policy.
+- Require an explicit reviewer action to approve, decline, or send an invitation.
+  Do not automate final community decisions from Groucho's advisory
+  recommendation or confidence score.
 - The invitation must use the `applicant_email` received in the verified webhook.
 - Make invitation sending idempotent and prevent duplicate active invites.
 - Record reviewer, review timestamp, invitation timestamp, and provider message
@@ -375,25 +410,31 @@ Verify the real browser flow against the configured Forum Applications project:
 1. A new applicant is asked for email before Groucho creates the session.
 2. Invalid email is rejected locally.
 3. The opening question is a three-option single select.
-4. The remaining COLORS questions appear in the configured order.
+4. The remaining COLORS signals are covered unless Groucho finishes early after
+   enough evidence; Groucho may pause for targeted investigation before moving
+   to the next signal.
 5. “Which sounds most like you?” uses the four expected options.
 6. Groucho never asks who received a recommendation.
-7. Text and select answers survive normal rendering transitions.
-8. Duplicate submission is blocked while requests are pending.
-9. Refresh resumes the same active attempt.
-10. A new attempt never reuses a session belonging to another email.
-11. Every terminal path shows only the configured neutral thank-you message.
-12. No pass, redirect, reject, scores, profile, secret, or access redirect is
-    rendered.
-13. The browser never receives the `gk_*` project API key.
-14. Groucho API errors and 429 Retry-After responses degrade cleanly.
-15. A valid completed-session webhook creates one application record.
-16. Duplicate webhook delivery does not duplicate the application.
-17. Invalid webhook signatures are rejected.
-18. Reviewer approval sends one invitation to the captured email.
-19. Application answers and applicant PII are absent from client analytics and
+7. Groucho asks no more than nine applicant-facing questions total.
+8. Groucho asks no more than two follow-ups for any one core question.
+9. Text and select answers survive normal rendering transitions.
+10. Duplicate submission is blocked while requests are pending.
+11. Refresh resumes the same active attempt.
+12. A new attempt never reuses a session belonging to another email.
+13. Every terminal path shows only the configured neutral thank-you message.
+14. No pass, redirect, reject, recommend, human_review, decline, scores,
+    profile, secret, or access redirect is rendered.
+15. The browser never receives the `gk_*` project API key.
+16. Groucho API errors and 429 Retry-After responses degrade cleanly.
+17. A valid completed-session webhook creates one application record.
+18. Duplicate webhook delivery does not duplicate the application.
+19. Invalid webhook signatures are rejected.
+20. Every completed application appears in the human review queue with advisory
+    recommendation, confidence, report/bio, evidence, weak signals, and flags.
+21. Reviewer approval sends one invitation to the captured email.
+22. Application answers and applicant PII are absent from client analytics and
     server logs.
-20. Mobile and desktop layouts have no overlapping or clipped controls.
+23. Mobile and desktop layouts have no overlapping or clipped controls.
 
 Use the repository's browser/E2E tooling. Inspect the Network panel or captured
 requests to confirm browser calls use `/api/groucho/forum`, not the Groucho
@@ -411,7 +452,7 @@ Run:
 Document environment variables, webhook setup, database migration, rollback
 steps, and the exact SDK version. Do not mark the work complete if the API key is
 present in a client bundle or if any applicant-facing outcome differs by the
-private Groucho decision.
+private Groucho decision or COLORS recommendation.
 ```
 
 ## Host Environment Checklist

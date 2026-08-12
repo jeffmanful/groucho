@@ -56,7 +56,8 @@ export async function GET(
   const applicant = applicantIdentityFromRow(row)
 
   let profile: unknown = row.profile ?? null
-  if (concluded && !profile) {
+  let reviewerReport: unknown = null
+  if (concluded) {
     const { data: v } = await supabase
       .from("verdicts")
       .select("payload")
@@ -65,8 +66,11 @@ export async function GET(
       .limit(1)
       .maybeSingle()
     const payload = (v?.payload as Record<string, unknown> | undefined) ?? null
-    if (payload && typeof payload === "object" && payload.profile) {
+    if (!profile && payload && typeof payload === "object" && payload.profile) {
       profile = payload.profile
+    }
+    if (payload && typeof payload === "object" && payload.reviewer_report) {
+      reviewerReport = payload.reviewer_report
     }
   }
 
@@ -131,5 +135,6 @@ export async function GET(
     ...(stepHint ? { stepHint } : {}),
     ...(messages ? { messages } : {}),
     ...(profile ? { profile } : {}),
+    ...(reviewerReport ? { reviewerReport } : {}),
   })
 }

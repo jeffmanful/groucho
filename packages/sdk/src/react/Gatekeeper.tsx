@@ -5,6 +5,7 @@ import type {
   ApplicantIdentity,
   OpeningInteraction,
   Profile,
+  ReviewerReport,
   ScoreBreakdown,
   SessionOutcome,
 } from "../client.js"
@@ -32,6 +33,7 @@ export type GatekeeperProps = {
       scores: ScoreBreakdown
       secret?: string
       profile?: Profile
+      reviewerReport?: ReviewerReport
       applicant?: ApplicantIdentity
     },
   ) => void
@@ -208,6 +210,9 @@ export function Gatekeeper({
           scores: res.scores,
           ...(res.secret !== undefined ? { secret: res.secret } : {}),
           ...(res.profile !== undefined ? { profile: res.profile } : {}),
+          ...(res.reviewerReport !== undefined
+            ? { reviewerReport: res.reviewerReport }
+            : {}),
           ...(activeApplicant ? { applicant: activeApplicant } : {}),
         })
       }

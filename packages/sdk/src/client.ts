@@ -12,6 +12,7 @@ export type Profile = components["schemas"]["Profile"]
 export type ProfileCore = components["schemas"]["ProfileCore"]
 export type ProfileExtraction = components["schemas"]["ProfileExtraction"]
 export type ApplicantIdentity = components["schemas"]["ApplicantIdentity"]
+export type ReviewerReport = components["schemas"]["ReviewerReport"]
 
 export type GrouchoClientOptions = {
   /** API origin + optional path prefix, e.g. `https://api.example.com` or `https://app.example.com/api/groucho` */

@@ -41,6 +41,7 @@ export async function GET(
   }
 
   let profile: unknown = null
+  let reviewerReport: unknown = null
   const concluded = ["passed", "failed", "redirected", "rejected"].includes(
     (session as { status?: string }).status ?? "",
   )
@@ -54,6 +55,9 @@ export async function GET(
       .maybeSingle()
     const payload = (v?.payload as Record<string, unknown> | undefined) ?? null
     if (payload && payload.profile) profile = payload.profile
+    if (payload && payload.reviewer_report) {
+      reviewerReport = payload.reviewer_report
+    }
   }
 
   let personaSchema: unknown = null
@@ -70,6 +74,7 @@ export async function GET(
   return NextResponse.json({
     messages: data ?? [],
     profile,
+    reviewerReport,
     personaSchema,
   })
 }

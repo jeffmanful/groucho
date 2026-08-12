@@ -84,6 +84,16 @@ type OpeningInteraction = {
   options?: string[]
 }
 
+type ReviewerReport = {
+  applicant_bio: string
+  advisory_recommendation: "recommend" | "human_review" | "decline"
+  confidence_score: number
+  evidence_summary: string[]
+  weak_or_missing_signals: string[]
+  safety_or_integrity_flags: string[]
+  reviewer_focus: string
+}
+
 const FORUM_APPLICATION_OPENING_QUESTION =
   "What brought you here?"
 
@@ -131,6 +141,7 @@ const SESSION_KEY = "pe_session_id"
 const SECRET_KEY = "pe_session_secret"
 const PROJECT_KEY = "pe_project_id"
 const PROFILE_KEY = "pe_session_profile"
+const REVIEWER_REPORT_KEY = "pe_session_reviewer_report"
 
 const pickerSelectStyle: React.CSSProperties = {
   display: "block",
@@ -284,6 +295,39 @@ function buildOpeningInteraction(
   }
 }
 
+function parseReviewerReport(raw: unknown): ReviewerReport | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
+  const data = raw as Record<string, unknown>
+  const recommendation = data.advisory_recommendation
+  if (
+    recommendation !== "recommend" &&
+    recommendation !== "human_review" &&
+    recommendation !== "decline"
+  ) {
+    return null
+  }
+  if (
+    typeof data.applicant_bio !== "string" ||
+    typeof data.confidence_score !== "number" ||
+    typeof data.reviewer_focus !== "string"
+  ) {
+    return null
+  }
+  const textItems = (value: unknown) =>
+    Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === "string")
+      : []
+  return {
+    applicant_bio: data.applicant_bio,
+    advisory_recommendation: recommendation,
+    confidence_score: Math.max(0, Math.min(1, data.confidence_score)),
+    evidence_summary: textItems(data.evidence_summary),
+    weak_or_missing_signals: textItems(data.weak_or_missing_signals),
+    safety_or_integrity_flags: textItems(data.safety_or_integrity_flags),
+    reviewer_focus: data.reviewer_focus,
+  }
+}
+
 function getOrCreateSession(): string {
   const existing = localStorage.getItem(SESSION_KEY)
   if (existing) return existing
@@ -294,6 +338,63 @@ function resetSession(): string {
   const id = crypto.randomUUID()
   localStorage.setItem(SESSION_KEY, id)
   return id
+}
+
+function ReviewerReportPanel({ report }: { report: ReviewerReport }) {
+  const confidence = `${Math.round(report.confidence_score * 100)}%`
+  const recommendation = report.advisory_recommendation.replace("_", " ")
+  const listSection = (label: string, items: string[]) =>
+    items.length ? (
+      <div>
+        <p className="mb-1 text-[0.62rem] uppercase tracking-[0.14em] text-white/32">
+          {label}
+        </p>
+        <ul className="space-y-1.5 text-sm leading-relaxed text-white/58">
+          {items.map((item, index) => (
+            <li key={`${label}-${index}`}>{item}</li>
+          ))}
+        </ul>
+      </div>
+    ) : null
+
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 10, filter: "blur(5px)" }}
+      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+      transition={{ duration: 0.32, ease: EASE_OUT }}
+      className="mb-5 rounded-xl border border-white/10 bg-zinc-950/70 p-4 text-left shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] backdrop-blur-md"
+      aria-label="Internal reviewer report"
+    >
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-[0.62rem] uppercase tracking-[0.16em] text-white/32">
+            internal reviewer report
+          </p>
+          <p className="mt-1 text-sm text-white/45">
+            Advisory only. Final decision stays with the client.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 text-[0.68rem] uppercase tracking-[0.12em] text-white/42">
+          <span>{recommendation}</span>
+          <span className="tabular-nums text-white/70">{confidence}</span>
+        </div>
+      </div>
+      <p className="text-sm leading-relaxed text-white/68">{report.applicant_bio}</p>
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        {listSection("evidence", report.evidence_summary)}
+        {listSection("weak signals", report.weak_or_missing_signals)}
+        {listSection("flags", report.safety_or_integrity_flags)}
+        <div>
+          <p className="mb-1 text-[0.62rem] uppercase tracking-[0.14em] text-white/32">
+            reviewer focus
+          </p>
+          <p className="text-sm leading-relaxed text-white/58">
+            {report.reviewer_focus}
+          </p>
+        </div>
+      </div>
+    </motion.section>
+  )
 }
 
 export default function DoorCheck() {
@@ -319,6 +420,9 @@ export default function DoorCheck() {
   const [bootstrapping, setBootstrapping] = useState(false)
   const [interactionUi, setInteractionUi] = useState<GrouchoInteractionUi>(
     DEFAULT_GATEKEEPER_UI,
+  )
+  const [reviewerReport, setReviewerReport] = useState<ReviewerReport | null>(
+    null,
   )
   const [decisionPhase, setDecisionPhase] = useState<DecisionPhase>("none")
   const [openingMessage, setOpeningMessage] = useState(
@@ -390,8 +494,17 @@ export default function DoorCheck() {
         if (!Array.isArray(data)) return
         setProjects(data)
         const saved = localStorage.getItem(PROJECT_KEY)?.trim()
+        const savedProject = saved ? data.find((p) => p.id === saved) : null
+        const preferredForumProject =
+          data.find((p) => p.slug === "forum-application") ??
+          data.find((p) => p.name.toLowerCase() === "forum application") ??
+          null
         const pick =
-          (saved && data.some((p) => p.id === saved) ? saved : null) ??
+          (savedProject && savedProject.slug !== "default"
+            ? savedProject.id
+            : null) ??
+          preferredForumProject?.id ??
+          savedProject?.id ??
           data[0]?.id ??
           ""
         if (pick) {
@@ -489,6 +602,7 @@ export default function DoorCheck() {
   function applyProjectSelection(projectId: string) {
     setSelectedProjectId(projectId)
     localStorage.setItem(PROJECT_KEY, projectId)
+    localStorage.removeItem(REVIEWER_REPORT_KEY)
     const newId = resetSession()
     setSessionId(newId)
     assistantHandoffRef.current = null
@@ -499,6 +613,7 @@ export default function DoorCheck() {
     setSelectedOptions([])
     setCurrentStep(null)
     setStepHint(null)
+    setReviewerReport(null)
     setApplicantEmailError(null)
     const proj = projects.find((p) => p.id === projectId)
     const opener = doorcheckOpeningQuestion(proj)
@@ -621,7 +736,16 @@ export default function DoorCheck() {
         })
       }
 
-      if (!res.ok) throw new Error(`${res.status}`)
+      if (!res.ok) {
+        let error = `Request failed with status ${res.status}.`
+        try {
+          const errorBody = await res.json()
+          if (typeof errorBody.error === "string") error = errorBody.error
+        } catch {
+          /* keep fallback error */
+        }
+        throw new Error(error)
+      }
 
       const data = await res.json()
       const nextMessage: Message = {
@@ -630,6 +754,7 @@ export default function DoorCheck() {
         content: data.message,
       }
       const nextStep = (data.currentStep as OnboardingCurrentStep) ?? null
+      const nextReviewerReport = parseReviewerReport(data.reviewerReport)
       const nextUi = nextStep
         ? interactionUiForStep(nextStep)
         : parseInteractionUi(data.ui)
@@ -643,6 +768,17 @@ export default function DoorCheck() {
       setStepHint(
         typeof data.stepHint === "string" ? data.stepHint : null,
       )
+      if (nextReviewerReport) {
+        setReviewerReport(nextReviewerReport)
+        try {
+          localStorage.setItem(
+            REVIEWER_REPORT_KEY,
+            JSON.stringify(nextReviewerReport),
+          )
+        } catch {
+          /* ignore */
+        }
+      }
 
       if (data.status === "passed") {
         setConcluded(true)
@@ -695,11 +831,15 @@ export default function DoorCheck() {
       } else {
         assistantHandoffRef.current = nextMessage
       }
-    } catch {
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : "Something went wrong."
       const errorMessage: Message = {
         id: crypto.randomUUID(),
         role: "bot",
-        content: "Something went wrong.",
+        content:
+          detail === "AI service unavailable"
+            ? "AI service unavailable. Turn on local test mode or check the model provider credits."
+            : detail,
       }
       if (isGatekeeperPreview) {
         setMessages([errorMessage])
@@ -729,9 +869,11 @@ export default function DoorCheck() {
     }
 
     const newId = resetSession()
+    localStorage.removeItem(REVIEWER_REPORT_KEY)
     setSessionId(newId)
     setApplicantEmail(email)
     setApplicantEmailError(null)
+    setReviewerReport(null)
     setInput("")
     setMessages(INITIAL_MESSAGES)
   }
@@ -740,6 +882,7 @@ export default function DoorCheck() {
     const newId = resetSession()
     localStorage.removeItem(SECRET_KEY)
     localStorage.removeItem(PROFILE_KEY)
+    localStorage.removeItem(REVIEWER_REPORT_KEY)
     assistantHandoffRef.current = null
     pendingDecisionMessageRef.current = null
     setSessionId(newId)
@@ -753,6 +896,7 @@ export default function DoorCheck() {
     setSelectedOptions([])
     setCurrentStep(null)
     setStepHint(null)
+    setReviewerReport(null)
     const def = personas.find((p) => p.is_default)
     if (def) setSelectedPersonaId(def.id)
     if (selectedProjectId) localStorage.setItem(PROJECT_KEY, selectedProjectId)
@@ -996,6 +1140,9 @@ export default function DoorCheck() {
             transition={{ duration: 0.25 }}
             className="mx-auto w-[80%] max-w-[1040px] shrink-0 pt-4 pb-20"
           >
+            {reviewerReport ? (
+              <ReviewerReportPanel report={reviewerReport} />
+            ) : null}
             <button
               type="button"
               onClick={restart}

@@ -65,10 +65,23 @@ describe("application signal state", () => {
       currentSignal: definitions[0],
       currentQuestion: "What brought you here?",
       currentAnswer: "Community",
+      answeredQuestionCount: 1,
+      maxQuestions: 9,
+      maxFollowupsPerSignal: 2,
     })
     expect(compact).toContain('"why_they_came"')
     expect(compact).toContain('"status": "answered"')
     expect(compact).toContain('"status": "missing"')
+    expect(compact).toContain('"questionBudget"')
+    expect(compact).toContain('"followupsRemaining": 2')
+    expect(compact).toContain('"shouldInvestigate": true')
+    expect(compact).toContain('"recommendedNextSignalKey": "why_they_came"')
+    expect(compact).toContain("What does that look like in practice?")
+    expect(compact).toContain("Do not treat this as optional")
+    expect(compact).toContain("Use doorman investigation")
+    expect(compact).toContain("interesting concrete details")
+    expect(compact).toContain("Keep the exchange conversational")
+    expect(compact).toContain("Avoid generic praise")
     expect(
       resolveNextApplicationSignal(null, definitions, answers, definitions[0]),
     ).toEqual(definitions[1])

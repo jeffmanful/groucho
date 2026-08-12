@@ -25,7 +25,9 @@ describe("buildApplicationExperiencePromptAppendix", () => {
     expect(appendix).toContain("- contribution")
     expect(appendix).toContain("ordered signal sequence")
     expect(appendix).toContain("nextRequiredSignalKey")
-    expect(appendix).toContain("ask it verbatim")
+    expect(appendix).toContain("not a fixed form")
+    expect(appendix).toContain("must stay on the current signal")
+    expect(appendix).toContain("Do not ask everyone the exact same path")
     expect(appendix).toContain("Preferred input types")
     expect(appendix).toContain("text, singleSelect")
     expect(appendix).toContain("Target maximum assistant turns before decision: 4")
@@ -50,5 +52,27 @@ describe("buildApplicationExperiencePromptAppendix", () => {
     expect(appendix).toContain("Participation signal")
     expect(appendix).toContain("use singleSelect")
     expect(appendix).toContain("I regularly share discoveries")
+  })
+
+  it("adds COLORS advisory rubric guidance for the forum application flow", () => {
+    const appendix = buildApplicationExperiencePromptAppendix({
+      opening_message: "What brought you here?",
+      required_signals: [
+        "What brought you here?",
+        "Name an artist more people should know about. What would you want someone hearing them for the first time to notice?",
+        "What's the last song you recommended, and why did you think it was worth sharing?",
+        "Someone shares unfinished music that isn't really for you. How would you respond?",
+        "Which sounds most like you?",
+        "What's one thing you could realistically contribute in your first month?",
+      ],
+    })
+
+    expect(appendix).toContain("COLORS advisory rubric")
+    expect(appendix).toContain("Every completed applicant still receives human review")
+    expect(appendix).toContain("real specific example of maker or multiplier participation")
+    expect(appendix).toContain("Doorman behaviour matters")
+    expect(appendix).toContain("What changed because of that?")
+    expect(appendix).toContain("Do not score writing quality")
+    expect(appendix).toContain("Strong multiplier")
   })
 })

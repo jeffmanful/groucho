@@ -300,12 +300,22 @@ describe("createClient — JSON parsing", () => {
           custom: null,
           extraction: { model: "m", status: "ok" },
         },
+        reviewerReport: {
+          applicant_bio: "Runs a small listening session.",
+          advisory_recommendation: "recommend",
+          confidence_score: 0.82,
+          evidence_summary: ["Specific recurring participation"],
+          weak_or_missing_signals: [],
+          safety_or_integrity_flags: [],
+          reviewer_focus: "Confirm first-month contribution capacity.",
+        },
       }),
     )
     const client = createClient({ baseUrl: "/api/groucho", fetch: fakeFetch })
     const res = await client.sendMessage("abc", { message: "hi" })
     expect(res.status).toBe("passed")
     expect(res.profile?.schema_version).toBe(1)
+    expect(res.reviewerReport?.advisory_recommendation).toBe("recommend")
   })
 
   it("throws a useful error when a successful response is not JSON", async () => {
