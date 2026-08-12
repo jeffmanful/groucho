@@ -453,7 +453,7 @@ export default function DoorCheck() {
   useEffect(() => {
     const id = window.setTimeout(() => scrollToBottom(), 72)
     return () => clearTimeout(id)
-  }, [messages, loading, scrollToBottom])
+  }, [messages, loading, concluded, decisionPhase, reviewerReport, scrollToBottom])
 
   /**
    * If thinking unmounts without firing onExitComplete (very fast response),
@@ -923,6 +923,9 @@ export default function DoorCheck() {
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId)
   const isGatekeeperPreview = selectedProject?.projectType === "gatekeeper"
+  const showConclusionActions =
+    concluded && (!isGatekeeperPreview || decisionPhase === "revealed")
+  const showReviewerReport = Boolean(showConclusionActions && reviewerReport)
   const currentBotMessage = [...messages].reverse().find((msg) => msg.role === "bot")
   const presenceState: GrouchoVisualState = loading || bootstrapping
     ? "thinking"
@@ -1129,20 +1132,33 @@ export default function DoorCheck() {
               </div>
             )}
 
+            {showReviewerReport && reviewerReport ? (
+              <motion.div
+                key="reviewer-report-main"
+                layout
+                initial={{ opacity: 0, y: 12, filter: "blur(4px)" }}
+                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                transition={{ duration: 0.35, ease: EASE_OUT }}
+                className={cn(
+                  "mx-auto w-full",
+                  isGatekeeperPreview ? "max-w-[720px]" : "max-w-[85%]",
+                )}
+              >
+                <ReviewerReportPanel report={reviewerReport} />
+              </motion.div>
+            ) : null}
+
             <div ref={bottomRef} className="h-8 w-full shrink-0" aria-hidden />
           </div>
         </div>
 
-        {concluded && (!isGatekeeperPreview || decisionPhase === "revealed") && (
+        {showConclusionActions && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.25 }}
             className="mx-auto w-[80%] max-w-[1040px] shrink-0 pt-4 pb-20"
           >
-            {reviewerReport ? (
-              <ReviewerReportPanel report={reviewerReport} />
-            ) : null}
             <button
               type="button"
               onClick={restart}
