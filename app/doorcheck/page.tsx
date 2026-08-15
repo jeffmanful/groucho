@@ -1,8 +1,16 @@
 "use client"
 
-import { useState, useRef, useEffect, useCallback, useMemo } from "react"
+import {
+  useState,
+  useRef,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useCallback,
+} from "react"
 import { useRouter } from "next/navigation"
 import { createClient, type SupabaseClient } from "@supabase/supabase-js"
+import { MessageScroller } from "@shadcn/react/message-scroller"
 import {
   AnimatePresence,
   motion,
@@ -431,8 +439,7 @@ export default function DoorCheck() {
   const openingInputType: OpeningInputType = "singleSelect"
   const openingOptionsText = FORUM_APPLICATION_OPENING_OPTIONS
   const [selectedOptions, setSelectedOptions] = useState<string[]>([])
-  const bottomRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const typingChannelRef = useRef<ReturnType<SupabaseClient["channel"]> | null>(
     null,
   )
@@ -443,17 +450,21 @@ export default function DoorCheck() {
   const bootstrapInFlightRef = useRef(false)
   const router = useRouter()
 
-  const scrollToBottom = useCallback(() => {
-    requestAnimationFrame(() => {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
-    })
+  const resizeTextarea = useCallback(() => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+    textarea.style.height = "0px"
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`
   }, [])
 
-  /** Let layout animations start before scrolling so prior bubbles ease up smoothly */
+  useLayoutEffect(() => {
+    resizeTextarea()
+  }, [input, applicantEmail, loading, interactionUi.inputType, resizeTextarea])
+
   useEffect(() => {
-    const id = window.setTimeout(() => scrollToBottom(), 72)
-    return () => clearTimeout(id)
-  }, [messages, loading, concluded, decisionPhase, reviewerReport, scrollToBottom])
+    window.addEventListener("resize", resizeTextarea)
+    return () => window.removeEventListener("resize", resizeTextarea)
+  }, [resizeTextarea])
 
   /**
    * If thinking unmounts without firing onExitComplete (very fast response),
@@ -675,7 +686,9 @@ export default function DoorCheck() {
     })
   }
 
-  function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleInputChange(
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) {
     setInput(e.target.value)
     if (e.target.value) {
       broadcastTyping(true)
@@ -853,8 +866,10 @@ export default function DoorCheck() {
     }
   }
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") {
+  function handleKeyDown(
+    e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) {
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault()
       if (applicantEmail) submit()
       else submitApplicantEmail()
@@ -966,7 +981,7 @@ export default function DoorCheck() {
         damping: 30,
       }}
     >
-      <div className="relative flex h-screen min-h-0 flex-col">
+      <div className="relative flex h-[100dvh] min-h-0 flex-col overflow-hidden">
         <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-end px-4 pt-4 md:px-8">
           <button
             type="button"
@@ -977,28 +992,42 @@ export default function DoorCheck() {
             {signingOut ? "Signing out…" : "Sign out"}
           </button>
         </div>
-        <div
-          className="mx-auto flex w-[80%] max-w-[1040px] flex-1 min-h-0 flex-col overflow-y-auto pt-12 pb-4 scrollbar-hidden"
-          aria-busy={loading || bootstrapping}
-          aria-live="polite"
+        <MessageScroller.Provider
+          autoScroll
+          defaultScrollPosition="end"
+          scrollPreviousItemPeek={64}
+          scrollMargin={16}
         >
-          {currentStep && !concluded && !isGatekeeperPreview && (
-            <p
-              className="mb-4 shrink-0 text-[0.68rem] tracking-widest text-white/35"
-              aria-live="polite"
-            >
-              {currentStep.title} · {currentStep.index + 1} of {currentStep.total}
-            </p>
-          )}
-          <div className="mt-auto flex flex-col gap-5 pb-6">
-            {isGatekeeperPreview ? (
-              <motion.div
-                key="v2-preview"
-                initial={{ opacity: 0, y: 16, filter: "blur(6px)" }}
-                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                transition={{ duration: 0.45, ease: EASE_OUT }}
-                className="mx-auto grid min-h-68 w-full max-w-[520px] grid-rows-[6rem_minmax(7rem,1fr)] items-start gap-5 text-center md:min-h-76 md:grid-rows-[7rem_minmax(8rem,1fr)]"
+          <MessageScroller.Root
+            className="relative min-h-0 flex-1"
+            aria-busy={loading || bootstrapping}
+          >
+            <MessageScroller.Viewport className="scrollbar-hidden h-full overflow-y-auto overscroll-contain px-4 pt-14 pb-4 sm:px-6">
+              <MessageScroller.Content
+                className="mx-auto flex min-h-full w-full max-w-[900px] flex-col gap-5"
+                spacerClassName="shrink-0"
               >
+                <MessageScroller.Item className="mt-auto h-0 shrink-0" />
+                {currentStep && !concluded && !isGatekeeperPreview && (
+                  <MessageScroller.Item messageId={`step-${currentStep.id}`}>
+                    <p
+                      className="text-[0.68rem] tracking-widest text-white/35"
+                      aria-live="polite"
+                    >
+                      {currentStep.title} · {currentStep.index + 1} of {currentStep.total}
+                    </p>
+                  </MessageScroller.Item>
+                )}
+            {isGatekeeperPreview ? (
+              <MessageScroller.Item messageId="gatekeeper-preview">
+                <motion.div
+                  key="v2-preview"
+                  layout
+                  initial={{ opacity: 0, y: 12, filter: "blur(4px)" }}
+                  animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                  transition={{ duration: 0.35, ease: EASE_OUT }}
+                  className="mx-auto grid min-h-68 w-full max-w-[520px] grid-rows-[6rem_minmax(7rem,1fr)] items-start gap-5 text-center md:min-h-76 md:grid-rows-[7rem_minmax(8rem,1fr)]"
+                >
                 <div
                   className={cn(
                     "mx-auto grid size-20 grid-cols-9 gap-1 rounded-full md:size-24",
@@ -1010,7 +1039,7 @@ export default function DoorCheck() {
                     <span
                       key={dot.id}
                       className={cn(
-                        "m-auto size-1.5 rounded-full bg-white/70 opacity-35 md:size-2",
+                        "m-auto size-[3px] rounded-full bg-white/70 opacity-35",
                         !dot.visible && "invisible",
                       )}
                       style={{
@@ -1038,59 +1067,52 @@ export default function DoorCheck() {
                     Connecting…
                   </p>
                 ) : null}
-              </motion.div>
+                </motion.div>
+              </MessageScroller.Item>
             ) : (
               messages.map((msg) => (
-                <motion.div
+                <MessageScroller.Item
                   key={msg.id}
-                  layout
-                  initial={{
-                    opacity: 0,
-                    y: 12,
-                    x: msg.role === "user" ? 14 : -14,
-                  }}
-                  animate={{ opacity: 1, y: 0, x: 0 }}
-                  transition={{
-                    layout: LAYOUT_SPRING,
-                    opacity: { duration: 0.38, ease: EASE_OUT },
-                    y: {
-                      type: "spring",
-                      stiffness: 360,
-                      damping: 34,
-                      mass: 0.88,
-                    },
-                    x: {
-                      type: "spring",
-                      stiffness: 360,
-                      damping: 34,
-                      mass: 0.88,
-                    },
-                  }}
+                  messageId={msg.id}
+                  scrollAnchor={msg.role === "user"}
                   className={cn(
-                    "max-w-[65%] leading-[1.6]",
-                    msg.role === "user" ? "self-end" : "self-start",
-                    msg.role === "user" ? "opacity-100" : "opacity-70",
+                    "flex w-full scroll-mt-4",
+                    msg.role === "user" ? "justify-end" : "justify-start",
                   )}
                 >
-                  {msg.role === "bot" ? (
-                    <div className="font-sans text-md opacity-50">
-                      {personaName}
+                  <motion.div
+                    layout
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{
+                      layout: LAYOUT_SPRING,
+                      opacity: { duration: 0.28, ease: EASE_OUT },
+                      y: { duration: 0.28, ease: EASE_OUT },
+                    }}
+                    className={cn(
+                      "min-w-0 max-w-[88%] text-pretty sm:max-w-[72%]",
+                      msg.role === "user"
+                        ? "rounded-2xl rounded-br-md bg-white/10 px-4 py-3 text-white/95 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+                        : "text-white/72",
+                    )}
+                  >
+                    {msg.role === "bot" ? (
+                      <div className="mb-1 font-sans text-sm text-white/38">
+                        {personaName}
+                      </div>
+                    ) : null}
+                    <div className="whitespace-pre-wrap break-words font-sans text-lg leading-[1.5] sm:text-xl md:text-2xl">
+                      {msg.content}
                     </div>
-                  ) : null}
-
-                  <div className="font-sans text-lg leading-[1.6] md:text-2xl">
-                    {msg.content}
-                  </div>
-                </motion.div>
+                  </motion.div>
+                </MessageScroller.Item>
               ))
             )}
 
             {!isGatekeeperPreview && (
-              <div
-                className={cn(
-                  "self-start w-full max-w-[65%]",
-                  loading && "min-h-22 scroll-mt-8 md:min-h-26",
-                )}
+              <MessageScroller.Item
+                messageId="assistant-status"
+                className="min-h-16 w-full sm:min-h-20"
               >
                 <AnimatePresence
                   mode="wait"
@@ -1112,7 +1134,7 @@ export default function DoorCheck() {
                       animate="visible"
                       exit="exit"
                       transition={{ layout: LAYOUT_SPRING }}
-                      className="w-full"
+                      className="w-full max-w-[88%] text-white/72 sm:max-w-[72%]"
                     >
                       <motion.div
                         variants={thinkingLineVariants}
@@ -1129,35 +1151,52 @@ export default function DoorCheck() {
                     </motion.div>
                   ) : null}
                 </AnimatePresence>
-              </div>
+              </MessageScroller.Item>
             )}
 
             {showReviewerReport && reviewerReport ? (
-              <motion.div
-                key="reviewer-report-main"
-                layout
-                initial={{ opacity: 0, y: 12, filter: "blur(4px)" }}
-                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                transition={{ duration: 0.35, ease: EASE_OUT }}
-                className={cn(
-                  "mx-auto w-full",
-                  isGatekeeperPreview ? "max-w-[720px]" : "max-w-[85%]",
-                )}
-              >
-                <ReviewerReportPanel report={reviewerReport} />
-              </motion.div>
+              <MessageScroller.Item messageId="reviewer-report">
+                <motion.div
+                  key="reviewer-report-main"
+                  layout
+                  initial={{ opacity: 0, y: 12, filter: "blur(4px)" }}
+                  animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                  transition={{ duration: 0.35, ease: EASE_OUT }}
+                  className={cn(
+                    "mx-auto w-full",
+                    isGatekeeperPreview ? "max-w-[720px]" : "max-w-[85%]",
+                  )}
+                >
+                  <ReviewerReportPanel report={reviewerReport} />
+                </motion.div>
+              </MessageScroller.Item>
             ) : null}
-
-            <div ref={bottomRef} className="h-8 w-full shrink-0" aria-hidden />
-          </div>
-        </div>
+                <MessageScroller.Item className="h-2 shrink-0" />
+              </MessageScroller.Content>
+            </MessageScroller.Viewport>
+            <MessageScroller.Button
+              aria-label="Jump to latest message"
+              className="pointer-events-none absolute bottom-3 left-1/2 z-10 grid size-11 -translate-x-1/2 translate-y-2 place-items-center rounded-full border border-white/12 bg-zinc-950/90 text-white/65 opacity-0 shadow-[0_8px_30px_rgba(0,0,0,0.32)] backdrop-blur-md transition-[opacity,translate,border-color] duration-200 data-[active=true]:pointer-events-auto data-[active=true]:translate-y-0 data-[active=true]:opacity-100 hover:border-white/25 hover:text-white"
+            >
+              <svg viewBox="0 0 24 24" className="size-4" fill="none" aria-hidden>
+                <path
+                  d="m6 9 6 6 6-6"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </MessageScroller.Button>
+          </MessageScroller.Root>
+        </MessageScroller.Provider>
 
         {showConclusionActions && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.25 }}
-            className="mx-auto w-[80%] max-w-[1040px] shrink-0 pt-4 pb-20"
+            className="mx-auto w-full max-w-[900px] shrink-0 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6"
           >
             <button
               type="button"
@@ -1182,28 +1221,16 @@ export default function DoorCheck() {
 
         {showAnswerArea && (
           <motion.div
-            className="mx-auto w-[80%] max-w-[1040px] shrink-0 pt-4 pb-20"
+            layout
+            className="mx-auto w-full max-w-[900px] shrink-0 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6"
             animate={{ opacity: 1 }}
-            transition={{ duration: 0.22 }}
+            transition={{ layout: LAYOUT_SPRING, opacity: { duration: 0.22 } }}
           >
-            {loading ? (
-              <div
-                className="pointer-events-none relative h-13.5 w-full overflow-hidden rounded-2xl border border-white/10 bg-zinc-950/40 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.025)] backdrop-blur-md"
-                aria-hidden
+            {showStructuredOptions ? (
+              <motion.div
+                layout
+                className="relative w-full rounded-2xl border border-white/10 bg-zinc-950/70 px-4 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] backdrop-blur-md"
               >
-                <motion.div
-                  className="absolute inset-y-0 left-0 w-1/3 bg-linear-to-r from-transparent via-white/8 to-transparent"
-                  initial={{ x: "-100%" }}
-                  animate={{ x: ["-100%", "320%"] }}
-                  transition={{
-                    duration: 1.15,
-                    repeat: Infinity,
-                    ease: "linear",
-                  }}
-                />
-              </div>
-            ) : showStructuredOptions ? (
-              <div className="relative w-full rounded-2xl border border-white/10 bg-zinc-950/70 px-4 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] backdrop-blur-md">
                 <div className="flex flex-wrap items-center justify-center gap-2">
                   {interactionUi.options?.map((option) => {
                     const active = selectedOptions.includes(option)
@@ -1225,7 +1252,7 @@ export default function DoorCheck() {
                           )
                         }}
                         className={cn(
-                          "rounded-full border px-4 py-2 text-sm transition-colors",
+                          "min-h-11 rounded-full border px-4 py-2 text-sm transition-[border-color,background-color,color,scale] active:scale-[0.96]",
                           active
                             ? "border-white/45 bg-white/10 text-white/85"
                             : "border-white/12 bg-zinc-950/70 text-white/55 hover:border-white/25 hover:text-white/80",
@@ -1248,38 +1275,76 @@ export default function DoorCheck() {
                         ),
                       )
                     }
-                    className="mx-auto mt-3 block rounded-md border border-white/15 bg-transparent px-3 py-1.5 text-[0.7rem] tracking-[0.08em] text-white/50 transition-colors hover:border-white/25 hover:text-white/75 disabled:cursor-not-allowed disabled:opacity-35"
+                    className="mx-auto mt-3 block min-h-11 rounded-full border border-white/15 bg-transparent px-4 py-2 text-[0.7rem] tracking-[0.08em] text-white/50 transition-[border-color,color,scale] hover:border-white/25 hover:text-white/75 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-35"
                   >
                     continue
                   </button>
                 ) : null}
-              </div>
+              </motion.div>
             ) : (
-              <div className="relative">
-                <input
-                  ref={inputRef}
-                  type={applicantEmail ? "text" : "email"}
-                  value={input}
-                  onChange={(event) => {
-                    if (!applicantEmail) setApplicantEmailError(null)
-                    handleInputChange(event)
-                  }}
-                  onKeyDown={handleKeyDown}
-                  autoFocus
-                  disabled={loading}
-                  placeholder={
-                    applicantEmail
-                      ? stepHint?.trim() ||
-                        (selectedProject?.projectType === "onboarding"
-                          ? "Your answer"
-                          : "Type your message")
-                      : "you@example.com"
-                  }
-                  autoComplete={applicantEmail ? "off" : "email"}
-                  aria-disabled={loading}
-                  className="w-full rounded-2xl border border-white/10 bg-zinc-950/70 py-3.5 pl-5 pr-5 font-inherit text-lg font-normal text-white/95 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] outline-none backdrop-blur-md transition-[border-color,box-shadow,background-color,opacity] duration-200 placeholder:text-white/38 selection:bg-white/20 selection:text-white focus:border-white/18 focus:bg-zinc-950/85 focus:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_0_0_1px_rgba(255,255,255,0.06)] focus:ring-2 focus:ring-white/10 disabled:cursor-wait disabled:opacity-55"
-                />
-              <AnimatePresence>
+              <motion.form
+                layout
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  if (applicantEmail) void submit()
+                  else submitApplicantEmail()
+                }}
+                className="relative flex min-h-14 items-end gap-2 rounded-2xl border border-white/10 bg-zinc-950/70 p-2 pl-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] backdrop-blur-md transition-[border-color,box-shadow,background-color,opacity] duration-200 focus-within:border-white/18 focus-within:bg-zinc-950/85 focus-within:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_0_0_1px_rgba(255,255,255,0.06),0_0_0_3px_rgba(255,255,255,0.05)]"
+              >
+                {applicantEmail ? (
+                  <textarea
+                    ref={textareaRef}
+                    value={input}
+                    rows={1}
+                    onChange={handleInputChange}
+                    onKeyDown={handleKeyDown}
+                    autoFocus
+                    disabled={loading}
+                    placeholder={
+                      loading
+                        ? `${personaName} is replying…`
+                        : stepHint?.trim() ||
+                          (selectedProject?.projectType === "onboarding"
+                            ? "Your answer"
+                            : "Type your message")
+                    }
+                    aria-label="Message"
+                    aria-disabled={loading}
+                    className="field-sizing-content max-h-40 min-h-10 flex-1 resize-none overflow-y-auto bg-transparent py-2 pr-1 font-inherit text-base leading-6 font-normal text-white/95 outline-none placeholder:text-white/38 selection:bg-white/20 selection:text-white disabled:cursor-wait disabled:opacity-55 sm:text-lg"
+                  />
+                ) : (
+                  <input
+                    type="email"
+                    value={input}
+                    onChange={(event) => {
+                      setApplicantEmailError(null)
+                      handleInputChange(event)
+                    }}
+                    onKeyDown={handleKeyDown}
+                    autoFocus
+                    placeholder="you@example.com"
+                    autoComplete="email"
+                    aria-label="Email address"
+                    className="min-h-10 flex-1 bg-transparent py-2 pr-1 font-inherit text-base font-normal text-white/95 outline-none placeholder:text-white/38 selection:bg-white/20 selection:text-white sm:text-lg"
+                  />
+                )}
+                <button
+                  type="submit"
+                  disabled={loading || !input.trim()}
+                  aria-label={applicantEmail ? "Send message" : "Continue"}
+                  className="grid size-11 shrink-0 place-items-center rounded-xl bg-white text-black transition-[opacity,scale,background-color] duration-150 hover:bg-white/90 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-25"
+                >
+                  <svg viewBox="0 0 24 24" className="size-4" fill="none" aria-hidden>
+                    <path
+                      d="m12 19V5m0 0-5 5m5-5 5 5"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+                <AnimatePresence initial={false}>
                 {loading && (
                   <motion.div
                     key="input-bar"
@@ -1287,7 +1352,7 @@ export default function DoorCheck() {
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.2 }}
-                    className="pointer-events-none absolute bottom-0 left-5 right-5 h-px overflow-hidden rounded-full bg-white/12"
+                    className="pointer-events-none absolute bottom-0 left-4 right-4 h-px overflow-hidden rounded-full bg-white/12"
                   >
                     <motion.div
                       className="absolute top-0 h-full w-[38%] rounded-full bg-white/50"
@@ -1301,8 +1366,8 @@ export default function DoorCheck() {
                     />
                   </motion.div>
                 )}
-              </AnimatePresence>
-              </div>
+                </AnimatePresence>
+              </motion.form>
             )}
             {applicantEmailError ? (
               <p className="mt-2 text-sm text-red-300" role="alert">
