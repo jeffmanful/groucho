@@ -1,0 +1,19 @@
+- generic [ref=e1]:
+  - generic [ref=e3]:
+    - generic [ref=e4]: PUBLIC EQUITY™
+    - generic [ref=e5]:
+      - textbox "Email" [active] [ref=e6]
+      - textbox "Password" [ref=e7]
+      - button "Enter" [ref=e8] [cursor=pointer]
+    - paragraph [ref=e9]:
+      - link "Create an organisation (email code, no invite)" [ref=e10] [cursor=pointer]:
+        - /url: /signup/organisation
+      - generic [ref=e11]:
+        - text: "Organisation members: complete the email code on your invite or"
+        - link "/signup/organisation" [ref=e12] [cursor=pointer]:
+          - /url: /signup/organisation
+        - text: ", then open"
+        - link "/admin/organisations" [ref=e13] [cursor=pointer]:
+          - /url: /admin/organisations
+        - text: .
+  - alert [ref=e14]

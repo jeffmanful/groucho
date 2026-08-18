@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { resolveAdminActor } from "@/lib/admin-actor"
 import { requireOrgMember, unauthorized } from "@/lib/org-access"
 import { supabase } from "@/lib/supabase"
+import { isConcludedSessionStatus } from "@/lib/session-status"
 
 export async function GET(
   _req: NextRequest,
@@ -19,7 +20,7 @@ export async function GET(
 
   const { data: session, error: sErr } = await supabase
     .from("sessions")
-    .select("id, project_id, organisation_id, persona_id, status")
+    .select("id, project_id, organisation_id, persona_id, status, profile")
     .eq("id", sessionId)
     .eq("project_id", projectId)
     .eq("organisation_id", orgId)
@@ -40,10 +41,10 @@ export async function GET(
     return NextResponse.json({ error: "Database error" }, { status: 500 })
   }
 
-  let profile: unknown = null
+  let profile: unknown = session.profile ?? null
   let reviewerReport: unknown = null
-  const concluded = ["passed", "failed", "redirected", "rejected"].includes(
-    (session as { status?: string }).status ?? "",
+  const concluded = isConcludedSessionStatus(
+    (session as { status?: string }).status,
   )
   if (concluded) {
     const { data: v } = await supabase
@@ -54,7 +55,7 @@ export async function GET(
       .limit(1)
       .maybeSingle()
     const payload = (v?.payload as Record<string, unknown> | undefined) ?? null
-    if (payload && payload.profile) profile = payload.profile
+    if (!profile && payload && payload.profile) profile = payload.profile
     if (payload && payload.reviewer_report) {
       reviewerReport = payload.reviewer_report
     }

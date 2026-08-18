@@ -366,6 +366,11 @@ export default function EditProjectPage() {
           ? ` · ${form.flowSteps.length} onboarding question${form.flowSteps.length === 1 ? "" : "s"}`
           : ""}
       </p>
+      <p style={{ fontSize: "0.72rem", marginBottom: "1.25rem" }}>
+        <Link href={`/admin/organisations/${orgId}/projects/${projectId}/cultural-signals`}>
+          View cultural signals →
+        </Link>
+      </p>
 
       <AdminFormAlert alert={alert} onDismiss={clearAlert} />
 

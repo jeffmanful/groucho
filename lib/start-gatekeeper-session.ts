@@ -15,12 +15,11 @@ import {
 } from "@/lib/opening-message"
 import type { GrouchoInteractionSpec } from "@/lib/gatekeeper-interaction-spec"
 import type { PostSessionMessageInput } from "@/lib/post-session-message"
+import { isConcludedSessionStatus } from "@/lib/session-status"
 import {
   applicationSignalDefinitions,
   applicationSignalMetadata,
 } from "@/lib/application-signal-state"
-
-const CONCLUDED = ["passed", "failed", "redirected", "rejected"]
 
 function traceJson(
   input: Pick<PostSessionMessageInput, "requestId">,
@@ -107,7 +106,7 @@ export async function startGatekeeperSession(
     .maybeSingle()
 
   if (existing) {
-    if (CONCLUDED.includes(existing.status)) {
+    if (isConcludedSessionStatus(existing.status)) {
       return traceJson(input, { error: "Session concluded" }, { status: 409 })
     }
     if (
@@ -182,7 +181,7 @@ export async function startGatekeeperSession(
       .eq("session_id", sessionId)
       .eq("project_id", projectId)
       .maybeSingle()
-    if (raced && !CONCLUDED.includes(raced.status)) {
+    if (raced && !isConcludedSessionStatus(raced.status)) {
       const { data: lastMsg } = await supabase
         .from("messages")
         .select("role, content, metadata")

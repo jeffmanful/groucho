@@ -6,6 +6,7 @@ import { resolveProjectContext } from "@/lib/project-resolution"
 import type { OnboardingFlowStep } from "@/lib/project-settings"
 import { outcomeLabelFromDbStatus } from "@/lib/session-outcome"
 import { supabase } from "@/lib/supabase"
+import { isConcludedSessionStatus } from "@/lib/session-status"
 import { tracedJson } from "@/lib/with-request-trace"
 
 export async function GET(
@@ -52,7 +53,7 @@ export async function GET(
     .eq("role", "user")
 
   const outcome = outcomeLabelFromDbStatus(row.status)
-  const concluded = ["passed", "failed", "redirected", "rejected"].includes(row.status)
+  const concluded = isConcludedSessionStatus(row.status)
   const applicant = applicantIdentityFromRow(row)
 
   let profile: unknown = row.profile ?? null

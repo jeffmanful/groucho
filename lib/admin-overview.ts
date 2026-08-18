@@ -56,7 +56,12 @@ export type AdminOverviewPayload = {
   recentSessions: OverviewRecentSession[]
 }
 
-const CONCLUDED = new Set(["passed", "failed", "redirected", "rejected"])
+const COMPLETED_WITH_OUTCOME = new Set([
+  "passed",
+  "failed",
+  "redirected",
+  "rejected",
+])
 
 function settingsField(
   settings: unknown,
@@ -164,7 +169,7 @@ export async function buildAdminOverview(
     const created = (s as { created_at?: string }).created_at ?? updated
     if (created >= todayIso || updated >= todayIso) {
       sessionsToday++
-      if (CONCLUDED.has(s.status)) completedSessionsToday++
+      if (COMPLETED_WITH_OUTCOME.has(s.status)) completedSessionsToday++
     }
     const prev = lastByProject.get(s.project_id)
     if (!prev || updated > prev) lastByProject.set(s.project_id, updated)

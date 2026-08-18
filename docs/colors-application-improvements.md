@@ -17,7 +17,7 @@ static onboarding is outside this work unless a later requirement depends on it.
 
 ## Core Signal Path
 
-The standard path is six core questions. Groucho may finish early once it has enough evidence, or ask targeted follow-ups when an answer is too vague to score. The hard cap is nine applicant-facing questions total.
+The standard path defines six evidence goals, not six required questions. Groucho may cover several goals from one answer and should usually finish in five to seven applicant turns. Nine is the hard ceiling.
 
 | Step | Applicant-facing question | Input | Signal |
 | --- | --- | --- | --- |
@@ -34,10 +34,14 @@ The standard path is six core questions. Groucho may finish early once it has en
 - Keep acknowledgements short and specific to the answer. Do not use a routine
   acknowledgement such as "Interesting" on every turn.
 - Do not add a follow-up when the current answer already provides the required signal.
-- Ask no more than two follow-ups for any one core question.
-- If two follow-ups still do not produce usable evidence, record `insufficient_evidence` for that signal.
+- Default to one clarification for a goal. A second is available only for a core, decision-critical gap with recovery potential.
+- Share three adaptive turns across all clarifications, open doors, and rabbit holes.
+- Repeated thin evidence across three goals ends coaxing; preserve the uncertainty for human review.
+- After answer seven, ask only for unresolved core evidence. Answer eight is the final possible decision-changing probe. Answer nine always closes.
 - Do not exceed nine applicant-facing questions total; the total cap overrides the per-question follow-up allowance.
 - Groucho may finish early when the available evidence is enough for a private recommendation.
+- Use contextual questions as replacements for generic routes: an artist answer should lead to one of that artist's songs and why the applicant would share it; an album mention can become a track recommendation and reason; an own-music disclosure can become a question about what the applicant makes and wants listeners to notice.
+- Contextual bridges may cover several goals but never add bonus turns beyond the normal budget.
 - Do not reward polished writing, fluency, status, or famous references over substance.
 - Do not verify or judge whether an artist is sufficiently well known.
 - Never ask who received, was sent, or was recommended the song. The recommendation signal is about the music and why it felt worth sharing.
@@ -49,18 +53,20 @@ The standard path is six core questions. Groucho may finish early once it has en
 
 ## Architecture Direction
 
-Use a bounded evidence-gathering flow:
+Use a bounded, conversational evidence-gathering flow:
 
-1. Groucho deterministically selects the next configured question and interaction type.
-2. An LLM may produce a short, answer-specific acknowledgement or a targeted clarification.
-3. A clarification consumes part of the nine-question budget.
-4. The application is evaluated once Groucho has enough evidence, reaches the question cap, or encounters a safety boundary.
-5. Profile extraction and webhook delivery happen after the applicant-facing response through durable background work.
+1. The project defines stable evidence goals, not a compulsory question order.
+2. Groucho can mark several goals as covered by one answer and follow the strongest conversational thread.
+3. Groucho chooses any unresolved goal that connects naturally; the configured order is only a gap-filling fallback.
+4. Groucho privately generates a maximum of three bridge candidates, selects at most one, and writes the question from its intent rather than a fixed template.
+5. The server validates bridge confidence, target-goal eligibility, phase, and repetition before letting the bridge influence routing.
+6. Clarifications and depth turns consume a shared three-turn adaptive budget as well as the bounded nine-question and conversation-point budgets.
+7. The application is evaluated once Groucho has enough evidence, reaches the cap, or encounters a safety boundary.
+8. Profile extraction and webhook delivery happen after the applicant-facing response through durable background work.
 
-This keeps the journey predictable while retaining judgment where it is useful. The
-current `required_signals` configuration describes goals rather than enforcing a fixed
-sequence, so the implementation needs explicit application-step state and follow-up
-budget state.
+This keeps the evaluation legible while allowing different applicants to take different
+routes. Existing `required_signals` question strings remain compatible, but the runtime
+maps the COLORS set to private goals and adaptable prompt routes.
 
 Reviewer-facing COLORS recommendations are advisory only:
 
@@ -82,18 +88,20 @@ The applicant must never see either the COLORS recommendation or the raw Groucho
 - [ ] Capture baseline p50 and p95 latency for ordinary, artist-reference, and terminal turns.
 - [ ] Set final latency targets after collecting the baseline. Initial working targets are p95 under 3 seconds for active turns and under 2 seconds to display the neutral terminal close.
 
-### P1: Make The Flow Deterministic
+### P1: Make Evidence Coverage Deterministic
 
-- [ ] Add a versioned gatekeeper application-flow configuration with ordered steps, stable IDs, interaction definitions, and signal keys.
-- [ ] Store the current application step on the session or derive it reliably from persisted step metadata.
-- [ ] Return the configured question and input type rather than asking the model to invent the next question.
-- [ ] Permit a targeted clarification without losing or repeating the configured step.
-- [ ] Track a nine-question total budget and a maximum of two follow-ups per core question.
+- [x] Derive stable signal keys and private evidence goals from existing project configuration.
+- [x] Store the prompted goal and every goal covered by each answer in message metadata.
+- [x] Let Groucho choose an unresolved goal based on conversational continuity.
+- [x] Permit targeted clarification without losing the current thread.
+- [x] Enforce a hard nine-question total budget, closing and final-probe phases, and a shared three-turn adaptive budget.
+- [x] Default to one clarification per goal and permit a second only for a core gap with recovery potential.
 - [ ] Persist `insufficient_evidence` when a signal remains unusable after two follow-ups.
 - [ ] Allow early completion once the evaluator has enough evidence for a private recommendation.
 - [x] Replace the COLORS community-quality question with the unfinished-music scenario.
 - [x] Update the artist, recommendation, and contribution question copy to the target flow above, without asking who received the recommendation.
-- [ ] Add contract tests covering question order, structured options, refresh/resume behavior, early finish, follow-up limits, and the nine-question maximum.
+- [ ] Add contract tests covering question order, structured options, refresh/resume behavior, and early finish.
+- [x] Add contract coverage for exhausted follow-up routing and the nine-question hard stop.
 
 ### P1: Remove Redundant Model Work
 
@@ -141,6 +149,18 @@ See [colors-evaluation-rubric-discovery.md](./colors-evaluation-rubric-discovery
 - [ ] Add examples showing that obscure artists, short answers, and imperfect English are not negative signals by themselves.
 - [ ] Review whether the participation-style answer should influence the outcome or remain descriptive profile data only.
 - [ ] Confirm that all terminal paths use a client-configurable neutral thank-you message.
+
+### P2: Conversation Depth
+
+- [x] Add structured per-answer quality (`thin`, `usable`, `rich`, `concerning`) to the existing conversational model response.
+- [x] Persist private answer assessments and accepted conversation moves in message metadata.
+- [x] Add recent answer-quality trajectory and conversation-point budgets to compact application state.
+- [x] Replace the short-answer length heuristic with semantic assessment while retaining deterministic budget validation.
+- [x] Add one bounded `rabbit_hole` move for a rich answer.
+- [x] Add one bounded `open_door` move after repeated thin answers.
+- [ ] Evaluate classification and recovery quality against representative COLORS transcripts before production promotion.
+
+See [colors-conversation-depth.md](./colors-conversation-depth.md).
 
 ## Acceptance Criteria
 

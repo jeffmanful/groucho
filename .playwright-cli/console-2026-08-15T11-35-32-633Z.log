@@ -1,0 +1,12 @@
+[     796ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:3001/login:0
+[     853ms] [WARNING] Failed to decode downloaded font: http://localhost:3001/OverusedGrotesk-Book.woff @ http://localhost:3001/login:0
+[     853ms] [WARNING] OTS parsing error: invalid sfntVersion: 1008813135 @ http://localhost:3001/login:0
+[     871ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3001/_next/static/chunks/0675a_next_dist_4c97a56f._.js:2297
+[     945ms] [LOG] [HMR] connected @ http://localhost:3001/_next/static/chunks/0675a_next_dist_4c97a56f._.js:2297
+[  163301ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3001/_next/static/chunks/0675a_next_dist_4c97a56f._.js:2297
+[  163323ms] [LOG] [Fast Refresh] done in 123ms @ http://localhost:3001/_next/static/chunks/0675a_next_dist_4c97a56f._.js:2297
+[  176774ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3001/_next/static/chunks/0675a_next_dist_4c97a56f._.js:2297
+[  176803ms] [LOG] [Fast Refresh] done in 130ms @ http://localhost:3001/_next/static/chunks/0675a_next_dist_4c97a56f._.js:2297
+[ 8551079ms] [LOG] [HMR] connected @ http://localhost:3001/_next/static/chunks/0675a_next_dist_4c97a56f._.js:2297
+[20319878ms] [LOG] [HMR] connected @ http://localhost:3001/_next/static/chunks/0675a_next_dist_4c97a56f._.js:2297
+[25113423ms] [LOG] [HMR] connected @ http://localhost:3001/_next/static/chunks/0675a_next_dist_4c97a56f._.js:2297

@@ -9,6 +9,7 @@ import type { ConversationMessage } from "@/lib/scoring"
 import { log } from "@/lib/logger"
 import { REQUEST_ID_HEADER } from "@/lib/request-trace"
 import { supabase } from "@/lib/supabase"
+import { isConcludedSessionStatus } from "@/lib/session-status"
 import {
   buildOnboardingProfileSchema,
   formatStepPrompt,
@@ -51,8 +52,6 @@ function traceJson(
   if (input.requestId) headers.set(REQUEST_ID_HEADER, input.requestId)
   return NextResponse.json(body, { ...init, headers })
 }
-
-const CONCLUDED = ["passed", "failed", "redirected", "rejected"]
 
 function stepIndex(steps: OnboardingFlowStep[], stepId: string): number {
   return steps.findIndex((s) => s.id === stepId)
@@ -203,7 +202,7 @@ export async function postOnboardingMessage(
   }
 
   if (existing) {
-    if (CONCLUDED.includes(existing.status)) {
+    if (isConcludedSessionStatus(existing.status)) {
       return traceJson(input, { error: "Session concluded" }, { status: 409 })
     }
     if (
@@ -488,12 +487,6 @@ export async function postOnboardingMessage(
         applicant: sessionApplicantIdentity,
       })
       profile = result?.profile ?? null
-      if (profile) {
-        await supabase
-          .from("sessions")
-          .update({ profile })
-          .eq("id", sessionRowId)
-      }
     } catch (err) {
       log.error("onboarding_verdict_failed", {
         requestId: input.requestId,

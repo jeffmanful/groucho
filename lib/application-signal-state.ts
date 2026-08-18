@@ -1,10 +1,31 @@
+import type { ApplicationConversationDepth } from "@/lib/application-conversation-depth"
+import {
+  EMPTY_APPLICATION_CONVERSATION_THREAD,
+  type ApplicationConversationThread,
+} from "@/lib/application-conversation-thread"
+import type { ApplicationResponseModeHistory } from "@/lib/application-response-mode"
+import type { ApplicationBridgeHistory } from "@/lib/application-conversation-bridge"
+import {
+  applicationQuestionBudget,
+  type ApplicationQuestionBudget,
+} from "@/lib/application-question-budget"
+
 export type ApplicationSignalDefinition = {
   key: string
+  /** Original project configuration, retained for backwards compatibility. */
   label: string
+  /** Private evidence goal. This is not a question Groucho must ask verbatim. */
+  goal: string
+  /** Optional routes Groucho can adapt when the conversation needs a new opening. */
+  promptRoutes: string[]
+  priority: "core" | "supporting"
+  cluster: string
 }
 
 export type ApplicationSignalAnswer = ApplicationSignalDefinition & {
   answer: string
+  /** False means the goal was attempted but the answer did not yet cover it. */
+  covered?: boolean
 }
 
 export type ApplicationSignalMessage = {
@@ -18,40 +39,71 @@ const MAX_COMPACT_ANSWER_LENGTH = 600
 const DEFAULT_MAX_QUESTIONS = 9
 const DEFAULT_MAX_FOLLOWUPS_PER_SIGNAL = 2
 
-const VAGUE_APPLICATION_PATTERNS = [
-  /\bunderground culture\b/i,
-  /\breal community\b/i,
-  /\bauthentic\b/i,
-  /\bthe scene\b/i,
-  /\bvibes?\b/i,
-  /\bpassionate\b/i,
-  /\bi love music\b/i,
-  /\bconnect with like[- ]minded\b/i,
-]
-
-const ACCESS_FIRST_PATTERNS = [
-  /\baccess\b/i,
-  /\bexclusive\b/i,
-  /\bvip\b/i,
-  /\bnetwork(?:ing)?\b/i,
-  /\bexposure\b/i,
-  /\bpromote|promotion|promo\b/i,
-  /\bfollowers?\b/i,
-  /\bclout\b/i,
-]
-
-const CONCRETE_ACTION_PATTERNS = [
-  /\bhost(?:ed|ing)?\b/i,
-  /\brun|ran|running\b/i,
-  /\borganis(?:e|ed|ing)|organiz(?:e|ed|ing)\b/i,
-  /\bcurat(?:e|ed|ing)\b/i,
-  /\bintroduced?\b/i,
-  /\bmoderated?\b/i,
-  /\bpublished?\b/i,
-  /\bwrote\b/i,
-  /\bfeedback\b/i,
-  /\bcollaborat(?:e|ed|ion)\b/i,
-]
+function evidenceGoal(
+  label: string,
+): Pick<
+  ApplicationSignalDefinition,
+  "goal" | "promptRoutes" | "priority" | "cluster"
+> {
+  const normalized = label.trim().toLowerCase()
+  if (normalized.includes("what brought you here")) {
+    return {
+      goal: "Understand their motivation and relationship to the Forum.",
+      promptRoutes: ["What drew you towards this community?", "What are you hoping to find or take part in here?"],
+      priority: "supporting",
+      cluster: "orientation",
+    }
+  }
+  if (normalized.includes("artist more people should know")) {
+    return {
+      goal: "Hear a personal cultural point of view through a specific artist or creative reference.",
+      promptRoutes: ["Who is making work you think deserves more attention?", "What do people tend to miss about work you care about?"],
+      priority: "core",
+      cluster: "cultural_point_of_view",
+    }
+  }
+  if (normalized.includes("last song") && normalized.includes("recommend")) {
+    return {
+      goal: "Understand how and why they discover, contextualise, and share creative work.",
+      promptRoutes: [
+        "What is one of their songs that you have—or would—share with someone, and why?",
+        "When you pass music on, what makes it feel worth someone else's attention?",
+      ],
+      priority: "supporting",
+      cluster: "cultural_point_of_view",
+    }
+  }
+  if (normalized.includes("unfinished music")) {
+    return {
+      goal: "Understand their care, honesty, and judgment when responding to unfinished work.",
+      promptRoutes: ["How do you approach feedback when the work is not naturally for you?", "What does useful honesty look like with unfinished work?"],
+      priority: "core",
+      cluster: "care_and_feedback",
+    }
+  }
+  if (normalized.includes("which sounds most like you")) {
+    return {
+      goal: "Understand how they currently participate in music culture and community.",
+      promptRoutes: ["How do you usually participate around music?"],
+      priority: "core",
+      cluster: "participation_and_contribution",
+    }
+  }
+  if (normalized.includes("first month") || normalized.includes("contribut")) {
+    return {
+      goal: "Find one concrete, realistic contribution they could make to the Forum.",
+      promptRoutes: ["What might you actually start, share, or help with here?", "What would your participation look like in practice?"],
+      priority: "core",
+      cluster: "participation_and_contribution",
+    }
+  }
+  return {
+    goal: `Understand the applicant's evidence for: ${label.trim()}`,
+    promptRoutes: [label.trim()],
+    priority: "core",
+    cluster: signalKey(label, 0),
+  }
+}
 
 function signalKey(label: string, index: number): string {
   const normalized = label
@@ -79,7 +131,7 @@ export function applicationSignalDefinitions(
       suffix += 1
     }
     used.add(key)
-    return { key, label }
+    return { key, label, ...evidenceGoal(label) }
   })
 }
 
@@ -90,17 +142,27 @@ function metadataRecord(metadata: unknown): Record<string, unknown> | null {
   return metadata as Record<string, unknown>
 }
 
-function signalFromMetadata(
+function metadataHasField(metadata: unknown, field: string): boolean {
+  const value = metadataRecord(metadata)
+  return value ? Object.prototype.hasOwnProperty.call(value, field) : false
+}
+
+function signalsFromMetadata(
   metadata: unknown,
-  field: "application_signal" | "application_next_signal",
+  field: "application_signal" | "application_signals" | "application_next_signal",
   definitions: ApplicationSignalDefinition[],
-): ApplicationSignalDefinition | null {
+): ApplicationSignalDefinition[] {
   const record = metadataRecord(metadata)
   const raw = record?.[field]
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
-  const key = (raw as Record<string, unknown>).key
-  if (typeof key !== "string") return null
-  return definitions.find((signal) => signal.key === key) ?? null
+  const values = Array.isArray(raw) ? raw : raw ? [raw] : []
+  const found = values.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return []
+    const key = (item as Record<string, unknown>).key
+    if (typeof key !== "string") return []
+    const signal = definitions.find((definition) => definition.key === key)
+    return signal ? [signal] : []
+  })
+  return [...new Map(found.map((signal) => [signal.key, signal])).values()]
 }
 
 export function collectApplicationSignalAnswers(
@@ -110,25 +172,35 @@ export function collectApplicationSignalAnswers(
   const answers = new Map<string, ApplicationSignalAnswer>()
   for (const message of messages) {
     if (message.role !== "user") continue
-    const signal = signalFromMetadata(
-      message.metadata,
-      "application_signal",
-      definitions,
-    )
-    if (!signal) continue
+    const hasCoverage = metadataHasField(message.metadata, "application_signals")
+    const coveredSignals = signalsFromMetadata(message.metadata, "application_signals", definitions)
+    const promptedSignals = signalsFromMetadata(message.metadata, "application_signal", definitions)
+    const signals = hasCoverage
+      ? [...new Map([...promptedSignals, ...coveredSignals].map((signal) => [signal.key, signal])).values()]
+      : promptedSignals
+    if (!signals.length) continue
     const answer = message.content.trim()
     if (!answer) continue
-    const previous = answers.get(signal.key)?.answer
-    const combined = previous ? `${previous}\nFollow-up: ${answer}` : answer
-    answers.set(signal.key, {
-      ...signal,
-      answer: combined.slice(0, MAX_COMPACT_ANSWER_LENGTH),
-    })
+    for (const signal of signals) {
+      const previous = answers.get(signal.key)?.answer
+      const combined = previous ? `${previous}\nFollow-up: ${answer}` : answer
+      answers.set(signal.key, {
+        ...signal,
+        answer: combined.slice(0, MAX_COMPACT_ANSWER_LENGTH),
+        covered: hasCoverage
+          ? coveredSignals.some((covered) => covered.key === signal.key) || previousAnswerCovered(answers.get(signal.key))
+          : true,
+      })
+    }
   }
   return definitions.flatMap((signal) => {
     const answer = answers.get(signal.key)
     return answer ? [answer] : []
   })
+}
+
+function previousAnswerCovered(answer: ApplicationSignalAnswer | undefined): boolean {
+  return Boolean(answer && answer.covered !== false)
 }
 
 export function hasLegacyUntaggedAnswers(
@@ -138,8 +210,8 @@ export function hasLegacyUntaggedAnswers(
   return messages.some(
     (message) =>
       message.role === "user" &&
-      signalFromMetadata(message.metadata, "application_signal", definitions) ===
-        null,
+      signalsFromMetadata(message.metadata, "application_signals", definitions).length === 0 &&
+      signalsFromMetadata(message.metadata, "application_signal", definitions).length === 0,
   )
 }
 
@@ -152,15 +224,15 @@ export function expectedApplicationSignal(
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]
     if (message.role !== "assistant") continue
-    requestedSignal = signalFromMetadata(
+    requestedSignal = signalsFromMetadata(
       message.metadata,
       "application_next_signal",
       definitions,
-    )
+    )[0] ?? null
     break
   }
   if (requestedSignal) return requestedSignal
-  const answered = new Set(answers.map((answer) => answer.key))
+  const answered = new Set(answers.filter(previousAnswerCovered).map((answer) => answer.key))
   return definitions.find((signal) => !answered.has(signal.key)) ?? null
 }
 
@@ -168,6 +240,7 @@ export function withCurrentSignalAnswer(
   answers: ApplicationSignalAnswer[],
   signal: ApplicationSignalDefinition | null,
   currentAnswer: string,
+  covered = true,
 ): ApplicationSignalAnswer[] {
   if (!signal || !currentAnswer.trim()) return answers
   const next = answers.filter((answer) => answer.key !== signal.key)
@@ -175,8 +248,35 @@ export function withCurrentSignalAnswer(
   const combined = previous
     ? `${previous}\nFollow-up: ${currentAnswer.trim()}`
     : currentAnswer.trim()
-  next.push({ ...signal, answer: combined.slice(0, MAX_COMPACT_ANSWER_LENGTH) })
+  next.push({
+    ...signal,
+    answer: combined.slice(0, MAX_COMPACT_ANSWER_LENGTH),
+    covered: covered || previousAnswerCovered(answers.find((answer) => answer.key === signal.key)),
+  })
   return next
+}
+
+export function withCoveredSignalAnswers(
+  answers: ApplicationSignalAnswer[],
+  signals: ApplicationSignalDefinition[],
+  currentAnswer: string,
+): ApplicationSignalAnswer[] {
+  if (!currentAnswer.trim() || signals.length === 0) return answers
+  const marked = markCoveredSignals(answers, signals)
+  return signals.reduce((next, signal) => {
+    if (next.some((answer) => answer.key === signal.key)) return next
+    return withCurrentSignalAnswer(next, signal, currentAnswer, true)
+  }, marked)
+}
+
+export function markCoveredSignals(
+  answers: ApplicationSignalAnswer[],
+  signals: ApplicationSignalDefinition[],
+): ApplicationSignalAnswer[] {
+  const coveredKeys = new Set(signals.map((signal) => signal.key))
+  return answers.map((answer) =>
+    coveredKeys.has(answer.key) ? { ...answer, covered: true } : answer,
+  )
 }
 
 export function applicationSignalAnswerAttemptCount(
@@ -186,114 +286,17 @@ export function applicationSignalAnswerAttemptCount(
   return answer.answer.split("\nFollow-up:").length
 }
 
-function latestAnswer(answer: ApplicationSignalAnswer | undefined): string {
-  if (!answer?.answer.trim()) return ""
-  return answer.answer.split("\nFollow-up:").at(-1)?.trim() ?? answer.answer.trim()
-}
-
-function hasConcreteAction(answer: string): boolean {
-  return CONCRETE_ACTION_PATTERNS.some((pattern) => pattern.test(answer))
-}
-
-function investigationDirective(input: {
-  currentSignal: ApplicationSignalDefinition | null
-  answer: ApplicationSignalAnswer | undefined
-  remainingQuestions: number
-  followupsRemaining: number
-}):
-  | {
-      shouldInvestigate: true
-      reason: string
-      recommendedNextSignalKey: string
-      suggestedFollowups: string[]
-    }
-  | {
-      shouldInvestigate: false
-      reason: string
-    } {
-  const answer = latestAnswer(input.answer)
-  if (
-    !input.currentSignal ||
-    !answer ||
-    input.remainingQuestions <= 0 ||
-    input.followupsRemaining <= 0
-  ) {
-    return {
-      shouldInvestigate: false,
-      reason: "No current answer or no follow-up budget remains.",
-    }
-  }
-
-  const isAccessFirst = ACCESS_FIRST_PATTERNS.some((pattern) =>
-    pattern.test(answer),
-  )
-  if (isAccessFirst) {
-    return {
-      shouldInvestigate: true,
-      reason: "Current answer may be access-, exposure-, or status-first.",
-      recommendedNextSignalKey: input.currentSignal.key,
-      suggestedFollowups: [
-        "What would you give to the room besides access or attention?",
-        "Who would need to be considered before you brought that energy into the Forum?",
-      ],
-    }
-  }
-
-  const isVague =
-    answer.length < 90 ||
-    VAGUE_APPLICATION_PATTERNS.some((pattern) => pattern.test(answer))
-  if (isVague && !hasConcreteAction(answer)) {
-    return {
-      shouldInvestigate: true,
-      reason:
-        "Current answer is values-language or atmosphere-language without a behavioural example.",
-      recommendedNextSignalKey: input.currentSignal.key,
-      suggestedFollowups: [
-        "What does that look like in practice?",
-        "Give me one concrete example. What did you actually do?",
-      ],
-    }
-  }
-
-  const isInteresting =
-    answer.length >= 90 &&
-    hasConcreteAction(answer) &&
-    /\b(because|so|led to|changed|learned|noticed|care|trust|context)\b/i.test(
-      answer,
-    )
-  if (isInteresting) {
-    return {
-      shouldInvestigate: true,
-      reason:
-        "Current answer has a concrete thread worth pressure-testing for role, consequence, or care.",
-      recommendedNextSignalKey: input.currentSignal.key,
-      suggestedFollowups: [
-        "What changed because of that?",
-        "What was your actual role in making that happen?",
-      ],
-    }
-  }
-
-  return {
-    shouldInvestigate: false,
-    reason: "Current answer has enough usable evidence to advance.",
-  }
-}
-
 export function resolveNextApplicationSignal(
   requestedKey: string | null,
   definitions: ApplicationSignalDefinition[],
   answers: ApplicationSignalAnswer[],
   currentSignal: ApplicationSignalDefinition | null,
 ): ApplicationSignalDefinition | null {
-  const answered = new Set(answers.map((answer) => answer.key))
+  const answered = new Set(answers.filter(previousAnswerCovered).map((answer) => answer.key))
   const nextMissing = definitions.find((signal) => !answered.has(signal.key)) ?? null
   if (requestedKey) {
     const requested = definitions.find((signal) => signal.key === requestedKey)
-    if (
-      requested &&
-      (requested.key === currentSignal?.key || requested.key === nextMissing?.key)
-    ) {
+    if (requested && (requested.key === currentSignal?.key || !answered.has(requested.key))) {
       return requested
     }
   }
@@ -315,10 +318,15 @@ export function buildCompactApplicationStateMessage(input: {
   answeredQuestionCount?: number
   maxQuestions?: number
   maxFollowupsPerSignal?: number
+  conversationDepth?: ApplicationConversationDepth
+  conversationThread?: ApplicationConversationThread
+  responseModeHistory?: ApplicationResponseModeHistory
+  bridgeHistory?: ApplicationBridgeHistory
+  questionBudget?: ApplicationQuestionBudget
 }): string {
   const answersByKey = new Map(input.answers.map((answer) => [answer.key, answer]))
-  const nextRequiredSignalKey =
-    input.definitions.find((signal) => !answersByKey.has(signal.key))?.key ?? null
+  const suggestedGapSignalKey =
+    input.definitions.find((signal) => !previousAnswerCovered(answersByKey.get(signal.key)))?.key ?? null
   const maxQuestions = input.maxQuestions ?? DEFAULT_MAX_QUESTIONS
   const maxFollowupsPerSignal =
     input.maxFollowupsPerSignal ?? DEFAULT_MAX_FOLLOWUPS_PER_SIGNAL
@@ -328,11 +336,26 @@ export function buildCompactApplicationStateMessage(input: {
       (total, answer) => total + applicationSignalAnswerAttemptCount(answer),
       0,
     )
+  const resolvedQuestionBudget = input.questionBudget ?? applicationQuestionBudget({
+    answeredQuestions: answeredQuestionCount,
+    maxQuestions,
+    adaptiveTurnsUsed: input.conversationDepth?.adaptiveTurnsUsed ?? 0,
+  })
+  const recommendationSignalKey =
+    input.definitions.find((signal) => {
+      const label = signal.label.toLowerCase()
+      return label.includes("recommend") && /\b(song|music)\b/.test(label)
+    })?.key ?? null
+  const ownMusicSignalKeys = input.definitions
+    .filter(
+      (signal) =>
+        signal.cluster === "cultural_point_of_view" ||
+        signal.cluster === "participation_and_contribution",
+    )
+    .map((signal) => signal.key)
   const state = {
     questionBudget: {
-      maxQuestions,
-      answeredQuestions: answeredQuestionCount,
-      remainingQuestions: Math.max(0, maxQuestions - answeredQuestionCount),
+      ...resolvedQuestionBudget,
       maxFollowupsPerSignal,
     },
     signals: input.definitions.map((signal) => {
@@ -341,8 +364,11 @@ export function buildCompactApplicationStateMessage(input: {
       const followupCount = Math.max(0, attempts - 1)
       return {
         key: signal.key,
-        label: signal.label,
-        status: answer ? "answered" : "missing",
+        evidenceGoal: signal.goal ?? evidenceGoal(signal.label).goal,
+        promptRoutes: signal.promptRoutes ?? evidenceGoal(signal.label).promptRoutes,
+        priority: signal.priority ?? evidenceGoal(signal.label).priority,
+        cluster: signal.cluster ?? evidenceGoal(signal.label).cluster,
+        status: previousAnswerCovered(answer) ? "covered" : "open",
         attempts,
         followupCount,
         followupsRemaining: Math.max(
@@ -366,43 +392,132 @@ export function buildCompactApplicationStateMessage(input: {
               0,
               maxFollowupsPerSignal - followupCount,
             )
-            return {
-              attempts,
-              followupCount,
-              followupsRemaining,
-              investigationDirective: investigationDirective({
-                currentSignal: input.currentSignal,
-                answer: currentAnswer,
-                remainingQuestions: Math.max(
-                  0,
-                  maxQuestions - answeredQuestionCount,
-                ),
-                followupsRemaining,
-              }),
-            }
+            return { attempts, followupCount, followupsRemaining }
           })()
         : {}),
     },
-    nextRequiredSignalKey,
+    conversationDepth: input.conversationDepth ?? {
+      recentQualities: [],
+      thinAnswerCount: 0,
+      richAnswerCount: 0,
+      openDoorUsed: false,
+      rabbitHoleUsed: false,
+      conversationPointsUsed: 0,
+      conversationPointsRemaining: 2,
+      adaptiveTurnsUsed: 0,
+      adaptiveTurnsRemaining: 3,
+      thinSignalCount: 0,
+    },
+    conversationThread:
+      input.conversationThread ?? EMPTY_APPLICATION_CONVERSATION_THREAD,
+    responseModeHistory: input.responseModeHistory ?? {
+      recentModes: [],
+      lastMode: null,
+      repeatedModeCount: 0,
+    },
+    bridgeHistory: input.bridgeHistory ?? {
+      recentKinds: [],
+      lastKind: null,
+      repeatedKindCount: 0,
+    },
+    bridgeGrammar: [
+      "person_to_work",
+      "work_to_detail",
+      "judgment_to_reason",
+      "personal_connection_to_origin",
+      "maker_to_practice",
+      "action_to_consequence",
+      "sharing_to_selection",
+      "feedback_to_care",
+      "aspiration_to_contribution",
+      "tension_to_judgment",
+      "callback",
+    ],
+    priorityConversationBridges: {
+      artistToSong: {
+        trigger:
+          "The current thread identifies an artist and the recommendation goal is still open.",
+        route:
+          "Keep the artist as the subject. Ask: What is one of their songs that you have—or would—share with someone, and why?",
+        preferredNextSignalKey: recommendationSignalKey,
+      },
+      albumMention: {
+        trigger:
+          "The current answer mentions or centres a particular album, LP, or record.",
+        route:
+          "Respond to that album specifically, then ask which song from it they would recommend and why that track.",
+        preferredNextSignalKey: recommendationSignalKey,
+      },
+      applicantMakesMusic: {
+        trigger:
+          "The applicant says they make, release, write, produce, perform, or share their own music.",
+        route:
+          "Follow the disclosure directly with one question about the music they make: what they are making, what they are trying to express, or what part of their practice connects to the artist they mentioned. Choose one intent only.",
+        selectionPriority:
+          "When this is a fresh disclosure and a core maker, participation, or contribution goal is open, prefer it over artist-to-song or another supporting recommendation bridge.",
+        candidateSignalKeys: ownMusicSignalKeys,
+      },
+    },
+    suggestedGapSignalKey,
   }
 
   return `Review this compact application state and produce the next Groucho turn.
 
-First decide whether the current answer needs doorman investigation. If current.investigationDirective.shouldInvestigate is true, follow it: stay on current.signalKey, ask one of the suggested follow-up styles or a sharper equivalent, and set nextSignalKey to current.investigationDirective.recommendedNextSignalKey. Do not advance to nextRequiredSignalKey on that turn.
+Assess the current answer semantically as thin, usable, rich, or concerning. A short but specific answer may be usable or rich. Do not use length, fluency, vocabulary, professional status, fame, follower count, or whether you recognise a reference as a proxy for quality.
 
-If current.investigationDirective.shouldInvestigate is false, independently check whether investigation is still warranted. If it is and the current signal has followupsRemaining > 0, stay on current.signalKey instead of advancing. Do not treat this as optional.
+Choose one conversationMove:
+- clarify: stay on current.signalKey when the answer is thin and one targeted clarification could recover the signal;
+- open_door: after repeated thin answers, invite one different route into the applicant's creative point of view without saying they answered badly;
+- advance: move naturally towards any open evidence goal that connects to the current thread. Use suggestedGapSignalKey only when no stronger bridge exists;
+- rabbit_hole: follow one particular observation, tension, personal connection, independent judgment, or meaningful piece of context in a rich answer;
+- challenge: calmly address a concerning safety, dignity, integrity, or extractive signal;
+- decide: use only with a terminal decision.
 
-Use doorman investigation for:
-- vague or polished answers with no behavioural example;
-- evasive, contradictory, extractive, access-first, or status-first framing;
-- interesting concrete details where one sharper follow-up would reveal role, care, consequence, or contribution.
-
-Only advance to nextRequiredSignalKey when the current answer has usable evidence, when followupsRemaining is 0, or when the remaining question budget is too low to investigate.
+An open door or rabbit hole consumes one conversation point. Use open_door only when conversationDepth shows a recent thin answer and openDoorUsed is false. Use rabbit_hole for a rich current answer while conversation points remain. The runtime validates every move.
 
 Follow-up limits:
 - Ask at most questionBudget.maxFollowupsPerSignal follow-ups for any one signal.
 - Never exceed questionBudget.maxQuestions total applicant-facing questions.
+- Clarifications, open doors, and rabbit holes share questionBudget.adaptiveTurnLimit. If adaptiveTurnsRemaining is 0, advance or conclude.
 - If followupsRemaining is 0 for the current signal and evidence is still thin, record that weakness privately and move on or conclude.
 
-Keep the exchange conversational: acknowledge one concrete detail, tension, or gap from the current answer before asking. Avoid generic praise and do not sound like a form. Do not ask who received, was sent, or was recommended music. Set nextSignalKey to the signal your reply asks about, or an empty string on terminal turns.\n\n${JSON.stringify(state, null, 2)}`
+Pacing phases:
+- explore: follow productive threads and gather evidence naturally;
+- closing: ask only about an unresolved core goal that could materially affect review;
+- final_probe: at most one final question, only for an unresolved core goal with decision-changing value;
+- hard_stop: do not ask another question. Set a terminal decision and use the neutral close.
+Supporting goals never justify extending the conversation in closing or final_probe. If no core goal warrants another question, conclude. Missing evidence belongs in reviewerReport rather than another attempt.
+
+Treat signals as evidence goals, not a checklist of questions. One answer can cover several goals. Return every goal supported by the current answer in coveredSignalKeys, even if it was not the goal that prompted the answer. Never ask for evidence that is already covered unless a genuine conversational thread warrants one bounded depth question.
+
+Before writing the reply, generate up to three bridgeCandidates from explicit details in the current answer or conversationThread, then select at most one. A bridge joins a source detail to an open evidence goal; it is not an extra question. Rank candidates by continuity, evidence value, specificity, momentum, freshness, and novelty. Prefer a current detail over a callback. Use a callback only when it genuinely makes the conversation cohere. If no candidate is strong, set selectedBridgeIndex to -1 and pivot or close naturally.
+
+When the current answer both discusses an artist and reveals that the applicant makes music, a fresh maker_to_practice bridge into an open core goal outranks person_to_work, work_to_detail, or sharing_to_selection into the supporting recommendation goal. Carry the relationship into one direct question, for example: “What part of your own music feels closest to theirs?” Do not acknowledge the maker disclosure and then ignore it.
+
+Use bridgeGrammar as relationships, not templates: person_to_work, work_to_detail, judgment_to_reason, personal_connection_to_origin, maker_to_practice, action_to_consequence, sharing_to_selection, feedback_to_care, aspiration_to_contribution, tension_to_judgment, and callback. The selected candidate's questionIntent explains what to understand; write the actual question in Groucho's voice from the source detail. Do not use the same kind mechanically when bridgeHistory shows repetition.
+
+Use priorityConversationBridges when their trigger is genuinely present in the current answer:
+- After the applicant names or discusses an artist, prefer artistToSong while its recommendation signal is open, unless the same answer contains a fresh maker disclosure into an open core goal. Ask what one song by that artist they have—or would—share with someone, and why. Keep the artist as the subject instead of resetting with a generic question about what they have been sharing lately.
+- For an album, LP, or record mention, prefer the albumMention route while its preferred signal is open: ask which song from that album they would recommend and why. This should replace a generic recommendation question, not add another question to the flow.
+- When the applicant reveals that they make or share their own music, do not glide past it. Carry the specific disclosure directly into one natural question about their music, without an evaluative preamble. Use an open candidate goal where possible and mark every goal their answer already supports.
+- A bridge must use the normal question, adaptive-turn, and closing budgets. Do not force it when the detail was incidental, its evidence goal is already covered, the thread has moved on, or the session should conclude.
+- Never invent an album title, track, release, genre, creative practice, or personal detail. Reuse only what the applicant actually supplied.
+
+Use conversationThread as working memory for continuity. If its momentum is high or medium and the current answer keeps the openHook or strongestDetail alive, continue that thread before filling an unrelated goal. Connect the next reply to what was actually said, and do not repeat a generic acknowledgement of anything already in acknowledgedDetails. Pivot when momentum is low or exhausted, the hook is resolved, the relevant depth/follow-up budget is unavailable, or an important gap must be checked near the end. Update threadState for the reply you produce.
+
+Choose a responseMode as well as a conversationMove:
+- reflect: name a concrete detail and give it room;
+- interpret: offer a tentative reading the applicant can confirm or correct;
+- probe: ask for a concrete example, role, action, or consequence;
+- deepen: stay with the live openHook or tension;
+- connect: link this answer to an earlier detail or evidence goal;
+- challenge: calmly question a contradiction, dignity concern, or extractive framing;
+- pivot: change to a different open goal cleanly, without announcing the transition;
+- close: use only on a terminal turn.
+
+These are conversational shapes, not fixed templates. Do not mechanically produce “acknowledgement + question” every turn, and do not force “receive, contribute, invite” into identical phrasing. On an active turn, leave one clear invitation for the applicant to respond and ask at most one question. Use responseModeHistory to avoid repeating the same shape, especially when repeatedModeCount is 2 or more.
+
+Render the bridge without narrating it. Never say “that matters”, “that connection matters”, “let me shift”, “let me pivot”, “moving on”, or explain why the next question follows. The connection should be evident from the nouns and verbs in the question itself. Prefer one clean question. Do not stack separate asks such as both “why would you share it?” and “what should they notice?” in the same turn. A short receipt is optional and must add meaning; it is not required before every question.
+
+Keep the exchange conversational: respond to one concrete detail, tension, or gap before asking. Prefer a question that grows out of the current answer. Use promptRoutes only as adaptable inspiration when the thread offers no natural route. Avoid generic praise and do not sound like a form. Never call an answer interesting unless you name the specific thing that interested you. Do not ask who received, was sent, or was recommended music. Set nextSignalKey to current.signalKey for clarify, open_door, rabbit_hole, or challenge; for advance choose any open signal that connects naturally, falling back to suggestedGapSignalKey; use an empty string on terminal turns.\n\n${JSON.stringify(state, null, 2)}`
 }

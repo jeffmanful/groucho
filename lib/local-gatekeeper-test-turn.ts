@@ -1,7 +1,8 @@
-import type {
-  ApplicationSignalAnswer,
-  ApplicationSignalDefinition,
-  ApplicationSignalMessage,
+import {
+  applicationSignalDefinitions,
+  type ApplicationSignalAnswer,
+  type ApplicationSignalDefinition,
+  type ApplicationSignalMessage,
 } from "@/lib/application-signal-state"
 import type {
   GatekeeperTerminalField,
@@ -9,6 +10,11 @@ import type {
 } from "@/lib/gatekeeper-interaction-spec"
 import type { Score } from "@/lib/scoring"
 import type { ReviewerReport } from "@/lib/reviewer-report"
+import type {
+  ApplicationAnswerAssessment,
+  ApplicationConversationMove,
+} from "@/lib/application-conversation-depth"
+import type { ApplicationResponseMode } from "@/lib/application-response-mode"
 
 export type LocalGatekeeperTestTurn = {
   assistantContent: string
@@ -17,32 +23,20 @@ export type LocalGatekeeperTestTurn = {
   reviewerReport: ReviewerReport | null
   interactionSpec: GrouchoInteractionSpec
   scores: Score
+  answerAssessment: ApplicationAnswerAssessment
+  conversationMove: ApplicationConversationMove
+  responseMode: ApplicationResponseMode
 }
 
-export const LOCAL_GATEKEEPER_TEST_SIGNALS: ApplicationSignalDefinition[] = [
-  { key: "what_brought_you_here", label: "What brought you here?" },
-  {
-    key: "artist_more_people_should_know",
-    label:
-      "Name an artist more people should know about. What would you want someone hearing them for the first time to notice?",
-  },
-  {
-    key: "last_song_recommended",
-    label:
-      "What's the last song you recommended, and why did you think it was worth sharing?",
-  },
-  {
-    key: "unfinished_music_response",
-    label:
-      "Someone shares unfinished music that isn't really for you. How would you respond?",
-  },
-  { key: "participation_mode", label: "Which sounds most like you?" },
-  {
-    key: "first_month_contribution",
-    label:
-      "What's one thing you could realistically contribute in your first month?",
-  },
-]
+export const LOCAL_GATEKEEPER_TEST_SIGNALS: ApplicationSignalDefinition[] =
+  applicationSignalDefinitions([
+    "What brought you here?",
+    "Name an artist more people should know about. What would you want someone hearing them for the first time to notice?",
+    "What's the last song you recommended, and why did you think it was worth sharing?",
+    "Someone shares unfinished music that isn't really for you. How would you respond?",
+    "Which sounds most like you?",
+    "What's one thing you could realistically contribute in your first month?",
+  ])
 
 const HARD_QUESTION_LIMIT = 9
 const MAX_ATTEMPTS_PER_SIGNAL = 3
@@ -140,6 +134,47 @@ function scoreAnswers(answers: ApplicationSignalAnswer[]): Score {
     authenticity,
     cultural_depth: culturalDepth,
     overall,
+  }
+}
+
+function assessAnswer(
+  answer: ApplicationSignalAnswer | null,
+): ApplicationAnswerAssessment {
+  const value = answer?.answer.trim() ?? ""
+  const isExtractive = EXTRACTIVE_PATTERNS.some((pattern) => pattern.test(value))
+  const quality = isExtractive
+    ? "concerning"
+    : isLowEvidence(value)
+      ? "thin"
+      : answerStrength(value) >= 0.72
+        ? "rich"
+        : "usable"
+
+  return {
+    quality,
+    reason:
+      quality === "thin"
+        ? "The local test fallback found limited usable evidence."
+        : quality === "rich"
+          ? "The local test fallback found concrete, particular evidence."
+          : quality === "concerning"
+            ? "The local test fallback found possible extractive framing."
+            : "The local test fallback found enough evidence to continue.",
+    evidence: {
+      personalPointOfView: /\b(i|my|me)\b/i.test(value),
+      concreteDetail: STRONG_EVIDENCE_PATTERNS.some((pattern) =>
+        pattern.test(value),
+      ),
+      emotionalConnection: /\b(mean|felt|feel|love|moved|stays? with me)\b/i.test(
+        value,
+      ),
+      independentJudgment: /\b(i think|i'd|i would|but|however|rather)\b/i.test(
+        value,
+      ),
+      careOrContext: /\b(care|context|trust|consider|listen|feedback)\b/i.test(
+        value,
+      ),
+    },
   }
 }
 
@@ -347,6 +382,7 @@ export function createLocalGatekeeperTestTurn(input: {
       ?? null
     : null
   const currentAttempts = currentAnswer ? answerAttempts(currentAnswer.answer) : 1
+  const answerAssessment = assessAnswer(currentAnswer)
   const hardLimit = Math.min(input.maxTurns ?? HARD_QUESTION_LIMIT, HARD_QUESTION_LIMIT)
 
   if (
@@ -369,6 +405,9 @@ export function createLocalGatekeeperTestTurn(input: {
         visualState: "thinking",
       },
       scores,
+      answerAssessment,
+      conversationMove: "clarify",
+      responseMode: "probe",
     }
   }
 
@@ -394,6 +433,9 @@ export function createLocalGatekeeperTestTurn(input: {
       reviewerReport: null,
       interactionSpec: interactionForQuestion(nextSignal),
       scores,
+      answerAssessment,
+      conversationMove: "advance",
+      responseMode: currentAnswer ? "connect" : "pivot",
     }
   }
 
@@ -419,5 +461,8 @@ export function createLocalGatekeeperTestTurn(input: {
       visualState: "decision",
     },
     scores,
+    answerAssessment,
+    conversationMove: "decide",
+    responseMode: "close",
   }
 }

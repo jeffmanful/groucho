@@ -72,13 +72,20 @@ function makeSupabaseMock(state: {
   sessions: FakeRow[]
   messages: FakeRow[]
   personas: FakeRow[]
+  updates: Array<{
+    table: string
+    filters: Array<{ col: string; val: unknown; op: "eq" | "is" }>
+    payload: Record<string, unknown>
+  }>
 }) {
   const chain = {
     _table: "" as string,
     _filters: [] as { col: string; val: unknown; op: "eq" | "is" }[],
+    _pendingUpdate: null as Record<string, unknown> | null,
     from(table: string) {
       this._table = table
       this._filters = []
+      this._pendingUpdate = null
       return this
     },
     select(_cols?: string) {
@@ -131,6 +138,14 @@ function makeSupabaseMock(state: {
           return true
         }),
       )
+      if (this._pendingUpdate) {
+        state.updates.push({
+          table,
+          filters: [...this._filters],
+          payload: this._pendingUpdate,
+        })
+        this._pendingUpdate = null
+      }
       return Promise.resolve({ data: filtered, error: null }).then(onFulfilled)
     },
     insert: function (payload: any) {
@@ -161,7 +176,8 @@ function makeSupabaseMock(state: {
       }
       return { select: () => ({ single: async () => ({ data: null, error: null }) }) }
     },
-    update: function (_payload: any) {
+    update: function (payload: Record<string, unknown>) {
+      this._pendingUpdate = payload
       return this
     },
   }
@@ -184,6 +200,11 @@ vi.mock("@/lib/supabase", () => {
         is_default: true,
       },
     ],
+    updates: [] as Array<{
+      table: string
+      filters: Array<{ col: string; val: unknown; op: "eq" | "is" }>
+      payload: Record<string, unknown>
+    }>,
   }
   return {
     supabase: makeSupabaseMock(state),
@@ -211,6 +232,7 @@ describe("contract: postSessionMessage", () => {
     const state = (supa as any).__state
     state.sessions = []
     state.messages = []
+    state.updates = []
     state.personas = [
       {
         id: "persona1",
@@ -553,7 +575,7 @@ describe("contract: postSessionMessage", () => {
     expect(modelCalls).toBe(1)
     expect(capturedRequest).toMatchObject({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 640,
+      max_tokens: 1100,
     })
     expect(body.status).toBe("active")
     expect(body.scores).toEqual({
@@ -787,7 +809,29 @@ describe("contract: postSessionMessage", () => {
               inputType: "text",
               emotionalState: "curious",
               visualState: "curious",
-              nextSignalKey: "contribution",
+              coveredSignalKeys: ["intent"],
+              bridgeCandidates: [
+                {
+                  sourceDetail: "Wants to contribute something useful",
+                  kind: "aspiration_to_contribution",
+                  targetSignalKey: "contribution",
+                  questionIntent:
+                    "Understand what useful participation would look like in practice",
+                  confidence: 0.84,
+                  freshness: "current",
+                },
+              ],
+              selectedBridgeIndex: 0,
+              responseMode: "connect",
+              threadState: {
+                subject: "Participation",
+                strongestDetail: "Wants to contribute something useful",
+                openHook: "What useful participation means in practice",
+                momentum: "medium",
+                applicantEnergy: "engaged",
+                acknowledgedDetails: ["Something useful"],
+              },
+              nextSignalKey: "intent",
             },
           },
         ],
@@ -807,11 +851,599 @@ describe("contract: postSessionMessage", () => {
     expect(capturedSystem).toContain("- contribution")
     expect(capturedSystem).toContain("Preferred input types")
     expect(capturedSystem).toContain("Target maximum assistant turns before decision: 4")
+    expect(capturedSystem).toContain("Render bridges invisibly")
     expect(capturedMessages).toHaveLength(1)
     expect(capturedMessages[0]?.role).toBe("user")
     expect(capturedMessages[0]?.content).toContain("compact application state")
     expect(capturedMessages[0]?.content).toContain('"intent"')
-    expect(capturedMessages[0]?.content).toContain('"status": "answered"')
+    expect(capturedMessages[0]?.content).toContain('"status": "open"')
+    expect(capturedMessages[0]?.content).toContain("evidence goals, not a checklist")
+    expect(capturedMessages[0]?.content).toContain('"conversationThread"')
+    expect(capturedMessages[0]?.content).toContain(
+      '"priorityConversationBridges"',
+    )
+    expect(capturedMessages[0]?.content).toContain('"artistToSong"')
+    expect(capturedMessages[0]?.content).toContain(
+      "one of their songs that you have—or would—share",
+    )
+    expect(capturedMessages[0]?.content).toContain("which song from that album")
+    expect(capturedMessages[0]?.content).toContain("question about their music")
+    expect(capturedMessages[0]?.content).toContain('"bridgeHistory"')
+    const supa = await import("@/lib/supabase")
+    const state = (supa as unknown as {
+      __state: {
+        messages: FakeRow[]
+        updates: Array<{
+          table: string
+          filters: Array<{ col: string; val: unknown }>
+          payload: { metadata: { application_signals: unknown } }
+        }>
+      }
+    }).__state
+    const userRow = state.messages.find((row: FakeRow) => row.content === "hello")
+    expect(userRow).toBeDefined()
+    const metadataUpdate = state.updates.find(
+      (update: { table: string; filters: Array<{ col: string; val: unknown }> }) =>
+        update.table === "messages" &&
+        update.filters.some((filter) => filter.col === "id" && filter.val === userRow?.id),
+    )
+    expect(metadataUpdate).toBeDefined()
+    expect(metadataUpdate?.payload.metadata.application_signals).toEqual([
+      { key: "intent", label: "intent" },
+    ])
+    const assistantRow = state.messages.at(-1)
+    const assistantMetadata = assistantRow?.metadata as
+      | { conversation_thread?: unknown }
+      | undefined
+    expect(assistantMetadata?.conversation_thread).toMatchObject({
+      subject: "Participation",
+      momentum: "medium",
+    })
+    expect(
+      (assistantRow?.metadata as { response_mode?: unknown } | undefined)
+        ?.response_mode,
+    ).toBe("connect")
+    expect(
+      (
+        assistantRow?.metadata as
+          | { conversation_bridge?: Record<string, unknown> }
+          | undefined
+      )?.conversation_bridge,
+    ).toMatchObject({
+      kind: "aspiration_to_contribution",
+      targetSignalKey: "contribution",
+    })
+    expect(
+      (
+        assistantRow?.metadata as
+          | { application_next_signal?: Record<string, unknown> }
+          | undefined
+      )?.application_next_signal,
+    ).toMatchObject({ key: "contribution" })
+  })
+
+  it("persists answer quality and an accepted open-door move", async () => {
+    const { resolveProjectContext } = await import("@/lib/project-resolution")
+    vi.mocked(resolveProjectContext).mockResolvedValueOnce({
+      ok: true,
+      context: {
+        organisationId: "org1",
+        projectId: "proj1",
+        apiKeyId: "key1",
+        settings: {
+          projectType: "gatekeeper" as const,
+          applicationExperience: {
+            opening_message: "What brought you here?",
+            required_signals: ["What brought you here?", "Contribution"],
+            max_turns: 9,
+          },
+          flowConfig: null,
+          onboardingExperience: {
+            bridge_enabled: true,
+            followup_enabled: true,
+            boundary_enabled: true,
+            personalized_completion: true,
+          },
+          raw: { project_type: "gatekeeper" },
+        },
+      },
+    })
+
+    const thinAssessment = {
+      quality: "thin",
+      reason: "No usable point of view yet.",
+      evidence: {
+        personalPointOfView: false,
+        concreteDetail: false,
+        emotionalConnection: false,
+        independentJudgment: false,
+        careOrContext: false,
+      },
+    }
+    const supa = await import("@/lib/supabase")
+    const state = (supa as any).__state
+    state.sessions.push({
+      id: "s_depth",
+      session_id: "sess_depth_1",
+      project_id: "proj1",
+      applicant_email: testApplicant.email,
+      status: "active",
+    })
+    state.messages.push(
+      {
+        id: "m_depth_open",
+        session_id: "s_depth",
+        role: "assistant",
+        content: "What brought you here?",
+        metadata: {
+          application_next_signal: {
+            key: "what_brought_you_here",
+            label: "What brought you here?",
+          },
+        },
+      },
+      {
+        id: "m_depth_user",
+        session_id: "s_depth",
+        role: "user",
+        content: "Community.",
+        metadata: {
+          application_signal: {
+            key: "what_brought_you_here",
+            label: "What brought you here?",
+          },
+          answer_assessment: thinAssessment,
+        },
+      },
+      {
+        id: "m_depth_question",
+        session_id: "s_depth",
+        role: "assistant",
+        content: "What would you contribute?",
+        metadata: {
+          conversation_move: "advance",
+          application_next_signal: {
+            key: "contribution",
+            label: "Contribution",
+          },
+        },
+      },
+    )
+
+    let compactPrompt = ""
+    anthropicCreateImpl = async (args: unknown) => {
+      compactPrompt = (
+        args as { messages: Array<{ content: string }> }
+      ).messages[0]?.content ?? ""
+      return {
+        content: [
+          {
+            type: "tool_use",
+            id: "toolu_depth",
+            name: "groucho_respond",
+            input: {
+              reply:
+                "Let's try another angle. What creative subject do people tend to miss?",
+              terminal: "none",
+              intent: "clarify",
+              inputType: "text",
+              emotionalState: "curious",
+              visualState: "curious",
+              scores: {
+                specificity: 0.4,
+                authenticity: 0.5,
+                cultural_depth: 0.4,
+                overall: 0.43,
+              },
+              answerAssessment: thinAssessment,
+              conversationMove: "open_door",
+              nextSignalKey: "contribution",
+            },
+          },
+        ],
+      }
+    }
+
+    const { postSessionMessage } = await import("@/lib/post-session-message")
+    const res = await postSessionMessage({
+      authorization: "Bearer gk_test_x",
+      sessionId: "sess_depth_1",
+      message: "Something useful.",
+      applicantIdentity: testApplicant,
+    })
+
+    expect(res.status).toBe(200)
+    expect(compactPrompt).toContain('"recentQualities": [\n      "thin"')
+    const persistedUser = state.messages.find(
+      (row: FakeRow) => row.content === "Something useful.",
+    )
+    const userMetadataUpdate = state.updates.find(
+      (update: { table: string; filters: Array<{ col: string; val: unknown }> }) =>
+        update.table === "messages" &&
+        update.filters.some(
+          (filter) => filter.col === "id" && filter.val === persistedUser.id,
+        ),
+    )
+    const persistedAssistant = state.messages.at(-1)
+    const updatedMetadata = userMetadataUpdate.payload.metadata as Record<
+      string,
+      unknown
+    >
+    const persistedAssessment = updatedMetadata.answer_assessment as Record<
+      string,
+      unknown
+    >
+    const assistantMetadata = persistedAssistant.metadata as Record<
+      string,
+      unknown
+    >
+    expect(persistedAssessment.quality).toBe("thin")
+    expect(assistantMetadata.conversation_move).toBe("open_door")
+    expect(assistantMetadata.conversation_move_adjusted).toBe(undefined)
+  })
+
+  it("prefers a fresh maker bridge over a supporting artist recommendation", async () => {
+    const { resolveProjectContext } = await import("@/lib/project-resolution")
+    vi.mocked(resolveProjectContext).mockResolvedValueOnce({
+      ok: true,
+      context: {
+        organisationId: "org1",
+        projectId: "proj1",
+        apiKeyId: "key1",
+        settings: {
+          projectType: "gatekeeper" as const,
+          applicationExperience: {
+            opening_message: "Who is an artist more people should know about?",
+            required_signals: [
+              "Name an artist more people should know about.",
+              "Last song recommended",
+              "Contribution",
+            ],
+            max_turns: 9,
+          },
+          flowConfig: null,
+          onboardingExperience: {
+            bridge_enabled: true,
+            followup_enabled: true,
+            boundary_enabled: true,
+            personalized_completion: true,
+          },
+          raw: { project_type: "gatekeeper" },
+        },
+      },
+    })
+
+    anthropicCreateImpl = async () => ({
+      content: [
+        {
+          type: "tool_use",
+          id: "toolu_maker_priority",
+          name: "groucho_respond",
+          input: {
+            reply:
+              "That connection matters. Let me shift slightly. What's one track of theirs you'd share?",
+            terminal: "none",
+            intent: "probe",
+            inputType: "text",
+            emotionalState: "curious",
+            visualState: "curious",
+            conversationMove: "advance",
+            responseMode: "connect",
+            coveredSignalKeys: [
+              "name_an_artist_more_people_should_know_about",
+            ],
+            bridgeCandidates: [
+              {
+                sourceDetail: "They connect Tirzah to their own work",
+                kind: "person_to_work",
+                targetSignalKey: "last_song_recommended",
+                questionIntent: "Ask which Tirzah song they would share",
+                confidence: 0.9,
+                freshness: "current",
+              },
+              {
+                sourceDetail: "They make music influenced by Tirzah",
+                kind: "maker_to_practice",
+                targetSignalKey: "contribution",
+                questionIntent:
+                  "Understand what they are trying to express in their own music",
+                confidence: 0.88,
+                freshness: "current",
+              },
+            ],
+            selectedBridgeIndex: 0,
+            threadState: {
+              subject: "Tirzah and the applicant's own music",
+              strongestDetail: "The artist mirrors something in their work",
+              openHook: "What they are expressing in their music",
+              momentum: "high",
+              applicantEnergy: "engaged",
+              acknowledgedDetails: [],
+            },
+            nextSignalKey: "last_song_recommended",
+          },
+        },
+      ],
+    })
+
+    const { postSessionMessage } = await import("@/lib/post-session-message")
+    const res = await postSessionMessage({
+      authorization: "Bearer gk_test_x",
+      sessionId: "sess_maker_priority_1",
+      message: "Tirzah. Her music mirrors something in the music I make.",
+      applicantIdentity: testApplicant,
+    })
+    const body = await jsonFromResponse(res)
+    expect(body.status).toBe("active")
+    expect(body.message).toBe(
+      "What are you trying to express in your own music?",
+    )
+
+    const supa = await import("@/lib/supabase")
+    const state = (supa as any).__state
+    const assistantMetadata = state.messages.at(-1).metadata as Record<
+      string,
+      unknown
+    >
+    expect(assistantMetadata.conversation_bridge_adjusted).toBe(true)
+    expect(assistantMetadata.conversation_bridge).toMatchObject({
+      kind: "maker_to_practice",
+      targetSignalKey: "contribution",
+    })
+    expect(assistantMetadata.application_next_signal).toMatchObject({
+      key: "contribution",
+    })
+  })
+
+  it("does not let advance repeat the same unresolved question", async () => {
+    const { resolveProjectContext } = await import("@/lib/project-resolution")
+    vi.mocked(resolveProjectContext).mockResolvedValueOnce({
+      ok: true,
+      context: {
+        organisationId: "org1",
+        projectId: "proj1",
+        apiKeyId: "key1",
+        settings: {
+          projectType: "gatekeeper" as const,
+          applicationExperience: {
+            opening_message: "How do you approach feedback?",
+            required_signals: [
+              "How do you approach unfinished music?",
+              "What's one thing you could realistically contribute in your first month?",
+            ],
+            max_turns: 9,
+          },
+          flowConfig: null,
+          onboardingExperience: {
+            bridge_enabled: true,
+            followup_enabled: true,
+            boundary_enabled: true,
+            personalized_completion: true,
+          },
+          raw: { project_type: "gatekeeper" },
+        },
+      },
+    })
+
+    const thinAssessment = {
+      quality: "thin",
+      reason: "No usable detail yet.",
+      evidence: {
+        personalPointOfView: false,
+        concreteDetail: false,
+        emotionalConnection: false,
+        independentJudgment: false,
+        careOrContext: false,
+      },
+    }
+    const feedbackSignal = {
+      key: "how_do_you_approach_unfinished_music",
+      label: "How do you approach unfinished music?",
+    }
+    const supa = await import("@/lib/supabase")
+    const state = (supa as any).__state
+    state.sessions.push({
+      id: "s_repeat",
+      session_id: "sess_repeat_1",
+      project_id: "proj1",
+      applicant_email: testApplicant.email,
+      status: "active",
+    })
+    state.messages.push(
+      {
+        id: "m_repeat_open",
+        session_id: "s_repeat",
+        role: "assistant",
+        content: "How do you approach feedback?",
+        metadata: {
+          application_next_signal: feedbackSignal,
+          conversation_bridge: {
+            kind: "feedback_to_care",
+          },
+        },
+      },
+      {
+        id: "m_repeat_user",
+        session_id: "s_repeat",
+        role: "user",
+        content: "I try to be fair.",
+        metadata: {
+          application_signal: feedbackSignal,
+          application_signals: [],
+          answer_assessment: thinAssessment,
+        },
+      },
+      {
+        id: "m_repeat_question",
+        session_id: "s_repeat",
+        role: "assistant",
+        content: "How do you approach feedback when it is not naturally for you?",
+        metadata: {
+          conversation_move: "clarify",
+          application_next_signal: feedbackSignal,
+          conversation_bridge: {
+            kind: "feedback_to_care",
+          },
+        },
+      },
+    )
+
+    anthropicCreateImpl = async () => ({
+      content: [
+        {
+          type: "tool_use",
+          id: "toolu_repeat",
+          name: "groucho_respond",
+          input: {
+            reply: "How do you approach feedback when it is not naturally for you?",
+            terminal: "none",
+            conversationMove: "advance",
+            nextSignalKey: feedbackSignal.key,
+            answerAssessment: thinAssessment,
+            bridgeCandidates: [
+              {
+                sourceDetail: "Separating taste from whether the work functions",
+                kind: "feedback_to_care",
+                targetSignalKey: feedbackSignal.key,
+                questionIntent: "Ask again how they make feedback useful",
+                confidence: 0.86,
+                freshness: "current",
+              },
+            ],
+            selectedBridgeIndex: 0,
+          },
+        },
+      ],
+    })
+
+    const { postSessionMessage } = await import("@/lib/post-session-message")
+    const res = await postSessionMessage({
+      authorization: "Bearer gk_test_x",
+      sessionId: "sess_repeat_1",
+      message: "I try to separate taste from whether it works.",
+      applicantIdentity: testApplicant,
+    })
+    const body = await jsonFromResponse(res)
+    expect(body.status).toBe("active")
+    expect(body.message).toContain("actually start, share, or help")
+    const assistantMetadata = state.messages.at(-1).metadata as Record<
+      string,
+      unknown
+    >
+    expect(assistantMetadata.conversation_move).toBe("advance")
+    expect(assistantMetadata.conversation_move_adjusted).toBe(true)
+    expect(assistantMetadata.conversation_bridge_adjusted).toBe(true)
+    expect(assistantMetadata.conversation_bridge).toBeUndefined()
+    expect(assistantMetadata.application_next_signal).toMatchObject({
+      key: "what_s_one_thing_you_could_realistically_contrib",
+    })
+  })
+
+  it("forces a neutral close after the ninth applicant turn", async () => {
+    const { resolveProjectContext } = await import("@/lib/project-resolution")
+    vi.mocked(resolveProjectContext).mockResolvedValueOnce({
+      ok: true,
+      context: {
+        organisationId: "org1",
+        projectId: "proj1",
+        apiKeyId: "key1",
+        settings: {
+          projectType: "gatekeeper" as const,
+          applicationExperience: {
+            opening_message: "What brought you here?",
+            closing_message: "Thanks. We have what we need for review.",
+            required_signals: ["What brought you here?"],
+            max_turns: 12,
+          },
+          flowConfig: null,
+          onboardingExperience: {
+            bridge_enabled: true,
+            followup_enabled: true,
+            boundary_enabled: true,
+            personalized_completion: true,
+          },
+          raw: { project_type: "gatekeeper" },
+        },
+      },
+    })
+
+    const signal = {
+      key: "what_brought_you_here",
+      label: "What brought you here?",
+    }
+    const supa = await import("@/lib/supabase")
+    const state = (supa as any).__state
+    state.sessions.push({
+      id: "s_hard_stop",
+      session_id: "sess_hard_stop_1",
+      project_id: "proj1",
+      applicant_email: testApplicant.email,
+      status: "active",
+    })
+    state.messages.push({
+      id: "m_hard_open",
+      session_id: "s_hard_stop",
+      role: "assistant",
+      content: "What brought you here?",
+      metadata: { application_next_signal: signal },
+    })
+    for (let index = 1; index <= 8; index += 1) {
+      state.messages.push(
+        {
+          id: `m_hard_user_${index}`,
+          session_id: "s_hard_stop",
+          role: "user",
+          content: `Answer ${index}`,
+          metadata: {
+            application_signal: signal,
+            application_signals: [],
+          },
+        },
+        {
+          id: `m_hard_assistant_${index}`,
+          session_id: "s_hard_stop",
+          role: "assistant",
+          content: `Question ${index + 1}?`,
+          metadata: {
+            conversation_move: "advance",
+            application_next_signal: signal,
+          },
+        },
+      )
+    }
+
+    anthropicCreateImpl = async () => ({
+      content: [
+        {
+          type: "tool_use",
+          id: "toolu_hard_stop",
+          name: "groucho_respond",
+          input: {
+            reply: "One more question?",
+            terminal: "none",
+            conversationMove: "advance",
+            nextSignalKey: signal.key,
+          },
+        },
+      ],
+    })
+
+    const { postSessionMessage } = await import("@/lib/post-session-message")
+    const res = await postSessionMessage({
+      authorization: "Bearer gk_test_x",
+      sessionId: "sess_hard_stop_1",
+      message: "Answer 9",
+      applicantIdentity: testApplicant,
+    })
+    const body = await jsonFromResponse(res)
+    expect(body.status).toBe("redirected")
+    expect(body.message).toBe("Thanks. We have what we need for review.")
+    const assistantMetadata = state.messages.at(-1).metadata as Record<
+      string,
+      unknown
+    >
+    expect(assistantMetadata.gatekeeper_terminal).toBe("redirect")
+    expect(assistantMetadata.application_budget_forced_close).toBe(true)
   })
 
   it("does not enrich artist references on the applicant response path", async () => {

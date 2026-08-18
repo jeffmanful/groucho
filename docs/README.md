@@ -15,6 +15,8 @@
 | [sdk-surface.md](./sdk-surface.md) | `@groucho/sdk` exports and React API |
 | [v2-roadmap.md](./v2-roadmap.md) | V2 gatekeeper-first product direction and refactor roadmap |
 | [colors-application-improvements.md](./colors-application-improvements.md) | COLORS application content, performance, acceptance criteria, and implementation tracker |
+| [colors-cultural-signals.md](./colors-cultural-signals.md) | Five-phase plan and privacy boundaries for project-level cultural memory |
+| [colors-conversation-realism.md](./colors-conversation-realism.md) | Eight-layer roadmap for making Groucho feel like an attentive conversation rather than an interview |
 | [colors-evaluation-rubric-discovery.md](./colors-evaluation-rubric-discovery.md) | COLORS rubric discovery questions, needed client examples, and confirmed Groucho rules |
 | [roadmap-github-issues.md](./roadmap-github-issues.md) | Phased issues for GitHub or Linear |
 

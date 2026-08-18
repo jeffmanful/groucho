@@ -15,8 +15,7 @@ import {
   type OnboardingFlowStep,
 } from "@/lib/project-settings"
 import type { PostSessionMessageInput } from "@/lib/post-session-message"
-
-const CONCLUDED = ["passed", "failed", "redirected", "rejected"]
+import { isConcludedSessionStatus } from "@/lib/session-status"
 
 function traceJson(
   input: Pick<PostSessionMessageInput, "requestId">,
@@ -114,7 +113,7 @@ export async function startOnboardingSession(
     .maybeSingle()
 
   if (existing) {
-    if (CONCLUDED.includes(existing.status)) {
+    if (isConcludedSessionStatus(existing.status)) {
       return traceJson(input, { error: "Session concluded" }, { status: 409 })
     }
     if (
@@ -207,7 +206,7 @@ export async function startOnboardingSession(
       .eq("session_id", sessionId)
       .eq("project_id", projectId)
       .maybeSingle()
-    if (raced && !CONCLUDED.includes(raced.status)) {
+    if (raced && !isConcludedSessionStatus(raced.status)) {
       const { data: lastMsg } = await supabase
         .from("messages")
         .select("role, content")

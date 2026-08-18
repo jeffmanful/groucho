@@ -54,6 +54,7 @@ type SessionRow = {
   status: string
   created_at: string
   updated_at: string
+  profile_extracted_at?: string | null
   persona_id?: string | null
   applicant_email?: string | null
   applicant_name?: string | null
@@ -386,6 +387,9 @@ function OrganisationDetailPageInner() {
   const [inviteRole, setInviteRole] = useState("member")
   const [lastInviteUrl, setLastInviteUrl] = useState<string | null>(null)
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
+  const [sessionAction, setSessionAction] = useState<
+    { sessionId: string; kind: "abandon" | "profile" } | null
+  >(null)
   const [transcript, setTranscript] = useState<TranscriptMessage[]>([])
   const [profile, setProfile] = useState<ProfilePayload | null>(null)
   const [personaSchema, setPersonaSchema] = useState<unknown>(null)
@@ -638,6 +642,60 @@ function OrganisationDetailPageInner() {
     }
     setMsg("Organisation saved.")
     await loadOrg()
+  }
+
+  async function abandonSession(session: SessionRow) {
+    if (!selectedProjectId || session.status !== "active") return
+    if (
+      !window.confirm(
+        "Mark this session as abandoned? The transcript will be kept, but the applicant will not be able to continue it.",
+      )
+    ) {
+      return
+    }
+
+    setErr(null)
+    setMsg(null)
+    setSessionAction({ sessionId: session.id, kind: "abandon" })
+    const res = await fetch(
+      `/api/admin/organisations/${orgId}/projects/${selectedProjectId}/sessions/${session.id}/abandon`,
+      { method: "POST" },
+    )
+    const body = await res.json().catch(() => ({}))
+    setSessionAction(null)
+    if (!res.ok) {
+      setErr(body.error ?? "Could not mark session as abandoned")
+      await loadSessions()
+      return
+    }
+
+    setMsg("Session marked as abandoned. Its transcript has been preserved.")
+    await Promise.all([loadSessions(), loadSessionProfiles(), loadTranscript()])
+  }
+
+  async function generateSessionProfile(session: SessionRow) {
+    if (!selectedProjectId) return
+    setErr(null)
+    setMsg(null)
+    setSessionAction({ sessionId: session.id, kind: "profile" })
+    const res = await fetch(
+      `/api/admin/organisations/${orgId}/projects/${selectedProjectId}/sessions/${session.id}/profile`,
+      { method: "POST" },
+    )
+    const body = await res.json().catch(() => ({}))
+    setSessionAction(null)
+
+    if (isProfilePayload(body.profile)) {
+      setProfile(body.profile)
+    }
+    if (!res.ok) {
+      setErr(body.detail ?? body.error ?? "Could not generate profile")
+      await loadSessionProfiles()
+      return
+    }
+
+    setMsg(profile ? "Profile regenerated." : "Profile generated.")
+    await Promise.all([loadSessions(), loadSessionProfiles(), loadTranscript()])
   }
 
   async function deleteOrg() {
@@ -960,6 +1018,7 @@ function OrganisationDetailPageInner() {
 
   const selected =
     org.projects.find((p) => p.id === selectedProjectId) ?? org.projects[0]
+  const selectedSession = sessions.find((session) => session.id === selectedSessionId) ?? null
 
   return (
     <div style={{ padding: "2rem", fontFamily: "system-ui, sans-serif", maxWidth: "52rem" }}>
@@ -1692,7 +1751,76 @@ function OrganisationDetailPageInner() {
                 border: "1px solid rgba(255,255,255,0.08)",
               }}
             >
-              <div style={{ ...label, marginBottom: "0.75rem" }}>TRANSCRIPT</div>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "0.75rem",
+                  flexWrap: "wrap",
+                  marginBottom: "0.75rem",
+                }}
+              >
+                <div style={{ ...label, marginBottom: 0 }}>
+                  TRANSCRIPT
+                  {selectedSession && (
+                    <span style={{ marginLeft: "0.6rem", opacity: 0.8 }}>
+                      {selectedSession.status}
+                    </span>
+                  )}
+                </div>
+                {canOrgAdmin && selectedSession && (
+                  <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      disabled={
+                        sessionAction !== null ||
+                        !transcript.some((message) => message.role === "user")
+                      }
+                      onClick={() => void generateSessionProfile(selectedSession)}
+                      style={{
+                        ...btn(true),
+                        minHeight: "2.75rem",
+                        opacity:
+                          sessionAction !== null ||
+                          !transcript.some((message) => message.role === "user")
+                            ? 0.35
+                            : 1,
+                        cursor:
+                          sessionAction !== null ||
+                          !transcript.some((message) => message.role === "user")
+                            ? "not-allowed"
+                            : "pointer",
+                      }}
+                    >
+                      {sessionAction?.sessionId === selectedSession.id &&
+                      sessionAction.kind === "profile"
+                        ? "Generating…"
+                        : profile
+                          ? "Regenerate profile"
+                          : "Generate profile"}
+                    </button>
+                    {selectedSession.status === "active" && (
+                      <button
+                        type="button"
+                        disabled={sessionAction !== null}
+                        onClick={() => void abandonSession(selectedSession)}
+                        style={{
+                          ...btn(false),
+                          minHeight: "2.75rem",
+                          opacity: sessionAction !== null ? 0.35 : 0.8,
+                          cursor: sessionAction !== null ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        {sessionAction?.sessionId === selectedSession.id &&
+                        sessionAction.kind === "abandon"
+                          ? "Marking…"
+                          : "Mark abandoned"}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
               {transcript.length === 0 ? (
                 <p style={{ opacity: 0.35, fontSize: "0.78rem" }}>No messages or loading…</p>
               ) : (
@@ -1778,7 +1906,7 @@ function OrganisationDetailPageInner() {
             </button>
           </div>
           <p style={{ fontSize: "0.75rem", opacity: 0.4, marginBottom: "1rem", lineHeight: 1.45 }}>
-            Structured profiles from completed sessions (verdict payload). Open a row for full core,
+            Structured profiles generated automatically or manually. Open a row for full core,
             custom fields, and PII reveal. Use{" "}
             <span style={{ fontFamily: "monospace", opacity: 0.7 }}>Open transcript</span> to jump
             to the same session below.
@@ -1787,9 +1915,8 @@ function OrganisationDetailPageInner() {
             <p style={{ opacity: 0.35, fontSize: "0.78rem" }}>Loading profiles…</p>
           ) : sessionProfileRows.length === 0 ? (
             <p style={{ opacity: 0.35, fontSize: "0.78rem" }}>
-              No extracted profiles yet. Profiles appear after a session ends and extraction runs
-              (see project settings and persona <span style={{ fontFamily: "monospace" }}>profile_schema</span>
-              ).
+              No extracted profiles yet. Open a session transcript to generate one manually, or
+              enable automatic extraction in project settings.
             </p>
           ) : (
             <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>

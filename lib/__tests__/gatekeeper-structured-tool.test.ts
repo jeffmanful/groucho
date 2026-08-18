@@ -29,6 +29,43 @@ describe("parseGatekeeperStructuredResponse", () => {
           cultural_depth: 0.6,
           overall: 0.7,
         },
+        answerAssessment: {
+          quality: "rich",
+          reason: "Offers a particular observation about how attention works.",
+          evidence: {
+            personalPointOfView: true,
+            concreteDetail: true,
+            emotionalConnection: false,
+            independentJudgment: true,
+            careOrContext: true,
+          },
+        },
+        conversationMove: "rabbit_hole",
+        responseMode: "deepen",
+        culturalSignals: [
+          { type: "artist_reference", displayLabel: "Kelela", confidence: 0.92 },
+        ],
+        coveredSignalKeys: ["cultural_point_of_view", "discovery_and_sharing"],
+        bridgeCandidates: [
+          {
+            sourceDetail: "Space between releases protects the work",
+            kind: "tension_to_judgment",
+            targetSignalKey: "community_contribution",
+            questionIntent:
+              "Connect their care for artistic restraint to how they would participate",
+            confidence: 0.82,
+            freshness: "current",
+          },
+        ],
+        selectedBridgeIndex: 0,
+        threadState: {
+          subject: "Artistic restraint",
+          strongestDetail: "Space between releases protects the work",
+          openHook: "Whether visibility would change it",
+          momentum: "high",
+          applicantEnergy: "thoughtful",
+          acknowledgedDetails: ["Space between releases"],
+        },
         nextSignalKey: "community_contribution",
       }),
     ]
@@ -49,6 +86,32 @@ describe("parseGatekeeperStructuredResponse", () => {
       overall: 0.7,
     })
     expect(out.nextSignalKey).toBe("community_contribution")
+    expect(out.answerAssessment?.quality).toBe("rich")
+    expect(out.conversationMove).toBe("rabbit_hole")
+    expect(out.responseMode).toBe("deepen")
+    expect(out.coveredSignalKeys).toEqual([
+      "cultural_point_of_view",
+      "discovery_and_sharing",
+    ])
+    expect(out.bridgePlan.selected).toMatchObject({
+      kind: "tension_to_judgment",
+      targetSignalKey: "community_contribution",
+      confidence: 0.82,
+    })
+    expect(out.threadState).toMatchObject({
+      subject: "Artistic restraint",
+      momentum: "high",
+      applicantEnergy: "thoughtful",
+    })
+    expect(out.culturalSignals).toEqual([
+      {
+        type: "artist_reference",
+        normalizedKey: "kelela",
+        displayLabel: "Kelela",
+        confidence: 0.92,
+        isSensitive: false,
+      },
+    ])
   })
 
   it("defaults terminal to none when tool input is invalid", () => {
@@ -84,6 +147,55 @@ describe("parseGatekeeperStructuredResponse", () => {
       overall: 0.5,
     })
     expect(out.nextSignalKey).toBeNull()
+    expect(out.answerAssessment).toBeNull()
+    expect(out.conversationMove).toBeNull()
+  })
+
+  it("ignores malformed depth assessments and moves", () => {
+    const content = [
+      toolBlock({
+        reply: "Tell me more.",
+        terminal: "none",
+        intent: "probe",
+        inputType: "text",
+        emotionalState: "curious",
+        visualState: "curious",
+        answerAssessment: {
+          quality: "long",
+          evidence: {},
+        },
+        conversationMove: "interrogate",
+      }),
+    ]
+    const out = parseGatekeeperStructuredResponse(content as never)
+    expect(out.answerAssessment).toBeNull()
+    expect(out.conversationMove).toBeNull()
+  })
+
+  it("bounds and rejects malformed bridge plans", () => {
+    const content = [
+      toolBlock({
+        reply: "Tell me more.",
+        terminal: "none",
+        bridgeCandidates: [
+          {
+            sourceDetail: "An invented route",
+            kind: "interrogate",
+            targetSignalKey: "../../bad",
+            questionIntent: "Keep digging",
+            confidence: 3,
+            freshness: "forever",
+          },
+        ],
+        selectedBridgeIndex: 0,
+      }),
+    ]
+    const out = parseGatekeeperStructuredResponse(content as never)
+    expect(out.bridgePlan).toEqual({
+      candidates: [],
+      selectedIndex: -1,
+      selected: null,
+    })
   })
 
   it("uses neutral scores when the structured assessment is malformed", () => {

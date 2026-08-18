@@ -161,6 +161,23 @@ export async function recordVerdictAndEnqueueWebhooks(opts: {
         sessionId: opts.sessionInternalId,
         ...summariseProfileForLog(profile),
       })
+      const { error: profileWriteError } = await supabase
+        .from("sessions")
+        .update({
+          profile,
+          profile_extracted_at: new Date().toISOString(),
+        })
+        .eq("id", opts.sessionInternalId)
+        .eq("project_id", opts.projectId)
+        .eq("organisation_id", opts.organisationId)
+
+      if (profileWriteError) {
+        log.error("session_profile_write_failed", {
+          projectId: opts.projectId,
+          sessionId: opts.sessionInternalId,
+          detail: profileWriteError.message,
+        })
+      }
     } catch (err) {
       log.error("profile_extract_unexpected", {
         projectId: opts.projectId,
