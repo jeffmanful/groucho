@@ -13,8 +13,10 @@ Groucho permission to notice two moments that a fixed form usually misses:
 - An applicant has offered a particular, thoughtful, or specialist observation
   that deserves one more question.
 
-These moments are called conversation points. They deepen the application without
-turning it into a knowledge test or rewarding long, polished answers.
+These are discretionary depth moments. They deepen the application without
+turning it into a knowledge test or rewarding long, polished answers. There is no
+separate application-wide point counter; live-thread relevance, per-intent
+follow-up limits, and the emergency stop provide the bounds.
 
 ## Applicant Experience
 

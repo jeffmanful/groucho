@@ -94,7 +94,7 @@ The applicant must never see either the COLORS recommendation or the raw Groucho
 
 ### P0: Measure The Current Path
 
-- [ ] Add timing spans for project resolution, persona lookup, session lookup, message persistence, history loading, scoring, artist enrichment, response generation, profile extraction, and verdict/webhook work.
+- [ ] Add timing spans for project resolution, persona lookup, session lookup, message persistence, history loading, response generation, profile extraction, and verdict/webhook work.
 - [ ] Emit aggregate request duration and stage durations with `requestId`, `projectId`, session phase, and terminal state. Do not log applicant answers or PII.
 - [ ] Add `Server-Timing` headers in development or preview environments.
 - [ ] Capture baseline p50 and p95 latency for ordinary, artist-reference, and terminal turns.
@@ -155,7 +155,7 @@ See [colors-evaluation-rubric-discovery.md](./colors-evaluation-rubric-discovery
 ### P1: Shorten The Critical Path
 
 - [x] Remove artist enrichment from the applicant response path. Artist answers now go directly to the main conversational model.
-- [ ] Decide whether artist enrichment provides enough reviewer value to retain as background metadata. If retained, connect it only through durable background work.
+- [x] Remove the unused artist enrichment, artist-context prompt, and artist-reference detector modules after confirming that no runtime path imports them.
 - [ ] Return the configured closing message after the terminal outcome and session state are durably persisted.
 - [ ] Move profile extraction, verdict creation, and webhook-delivery creation to a durable background job or transactional outbox.
 - [ ] Ensure background failures can retry and never change the closing message already shown to the applicant.

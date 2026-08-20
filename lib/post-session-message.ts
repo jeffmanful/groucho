@@ -618,7 +618,6 @@ export async function postSessionMessage(
   const questionBudget = applicationQuestionBudget({
     answeredQuestions: answeredQuestionCount,
     maxQuestions: settings.applicationExperience.max_turns,
-    adaptiveTurnsUsed: conversationDepth.adaptiveTurnsUsed,
   })
   const conversationThread = collectApplicationConversationThread(priorHistory)
   const responseModeHistory = collectApplicationResponseModeHistory(priorHistory)
@@ -1020,7 +1019,6 @@ export async function postSessionMessage(
     const hasRecoveryPotential = answerAssessment
       ? Object.values(answerAssessment.evidence).some(Boolean)
       : false
-    const allowAdaptiveTurns = questionBudget.phase !== "emergency_stop"
     const allowSecondClarification =
       currentSignal?.priority === "core" && hasRecoveryPotential
     const moveValidation = validateApplicationConversationMove({
@@ -1031,7 +1029,6 @@ export async function postSessionMessage(
         currentSignal !== null && activeSignalKeys.has(currentSignal.key),
       followupsRemaining,
       remainingQuestions: questionBudget.remainingQuestions,
-      allowAdaptiveTurns,
       allowSecondClarification,
     })
     acceptedConversationMove = moveValidation.move

@@ -10,6 +10,8 @@ type Turn = { role: "assistant" | "user"; content: string }
 const profiles: Record<IdentityName, Record<string, string>> = {
   artist: {
     opening: "Share Work",
+    colors: "COLORS performances make restraint feel intentional rather than unfinished. I want to see whether that same attention can exist between artists in the Forum.",
+    scene: "I am adjacent to a small electronic scene where artists trade unfinished versions privately; what outsiders miss is how much of the work happens through patient listening before a release.",
     community: "A place where unfinished ideas can be understood before they are judged or turned into content.",
     orientation: "I make electronic soul and mostly want honest exchange around process, not promotion.",
     artist: "Tirzah. She leaves awkward space around a vocal instead of polishing the feeling away.",
@@ -22,6 +24,8 @@ const profiles: Record<IdentityName, Record<string, string>> = {
   },
   curator: {
     opening: "Community",
+    colors: "COLORS gives unfamiliar artists enough context without explaining the work away. I want the Forum to extend that kind of attention into an ongoing exchange.",
+    scene: "I am part of the independent listening scene around me through the night I host and the radio introductions I make. Outsiders often miss the quieter artists because the most immediate work dominates the room.",
     community: "Community means people taking responsibility for the attention they create. I run a monthly listening night and connect emerging artists with independent radio hosts when the match is thoughtful.",
     orientation: "I run a monthly listening night and connect emerging artists with independent radio hosts when the match is thoughtful.",
     artist: "Mabe Fratti. Her cello work can feel fragile and confrontational at the same time, and people often flatten that tension into genre.",
@@ -34,6 +38,8 @@ const profiles: Record<IdentityName, Record<string, string>> = {
   },
   enthusiast: {
     opening: "Community",
+    colors: "COLORS has changed how I hear artists I thought I already understood. I want a Forum where that slower kind of listening can continue after the performance.",
+    scene: "I am mostly adjacent to the local scene rather than inside it. I notice which releases keep travelling through small friend groups even when they receive little public attention.",
     community: "Community means listening does not end with consumption; people remember what moved someone else and return with something considered.",
     orientation: "I mostly listen. I am looking for conversation that goes beyond algorithmic playlists and quick ratings.",
     artist: "Liv.e. Her songs reward returning because details that first sound loose start to feel emotionally exact.",
@@ -46,6 +52,8 @@ const profiles: Record<IdentityName, Record<string, string>> = {
   },
   hybrid: {
     opening: "Share Work",
+    colors: "COLORS treats presentation as part of the work without letting it overpower the artist. That balance matters to both my own music and the context I make on radio.",
+    scene: "I am inside one part of the local scene through radio and adjacent to another as an artist. What people outside it miss is how often collaborations begin through informal listening rather than industry events.",
     community: "Community is where making and creating context for other people's work can strengthen each other without becoming networking.",
     orientation: "I produce my own music and run a small radio show where I curate local releases and introduce artists to possible collaborators.",
     artist: "Nourished by Time. The writing feels intimate while the production keeps resisting a clean nostalgic reading. I produce my own music and run a small radio show where I curate local releases.",
@@ -71,6 +79,8 @@ function answerFor(identity: IdentityName, question: string, ui?: { inputType?: 
     return ui.options[0]
   }
   if (value.includes("community mean")) return profile.community
+  if (/\b(colors|this particular door|performances? cannot|performances? can(?:not|'t))\b/.test(value)) return profile.colors
+  if (/\b(scene|where you live|where you are|outside it|adjacent to it|outsiders? might miss)\b/.test(value)) return profile.scene
   if (/\b(unfinished|feedback|honesty|not naturally for you|still working on)\b/.test(value)) return profile.feedback
   if (/\b(contribute|contribution|first month|add to|start, share|bring (?:here|into)|do (?:here|in the forum)|share with people here|realistically bring|something concrete)\b/.test(value)) return profile.contribution
   if (value.includes("artist") || value.includes("making work") || value.includes("people tend to miss")) return profile.artist
@@ -151,7 +161,7 @@ async function main() {
       let assistantMessage = String(response.message ?? "")
       transcript.push({ role: "assistant", content: assistantMessage })
 
-      for (let turn = 0; turn < 9 && response.status === "active"; turn += 1) {
+      for (let turn = 0; turn < 14 && response.status === "active"; turn += 1) {
         if (/it was good getting to understand you better/i.test(assistantMessage)) {
           break
         }

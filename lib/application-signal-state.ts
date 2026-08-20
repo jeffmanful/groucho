@@ -628,7 +628,6 @@ export function buildCompactApplicationStateMessage(input: {
   const resolvedQuestionBudget = input.questionBudget ?? applicationQuestionBudget({
     answeredQuestions: answeredQuestionCount,
     maxQuestions,
-    adaptiveTurnsUsed: input.conversationDepth?.adaptiveTurnsUsed ?? 0,
   })
   const recommendationSignalKey =
     input.definitions.find((signal) => {
@@ -702,10 +701,6 @@ export function buildCompactApplicationStateMessage(input: {
       thinAnswerCount: 0,
       richAnswerCount: 0,
       openDoorUsed: false,
-      rabbitHoleUsed: false,
-      conversationPointsUsed: 0,
-      conversationPointsRemaining: 6,
-      adaptiveTurnsUsed: 0,
       thinSignalCount: 0,
     },
     conversationThread:

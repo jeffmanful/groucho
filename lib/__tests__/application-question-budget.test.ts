@@ -7,7 +7,6 @@ describe("application question budget", () => {
       applicationQuestionBudget({
         answeredQuestions: 4,
         maxQuestions: 9,
-        adaptiveTurnsUsed: 1,
       }),
     ).toMatchObject({
       softTarget: 9,
@@ -23,35 +22,20 @@ describe("application question budget", () => {
       applicationQuestionBudget({
         answeredQuestions: 7,
         maxQuestions: 9,
-        adaptiveTurnsUsed: 0,
       }).phase,
     ).toBe("explore")
     expect(
       applicationQuestionBudget({
         answeredQuestions: 9,
         maxQuestions: 9,
-        adaptiveTurnsUsed: 0,
       }).phase,
     ).toBe("consider_close")
     expect(
       applicationQuestionBudget({
         answeredQuestions: 12,
         maxQuestions: 9,
-        adaptiveTurnsUsed: 0,
       }).phase,
     ).toBe("emergency_stop")
   })
 
-  it("does not apply a separate global adaptive-turn cap", () => {
-    expect(
-      applicationQuestionBudget({
-        answeredQuestions: 5,
-        maxQuestions: 9,
-        adaptiveTurnsUsed: 3,
-      }),
-    ).toMatchObject({
-      adaptiveTurnsUsed: 3,
-      phase: "explore",
-    })
-  })
 })

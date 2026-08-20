@@ -1,5 +1,17 @@
 # Changelog — 18 August 2026
 
+## Runtime and coverage cleanup — 20 August 2026
+
+- Audited the active COLORS application path and its direct regression coverage.
+- Deleted the retired artist-reference detection, artist-context enrichment, and artist-context prompt modules plus their isolated tests; no application, API, SDK, or background path imported them.
+- Removed the obsolete global conversation-point and adaptive-turn counters left behind after the move to per-intent limits and flexible pacing.
+- Removed the redundant adaptive-turn permission flag; remaining-question and follow-up budgets already own that boundary.
+- Kept the one-per-session open-door history, semantic quality trajectory, per-intent follow-up limits, and emergency loop stop.
+- Aligned local `/doorcheck` test mode and the identity replay with the soft target plus higher emergency limit instead of stopping at nine.
+- Updated synthetic identity answers so replay testing can exercise the COLORS-relationship and situated-cultural-perspective routes.
+- Added a dated functionality and coverage audit with the active runtime map, coverage strengths, production gaps, and separately scoped repository debt.
+- Updated conversation-depth documentation and regression expectations to match the runtime contract.
+
 ## Situated cultural perspective enhancement — 20 August 2026
 
 - Enhanced cultural-point-of-view and participation routing with optional questions about the music scene around an applicant, what outsiders might miss, and whether they feel inside, adjacent to, or outside it.

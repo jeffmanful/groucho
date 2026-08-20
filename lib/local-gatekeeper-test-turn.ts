@@ -16,6 +16,7 @@ import type {
 } from "@/lib/application-conversation-depth"
 import type { ApplicationResponseMode } from "@/lib/application-response-mode"
 import { DEFAULT_APPLICATION_CLOSING_MESSAGE } from "@/lib/project-settings"
+import { applicationQuestionBudget } from "@/lib/application-question-budget"
 
 export type LocalGatekeeperTestTurn = {
   assistantContent: string
@@ -39,7 +40,6 @@ export const LOCAL_GATEKEEPER_TEST_SIGNALS: ApplicationSignalDefinition[] =
     "What's one thing you could realistically contribute in your first month?",
   ])
 
-const HARD_QUESTION_LIMIT = 9
 const MAX_ATTEMPTS_PER_SIGNAL = 3
 
 const PARTICIPATION_OPTIONS = [
@@ -387,14 +387,17 @@ export function createLocalGatekeeperTestTurn(input: {
     : null
   const currentAttempts = currentAnswer ? answerAttempts(currentAnswer.answer) : 1
   const answerAssessment = assessAnswer(currentAnswer)
-  const hardLimit = Math.min(input.maxTurns ?? HARD_QUESTION_LIMIT, HARD_QUESTION_LIMIT)
+  const questionBudget = applicationQuestionBudget({
+    answeredQuestions: input.userAnswerCount,
+    maxQuestions: input.maxTurns,
+  })
 
   if (
     input.currentSignal &&
     currentAnswer &&
     isLowEvidence(currentAnswer.answer) &&
     currentAttempts < MAX_ATTEMPTS_PER_SIGNAL &&
-    input.userAnswerCount < hardLimit
+    questionBudget.phase !== "emergency_stop"
   ) {
     return {
       assistantContent:
@@ -424,7 +427,7 @@ export function createLocalGatekeeperTestTurn(input: {
 
   if (
     nextSignal &&
-    input.userAnswerCount < hardLimit &&
+    questionBudget.phase !== "emergency_stop" &&
     !hasEnoughEarlyEvidence
   ) {
     return {

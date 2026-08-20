@@ -43,7 +43,7 @@ describe("application conversation depth", () => {
     })
   })
 
-  it("collects persisted quality and conversation-point trajectory", () => {
+  it("collects persisted quality and open-door history", () => {
     const depth = collectApplicationConversationDepth([
       {
         role: "user",
@@ -65,9 +65,8 @@ describe("application conversation depth", () => {
 
     expect(depth.recentQualities).toEqual(["thin", "rich"])
     expect(depth.openDoorUsed).toBe(true)
-    expect(depth.rabbitHoleUsed).toBe(true)
-    expect(depth.conversationPointsRemaining).toBe(4)
-    expect(depth.adaptiveTurnsUsed).toBe(2)
+    expect(depth.thinAnswerCount).toBe(1)
+    expect(depth.richAnswerCount).toBe(1)
   })
 
   it("allows one open door only after repeated thin evidence", () => {
@@ -103,7 +102,7 @@ describe("application conversation depth", () => {
     ).toMatchObject({ move: "clarify", accepted: false })
   })
 
-  it("allows a rabbit hole for rich evidence while points remain", () => {
+  it("allows a rabbit hole for rich evidence while the intent remains explorable", () => {
     const depth = collectApplicationConversationDepth([])
     expect(
       validateApplicationConversationMove({

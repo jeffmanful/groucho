@@ -42,10 +42,6 @@ export type ApplicationConversationDepth = {
   thinAnswerCount: number
   richAnswerCount: number
   openDoorUsed: boolean
-  rabbitHoleUsed: boolean
-  conversationPointsUsed: number
-  conversationPointsRemaining: number
-  adaptiveTurnsUsed: number
   thinSignalCount: number
 }
 
@@ -54,8 +50,6 @@ export type ConversationMoveValidation = {
   accepted: boolean
   reason: string
 }
-
-export const DEFAULT_MAX_CONVERSATION_POINTS = 6
 
 const QUALITY_SET = new Set<string>(ANSWER_QUALITIES)
 const MOVE_SET = new Set<string>(CONVERSATION_MOVES)
@@ -122,7 +116,6 @@ function signalKeyFromMetadata(metadata: unknown): string | null {
 
 export function collectApplicationConversationDepth(
   messages: ConversationDepthMessage[],
-  maxConversationPoints = DEFAULT_MAX_CONVERSATION_POINTS,
 ): ApplicationConversationDepth {
   const qualities = messages.flatMap((message) => {
     if (message.role !== "user") return []
@@ -135,13 +128,6 @@ export function collectApplicationConversationDepth(
     return move ? [move] : []
   })
   const openDoorUsed = moves.includes("open_door")
-  const rabbitHoleUsed = moves.includes("rabbit_hole")
-  const conversationPointsUsed = moves.filter(
-    (move) => move === "open_door" || move === "rabbit_hole",
-  ).length
-  const adaptiveTurnsUsed = moves.filter((move) =>
-    ["clarify", "open_door", "rabbit_hole"].includes(move),
-  ).length
   const thinSignalCount = new Set(
     messages.flatMap((message) => {
       if (message.role !== "user") return []
@@ -156,13 +142,6 @@ export function collectApplicationConversationDepth(
     thinAnswerCount: qualities.filter((quality) => quality === "thin").length,
     richAnswerCount: qualities.filter((quality) => quality === "rich").length,
     openDoorUsed,
-    rabbitHoleUsed,
-    conversationPointsUsed,
-    conversationPointsRemaining: Math.max(
-      0,
-      maxConversationPoints - conversationPointsUsed,
-    ),
-    adaptiveTurnsUsed,
     thinSignalCount,
   }
 }
@@ -174,22 +153,18 @@ export function validateApplicationConversationMove(input: {
   hasCurrentSignal: boolean
   followupsRemaining: number
   remainingQuestions: number
-  allowAdaptiveTurns?: boolean
   allowSecondClarification?: boolean
 }): ConversationMoveValidation {
   const canAskOnSignal =
     input.hasCurrentSignal &&
     input.followupsRemaining > 0 &&
     input.remainingQuestions > 0
-  const canUseAdaptiveTurn =
-    canAskOnSignal &&
-    input.allowAdaptiveTurns !== false
   const previousQuality = input.depth.recentQualities.at(-1) ?? null
 
   const fallback = (): ConversationMoveValidation => ({
     move:
       input.assessment?.quality === "thin" &&
-        canUseAdaptiveTurn &&
+        canAskOnSignal &&
         (input.followupsRemaining > 1 || input.allowSecondClarification === true)
         ? "clarify"
         : "advance",
@@ -214,7 +189,6 @@ export function validateApplicationConversationMove(input: {
   if (input.proposedMove === "clarify") {
     if (
       input.assessment?.quality !== "thin" ||
-      !canUseAdaptiveTurn ||
       (input.followupsRemaining === 1 && input.allowSecondClarification !== true)
     ) {
       return fallback()
@@ -228,11 +202,9 @@ export function validateApplicationConversationMove(input: {
 
   if (input.proposedMove === "open_door") {
     if (
-      !canUseAdaptiveTurn ||
       input.assessment?.quality !== "thin" ||
       previousQuality !== "thin" ||
-      input.depth.openDoorUsed ||
-      input.depth.conversationPointsRemaining <= 0
+      input.depth.openDoorUsed
     ) {
       return fallback()
     }
@@ -244,16 +216,13 @@ export function validateApplicationConversationMove(input: {
   }
 
   if (input.proposedMove === "rabbit_hole") {
-    if (
-      !canUseAdaptiveTurn ||
-      input.assessment?.quality !== "rich"
-    ) {
+    if (input.assessment?.quality !== "rich") {
       return fallback()
     }
     return {
       move: "rabbit_hole",
       accepted: true,
-      reason: "Rich evidence qualifies for a depth question while conversation points remain.",
+      reason: "Rich evidence qualifies for a depth question while the current intent can still be explored.",
     }
   }
 

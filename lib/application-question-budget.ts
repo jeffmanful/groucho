@@ -16,13 +16,11 @@ export type ApplicationQuestionBudget = {
   /** Questions remaining before the emergency loop stop, not a conversational target. */
   remainingQuestions: number
   phase: ApplicationQuestionPhase
-  adaptiveTurnsUsed: number
 }
 
 export function applicationQuestionBudget(input: {
   answeredQuestions: number
   maxQuestions?: number
-  adaptiveTurnsUsed: number
 }): ApplicationQuestionBudget {
   const softTarget = Math.max(
     1,
@@ -43,7 +41,6 @@ export function applicationQuestionBudget(input: {
       : answeredQuestions >= softTarget
         ? "consider_close"
         : "explore"
-  const adaptiveTurnsUsed = Math.max(0, Math.floor(input.adaptiveTurnsUsed))
   return {
     maxQuestions: emergencyLimit,
     softTarget,
@@ -51,6 +48,5 @@ export function applicationQuestionBudget(input: {
     answeredQuestions,
     remainingQuestions,
     phase,
-    adaptiveTurnsUsed,
   }
 }

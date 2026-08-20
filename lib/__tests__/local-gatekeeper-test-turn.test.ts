@@ -93,6 +93,29 @@ describe("createLocalGatekeeperTestTurn", () => {
     expect(turn.assistantContent).toContain("concrete example")
   })
 
+  it("treats maxTurns as a soft target and closes only at the emergency limit", () => {
+    const answer = { ...definitions[0], answer: "idk" }
+    const atSoftTarget = createLocalGatekeeperTestTurn({
+      definitions,
+      answers: [answer],
+      currentSignal: definitions[0],
+      userAnswerCount: 9,
+      maxTurns: 9,
+    })
+    const atEmergencyLimit = createLocalGatekeeperTestTurn({
+      definitions,
+      answers: [answer],
+      currentSignal: definitions[0],
+      userAnswerCount: 12,
+      maxTurns: 9,
+    })
+
+    expect(atSoftTarget.structuredTerminal).toBe("none")
+    expect(atSoftTarget.parsedNextSignalKey).toBe(definitions[0].key)
+    expect(atEmergencyLimit.structuredTerminal).not.toBe("none")
+    expect(atEmergencyLimit.parsedNextSignalKey).toBeNull()
+  })
+
   it("concludes with a private reviewer report when the local test flow ends", () => {
     const turn = createLocalGatekeeperTestTurn({
       definitions,
