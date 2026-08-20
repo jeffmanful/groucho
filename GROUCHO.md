@@ -1,13 +1,19 @@
 # Groucho
 
-A conversational **doorman**: a configurable, LLM-driven gatekeeper that qualifies users across a handful of short turns and emits an auditable terminal outcome — `passed`, `redirected`, or `rejected` — plus structured metadata (an accumulated assessment and an extracted `profile`) that the host application can hang downstream behaviour off (email capture, role assignment, recommendations, CRM enrichment, etc.).
+A conversational **doorman**: a configurable, LLM-assisted gatekeeper that gathers
+useful evidence across a short exchange and produces an auditable advisory outcome,
+structured assessment, and extracted `profile`. Legacy `passed`, `redirected`, and
+`rejected` outcomes remain compatibility values; a separate recorded human decision
+owns approval, decline, and access.
 
 It is shipped as a **monorepo** with two products:
 
 1. **Platform** — a Next.js 16 / React 19 multi-tenant control plane and HTTP API (this repo's `app/`, `lib/`, `middleware.ts`, `supabase/`).
 2. **`@groucho/sdk`** — a published npm package (`packages/sdk`) with a headless TypeScript client, a server-only helper, and a React component kit (`<Gatekeeper />` + primitives) that host apps drop into their UI.
 
-Source of truth for the broader vision lives in [`docs/PRD.md`](./docs/PRD.md); this file is a snapshot of **what is currently in the repository**.
+Source of truth for the broader vision lives in [`docs/PRD.md`](./docs/PRD.md). The
+current COLORS readiness and priority snapshot is
+[`docs/groucho-state-of-play-2026-08-20.md`](./docs/groucho-state-of-play-2026-08-20.md).
 
 ---
 
@@ -15,7 +21,8 @@ Source of truth for the broader vision lives in [`docs/PRD.md`](./docs/PRD.md); 
 
 Teams need to qualify visitors for culture-, community-, or premium-access surfaces — and increasingly to **onboard** new members into a community — without resorting to long static forms or opaque black-box rules. Groucho gives them:
 
-- **Explainable outcomes** — every session has a transcript, accumulated assessments, and a recorded verdict.
+- **Explainable recommendations** — every session has a transcript, accumulated
+  assessments, source-linked reviewer evidence, and an advisory outcome.
 - **A stable, versioned HTTP API** — embeddable behind a host proxy so the secret `gk_*` key never reaches the browser.
 - **Tenant isolation** — orgs, projects, members, invitations, API keys, webhooks, all scoped by Supabase RLS.
 - **Structured output** — a JSON `profile` extracted from the conversation against a persona-defined schema, ready to feed downstream systems.
@@ -26,12 +33,19 @@ Teams need to qualify visitors for culture-, community-, or premium-access surfa
 
 ### Conversation engine (gatekeeper mode)
 
-- A terse assistant persona ("Lou", on the door at Public Equity™) implemented in [`lib/post-session-message.ts`](./lib/post-session-message.ts) — max 2 lines per turn, ~3–4 exchanges before a decision.
+- A project-configured doorman persona implemented through
+  [`lib/post-session-message.ts`](./lib/post-session-message.ts), with compact turns,
+  adaptive evidence routing, and deterministic integrity guards.
 - The main structured response includes accumulated `specificity`, `authenticity`, `cultural_depth`, and `overall` assessments, which are stored on `messages.metadata.scores` without a second model request.
 - Conversational gatekeeper turns use the pinned `claude-haiku-4-5-20251001` model by default and can be overridden server-side with `GROUCHO_GATEKEEPER_CONVERSATION_MODEL` for evaluation.
-- Profile extraction, onboarding turn intelligence, onboarding completion, and artist enrichment also default to the low-cost Haiku model unless overridden with their `GROUCHO_*_MODEL` env vars. Successful LLM calls emit `llm_usage` logs with token counts and estimated cost.
+- Profile extraction, onboarding turn intelligence, and onboarding completion also
+  default to the low-cost Haiku model unless overridden with their `GROUCHO_*_MODEL`
+  environment settings. Successful model calls emit `llm_usage` logs with token
+  counts and estimated cost.
 - Configured application signals are stored alongside answers in message metadata. Each model turn receives compact JSON signal state and the current answer; unconfigured projects and legacy sessions retain transcript fallback.
-- Structured terminal decisions map directly to `passed`, `redirected`, or `rejected`; concluded sessions return `409` on further posts.
+- Structured recommendations map to the legacy `passed`, `redirected`, or `rejected`
+  compatibility states; concluded sessions return `409` on further posts. These
+  states do not grant or deny access.
 - Personas have legacy fallback thresholds and an optional `profile_schema` for structured extraction (Supabase migration [`20260511220000_personas_profile_schema.sql`](./supabase/migrations/20260511220000_personas_profile_schema.sql)).
 
 ### Public Project HTTP API (under `/v1`)
@@ -40,7 +54,8 @@ Authenticated with `Authorization: Bearer gk_*` project API keys:
 
 - `POST /v1/sessions/{sessionId}/messages` — user turn → assistant reply + scores + status.
 - `GET  /v1/sessions/{sessionId}` — current session row.
-- `POST /v1/sessions/{sessionId}/access` — post-pass email capture (only after a `passed` session).
+- `POST /v1/sessions/{sessionId}/access` — post-review access capture, requiring a
+  recorded human approval and its matching decision secret.
 
 Legacy routes `/api/chat` and `/api/access` exist for the in-repo `/doorcheck` experience and are also authenticated by API key. The public OpenAPI contract lives in [`docs/api/openapi.yaml`](./docs/api/openapi.yaml).
 

@@ -33,5 +33,6 @@ pnpm run example:groucho
 
 ## Docs and releases
 
+- Current COLORS state of play: [`docs/groucho-state-of-play-2026-08-20.md`](./docs/groucho-state-of-play-2026-08-20.md)
 - Documentation index: [`docs/README.md`](./docs/README.md)
 - Publishing `@groucho/sdk`: [Changesets](https://github.com/changesets/changesets) — merge version PRs from `.github/workflows/release.yml`; configure the `NPM_TOKEN` repository secret for npm publishes. 

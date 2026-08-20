@@ -92,6 +92,11 @@ The applicant must never see either the COLORS recommendation or the raw Groucho
 
 ## Implementation Tracker
 
+> **Tracker status at 20 August 2026:** the current consolidated position is in
+> [Groucho state of play](./groucho-state-of-play-2026-08-20.md). Checked items below
+> record shipped foundations; unchecked items remain work rather than prerequisites
+> for continued controlled `/doorcheck` testing.
+
 ### P0: Measure The Current Path
 
 - [ ] Add timing spans for project resolution, persona lookup, session lookup, message persistence, history loading, response generation, profile extraction, and verdict/webhook work.
@@ -141,12 +146,16 @@ Runtime fallback reports are now evidence-backed: when the model omits a usable 
 
 ### P1: Complete The COLORS Evaluation Rubric
 
-- [ ] Ask COLORS for representative examples of `recommend`, `human_review`, and `decline` applications.
+- [x] Ask COLORS for an initial set of representative `recommend`, `human_review`,
+  and `decline` applications. Five positive anchors and four integrity boundaries
+  are encoded; the larger packet remains open.
 - [ ] Define maker and multiplier evidence with concrete examples.
 - [ ] Define the minimum evidence required for early `recommend`.
-- [ ] Define when weak evidence should produce `human_review` versus private `decline`.
+- [x] Define the first boundary cases between `human_review` and private `decline`.
+  More examples are still required before production use.
 - [ ] Decide whether the participation-style answer is scored or descriptive profile data only.
-- [ ] Confirm safety boundaries that should force human review or private decline.
+- [x] Confirm the first artist-consent boundary that produces private `decline`.
+  Remaining safety categories still need client examples.
 - [ ] Convert the final rubric into structured evaluator instructions with examples.
 - [ ] Define the reviewer packet fields, including applicant bio, confidence score, evidence summary, weak signals, flags, and reviewer focus.
 

@@ -1,5 +1,10 @@
 # COLORS adaptive flow test — 20 August 2026
 
+> **Historical test log:** this document preserves the failures and replay results
+> found while the flow was being developed. For the reconciled end-of-day status,
+> including superseded P0 findings, see
+> [Groucho state of play — 20 August 2026](./groucho-state-of-play-2026-08-20.md).
+
 ## Purpose
 
 Test the live `Forum Application` conversation with three synthetic applicants:
@@ -22,9 +27,11 @@ The test checked whether Groucho recognized each applicant's orientation, select
   - `colors-adaptive-enthusiast-20260820`
 - All applicants and examples were synthetic.
 
-## Summary
+## Initial checkpoint summary
 
-The adaptive branching works at the broad level, but the flow is not yet ready for broad client testing.
+At this first checkpoint, the adaptive branching worked at the broad level, but the
+flow was not yet ready for broad client testing. The issues below drove the fixes
+recorded later in this historical log.
 
 | Identity | Orientation detected | Relevant branch | Feedback question | Participation opportunity | Final status | Result |
 | --- | --- | --- | --- | --- | --- | --- |

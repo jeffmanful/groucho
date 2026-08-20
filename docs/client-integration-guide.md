@@ -220,8 +220,10 @@ On webhook receipt:
 2. Read `payload.project_type`, `payload.session`, `payload.applicant`, `payload.outcome`,
    `payload.scores`, and `payload.profile`.
 3. Upsert the host application record by Groucho session key.
-4. If `outcome === "PASS"`, mark the application as approved or ready for admin review.
-5. Let the community admin dashboard send invites to selected approved emails.
+4. Treat `outcome === "PASS"` only as an advisory signal that the application is
+   ready for admin review. Never mark it approved from the Groucho outcome alone.
+5. Record a separate human decision, then let the community admin dashboard send
+   invites only to applicants explicitly approved by that decision.
 
 Groucho should not directly grant forum access or competition entry unless the host
 product explicitly builds that automation. The host app should remain the source of

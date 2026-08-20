@@ -4,6 +4,12 @@ Updated: 2026-08-20
 
 This document captures what is still needed from COLORS before Groucho can evaluate forum applications with a reliable, auditable rubric.
 
+> **Current calibration status:** five clear `recommend` examples and four
+> integrity-boundary labels have now been supplied and encoded. The questions below
+> are retained as the remaining calibration agenda, not as a claim that no client
+> direction exists. See [the calibration cases](./colors-calibration-cases-2026-08-20.md)
+> and [current state of play](./groucho-state-of-play-2026-08-20.md).
+
 The persona brief gives strong tone and values guidance. The missing product work is turning those values into evidence rules: what counts as enough signal, what counts against an applicant, what should stay neutral, and when Groucho should stop asking.
 
 ## Confirmed Groucho Rules
@@ -36,8 +42,9 @@ Until the platform exposes project-specific terminal enums, the COLORS product r
 
 ## Remaining Client Questions
 
-1. What is the minimum evidence for a `recommend`?
-   Example decision needed: is one strong answer enough, or does COLORS need strong evidence across maker/multiplier intent, community care, and contribution?
+1. What is the minimum evidence for an **early** `recommend`?
+   The five positive anchors establish viable kinds of evidence, but not how early
+   Groucho can safely stop or which combination is sufficient in a shorter session.
 
 2. What makes someone a convincing maker?
    Ask COLORS for concrete accepted examples across roles such as artist, producer, DJ, writer, curator, organizer, filmmaker, label worker, event host, photographer, designer, or technically skilled collaborator.
@@ -48,20 +55,28 @@ Until the platform exposes project-specific terminal enums, the COLORS product r
 4. What should count as neutral profile data rather than scored evidence?
    Current candidates: name, location, polished writing, follower count, fame, professional status, known artist references, fluent English, and the single-select participation style.
 
-5. What evidence should trigger `decline` rather than `human_review`?
-   COLORS should define the line between "not enough signal yet" and "active evidence of poor fit."
+5. What additional evidence should trigger `decline` rather than `human_review`?
+   Continuing to share private demos after an artist objects is the first confirmed
+   decline boundary. More examples are needed to define the line without turning
+   ordinary uncertainty into a negative judgment.
 
-6. What evidence should always force `human_review`?
-   Current candidates: contradiction, very short answers after follow-up, unclear intent, possible safety issue, possible exclusionary language, or ambiguous AI/artist-authorship views.
+6. What else should force `human_review`?
+   Persistent vagueness, admitted fabrication, and repeated extractive platform
+   growth are confirmed examples. Contradiction, possible exclusionary language,
+   and ambiguous AI/artist-authorship views still need calibration.
 
 7. How should Groucho evaluate short but sincere answers?
    The rubric needs examples where a brief answer is acceptable, and examples where brevity is `insufficient_evidence`.
 
-8. How should Groucho treat applicants who are mainly listeners?
-   COLORS should decide whether "I mostly listen" can still lead to `recommend` when other answers show care and useful participation.
+8. How broadly should Groucho generalise from the thoughtful-listener anchor?
+   COLORS has confirmed that a listener can receive `recommend` through curiosity,
+   articulated taste, discovery, and useful participation without professional
+   status. Borderline listener examples are still needed.
 
-9. What are hard safety boundaries?
-   The brief names dignity, queer and trans belonging, artist consent, burnout, and dehumanising language. COLORS should confirm which cases end the application early and which go to review.
+9. What are the remaining hard safety boundaries?
+   Deliberate artist-consent violation is confirmed for `decline`. The brief also
+   names dignity, queer and trans belonging, burnout, and dehumanising language;
+   COLORS should confirm which cases end the conversation and which go to review.
 
 10. What should the human reviewer see?
    Current direction: the reviewer packet should include an applicant bio/report, advisory recommendation, confidence score, per-signal evidence, missing signals, safety flags, and a short explanation. The exact layout and field names still need product design.

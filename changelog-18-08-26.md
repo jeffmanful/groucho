@@ -1,5 +1,24 @@
 # Changelog — 18 August 2026
 
+## End-of-day documentation reconciliation — 20 August 2026
+
+- Added an authoritative Groucho state-of-play document covering controlled
+  `/doorcheck` readiness, implemented conversation behaviour, decision boundaries,
+  the 309-test verification snapshot, known limitations, and ordered next work.
+- Linked the state summary from the repository and documentation indexes and added
+  status notes to the repository snapshot, persona, stronger-V1 plan, runtime audit,
+  application tracker, rubric discovery document, and historical adaptive-flow test
+  log.
+- Reconciled the calibration documentation with the five confirmed positive anchors
+  and four confirmed integrity outcomes while leaving the incomplete client packet
+  visible as remaining P0 work.
+- Corrected the integration guide so a legacy `PASS` outcome can only make an
+  application ready for human review; it can never mark the applicant approved.
+- Removed broken `.env.example` links and the retired artist-enrichment model
+  setting from the database setup guide.
+- Preserved earlier replay failures as historical evidence and clearly pointed to
+  the end-of-day status so superseded blockers are not read as current behaviour.
+
 ## P0 adversarial trajectories and integrity boundaries — 20 August 2026
 
 - Added reusable vague, contradictory, extractive, and artist-consent safety scenarios to the live replay runner.

@@ -2,7 +2,7 @@
 
 Short guide for getting **Postgres + Supabase** aligned with this repo’s migrations so you can run the app and iterate locally.
 
-**Related:** [schema-migration.md](./schema-migration.md) (Phase 0 → v1 model), [.env.example](../.env.example), [supabase/config.toml](../supabase/config.toml)
+**Related:** [schema-migration.md](./schema-migration.md) (Phase 0 → v1 model) and [supabase/config.toml](../supabase/config.toml)
 
 ---
 
@@ -30,7 +30,7 @@ From the **repository root**:
 
    Use `db reset` when you want a clean DB; it replays every file under `supabase/migrations/` in order.
 
-3. **Copy connection values** into `.env.local` (create from [.env.example](../.env.example)):
+3. **Copy connection values** into a root `.env.local` file:
 
    ```bash
    supabase status
@@ -46,13 +46,12 @@ From the **repository root**:
 
 4. **Set app auth env vars** (demo login / middleware), still required for the full app:
 
-   - `AUTH_SECRET`, `ALLOWED_EMAILS`, `ADMIN_PASSWORD`, `ANTHROPIC_API_KEY` (see `.env.example`).
+   - `AUTH_SECRET`, `ALLOWED_EMAILS`, `ADMIN_PASSWORD`, and `ANTHROPIC_API_KEY`.
    - Gatekeeper conversational turns default to the pinned `claude-haiku-4-5-20251001` model. Set `GROUCHO_GATEKEEPER_CONVERSATION_MODEL` server-side to test another model without changing code.
    - Cost-sensitive LLM work defaults to the same Haiku model. Override only when evals justify it:
      - `GROUCHO_PROFILE_EXTRACTION_MODEL`
      - `GROUCHO_ONBOARDING_TURN_MODEL`
      - `GROUCHO_ONBOARDING_COMPLETION_MODEL`
-     - `GROUCHO_ARTIST_ENRICHMENT_MODEL`
    - Successful model calls emit structured `llm_usage` log lines with token counts and `estimatedCostUsd` when the model is in Groucho's pricing map.
 
 5. **Smoke check:** open Supabase **Studio** (URL from `supabase status`) → **Table Editor** → confirm `personas` has the seeded Lou row and tables exist.
@@ -72,7 +71,7 @@ From the **repository root**:
 
 Migrations define the demo schema plus **multi-tenant core** (from `20260410120000_phase1_multitenant_core.sql` onward): `organisations`, `projects`, `organisation_members`, `invitations`, `api_keys`, and `organisation_id` / `project_id` on **`sessions`** and `messages` (`messages.session_id` references `sessions.id`). A clean `supabase db reset` seeds a **Development** org, **Default gate** project, and one test API key.
 
-**Local test API key (seed only — rotate in production):** `gk_test_local_dev_secret_key`. Send it as `Authorization: Bearer gk_test_local_dev_secret_key` on `POST /api/chat` to resolve that project. Without a Bearer token, the server uses the first project by `created_at` (the seed default), unless you set `GROUPCHO_REQUIRE_API_KEY=true` or `GROUPCHO_DEFAULT_PROJECT_ID=<uuid>` in `.env.local`. See [.env.example](../.env.example).
+**Local test API key (seed only — rotate in production):** `gk_test_local_dev_secret_key`. Send it as `Authorization: Bearer gk_test_local_dev_secret_key` on `POST /api/chat` to resolve that project. Without a Bearer token, the server uses the first project by `created_at` (the seed default), unless you set `GROUPCHO_REQUIRE_API_KEY=true` or `GROUPCHO_DEFAULT_PROJECT_ID=<uuid>` in `.env.local`.
 
 The **access gate** (`GET /api/access`) resolves the default project the same way (no Bearer in that flow), so it stays aligned with unauthenticated doorcheck clients.
 

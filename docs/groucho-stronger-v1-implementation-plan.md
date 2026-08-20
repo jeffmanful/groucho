@@ -1,5 +1,11 @@
 # Groucho stronger V1 implementation plan
 
+> **Status at 20 August 2026:** the conversational-control and human-access-boundary
+> slices are implemented and under controlled `/doorcheck` testing. Five positive
+> reviewer anchors and four integrity boundaries are encoded. The remaining P0 is a
+> broader client-labelled calibration packet and its repeatable evaluation gate. See
+> [the current state of play](./groucho-state-of-play-2026-08-20.md).
+
 ## Purpose
 
 This plan turns the current Groucho prototype into a coherent, reviewable V1

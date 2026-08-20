@@ -1,5 +1,10 @@
 # COLORS Persona Spec
 
+> **Implementation status — 20 August 2026:** this remains the authoritative voice
+> and presence brief. Current runtime readiness, calibration, limitations, and next
+> priorities are tracked in
+> [docs/groucho-state-of-play-2026-08-20.md](./docs/groucho-state-of-play-2026-08-20.md).
+
 This document translates the COLORS tone-of-voice guidance into a usable Groucho persona and application-flow specification.
 
 It is intended for:

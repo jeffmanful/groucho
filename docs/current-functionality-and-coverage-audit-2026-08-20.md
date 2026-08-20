@@ -2,6 +2,10 @@
 
 Date: 20 August 2026
 
+> **End-of-day note:** this audit remains the detailed runtime inventory. Its
+> reconciled product status and next-priority summary live in
+> [Groucho state of play — 20 August 2026](./groucho-state-of-play-2026-08-20.md).
+
 ## Outcome
 
 The COLORS application runtime is coherent enough for controlled `/doorcheck`
@@ -79,8 +83,10 @@ produce instrumented statement, branch, or function coverage percentages.
 - [x] Encode five client-confirmed clear recommends spanning artists,
   enthusiasts, curators, and hybrids, including neutral missing-information
   invariants for reach, credentials, releases, and formal community roles.
-- [ ] Complete the larger calibration packet across clear recommends, declines,
-  human reviews, early finishes, recovery examples, and fairness pairs.
+- [ ] Complete the remaining calibration packet across additional declines and
+  human reviews, early finishes, recovery and insufficient-evidence examples,
+  safety cases, and a broader set of fairness pairs. The five requested clear
+  recommends are complete.
 
 ### P1 engineering coverage
 
