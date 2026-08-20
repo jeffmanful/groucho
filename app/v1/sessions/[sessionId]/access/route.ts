@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server"
+import { humanDecisionGrantsAccess } from "@/lib/application-decision"
 import { log } from "@/lib/logger"
 import { getOrCreateRequestId } from "@/lib/request-trace"
 import { resolveProjectContext } from "@/lib/project-resolution"
@@ -7,9 +8,9 @@ import { supabase } from "@/lib/supabase"
 import { tracedJson } from "@/lib/with-request-trace"
 
 /**
- * POST /v1/sessions/{sessionId}/access — register email after a passed session.
- * Always returns 200 with `{ ok: true }` when the request is well-formed, to avoid
- * leaking whether the email already existed (OpenAPI note).
+ * POST /v1/sessions/{sessionId}/access — register email after human approval.
+ * Unknown sessions return the same accepted shape to avoid account enumeration;
+ * known sessions still require explicit approval and the matching access secret.
  */
 export async function POST(
   req: NextRequest,
@@ -59,7 +60,7 @@ export async function POST(
 
   const { data: session, error: sErr } = await supabase
     .from("sessions")
-    .select("id, status, success_secret, applicant_email")
+    .select("id, applicant_email")
     .eq("session_id", clientKey)
     .eq("project_id", projectId)
     .maybeSingle()
@@ -77,11 +78,26 @@ export async function POST(
     return tracedJson(req, { ok: true })
   }
 
-  if (session.status !== "passed") {
+  const { data: decision, error: decisionError } = await supabase
+    .from("application_decisions")
+    .select("decision, access_secret")
+    .eq("session_id", session.id)
+    .maybeSingle()
+
+  if (decisionError) {
+    log.error("v1_access_decision_failed", {
+      requestId,
+      projectId,
+      detail: decisionError.message,
+    })
+    return tracedJson(req, { error: "Database error" }, { status: 500 })
+  }
+
+  if (!decision || decision.decision !== "approved") {
     return tracedJson(req, { error: "Session not eligible" }, { status: 403 })
   }
 
-  if (session.success_secret && body.secret?.trim() !== session.success_secret) {
+  if (!humanDecisionGrantsAccess(decision, body.secret?.trim())) {
     return tracedJson(req, { error: "Invalid or missing secret" }, { status: 400 })
   }
 

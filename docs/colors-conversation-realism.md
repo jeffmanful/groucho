@@ -1,7 +1,7 @@
 # COLORS conversation realism roadmap
 
-Status: layers 1 and 2 implemented  
-Updated: 2026-08-18
+Status: layers 1 and 2 plus adaptive applicant branches implemented
+Updated: 2026-08-20
 
 ## Aim
 
@@ -44,9 +44,19 @@ These bridges reuse open evidence goals and the existing turn budget. They must 
 
 The runtime now supports a general bridge planner rather than relying only on named examples. On each active turn Groucho can propose up to three private candidates using a reusable relationship grammar—person to work, work to detail, judgment to reason, personal connection to origin, maker to practice, action to consequence, sharing to selection, feedback to care, aspiration to contribution, tension to judgment, and callback—and select at most one.
 
-Each candidate records its source detail, relationship kind, target evidence goal, question intent, confidence, and freshness. The server accepts a selection only when it clears the confidence threshold, points to a currently eligible goal, fits the remaining question phase, and has not repeated mechanically. The accepted bridge can route the next signal and is persisted privately for continuity auditing and repetition control. No second model call is added.
+Each candidate records its source detail, connective observation, relationship kind, target evidence goal, question intent, confidence, and freshness. The connective observation gives Groucho a private reason that the next question follows instead of planning only the destination. The server accepts a selection only when it clears the confidence threshold, points to a currently eligible goal, fits the remaining question phase, and has not repeated mechanically. The accepted bridge can route the next signal and is persisted privately for continuity auditing and repetition control. No second model call is added.
 
-When one answer contains both artist appreciation and a fresh disclosure about the applicant's own music, a maker-to-practice bridge into an open core goal takes precedence over the supporting recommendation bridge. The writing layer must make transitions invisible: no “that matters”, “let me shift”, “let me pivot”, or similar narration. It should ask one direct question whose wording carries the connection, without stacking a second evidence ask.
+When one answer contains both artist appreciation and a fresh disclosure about the applicant's own music, a maker-to-practice bridge into an open core goal takes precedence over the supporting recommendation bridge. The writing layer should make transitions natural rather than narrating their mechanics: no “let me shift”, “let me pivot”, or similar stage directions. It may use one or two short sentences, including a specific receipt, interpretation, contrast, or consequence that earns the next question. Generic praise remains discouraged, and the reply still asks at most one question without stacking evidence asks.
+
+Three transition shapes keep this flexible. A continuation stays in the current subject and may carry the connection entirely in its question. A connection names or clearly reuses a concrete detail and makes its relationship to the next goal perceptible. A pivot briefly lands the current thread before changing subject, without pretending the subjects are related. This constrains the conversational reasoning while leaving Groucho freedom over the wording.
+
+Contribution bridges should also stay concrete. Groucho should recall the applicant's actual action or phrase before asking what they would do in the Forum. “You said you'd help someone understand what their song is trying to become. What would you actually do with that in the Forum?” is preferable to “How would that kind of listening show up in what you contribute here?” The second version hides the live thread behind abstract language and sounds like an assessment form.
+
+## Adaptive applicant branches
+
+Continuity now sits inside a shared-trunk, adaptive-branch model for artists, curators or scene participants, music or COLORS enthusiasts, and hybrids. Groucho persists a private revisable orientation hypothesis, removes branch-inapplicable goals, and rewrites participation and contribution routes for the applicant's relationship to music. The unfinished-work feedback scenario is no longer universal: it is available only when curator, scene, organising, or feedback evidence supports it.
+
+The server also defers an ordinary terminal decision while a relevant core goal has never been attempted and question budget remains. This prevents the final report from blaming an applicant for evidence the conversation never invited. See [colors-adaptive-applicant-branches.md](./colors-adaptive-applicant-branches.md).
 
 ## Layer 3 — Graded evidence strength
 
@@ -62,14 +72,17 @@ Let Groucho recognise when a question was too broad, check an interpretation, re
 
 ## Layer 6 — Flexible pacing
 
-Keep nine applicant-facing questions as a ceiling, not a target. Let evidence, engagement, safety, and remaining important gaps determine whether a session needs five turns or nine. Treat depth as a bounded resource rather than a compulsory special event.
+Treat the configured turn count as a soft pacing target, not a conversational
+deadline. Let evidence, engagement, safety, and the live thread determine whether a
+session needs five answers or more than nine.
 
-Implementation baseline: the runtime now targets five to seven turns, enters a
-core-only closing phase after answer seven, reserves answer eight for one final
-decision-changing core gap, and forces the neutral close after answer nine. All
-clarifications, open doors, and rabbit holes share a three-turn adaptive budget.
-One clarification per goal is the default; a second requires a core gap with
-recovery potential. The six evidence goals do not require six separate questions.
+Implementation baseline: the answer-seven closing phase and answer-eight final
+probe have been removed. Nine is the default soft target. A separate emergency
+loop stop sits three answers above the target, capped at fourteen. Clarifications
+and depth moves no longer share a three-turn application-wide cap; per-intent
+follow-up limits and relevance prevent repetition. The evidence intents do not
+require separate or verbatim questions. See
+[colors-flexible-conversation-contract.md](./colors-flexible-conversation-contract.md).
 
 ## Layer 7 — Listening close
 

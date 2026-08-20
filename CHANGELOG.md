@@ -8,6 +8,9 @@ will follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Added reviewer-attributed human application decisions and explicit review status
+  so conversation completion is distinct from final access authority.
+
 - Added configurable gatekeeper application experiences with opening and closing
   messages, opening interaction controls, ordered required signals, preferred
   input types, and a maximum-turn target.
@@ -30,6 +33,9 @@ will follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Added the COLORS application improvement tracker and V2 roadmap documentation.
 
 ### Changed
+
+- Gatekeeper terminal outcomes are now advisory compatibility values: they no
+  longer issue access secrets, and access requires a recorded human approval.
 
 - Reframed Groucho V1 around gatekeeper applications. Onboarding remains a
   mostly static intake flow and does not use an LLM unless an intelligent

@@ -7,7 +7,7 @@ export type ProjectType = "gatekeeper" | "onboarding"
 export const DEFAULT_APPLICATION_OPENING_MESSAGE =
   "What brings you here, and what do you think you would add?"
 export const DEFAULT_APPLICATION_CLOSING_MESSAGE =
-  "Thank you. We'll get in touch about your application soon."
+  "It was good getting to understand you better."
 
 export type ApplicationOpeningInputType = "text" | "singleSelect" | "multiSelect"
 

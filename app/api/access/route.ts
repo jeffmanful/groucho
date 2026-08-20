@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { humanDecisionGrantsAccess } from "@/lib/application-decision"
 import { getDefaultProjectId } from "@/lib/project-resolution"
 import { supabase } from "@/lib/supabase"
 
@@ -18,13 +19,22 @@ export async function GET(req: NextRequest) {
 
   const { data } = await supabase
     .from("sessions")
-    .select("status, success_secret")
+    .select("id")
     .eq("session_id", sid)
     .eq("project_id", project.projectId)
     .maybeSingle()
 
-  const authorized =
-    data?.status === "passed" && data?.success_secret === secret
+  if (!data) {
+    return NextResponse.json({ authorized: false })
+  }
+
+  const { data: decision } = await supabase
+    .from("application_decisions")
+    .select("decision, access_secret")
+    .eq("session_id", data.id)
+    .maybeSingle()
+
+  const authorized = humanDecisionGrantsAccess(decision, secret)
 
   return NextResponse.json({ authorized })
 }

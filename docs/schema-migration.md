@@ -17,7 +17,7 @@
 | `status` | TEXT | `active`, `passed`, `failed`, `redirected`, `rejected` |
 | `redirect_reason` | TEXT | Optional |
 | `persona_id` | UUID FK → personas | Added later |
-| `success_secret` | TEXT | Issued on pass for `/doorcheck/access` |
+| `success_secret` | TEXT | Legacy compatibility column; gatekeeper completion no longer writes it |
 | `created_at`, `updated_at` | TIMESTAMPTZ | |
 
 **v1 mapping:** Table is now **`sessions`** (renamed from `conversations`). Further v1 work: add `mode` (live/dry-run), align `status` with v1 vocabulary (`in-progress` / `completed` / `abandoned`), map outcome to `outcome` enum (`PASS` / `REDIRECT` / `REJECT`). Keep `session_id` as opaque **client reference** alongside internal `id`.
@@ -28,7 +28,7 @@
 | `session_id` | `sessions.client_session_key` or keep name `session_id` |
 | `status` | `sessions.status` + derived `sessions.outcome` |
 | `persona_id` | FK to `project_personas` or `personas` scoped by `project_id` |
-| `success_secret` | `sessions.success_secret` or move to `verdicts.payload` |
+| `success_secret` | Deprecated for gatekeeper flows; human approvals use `application_decisions.access_secret` |
 
 ### 1.2 `messages`
 
@@ -77,6 +77,7 @@ Cross-reference with [docs/PRD.md](./PRD.md) §8.2.
 | `messages` | Transcript + metadata |
 | `verdicts` | Append-only outcome + reasoning + webhook state |
 | `webhooks` | Endpoint + signing + events |
+| `application_decisions` | Immutable human approval/decline, reviewer identity, reason, and approval-only access secret |
 
 ### 2.1 New / merged concepts
 

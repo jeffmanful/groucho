@@ -1,3 +1,9 @@
+import type { ApplicationParticipantOrientationState } from "@/lib/application-participant-orientation"
+import type {
+  ApplicationSignalAnswer,
+  ApplicationSignalDefinition,
+} from "@/lib/application-signal-state"
+
 export type AdvisoryRecommendation = "recommend" | "human_review" | "decline"
 
 export type ReviewerReport = {
@@ -95,5 +101,88 @@ export function fallbackReviewerReport(input: {
     safety_or_integrity_flags: [],
     reviewer_focus:
       "Review the transcript manually before making any community decision.",
+  }
+}
+
+function recommendationForStatus(
+  status: "passed" | "redirected" | "rejected",
+): AdvisoryRecommendation {
+  return status === "passed"
+    ? "recommend"
+    : status === "rejected"
+      ? "decline"
+      : "human_review"
+}
+
+function evidenceExcerpt(answer: string): string {
+  return answer.trim().replace(/\s+/g, " ").slice(0, 260)
+}
+
+/**
+ * Repairs missing or evidence-free model reports from the application state
+ * already persisted in message metadata. It never invents applicant evidence.
+ */
+export function ensureEvidenceBackedReviewerReport(input: {
+  report: ReviewerReport | null
+  terminalStatus: "passed" | "redirected" | "rejected"
+  scores: ScoreLike
+  definitions: ApplicationSignalDefinition[]
+  answers: ApplicationSignalAnswer[]
+  insufficientEvidenceKeys?: Set<string>
+  orientation?: ApplicationParticipantOrientationState
+}): ReviewerReport {
+  if (input.report?.evidence_summary.length) {
+    return {
+      ...input.report,
+      advisory_recommendation: recommendationForStatus(input.terminalStatus),
+    }
+  }
+
+  const answerByKey = new Map(input.answers.map((answer) => [answer.key, answer]))
+  const evidenceSummary = input.definitions.flatMap((signal) => {
+    const answer = answerByKey.get(signal.key)
+    return answer?.covered !== false && answer?.answer.trim()
+      ? [`${signal.label}: ${evidenceExcerpt(answer.answer)}`]
+      : []
+  }).slice(0, MAX_ITEMS)
+  const weakOrMissingSignals = input.definitions.flatMap((signal) => {
+    const answer = answerByKey.get(signal.key)
+    if (answer?.covered !== false) return []
+    return [
+      input.insufficientEvidenceKeys?.has(signal.key)
+        ? `${signal.label}: insufficient evidence after the available follow-ups.`
+        : `${signal.label}: no usable evidence was established.`,
+    ]
+  }).slice(0, MAX_ITEMS)
+  const orientation = input.orientation?.primary ?? "unknown"
+  const orientationLabel =
+    orientation === "unknown" ? "an unresolved participant orientation" : `a primarily ${orientation} orientation`
+  const usableCount = evidenceSummary.length
+  const relevantCount = input.definitions.length
+  const fallback = fallbackReviewerReport({
+    terminalStatus: input.terminalStatus,
+    scores: input.scores,
+  })
+  const coverage = relevantCount > 0 ? usableCount / relevantCount : 0
+  const confidence = Math.max(
+    0.2,
+    Math.min(0.9, input.scores.overall * 0.65 + coverage * 0.35),
+  )
+
+  return {
+    applicant_bio:
+      input.report?.applicant_bio ||
+      `Applicant presented with ${orientationLabel}. Usable evidence was established across ${usableCount} of ${relevantCount} relevant areas.`,
+    advisory_recommendation: recommendationForStatus(input.terminalStatus),
+    confidence_score: Number(confidence.toFixed(2)),
+    evidence_summary: evidenceSummary,
+    weak_or_missing_signals: weakOrMissingSignals,
+    safety_or_integrity_flags:
+      input.report?.safety_or_integrity_flags ?? fallback.safety_or_integrity_flags,
+    reviewer_focus:
+      input.report?.reviewer_focus ||
+      (weakOrMissingSignals.length
+        ? "Review the concrete evidence alongside the unresolved areas before making the community decision."
+        : "Review whether the concrete evidence and proposed participation fit the Forum's needs."),
   }
 }

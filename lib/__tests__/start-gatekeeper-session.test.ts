@@ -187,6 +187,46 @@ describe("startGatekeeperSession", () => {
     ).toEqual({ key: "why_they_came", label: "Why they came" })
   })
 
+  it("uses the fixed open-text COLORS question as the first inflection point", async () => {
+    const colorsSettings = {
+      ...projectSettings,
+      applicationExperience: {
+        opening_message: "Welcome. Choose what brought you here.",
+        opening_interaction: {
+          inputType: "singleSelect" as const,
+          options: ["Discover", "Community", "Share Work"],
+        },
+        required_signals: [
+          "What brought you here?",
+          "Name an artist more people should know about.",
+          "What's the last song you recommended?",
+          "Someone shares unfinished music that isn't really for you. How would you respond?",
+          "Which sounds most like you?",
+          "What's one thing you could realistically contribute in your first month?",
+        ],
+      },
+    }
+    const { startGatekeeperSession } = await import("@/lib/start-gatekeeper-session")
+    const res = await startGatekeeperSession({
+      sessionId: "gk_colors_opening_12345678",
+      applicantIdentity: { email: "applicant@example.com" },
+      context: {
+        organisationId: "org1",
+        projectId: "proj1",
+        apiKeyId: null,
+        settings: colorsSettings,
+      },
+      projectSettings: colorsSettings,
+    })
+    const body = await jsonFromResponse(res as Response)
+
+    expect(body.message).toBe(
+      "Why do you want to be an early applicant for the Forum?",
+    )
+    expect(body.ui).toMatchObject({ inputType: "text" })
+    expect(body.ui).not.toHaveProperty("options")
+  })
+
   it("uses client openingMessage over project default for new sessions", async () => {
     const { startGatekeeperSession } = await import("@/lib/start-gatekeeper-session")
     const res = await startGatekeeperSession({

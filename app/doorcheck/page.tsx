@@ -103,13 +103,7 @@ type ReviewerReport = {
 }
 
 const FORUM_APPLICATION_OPENING_QUESTION =
-  "What brought you here?"
-
-const FORUM_APPLICATION_OPENING_OPTIONS = [
-  "Discover",
-  "Community",
-  "Share Work",
-].join("\n")
+  "Why do you want to be an early applicant for the Forum?"
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const APPLICANT_EMAIL_QUESTION = "What's the best email for your application?"
@@ -436,8 +430,8 @@ export default function DoorCheck() {
   const [openingMessage, setOpeningMessage] = useState(
     FORUM_APPLICATION_OPENING_QUESTION,
   )
-  const openingInputType: OpeningInputType = "singleSelect"
-  const openingOptionsText = FORUM_APPLICATION_OPENING_OPTIONS
+  const openingInputType: OpeningInputType = "text"
+  const openingOptionsText = ""
   const [selectedOptions, setSelectedOptions] = useState<string[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const typingChannelRef = useRef<ReturnType<SupabaseClient["channel"]> | null>(

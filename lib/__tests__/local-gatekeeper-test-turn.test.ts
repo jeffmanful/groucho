@@ -29,12 +29,12 @@ describe("createLocalGatekeeperTestTurn", () => {
       maxTurns: 9,
     })
 
-    expect(localDefinitions).toHaveLength(6)
+    expect(localDefinitions).toHaveLength(7)
     expect(turn.structuredTerminal).toBe("none")
     expect(turn.parsedNextSignalKey).toBe(localDefinitions[1]?.key)
     expect(turn.assistantContent).toContain("how people listen")
     expect(turn.assistantContent).toContain(
-      "Name an artist more people should know about",
+      "why does COLORS feel like the right one",
     )
   })
 

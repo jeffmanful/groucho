@@ -100,7 +100,7 @@ Gatekeeper projects can configure the application experience:
   "persona_id": "11111111-1111-1111-1111-111111111111",
   "application_experience": {
     "opening_message": "Welcome. A few questions first.\n\nWe are looking for people who understand care, creativity, and community beyond access.",
-    "closing_message": "Thank you. We'll get in touch about your application soon.",
+    "closing_message": "It was good getting to understand you better.",
     "opening_interaction": {
       "inputType": "singleSelect",
       "options": ["Artist", "Curator", "Organiser"]
@@ -123,9 +123,9 @@ Gatekeeper projects can configure the application experience:
 - `opening_message` - First assistant message before the applicant replies. Defaults to a first application question when missing.
 - `closing_message` - Final applicant-facing application message. Defaults to a neutral thank-you/follow-up message. Groucho still records the internal `passed`, `redirected`, or `rejected` outcome for webhooks and admin review, but the applicant should not see a definitive judgment. Project-specific reviewer labels, such as COLORS' `recommend`, `human_review`, and `decline`, must also remain private. For COLORS, these labels are advisory report fields only; the final community decision remains human-owned by the client.
 - `opening_interaction` - Optional first-turn input control (`text`, `singleSelect`, or `multiSelect`). Clients can override per session via `startSession({ openingInteraction })`.
-- `required_signals` - Ordered application signals Groucho should learn before deciding. Groucho stores answers against stable derived keys and sends compact signal state, rather than the full transcript, on configured application turns.
+- `required_signals` - Private evidence intents Groucho may need to understand. Existing question-shaped strings are illustrative examples, not an ordered script or required wording. Groucho stores evidence against stable derived keys and sends compact signal state rather than the full transcript.
 - `preferred_input_types` - Hints for when to use open text vs structured inputs.
-- `max_turns` - Optional guidance for how many assistant turns to target before deciding.
+- `max_turns` - Optional soft pacing target. The runtime may continue when a live thread or decision-relevant uncertainty earns another question, with a separate higher emergency loop stop.
 
 If `application_experience.opening_message` is missing or empty, Groucho uses:
 
@@ -288,12 +288,9 @@ Rules:
   "session_mode": "dry-run",
   "persona_id": "colors-application-persona-id",
   "application_experience": {
-    "opening_message": "What brought you here?",
-    "closing_message": "Thank you. We'll get in touch about your application soon.",
-    "opening_interaction": {
-      "inputType": "singleSelect",
-      "options": ["Discover", "Community", "Share Work"]
-    },
+    "opening_message": "Why do you want to be an early applicant for the Forum?",
+    "closing_message": "It was good getting to understand you better.",
+    "opening_interaction": { "inputType": "text" },
     "required_signals": [
       "What brought you here?",
       "Name an artist more people should know about. What would you want someone hearing them for the first time to notice?",

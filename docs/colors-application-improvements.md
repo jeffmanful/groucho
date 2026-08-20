@@ -1,12 +1,18 @@
 # COLORS Application Improvement Tracker
 
+> **Architecture note — 20 August 2026:** this tracker remains authoritative for
+> COLORS conversation content, adaptive branches, budgets, bridges, and current
+> runtime fixes. The planned replacement for universal scores, model-controlled
+> terminal outcomes, application state, and human decision authority is documented
+> in [the stronger V1 implementation plan](./groucho-stronger-v1-implementation-plan.md).
+
 This document tracks content and performance improvements for the first COLORS
 forum application flow. Groucho V1 remains focused on gatekeeper applications;
 static onboarding is outside this work unless a later requirement depends on it.
 
 ## Goals
 
-- Keep the application to nine applicant-facing questions or fewer, including follow-ups.
+- Treat nine applicant answers as a soft pacing target, with the separate emergency loop stop as the only hard limit.
 - Gather useful evidence about curiosity, generosity, participation, and community care.
 - Make the conversation feel attentive without adding unnecessary turns.
 - Keep internal outcomes private and always finish with the configured neutral closing message.
@@ -17,16 +23,17 @@ static onboarding is outside this work unless a later requirement depends on it.
 
 ## Core Signal Path
 
-The standard path defines six evidence goals, not six required questions. Groucho may cover several goals from one answer and should usually finish in five to seven applicant turns. Nine is the hard ceiling.
+The standard path defines seven evidence intents, not seven required questions. Groucho may cover several intents from one answer and should usually find a natural close within five to nine applicant turns. Nine is a soft pacing target.
 
 | Step | Applicant-facing question | Input | Signal |
 | --- | --- | --- | --- |
-| 1 | What brought you here? | Single select: Discover, Community, Share Work | Initial intent |
-| 2 | Name an artist more people should know about. What would you want someone hearing them for the first time to notice? | Text | Taste, specificity, ability to articulate attention |
-| 3 | What's the last song you recommended, and why did you think it was worth sharing? | Text | Musical curiosity and ability to explain a recommendation |
-| 4 | Someone shares unfinished music that isn't really for you. How would you respond? | Text | Generosity, feedback style, community maturity |
-| 5 | Which sounds most like you? | Single select: I mostly listen; I like discussing music; I enjoy giving feedback; I regularly share discoveries | Likely participation style |
-| 6 | What's one thing you could realistically contribute in your first month? | Text | Concrete contribution intent |
+| 1 | Why do you want to be an early applicant for the Forum? | Open text | Initial motivation and first routing inflection |
+| Early, when unresolved | Adapt to the applicant: why COLORS specifically, a meaningful performance, how COLORS presents work, or what the Forum could extend | Open text | Lived relationship to COLORS; may be covered by the opening |
+| Flexible | Name an artist more people should know about. What would you want someone hearing them for the first time to notice? | Text | Taste, specificity, ability to articulate attention |
+| Flexible | What's the last song you recommended, and why did you think it was worth sharing? | Text | Musical curiosity and ability to explain a recommendation |
+| Curator route | Someone shares unfinished music that isn't really for you. How would you respond? | Text | Generosity, feedback style, community maturity |
+| Flexible | Which sounds most like you? | Single select: I mostly listen; I like discussing music; I enjoy giving feedback; I regularly share discoveries | Current participation and the exchanges that keep them involved |
+| Flexible | Prefer an existing habit; otherwise ask what they could realistically contribute | Text | Concrete, sustainable reciprocity and contribution |
 
 ### Conversation Rules
 
@@ -35,11 +42,16 @@ The standard path defines six evidence goals, not six required questions. Grouch
   acknowledgement such as "Interesting" on every turn.
 - Do not add a follow-up when the current answer already provides the required signal.
 - Default to one clarification for a goal. A second is available only for a core, decision-critical gap with recovery potential.
-- Share three adaptive turns across all clarifications, open doors, and rabbit holes.
-- Repeated thin evidence across three goals ends coaxing; preserve the uncertainty for human review.
-- After answer seven, ask only for unresolved core evidence. Answer eight is the final possible decision-changing probe. Answer nine always closes.
-- Do not exceed nine applicant-facing questions total; the total cap overrides the per-question follow-up allowance.
+- Let relevance, the live thread, and per-intent repetition limits govern clarifications and depth turns rather than a shared application-wide cap.
+- Preserve unresolved uncertainty for human review when further coaxing is unlikely to help.
+- Do not introduce a closing phase after answer seven or a final-probe rule after answer eight.
+- Treat nine as a soft target. Use the higher emergency limit only to prevent loops.
 - Groucho may finish early when the available evidence is enough for a private recommendation.
+- Establish a real relationship to COLORS early when the opening has not already done so. Adapt the route by orientation and never turn it into brand praise, recall trivia, or a fandom threshold.
+- Treat sustained reciprocity as part of participation and contribution. Prefer concrete existing patterns over hypothetical first-month promises, and let one answer cover both goals when warranted.
+- Do not use activity volume as the standard: quiet, repeatable listening, thoughtful replies, contextual sharing, welcoming, connecting, and creative exchange can count.
+- Use situated cultural perspective as an adaptive route across cultural point of view and participation: what is happening around the applicant, what outsiders might miss, and where they place themselves relative to that scene.
+- Treat city, local, online, genre, diasporic, and informal scenes as valid contexts. Do not require location, reward prestigious scenes, equate industry proximity with insight, or penalise an outsider position.
 - Use contextual questions as replacements for generic routes: an artist answer should lead to one of that artist's songs and why the applicant would share it; an album mention can become a track recommendation and reason; an own-music disclosure can become a question about what the applicant makes and wants listeners to notice.
 - Contextual bridges may cover several goals but never add bonus turns beyond the normal budget.
 - Do not reward polished writing, fluency, status, or famous references over substance.
@@ -48,7 +60,7 @@ The standard path defines six evidence goals, not six required questions. Grouch
 - Never expose `recommend`, `human_review`, `decline`, `passed`, `redirected`, or `rejected` decisions to the applicant.
 - Do not use name or location as scored decision evidence.
 - End every terminal path with `application_experience.closing_message`. The fallback is:
-  "Thank you. We'll get in touch about your application soon."
+  "It was good getting to understand you better."
 - The final close may mention an accurate, non-evaluative detail from the applicant's answers, but must not imply acceptance.
 
 ## Architecture Direction
@@ -59,9 +71,9 @@ Use a bounded, conversational evidence-gathering flow:
 2. Groucho can mark several goals as covered by one answer and follow the strongest conversational thread.
 3. Groucho chooses any unresolved goal that connects naturally; the configured order is only a gap-filling fallback.
 4. Groucho privately generates a maximum of three bridge candidates, selects at most one, and writes the question from its intent rather than a fixed template.
-5. The server validates bridge confidence, target-goal eligibility, phase, and repetition before letting the bridge influence routing.
-6. Clarifications and depth turns consume a shared three-turn adaptive budget as well as the bounded nine-question and conversation-point budgets.
-7. The application is evaluated once Groucho has enough evidence, reaches the cap, or encounters a safety boundary.
+5. The server validates bridge confidence, target-goal eligibility, and repetition before letting the bridge influence routing.
+6. Clarifications and depth turns use per-intent repetition limits rather than a shared application-wide cap.
+7. The application is evaluated once Groucho has enough evidence, reaches the emergency loop stop, or encounters a safety boundary.
 8. Profile extraction and webhook delivery happen after the applicant-facing response through durable background work.
 
 This keeps the evaluation legible while allowing different applicants to take different
@@ -94,14 +106,28 @@ The applicant must never see either the COLORS recommendation or the raw Groucho
 - [x] Store the prompted goal and every goal covered by each answer in message metadata.
 - [x] Let Groucho choose an unresolved goal based on conversational continuity.
 - [x] Permit targeted clarification without losing the current thread.
-- [x] Enforce a hard nine-question total budget, closing and final-probe phases, and a shared three-turn adaptive budget.
+- [x] Replace the hard nine-question budget, closing/final-probe phases, and shared adaptive cap with a soft target and higher emergency loop stop.
 - [x] Default to one clarification per goal and permit a second only for a core gap with recovery potential.
-- [ ] Persist `insufficient_evidence` when a signal remains unusable after two follow-ups.
+- [x] Persist `insufficient_evidence` when a signal remains unusable after two follow-ups.
 - [ ] Allow early completion once the evaluator has enough evidence for a private recommendation.
 - [x] Replace the COLORS community-quality question with the unfinished-music scenario.
 - [x] Update the artist, recommendation, and contribution question copy to the target flow above, without asking who received the recommendation.
 - [ ] Add contract tests covering question order, structured options, refresh/resume behavior, and early finish.
-- [x] Add contract coverage for exhausted follow-up routing and the nine-question hard stop.
+- [x] Add contract coverage for exhausted follow-up routing and the higher emergency loop stop.
+
+### P1: Tailor Evidence To Applicant Orientation
+
+- [x] Add a private, revisable artist / curator / enthusiast / hybrid orientation state.
+- [x] Persist orientation in existing message metadata without a schema migration.
+- [x] Separate shared Forum goals from branch-specific evidence.
+- [x] Remove the unfinished-work feedback route for artists and enthusiasts unless their own evidence makes it relevant.
+- [x] Add artist-, curator-, and enthusiast-specific participation and contribution routes.
+- [x] Move orientation discovery earlier when the opening remains ambiguous.
+- [x] Prevent ordinary completion while an applicable core goal has never been attempted and budget remains.
+- [x] Instruct reviewer reports to treat missing branch-inapplicable evidence as neutral.
+- [x] Add regression coverage for the listener route that previously closed without a contribution opportunity.
+
+See [colors-adaptive-applicant-branches.md](./colors-adaptive-applicant-branches.md).
 
 ### P1: Remove Redundant Model Work
 
@@ -110,6 +136,8 @@ The applicant must never see either the COLORS recommendation or the raw Groucho
 - [ ] Keep early safety termination available without running the full final evaluation.
 - [ ] Compare the final evaluator against representative accepted, uncertain, and unsuitable applications before changing production decisions.
 - [ ] Ensure every completed application is reviewable by a human regardless of advisory recommendation.
+
+Runtime fallback reports are now evidence-backed: when the model omits a usable report, Groucho reconstructs the relevant orientation, covered evidence, unresolved or insufficient goals, confidence, and reviewer focus from persisted message metadata. This removes the previous empty generic report while keeping the final community decision human-owned.
 
 ### P1: Complete The COLORS Evaluation Rubric
 
@@ -159,6 +187,13 @@ See [colors-evaluation-rubric-discovery.md](./colors-evaluation-rubric-discovery
 - [x] Add one bounded `rabbit_hole` move for a rich answer.
 - [x] Add one bounded `open_door` move after repeated thin answers.
 - [ ] Evaluate classification and recovery quality against representative COLORS transcripts before production promotion.
+
+### P1: Conversation Integrity Follow-through
+
+- [x] Preserve one grounded, answer-specific receipt when the controller replaces a mismatched or invalid next question.
+- [x] Prevent a strongly evidenced orientation from becoming hybrid through a secondary model score without explicit evidence of another participation mode.
+- [x] Mark a goal `insufficient_evidence` after the initial answer and two unusable follow-ups, then exclude it from further routing without falsely marking it covered.
+- [x] Generate an evidence-backed reviewer report from persisted application state whenever the terminal model report is absent or evidence-free.
 
 See [colors-conversation-depth.md](./colors-conversation-depth.md).
 

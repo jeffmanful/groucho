@@ -19,6 +19,7 @@ export type ApplicationBridgeCandidate = {
   sourceDetail: string
   kind: ApplicationBridgeKind
   targetSignalKey: string | null
+  connectionIntent: string
   questionIntent: string
   confidence: number
   freshness: ApplicationBridgeFreshness
@@ -76,10 +77,12 @@ export function normaliseApplicationBridgeCandidate(
   const value = record(raw)
   if (!value) return null
   const sourceDetail = conciseText(value.sourceDetail, 180)
+  const connectionIntent = conciseText(value.connectionIntent, 220)
   const questionIntent = conciseText(value.questionIntent, 220)
   const confidence = normaliseConfidence(value.confidence)
   if (
     !sourceDetail ||
+    !connectionIntent ||
     !questionIntent ||
     confidence === null ||
     typeof value.kind !== "string" ||
@@ -91,6 +94,7 @@ export function normaliseApplicationBridgeCandidate(
   }
   return {
     sourceDetail,
+    connectionIntent,
     questionIntent,
     confidence,
     kind: value.kind as ApplicationBridgeKind,

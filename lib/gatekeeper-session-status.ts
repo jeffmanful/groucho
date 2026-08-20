@@ -2,6 +2,26 @@ import type { GatekeeperTerminalField } from "@/lib/gatekeeper-structured-tool"
 import { canonicalTerminalDecision } from "@/lib/terminal-decision-prompt"
 import type { Score } from "@/lib/scoring"
 
+export type GatekeeperSessionStatus = "passed" | "redirected" | "rejected"
+
+export function forcedCloseStatusFromScores(input: {
+  scores: Score
+  passThreshold: number
+  rejectThreshold: number
+}): GatekeeperSessionStatus {
+  if (input.scores.overall >= input.passThreshold) return "passed"
+  if (input.scores.overall <= input.rejectThreshold) return "rejected"
+  return "redirected"
+}
+
+export function terminalFieldForSessionStatus(
+  status: GatekeeperSessionStatus,
+): Exclude<GatekeeperTerminalField, "none"> {
+  if (status === "passed") return "pass"
+  if (status === "rejected") return "reject"
+  return "redirect"
+}
+
 export function parseAssistantStructuredMeta(meta: unknown): {
   terminal: GatekeeperTerminalField | null
   toolUsed: boolean
@@ -33,7 +53,7 @@ export function computeTerminalStatusFromGatekeeperTurn(opts: {
   rejectThreshold: number
   structuredTerminal?: GatekeeperTerminalField | null
   structuredToolUsed?: boolean
-}): "passed" | "redirected" | "rejected" | null {
+}): GatekeeperSessionStatus | null {
   const {
     assistantContent,
     scores,

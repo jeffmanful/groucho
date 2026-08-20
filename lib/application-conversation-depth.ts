@@ -46,7 +46,6 @@ export type ApplicationConversationDepth = {
   conversationPointsUsed: number
   conversationPointsRemaining: number
   adaptiveTurnsUsed: number
-  adaptiveTurnsRemaining: number
   thinSignalCount: number
 }
 
@@ -56,8 +55,7 @@ export type ConversationMoveValidation = {
   reason: string
 }
 
-export const DEFAULT_MAX_CONVERSATION_POINTS = 2
-export const DEFAULT_MAX_ADAPTIVE_TURNS = 3
+export const DEFAULT_MAX_CONVERSATION_POINTS = 6
 
 const QUALITY_SET = new Set<string>(ANSWER_QUALITIES)
 const MOVE_SET = new Set<string>(CONVERSATION_MOVES)
@@ -165,10 +163,6 @@ export function collectApplicationConversationDepth(
       maxConversationPoints - conversationPointsUsed,
     ),
     adaptiveTurnsUsed,
-    adaptiveTurnsRemaining: Math.max(
-      0,
-      DEFAULT_MAX_ADAPTIVE_TURNS - adaptiveTurnsUsed,
-    ),
     thinSignalCount,
   }
 }
@@ -189,8 +183,7 @@ export function validateApplicationConversationMove(input: {
     input.remainingQuestions > 0
   const canUseAdaptiveTurn =
     canAskOnSignal &&
-    input.allowAdaptiveTurns !== false &&
-    input.depth.adaptiveTurnsRemaining > 0
+    input.allowAdaptiveTurns !== false
   const previousQuality = input.depth.recentQualities.at(-1) ?? null
 
   const fallback = (): ConversationMoveValidation => ({
@@ -253,8 +246,7 @@ export function validateApplicationConversationMove(input: {
   if (input.proposedMove === "rabbit_hole") {
     if (
       !canUseAdaptiveTurn ||
-      input.assessment?.quality !== "rich" ||
-      input.depth.conversationPointsRemaining <= 0
+      input.assessment?.quality !== "rich"
     ) {
       return fallback()
     }

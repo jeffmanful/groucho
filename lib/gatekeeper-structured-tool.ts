@@ -37,6 +37,10 @@ import {
   normaliseApplicationBridgePlan,
   type ApplicationBridgePlan,
 } from "@/lib/application-conversation-bridge"
+import {
+  normaliseApplicationParticipantOrientation,
+  type ApplicationParticipantOrientationState,
+} from "@/lib/application-participant-orientation"
 
 export type {
   GatekeeperTerminalField,
@@ -205,6 +209,30 @@ export const gatekeeperResponseTool = {
         description:
           "How Groucho shapes this reply. This is separate from the routing move and should vary with the live thread and recent response-mode history.",
       },
+      participantOrientation: {
+        type: "object",
+        description:
+          "Private revisable routing hypothesis based only on explicit evidence. Score how strongly the applicant currently presents as an artist, curator/scene participant, or music enthusiast/listener.",
+        properties: {
+          scores: {
+            type: "object",
+            properties: {
+              artist: { type: "number", minimum: 0, maximum: 1 },
+              curator: { type: "number", minimum: 0, maximum: 1 },
+              enthusiast: { type: "number", minimum: 0, maximum: 1 },
+            },
+            required: ["artist", "curator", "enthusiast"],
+          },
+          evidence: {
+            type: "array",
+            maxItems: 4,
+            items: { type: "string" },
+            description:
+              "Short private paraphrases of explicit role evidence. Never include protected traits, status judgments, or quotations.",
+          },
+        },
+        required: ["scores", "evidence"],
+      },
       culturalSignals: {
         type: "array",
         maxItems: 8,
@@ -256,6 +284,11 @@ export const gatekeeperResponseTool = {
               description:
                 "Open evidence-goal key this bridge advances, or an empty string if no valid goal exists.",
             },
+            connectionIntent: {
+              type: "string",
+              description:
+                "The meaningful relationship between the source detail and the next question. Explain the connective thought privately; do not write generic praise or transition narration.",
+            },
             questionIntent: {
               type: "string",
               description:
@@ -271,6 +304,7 @@ export const gatekeeperResponseTool = {
             "sourceDetail",
             "kind",
             "targetSignalKey",
+            "connectionIntent",
             "questionIntent",
             "confidence",
             "freshness",
@@ -404,6 +438,7 @@ export const gatekeeperResponseTool = {
       "answerAssessment",
       "conversationMove",
       "responseMode",
+      "participantOrientation",
       "culturalSignals",
       "coveredSignalKeys",
       "bridgeCandidates",
@@ -433,17 +468,24 @@ Every assistant turn you MUST call the tool \`${GATEKEEPER_RESPONSE_TOOL_NAME}\`
 - \`answerAssessment\`: private assessment of the current answer. Use \`thin\` only when the answer lacks usable evidence for the current signal, not merely because it is short. Use \`usable\` when there is enough evidence to advance, \`rich\` for a particular observation, tension, personal connection, independent judgment, or meaningful context, and \`concerning\` for possible safety, dignity, integrity, or extractive concerns.
 - \`conversationMove\`: propose \`clarify\`, \`open_door\`, \`advance\`, \`rabbit_hole\`, \`challenge\`, or \`decide\`. Follow the compact state's conversationDepth and turn budgets. The runtime validates this proposal.
 - \`responseMode\`: choose how the reply participates: \`reflect\` names a specific detail; \`interpret\` offers a tentative reading; \`probe\` asks for concrete evidence; \`deepen\` explores the live hook; \`connect\` joins the answer to something said earlier; \`challenge\` calmly questions a concern; \`pivot\` changes subject cleanly without announcing the transition; \`close\` ends the application. Do not repeat the same shape mechanically. Active replies should leave a clear invitation to respond, but need not be formatted as acknowledgement plus next question.
+- \`participantOrientation\`: update a private, revisable routing hypothesis from explicit evidence across the conversation. Score \`artist\` for making or performing work, \`curator\` for selecting, organising, contextualising, hosting, documenting, or connecting people around music, and \`enthusiast\` for listening, discovery, fandom, discussion, or community-seeking. Multiple scores may be high. Do not infer identity, protected traits, status, or cultural value.
 - \`culturalSignals\`: extract only explicit, project-level cultural references from the current answer. Use the allowed taxonomy, a short normalized display label, and confidence. Never copy a quote or sentence; never include identity, contact details, personal stories, health, sexuality, ethnicity, religion, politics, or other inferred sensitive traits. Return an empty array when nothing qualifies. \`emerging_theme\` must be a broad cultural theme suitable for human approval, not a paraphrase of one applicant.
 - \`coveredSignalKeys\`: return every application evidence goal supported by the current answer, not only the goal behind the current question. One answer can cover several goals. Use only keys supplied in the compact state; return an empty array if no compact state or no goal is supported.
-- \`bridgeCandidates\`: privately generate zero to three ways to grow from an explicit applicant detail into an open evidence goal. Use a reusable bridge kind, preserve the source detail, state the question intent rather than canned wording, and assign honest confidence. Prefer current details over callbacks. Never invent a detail.
+- \`bridgeCandidates\`: privately generate zero to three ways to grow from an explicit applicant detail into an open evidence goal. Use a reusable bridge kind, preserve the source detail, state the meaningful connective observation in \`connectionIntent\`, state the question intent rather than canned wording, and assign honest confidence. Prefer current details over callbacks. Never invent a detail.
 - \`selectedBridgeIndex\`: index of the candidate actually used to shape \`reply\`, or \`-1\` when no bridge is worthwhile. Choose for continuity, evidence value, specificity, momentum, and novelty. Avoid repeating recent bridge kinds supplied in compact state. A bridge replaces a generic question; it never adds a bonus turn.
 - \`threadState\`: update the private live-thread state. Keep a concise current subject, strongest particular detail, unresolved hook, momentum, observable applicant energy, and up to four details already acknowledged. Continue a productive thread instead of pivoting merely because another goal is open. Use concise paraphrases; never add contact details, diagnoses, protected traits, hidden scores, or unsupported claims.
 - \`nextSignalKey\`: key of the application signal requested by \`reply\`. Choose a key from the compact application state. Use an empty string on terminal turns or when no compact signal state was provided.
 - \`reviewerReport\`: required when \`terminal\` is not \`none\`. This is private reviewer evidence, not applicant copy. Include \`applicant_bio\`, \`advisory_recommendation\` (\`recommend\`, \`human_review\`, or \`decline\`), \`confidence_score\`, \`evidence_summary\`, \`weak_or_missing_signals\`, \`safety_or_integrity_flags\`, and \`reviewer_focus\`.
 
+For COLORS Forum applications, evaluate the applicant against shared evidence and the orientation they actually showed. Do not list absent curator, multiplier, feedback, organising, or maker evidence as a weakness for an enthusiast. Do not require an artist to answer the hypothetical feedback route. A thoughtful listener may contribute through sustained attention, discussion, discovery, welcome, and presence; assess whether their goals and likely participation are concrete rather than whether they already hold a formal scene role. For hybrids, use only the evidenced branches. Missing branch-inapplicable evidence is neutral, not insufficient.
+
 When the applicant names an artist or creative reference, prefer a personal follow-up about why it matters to them. Do not verify or gatekeep based on whether the artist is recognized.
 
-When the same answer also reveals that the applicant makes music, prefer a fresh \`maker_to_practice\` bridge into an open core goal over a supporting artist-recommendation bridge. Render bridges invisibly: never say “that matters”, “that connection matters”, “let me shift”, “let me pivot”, or “moving on”. Ask one direct question and do not combine two evidence asks in it.
+When the same answer also reveals that the applicant makes music, prefer a fresh \`maker_to_practice\` bridge into an open core goal over a supporting artist-recommendation bridge. Do not narrate the mechanics with “let me shift”, “let me pivot”, or “moving on”. A specific receipt or observation is welcome when it adds meaning and earns the next question; generic praise such as “that matters” or “interesting” does not. Use one or two short sentences and ask at most one question.
+
+Plan the whole bridge as receive → connect → invite. Receive one concrete detail from the answer, use \`connectionIntent\` to identify why it leads naturally to the target, then write one invitation that grows from that relationship. For \`connect\`, make the relationship perceptible in the reply. For a true \`pivot\`, give the previous thread a brief honest landing before changing subject; do not pretend unrelated ideas are connected. A \`continue\`-style reply may stay inside the current subject without a separate acknowledgement.
+
+For contribution bridges, reuse the applicant's concrete action before asking what they would actually do with it in the Forum. Prefer “You said you'd help someone understand what their song is trying to become. What would you actually do with that in the Forum?” over abstract wording such as “How would that kind of listening show up in what you contribute here?” Avoid vague referents including “that kind of listening”, “that approach”, and “that instinct”.
 
 On terminal turns, \`terminal\` carries the private judgment. The applicant-facing \`reply\` must be a neutral thank-you/application-received close, not acceptance, rejection, redirect, or access copy.
 
@@ -461,6 +503,7 @@ export type ParsedGatekeeperStructured = {
   answerAssessment: ApplicationAnswerAssessment | null
   conversationMove: ApplicationConversationMove | null
   responseMode: ApplicationResponseMode | null
+  participantOrientation: ApplicationParticipantOrientationState
   culturalSignals: CulturalSignal[]
   coveredSignalKeys: string[]
   bridgePlan: ApplicationBridgePlan
@@ -572,6 +615,9 @@ export function parseGatekeeperStructuredResponse(
     responseMode: toolSeen
       ? normaliseApplicationResponseMode(toolInput.responseMode)
       : null,
+    participantOrientation: normaliseApplicationParticipantOrientation(
+      toolSeen ? toolInput.participantOrientation : null,
+    ),
     culturalSignals: toolSeen
       ? normaliseCulturalSignals(toolInput.culturalSignals)
       : [],

@@ -15,6 +15,7 @@ import type {
   ApplicationConversationMove,
 } from "@/lib/application-conversation-depth"
 import type { ApplicationResponseMode } from "@/lib/application-response-mode"
+import { DEFAULT_APPLICATION_CLOSING_MESSAGE } from "@/lib/project-settings"
 
 export type LocalGatekeeperTestTurn = {
   assistantContent: string
@@ -179,6 +180,9 @@ function assessAnswer(
 }
 
 function questionForSignal(signal: ApplicationSignalDefinition): string {
+  if (signal.cluster === "colors_relationship") {
+    return signal.promptRoutes[0] ?? "Why does COLORS feel like the right place for you?"
+  }
   const label = signal.label.trim()
   if (label.endsWith("?")) return label
   return `Tell me about ${label.toLowerCase()}.`
@@ -441,7 +445,7 @@ export function createLocalGatekeeperTestTurn(input: {
 
   const terminal = terminalForScores(scores, input.answers)
   return {
-    assistantContent: "Thank you. We'll get in touch about your application soon.",
+    assistantContent: DEFAULT_APPLICATION_CLOSING_MESSAGE,
     structuredTerminal: terminal,
     parsedNextSignalKey: null,
     reviewerReport: reportForTerminal({

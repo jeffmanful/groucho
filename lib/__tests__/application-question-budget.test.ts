@@ -2,41 +2,47 @@ import { describe, expect, it } from "vitest"
 import { applicationQuestionBudget } from "@/lib/application-question-budget"
 
 describe("application question budget", () => {
-  it("caps configured flows at nine applicant turns", () => {
+  it("treats the configured turn count as a soft target", () => {
     expect(
       applicationQuestionBudget({
         answeredQuestions: 4,
-        maxQuestions: 20,
+        maxQuestions: 9,
         adaptiveTurnsUsed: 1,
       }),
-    ).toMatchObject({ maxQuestions: 9, remainingQuestions: 5, phase: "explore" })
+    ).toMatchObject({
+      softTarget: 9,
+      emergencyLimit: 12,
+      maxQuestions: 12,
+      remainingQuestions: 8,
+      phase: "explore",
+    })
   })
 
-  it("moves through closing, final probe, and hard stop phases", () => {
+  it("does not introduce closing or final-probe phases after answer seven", () => {
     expect(
       applicationQuestionBudget({
         answeredQuestions: 7,
         maxQuestions: 9,
         adaptiveTurnsUsed: 0,
       }).phase,
-    ).toBe("closing")
-    expect(
-      applicationQuestionBudget({
-        answeredQuestions: 8,
-        maxQuestions: 9,
-        adaptiveTurnsUsed: 0,
-      }).phase,
-    ).toBe("final_probe")
+    ).toBe("explore")
     expect(
       applicationQuestionBudget({
         answeredQuestions: 9,
         maxQuestions: 9,
         adaptiveTurnsUsed: 0,
       }).phase,
-    ).toBe("hard_stop")
+    ).toBe("consider_close")
+    expect(
+      applicationQuestionBudget({
+        answeredQuestions: 12,
+        maxQuestions: 9,
+        adaptiveTurnsUsed: 0,
+      }).phase,
+    ).toBe("emergency_stop")
   })
 
-  it("shares three adaptive turns across all goals", () => {
+  it("does not apply a separate global adaptive-turn cap", () => {
     expect(
       applicationQuestionBudget({
         answeredQuestions: 5,
@@ -44,9 +50,8 @@ describe("application question budget", () => {
         adaptiveTurnsUsed: 3,
       }),
     ).toMatchObject({
-      adaptiveTurnLimit: 3,
       adaptiveTurnsUsed: 3,
-      adaptiveTurnsRemaining: 0,
+      phase: "explore",
     })
   })
 })

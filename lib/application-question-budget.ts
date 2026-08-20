@@ -1,20 +1,22 @@
-export const DEFAULT_APPLICATION_QUESTION_LIMIT = 9
-export const DEFAULT_ADAPTIVE_TURN_LIMIT = 3
+export const DEFAULT_APPLICATION_SOFT_TARGET = 9
+export const MAX_APPLICATION_EMERGENCY_LIMIT = 14
+export const EMERGENCY_TURN_ALLOWANCE = 3
 
 export type ApplicationQuestionPhase =
   | "explore"
-  | "closing"
-  | "final_probe"
-  | "hard_stop"
+  | "consider_close"
+  | "emergency_stop"
 
 export type ApplicationQuestionBudget = {
+  /** Compatibility alias for emergencyLimit. */
   maxQuestions: number
+  softTarget: number
+  emergencyLimit: number
   answeredQuestions: number
+  /** Questions remaining before the emergency loop stop, not a conversational target. */
   remainingQuestions: number
   phase: ApplicationQuestionPhase
-  adaptiveTurnLimit: number
   adaptiveTurnsUsed: number
-  adaptiveTurnsRemaining: number
 }
 
 export function applicationQuestionBudget(input: {
@@ -22,34 +24,33 @@ export function applicationQuestionBudget(input: {
   maxQuestions?: number
   adaptiveTurnsUsed: number
 }): ApplicationQuestionBudget {
-  const maxQuestions = Math.max(
+  const softTarget = Math.max(
     1,
     Math.min(
-      DEFAULT_APPLICATION_QUESTION_LIMIT,
-      Math.floor(input.maxQuestions ?? DEFAULT_APPLICATION_QUESTION_LIMIT),
+      12,
+      Math.floor(input.maxQuestions ?? DEFAULT_APPLICATION_SOFT_TARGET),
     ),
   )
+  const emergencyLimit = Math.min(
+    MAX_APPLICATION_EMERGENCY_LIMIT,
+    softTarget + EMERGENCY_TURN_ALLOWANCE,
+  )
   const answeredQuestions = Math.max(0, Math.floor(input.answeredQuestions))
-  const remainingQuestions = Math.max(0, maxQuestions - answeredQuestions)
+  const remainingQuestions = Math.max(0, emergencyLimit - answeredQuestions)
   const phase: ApplicationQuestionPhase =
     remainingQuestions === 0
-      ? "hard_stop"
-      : remainingQuestions === 1
-        ? "final_probe"
-        : remainingQuestions === 2
-          ? "closing"
-          : "explore"
+      ? "emergency_stop"
+      : answeredQuestions >= softTarget
+        ? "consider_close"
+        : "explore"
   const adaptiveTurnsUsed = Math.max(0, Math.floor(input.adaptiveTurnsUsed))
   return {
-    maxQuestions,
+    maxQuestions: emergencyLimit,
+    softTarget,
+    emergencyLimit,
     answeredQuestions,
     remainingQuestions,
     phase,
-    adaptiveTurnLimit: DEFAULT_ADAPTIVE_TURN_LIMIT,
     adaptiveTurnsUsed,
-    adaptiveTurnsRemaining: Math.max(
-      0,
-      DEFAULT_ADAPTIVE_TURN_LIMIT - adaptiveTurnsUsed,
-    ),
   }
 }

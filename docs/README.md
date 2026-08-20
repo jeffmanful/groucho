@@ -14,6 +14,8 @@
 | [api/openapi.yaml](./api/openapi.yaml) | Public Project HTTP API (sessions / messages / access) |
 | [sdk-surface.md](./sdk-surface.md) | `@groucho/sdk` exports and React API |
 | [v2-roadmap.md](./v2-roadmap.md) | V2 gatekeeper-first product direction and refactor roadmap |
+| [groucho-stronger-v1-implementation-plan.md](./groucho-stronger-v1-implementation-plan.md) | Audit-led plan for authoritative state, evidence provenance, decision policy, human review, and fairness evaluation |
+| [colors-flexible-conversation-contract.md](./colors-flexible-conversation-contract.md) | Firm evidence intents, flexible question generation, opening-answer routing, and soft pacing for the COLORS flow |
 | [colors-application-improvements.md](./colors-application-improvements.md) | COLORS application content, performance, acceptance criteria, and implementation tracker |
 | [colors-cultural-signals.md](./colors-cultural-signals.md) | Five-phase plan and privacy boundaries for project-level cultural memory |
 | [colors-conversation-realism.md](./colors-conversation-realism.md) | Eight-layer roadmap for making Groucho feel like an attentive conversation rather than an interview |

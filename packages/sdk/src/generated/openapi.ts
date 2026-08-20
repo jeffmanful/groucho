@@ -78,10 +78,11 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Submit email after a passed session
+         * Submit email after recorded human approval
          * @description Aligns with [app/api/access/route.ts](../../app/api/access/route.ts):
-         *     server verifies pass eligibility (e.g. success secret or server-held token)
-         *     before upserting profile. **Must not** leak whether email already exists.
+         *     server verifies an explicit human approval and its access secret before
+         *     upserting profile. Advisory model outcomes and scores cannot grant access.
+         *     **Must not** leak whether email already exists.
          */
         post: operations["postSessionAccess"];
         delete?: never;
@@ -141,6 +142,11 @@ export interface components {
          * @enum {string}
          */
         SessionOutcome: "active" | "passed" | "redirected" | "rejected";
+        /**
+         * @description Human-review lifecycle. This—not the advisory session outcome—controls access.
+         * @enum {string}
+         */
+        ApplicationReviewStatus: "not_ready" | "pending" | "approved" | "declined";
         /** @enum {string} */
         ProjectType: "gatekeeper" | "onboarding";
         /** @enum {string} */
@@ -198,12 +204,14 @@ export interface components {
             /** @description Assistant text for this turn. Terminal application turns return the configured neutral closing message, while `status` carries the internal outcome. */
             message: string;
             status: components["schemas"]["SessionOutcome"];
+            reviewStatus?: components["schemas"]["ApplicationReviewStatus"];
             scores: components["schemas"]["ScoreBreakdown"];
             /** @description V2 interaction spec for client rendering (gatekeeper turns) */
             ui?: components["schemas"]["GrouchoInteractionUi"];
             /**
              * Format: uuid
-             * @description Present only when `status` is `passed` and access gating requires a secret
+             * @deprecated
+             * @description Legacy onboarding-only field. Gatekeeper completion never issues an access secret.
              */
             secret?: string;
             /** @description Structured profile extracted on terminal turns; absent on non-terminal turns and when extraction is disabled. */
@@ -232,6 +240,7 @@ export interface components {
              * @enum {string|null}
              */
             outcome?: "PASS" | "REDIRECT" | "REJECT" | null;
+            reviewStatus?: components["schemas"]["ApplicationReviewStatus"];
             turnsUsed?: number;
             /** Format: date-time */
             startedAt?: string;
@@ -460,7 +469,10 @@ export interface operations {
                 "application/json": {
                     /** Format: email */
                     email: string;
-                    /** @description One-time pass secret issued with the terminal pass response (if applicable) */
+                    /**
+                     * Format: uuid
+                     * @description Required for gatekeeper access; issued by the human approval action. Optional in the compatibility schema for non-gatekeeper integrations.
+                     */
                     secret?: string;
                 };
             };

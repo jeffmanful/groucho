@@ -1,5 +1,12 @@
 # Groucho V2 Roadmap
 
+> **Decision-architecture note — 20 August 2026:** this document remains the
+> reference for the gatekeeper interaction model, UI renderer, and visual presence.
+> Its score-controlled `pass` / `redirect` / `reject` examples are superseded by
+> [the stronger V1 implementation plan](./groucho-stronger-v1-implementation-plan.md),
+> which separates advisory conversation completion from recorded human decisions
+> and access authority.
+
 Groucho V2 recenters the product around the gatekeeper experience.
 
 Groucho is not a chatbot, form builder, or onboarding wizard. It is a selective conversational interface that protects the integrity of a community, identifies promising people, and helps surface who belongs in the room.

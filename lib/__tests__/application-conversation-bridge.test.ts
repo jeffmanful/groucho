@@ -9,6 +9,7 @@ const artistBridge = {
   sourceDetail: "They named Tirzah",
   kind: "person_to_work",
   targetSignalKey: "recommendation",
+  connectionIntent: "Their interest in Tirzah can become a concrete act of sharing",
   questionIntent: "Ask which Tirzah song they would share and why",
   confidence: 0.91,
   freshness: "current",
@@ -113,6 +114,8 @@ describe("application conversation bridge", () => {
       sourceDetail: "They make music influenced by the artist",
       kind: "maker_to_practice",
       targetSignalKey: "contribution",
+      connectionIntent:
+        "Their connection to the artist is reflected in their own creative practice",
       questionIntent: "Ask what they are trying to express in their own work",
       confidence: 0.88,
       freshness: "current",

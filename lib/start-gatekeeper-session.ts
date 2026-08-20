@@ -13,12 +13,17 @@ import {
   resolveGatekeeperOpeningInteraction,
   resolveGatekeeperOpeningMessage,
 } from "@/lib/opening-message"
-import type { GrouchoInteractionSpec } from "@/lib/gatekeeper-interaction-spec"
+import {
+  DEFAULT_INTERACTION_SPEC,
+  type GrouchoInteractionSpec,
+} from "@/lib/gatekeeper-interaction-spec"
 import type { PostSessionMessageInput } from "@/lib/post-session-message"
 import { isConcludedSessionStatus } from "@/lib/session-status"
 import {
+  applicationOpeningMessageForSignals,
   applicationSignalDefinitions,
   applicationSignalMetadata,
+  isColorsForumSignalSet,
 } from "@/lib/application-signal-state"
 
 function traceJson(
@@ -82,17 +87,29 @@ export async function startGatekeeperSession(
     allowMissingApplicantIdentity,
   } = input
   const { organisationId, projectId, apiKeyId } = context
-  const openingMessage = resolveGatekeeperOpeningMessage(
+  const openingSignals = applicationSignalDefinitions(
+    projectSettings.applicationExperience.required_signals,
+  )
+  const configuredOpeningMessage = resolveGatekeeperOpeningMessage(
     input.openingMessage,
     projectSettings.applicationExperience.opening_message,
   )
-  const openingInteraction = resolveGatekeeperOpeningInteraction(
+  const openingMessage = applicationOpeningMessageForSignals(
+    configuredOpeningMessage,
+    openingSignals,
+  )
+  const configuredOpeningInteraction = resolveGatekeeperOpeningInteraction(
     input.openingInteraction,
     projectSettings.applicationExperience.opening_interaction,
   )
-  const openingSignal = applicationSignalDefinitions(
-    projectSettings.applicationExperience.required_signals,
-  )[0] ?? null
+  const openingInteraction = isColorsForumSignalSet(openingSignals)
+    ? {
+        ...DEFAULT_INTERACTION_SPEC,
+        inputType: "text" as const,
+        visualState: "curious" as const,
+      }
+    : configuredOpeningInteraction
+  const openingSignal = openingSignals[0] ?? null
 
   if (apiKeyId) touchApiKeyLastUsed(apiKeyId)
 

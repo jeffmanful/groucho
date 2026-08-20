@@ -1,4 +1,3 @@
-import { randomUUID } from "crypto"
 import Anthropic from "@anthropic-ai/sdk"
 import { NextResponse } from "next/server"
 import {
@@ -27,7 +26,11 @@ import {
   type GatekeeperTerminalField,
 } from "@/lib/gatekeeper-structured-tool"
 import { DEFAULT_INTERACTION_SPEC } from "@/lib/gatekeeper-interaction-spec"
-import { computeTerminalStatusFromGatekeeperTurn } from "@/lib/gatekeeper-session-status"
+import {
+  computeTerminalStatusFromGatekeeperTurn,
+  forcedCloseStatusFromScores,
+  terminalFieldForSessionStatus,
+} from "@/lib/gatekeeper-session-status"
 import { postOnboardingMessage } from "@/lib/post-onboarding-message"
 import {
   withTerminalDecisionAppendix,
@@ -35,7 +38,7 @@ import {
 import { buildApplicationExperiencePromptAppendix } from "@/lib/application-experience-prompt"
 import { DEFAULT_APPLICATION_CLOSING_MESSAGE } from "@/lib/project-settings"
 import {
-  fallbackReviewerReport,
+  ensureEvidenceBackedReviewerReport,
   type ReviewerReport,
 } from "@/lib/reviewer-report"
 import { gatekeeperConversationModel } from "@/lib/gatekeeper-models"
@@ -48,17 +51,29 @@ import {
 import { logLlmUsage } from "@/lib/llm-usage"
 import {
   applicationSignalDefinitions,
+  applicationSignalDefinitionsForOrientation,
+  applicationOpeningMessageForSignals,
   applicationSignalAnswerAttemptCount,
   applicationSignalMetadata,
   buildCompactApplicationStateMessage,
   collectApplicationSignalAnswers,
+  collectApplicationInsufficientEvidenceKeys,
   expectedApplicationSignal,
   hasLegacyUntaggedAnswers,
+  isColorsForumSignalSet,
   resolveNextApplicationSignal,
+  shouldDeferApplicationTerminal,
   withCoveredSignalAnswers,
   withCurrentSignalAnswer,
   type ApplicationSignalMessage,
 } from "@/lib/application-signal-state"
+import {
+  collectApplicationParticipantOrientation,
+  inferApplicationParticipantOrientation,
+  isExplicitCommunityIntent,
+  mergeApplicationParticipantOrientation,
+  type ApplicationParticipantOrientationState,
+} from "@/lib/application-participant-orientation"
 import {
   collectApplicationConversationDepth,
   validateApplicationConversationMove,
@@ -84,6 +99,14 @@ import {
   type ApplicationBridgeCandidate,
   type ApplicationBridgePlan,
 } from "@/lib/application-conversation-bridge"
+import {
+  activeApplicationReplyIssue,
+  applicationAnswerSupportsSignal,
+  ensureExplicitStructuredInputPrompt,
+  repairApplicationReplyWithQuestion,
+  stripApplicationProcessLanguage,
+  type ActiveApplicationReplyIssue,
+} from "@/lib/application-turn-integrity"
 
 function traceJson(
   input: PostSessionMessageInput,
@@ -128,7 +151,10 @@ function fallbackQuestionForApplicationSignal(signal: {
   label: string
   promptRoutes?: string[]
 }): string {
-  return signal.promptRoutes?.[0]?.trim() || signal.label
+  const candidate = signal.promptRoutes?.[0]?.trim() || signal.label.trim()
+  return candidate.endsWith("?")
+    ? candidate
+    : `${candidate.replace(/[.!]+$/, "")}?`
 }
 
 function fallbackQuestionForApplicationBridge(
@@ -370,7 +396,12 @@ export async function postSessionMessage(
     touchApiKeyLastUsed(apiKeyId)
   }
 
-  const openingMessage = settings.applicationExperience.opening_message
+  const openingMessage = applicationOpeningMessageForSignals(
+    settings.applicationExperience.opening_message,
+    applicationSignalDefinitions(
+      settings.applicationExperience.required_signals,
+    ),
+  )
 
   const { data: existing } = await supabase
     .from("sessions")
@@ -543,20 +574,37 @@ export async function postSessionMessage(
   const signalDefinitions = localTestMode
     ? localGatekeeperTestSignalDefinitions(configuredSignalDefinitions)
     : configuredSignalDefinitions
+  const storedParticipantOrientation =
+    collectApplicationParticipantOrientation(priorHistory)
+  const colorsAdaptiveBranchesEnabled =
+    isColorsForumSignalSet(signalDefinitions)
+  const routedSignalDefinitions = applicationSignalDefinitionsForOrientation(
+    signalDefinitions,
+    storedParticipantOrientation,
+  )
   const storedSignalAnswers = collectApplicationSignalAnswers(
     priorHistory,
     signalDefinitions,
   )
+  const storedInsufficientEvidenceKeys =
+    collectApplicationInsufficientEvidenceKeys(priorHistory)
+  const previousAssistant = [...priorHistory]
+    .reverse()
+    .find((entry) => entry.role === "assistant")
   const useCompactSignalState =
     signalDefinitions.length > 0 &&
     !hasLegacyUntaggedAnswers(priorHistory, signalDefinitions)
-  const currentSignal = useCompactSignalState
+  const expectedSignal = useCompactSignalState
     ? expectedApplicationSignal(
         priorHistory,
-        signalDefinitions,
+        routedSignalDefinitions,
         storedSignalAnswers,
       )
     : null
+  // The assistant message metadata owns the evidence intent. Its visible
+  // wording is deliberately free to follow the conversation and should not be
+  // rejected by a question-template regex.
+  const currentSignal = expectedSignal
   const compactSignalAnswers = withCurrentSignalAnswer(
     storedSignalAnswers,
     currentSignal,
@@ -589,16 +637,13 @@ export async function postSessionMessage(
     effectiveOpeningMessage,
   )}${applicationAppendix}\n\n${GATEKEEPER_STRUCTURED_SYSTEM_SUFFIX}`
 
-  const previousAssistant = [...priorHistory]
-    .reverse()
-    .find((entry) => entry.role === "assistant")
   const currentQuestion = previousAssistant?.content ?? effectiveOpeningMessage
   const claudeMessages: Anthropic.MessageParam[] = useCompactSignalState
     ? [
         {
           role: "user",
           content: buildCompactApplicationStateMessage({
-            definitions: signalDefinitions,
+            definitions: routedSignalDefinitions,
             answers: compactSignalAnswers,
             currentSignal,
             currentQuestion,
@@ -611,6 +656,9 @@ export async function postSessionMessage(
             responseModeHistory,
             bridgeHistory,
             questionBudget,
+            participantOrientation: storedParticipantOrientation,
+            adaptiveOrientationEnabled: colorsAdaptiveBranchesEnabled,
+            insufficientEvidenceKeys: storedInsufficientEvidenceKeys,
           }),
         },
       ]
@@ -628,6 +676,8 @@ export async function postSessionMessage(
   let answerAssessment: ApplicationAnswerAssessment | null = null
   let proposedConversationMove: ApplicationConversationMove | null = null
   let proposedResponseMode: ApplicationResponseMode | null = null
+  let participantOrientation: ApplicationParticipantOrientationState =
+    storedParticipantOrientation
   let culturalSignals: CulturalSignal[] = []
   let coveredSignalKeys: string[] = []
   let proposedBridgePlan: ApplicationBridgePlan = {
@@ -669,6 +719,10 @@ export async function postSessionMessage(
     answerAssessment = localTurn.answerAssessment
     proposedConversationMove = localTurn.conversationMove
     proposedResponseMode = localTurn.responseMode
+    participantOrientation = inferApplicationParticipantOrientation({
+      previous: storedParticipantOrientation,
+      currentAnswer: message.trim(),
+    })
     coveredSignalKeys =
       currentSignal && ["usable", "rich"].includes(answerAssessment.quality)
         ? [currentSignal.key]
@@ -714,17 +768,14 @@ export async function postSessionMessage(
       answerAssessment = parsed.answerAssessment
       proposedConversationMove = parsed.conversationMove
       proposedResponseMode = parsed.responseMode
+      participantOrientation = mergeApplicationParticipantOrientation({
+        previous: storedParticipantOrientation,
+        proposed: parsed.participantOrientation,
+        currentAnswer: message.trim(),
+      })
       culturalSignals = parsed.culturalSignals
       coveredSignalKeys = parsed.coveredSignalKeys
       proposedBridgePlan = parsed.bridgePlan
-      if (
-        coveredSignalKeys.length === 0 &&
-        currentSignal &&
-        parsed.answerAssessment &&
-        ["usable", "rich"].includes(parsed.answerAssessment.quality)
-      ) {
-        coveredSignalKeys = [currentSignal.key]
-      }
       updatedConversationThread =
         parsed.threadState.subject ||
         parsed.threadState.strongestDetail ||
@@ -763,6 +814,42 @@ export async function postSessionMessage(
     }
   }
 
+  coveredSignalKeys = coveredSignalKeys.filter((key) => {
+    const signal = signalDefinitions.find((definition) => definition.key === key)
+    return signal
+      ? applicationAnswerSupportsSignal(signal, message.trim())
+      : false
+  })
+  if (
+    coveredSignalKeys.length === 0 &&
+    currentSignal &&
+    answerAssessment &&
+    ["usable", "rich"].includes(answerAssessment.quality) &&
+    applicationAnswerSupportsSignal(currentSignal, message.trim())
+  ) {
+    coveredSignalKeys = [currentSignal.key]
+  }
+  const currentSignalAttempts = applicationSignalAnswerAttemptCount(
+    compactSignalAnswers.find((answer) => answer.key === currentSignal?.key),
+  )
+  const currentInsufficientEvidence =
+    useCompactSignalState &&
+    currentSignal &&
+    answerAssessment?.quality === "thin" &&
+    currentSignalAttempts >= 3 &&
+    !coveredSignalKeys.includes(currentSignal.key)
+      ? {
+          key: currentSignal.key,
+          label: currentSignal.label,
+          attempts: currentSignalAttempts,
+          reason: answerAssessment.reason,
+        }
+      : null
+  const insufficientEvidenceKeys = new Set(storedInsufficientEvidenceKeys)
+  if (currentInsufficientEvidence) {
+    insufficientEvidenceKeys.add(currentInsufficientEvidence.key)
+  }
+
   const { error: userMetadataError } = await supabase
     .from("messages")
     .update({
@@ -781,8 +868,15 @@ export async function postSessionMessage(
                 .map((signal) => applicationSignalMetadata(signal)),
             }
           : {}),
-        ...(culturalSignals.length
-          ? { cultural_signals: culturalSignals }
+          ...(culturalSignals.length
+            ? { cultural_signals: culturalSignals }
+            : {}),
+        participant_orientation: participantOrientation,
+        ...(currentInsufficientEvidence
+          ? {
+              application_insufficient_evidence:
+                currentInsufficientEvidence,
+            }
           : {}),
       },
     })
@@ -814,19 +908,39 @@ export async function postSessionMessage(
         message.trim(),
       )
     : compactSignalAnswers
-  const unresolvedCoreSignals = signalDefinitions.filter(
-    (signal) =>
-      signal.priority === "core" &&
-      !answersWithCoverage.some(
-        (answer) => answer.key === signal.key && answer.covered !== false,
-      ),
+  const answersForRouting = answersWithCoverage.map((answer) =>
+    insufficientEvidenceKeys.has(answer.key)
+      ? { ...answer, covered: true }
+      : answer,
   )
+  const activeSignalDefinitions = applicationSignalDefinitionsForOrientation(
+    signalDefinitions,
+    participantOrientation,
+  )
+  const activeSignalKeys = new Set(
+    activeSignalDefinitions.map((signal) => signal.key),
+  )
+  const terminalWasDeferred =
+    colorsAdaptiveBranchesEnabled &&
+    shouldDeferApplicationTerminal({
+      terminalRequested: status !== null,
+      phase: questionBudget.phase,
+      currentAnswerConcerning: answerAssessment?.quality === "concerning",
+      answeredQuestions: questionBudget.answeredQuestions,
+      remainingQuestions: questionBudget.remainingQuestions,
+      definitions: activeSignalDefinitions,
+      answers: answersWithCoverage,
+    })
+  if (terminalWasDeferred) {
+    status = null
+    structuredTerminal = "none"
+    reviewerReport = null
+  }
   const eligibleBridgeSignalKeys = new Set(
-    signalDefinitions
+    activeSignalDefinitions
       .filter(
         (signal) =>
-          (questionBudget.phase === "explore" || signal.priority === "core") &&
-          !answersWithCoverage.some(
+          !answersForRouting.some(
             (answer) =>
               answer.key === signal.key && answer.covered !== false,
           ),
@@ -834,14 +948,18 @@ export async function postSessionMessage(
       .map((signal) => signal.key),
   )
   let budgetForcedClose = false
+  const applicationClosingMessage =
+    settings.applicationExperience.closing_message?.trim() ||
+    DEFAULT_APPLICATION_CLOSING_MESSAGE
   if (
     status === null &&
-    (questionBudget.phase === "hard_stop" ||
-      ((questionBudget.phase === "closing" ||
-        questionBudget.phase === "final_probe") &&
-        unresolvedCoreSignals.length === 0))
+    questionBudget.phase === "emergency_stop"
   ) {
-    status = "redirected"
+    status = forcedCloseStatusFromScores({
+      scores,
+      passThreshold,
+      rejectThreshold,
+    })
     budgetForcedClose = true
   }
   let acceptedBridge: ApplicationBridgeCandidate | null =
@@ -854,17 +972,25 @@ export async function postSessionMessage(
       remainingQuestions: questionBudget.remainingQuestions,
       isTerminal: status !== null,
       signalPriorities: new Map(
-        signalDefinitions.map((signal) => [signal.key, signal.priority]),
+        activeSignalDefinitions.map((signal) => [signal.key, signal.priority]),
       ),
     })
   const bridgeSelectionChanged =
     acceptedBridge !== null && acceptedBridge !== proposedBridgePlan.selected
-  const bridgeWasAdjusted =
+  let bridgeWasAdjusted =
     status === null &&
     proposedBridgePlan.selected !== acceptedBridge
   let acceptedConversationMove: ApplicationConversationMove | null =
     status !== null ? "decide" : null
   let moveWasAdjusted = false
+  let communityIntentFollowup = false
+  let processLanguageRemoved = false
+  let groundedReceiptPreserved = false
+  let activeReplyRepair: {
+    issue: ActiveApplicationReplyIssue
+    action: "next_signal" | "forced_close"
+    signalKey?: string
+  } | null = null
   let nextSignal = null as (typeof signalDefinitions)[number] | null
 
   if (status === null && useCompactSignalState) {
@@ -876,9 +1002,10 @@ export async function postSessionMessage(
     const rejectedBridgeTargetSignalKey = bridgeWasAdjusted
       ? proposedBridgePlan.selected?.targetSignalKey ?? null
       : null
-    const requestedNextSignalKey =
+    const modelRequestedNextSignalKey =
       acceptedBridge?.targetSignalKey ??
       (bridgeWasAdjusted ? null : parsedNextSignalKey)
+    const requestedNextSignalKey = modelRequestedNextSignalKey
     const advanceRepeatsCurrentSignal =
       proposedConversationMove === "advance" &&
       requestedNextSignalKey === currentSignal?.key &&
@@ -893,17 +1020,15 @@ export async function postSessionMessage(
     const hasRecoveryPotential = answerAssessment
       ? Object.values(answerAssessment.evidence).some(Boolean)
       : false
-    const allowAdaptiveTurns =
-      questionBudget.phase === "explore" &&
-      questionBudget.adaptiveTurnsRemaining > 0 &&
-      conversationDepth.thinSignalCount < 3
+    const allowAdaptiveTurns = questionBudget.phase !== "emergency_stop"
     const allowSecondClarification =
       currentSignal?.priority === "core" && hasRecoveryPotential
     const moveValidation = validateApplicationConversationMove({
       proposedMove: inferredMove,
       assessment: answerAssessment,
       depth: conversationDepth,
-      hasCurrentSignal: currentSignal !== null,
+      hasCurrentSignal:
+        currentSignal !== null && activeSignalKeys.has(currentSignal.key),
       followupsRemaining,
       remainingQuestions: questionBudget.remainingQuestions,
       allowAdaptiveTurns,
@@ -921,41 +1046,166 @@ export async function postSessionMessage(
     if (staysOnCurrentSignal) {
       nextSignal = currentSignal
     } else {
-      const eligibleSignals = signalDefinitions.filter(
+      const eligibleSignals = activeSignalDefinitions.filter(
         (signal) =>
           signal.key !== currentSignal?.key &&
-          signal.key !== rejectedBridgeTargetSignalKey &&
-          (questionBudget.phase === "explore" || signal.priority === "core"),
+          signal.key !== rejectedBridgeTargetSignalKey,
       )
       nextSignal = resolveNextApplicationSignal(
         requestedNextSignalKey === currentSignal?.key
           ? null
           : requestedNextSignalKey,
         eligibleSignals,
-        answersWithCoverage,
+        answersForRouting,
         null,
       )
     }
 
     if (bridgeSelectionChanged && acceptedBridge && nextSignal) {
-      assistantContent = fallbackQuestionForApplicationBridge(acceptedBridge)
+      const repaired = repairApplicationReplyWithQuestion({
+        reply: assistantContent,
+        currentAnswer: message.trim(),
+        question: fallbackQuestionForApplicationBridge(acceptedBridge),
+      })
+      assistantContent = repaired.reply
+      groundedReceiptPreserved ||= repaired.receiptPreserved
       interactionSpec = fallbackInteractionForApplicationSignal(nextSignal)
     } else if (moveValidation.move === "advance" && nextSignal) {
       const signalWasAdjusted = requestedNextSignalKey !== nextSignal.key
       if (moveWasAdjusted || signalWasAdjusted) {
-        assistantContent = fallbackQuestionForApplicationSignal(nextSignal)
+        const repaired = repairApplicationReplyWithQuestion({
+          reply: assistantContent,
+          currentAnswer: message.trim(),
+          question: fallbackQuestionForApplicationSignal(nextSignal),
+        })
+        assistantContent = repaired.reply
+        groundedReceiptPreserved ||= repaired.receiptPreserved
         interactionSpec = fallbackInteractionForApplicationSignal(nextSignal)
         moveWasAdjusted = true
       }
     } else if (moveValidation.move === "advance" && !nextSignal) {
-      status = "redirected"
+      status = forcedCloseStatusFromScores({
+        scores,
+        passThreshold,
+        rejectThreshold,
+      })
       budgetForcedClose = true
       acceptedConversationMove = "decide"
       acceptedBridge = null
     }
+
   }
-  if (status !== null && !reviewerReport) {
-    reviewerReport = fallbackReviewerReport({ terminalStatus: status, scores })
+
+  if (
+    status === null &&
+    useCompactSignalState &&
+    colorsAdaptiveBranchesEnabled &&
+    currentSignal?.cluster === "orientation" &&
+    isExplicitCommunityIntent(message)
+  ) {
+    assistantContent = "What does community mean to you?"
+    interactionSpec = fallbackInteractionForApplicationSignal(currentSignal)
+    nextSignal = currentSignal
+    acceptedConversationMove = "clarify"
+    acceptedBridge = null
+    bridgeWasAdjusted = true
+    moveWasAdjusted = true
+    communityIntentFollowup = true
+  }
+
+  if (status === null && useCompactSignalState) {
+    const strippedReply = stripApplicationProcessLanguage(assistantContent)
+    assistantContent = strippedReply.reply
+    processLanguageRemoved = strippedReply.removed
+  }
+
+  if (status === null && useCompactSignalState) {
+    const replyIssue = activeApplicationReplyIssue({
+      reply: assistantContent,
+      interaction: interactionSpec,
+      closingMessage: applicationClosingMessage,
+    })
+    if (replyIssue) {
+      const openRepairSignals = activeSignalDefinitions.filter(
+        (signal) =>
+          !answersForRouting.some(
+            (answer) =>
+              answer.key === signal.key && answer.covered !== false,
+          ),
+      )
+      const requestedRepairSignalKey = nextSignal?.key ?? null
+      const requestedRepairSignal =
+        nextSignal &&
+        openRepairSignals.some(
+          (signal) => signal.key === requestedRepairSignalKey,
+        )
+          ? nextSignal
+          : null
+      const repairSignal =
+        requestedRepairSignal ??
+        resolveNextApplicationSignal(
+          null,
+          openRepairSignals,
+          answersForRouting,
+          null,
+        )
+
+      if (repairSignal) {
+        const repairQuestion =
+          fallbackQuestionForApplicationSignal(repairSignal)
+        const repaired = repairApplicationReplyWithQuestion({
+          reply:
+            replyIssue === "terminal_language" ? "" : assistantContent,
+          currentAnswer: message.trim(),
+          question: repairQuestion,
+        })
+        assistantContent = repaired.reply
+        groundedReceiptPreserved ||= repaired.receiptPreserved
+        interactionSpec =
+          fallbackInteractionForApplicationSignal(repairSignal)
+        nextSignal = repairSignal
+        acceptedBridge = null
+        bridgeWasAdjusted = true
+        moveWasAdjusted = true
+        activeReplyRepair = {
+          issue: replyIssue,
+          action: "next_signal",
+          signalKey: repairSignal.key,
+        }
+      } else {
+        status = forcedCloseStatusFromScores({
+          scores,
+          passThreshold,
+          rejectThreshold,
+        })
+        budgetForcedClose = true
+        acceptedConversationMove = "decide"
+        acceptedBridge = null
+        nextSignal = null
+        activeReplyRepair = {
+          issue: replyIssue,
+          action: "forced_close",
+        }
+      }
+    }
+  }
+
+  const explicitPrompt = ensureExplicitStructuredInputPrompt({
+    reply: assistantContent,
+    interaction: interactionSpec,
+    nextSignal,
+  })
+  assistantContent = explicitPrompt.reply
+  if (status !== null) {
+    reviewerReport = ensureEvidenceBackedReviewerReport({
+      report: reviewerReport,
+      terminalStatus: status,
+      scores,
+      definitions: activeSignalDefinitions,
+      answers: answersWithCoverage,
+      insufficientEvidenceKeys,
+      orientation: participantOrientation,
+    })
   }
   const responseMode = resolveApplicationResponseMode({
     proposed: proposedResponseMode,
@@ -966,7 +1216,7 @@ export async function postSessionMessage(
     isTerminal: status !== null,
   })
   const persistedTerminal: GatekeeperTerminalField | null = budgetForcedClose
-    ? "redirect"
+    ? terminalFieldForSessionStatus(status ?? "redirected")
     : structuredTerminal
   const assistantMetadata =
     structuredToolSeen && persistedTerminal !== null
@@ -978,8 +1228,35 @@ export async function postSessionMessage(
             ? { conversation_move: acceptedConversationMove }
             : {}),
           ...(moveWasAdjusted ? { conversation_move_adjusted: true } : {}),
+          ...(explicitPrompt.added
+            ? { application_explicit_question_added: true }
+            : {}),
+          ...(communityIntentFollowup
+            ? { application_community_intent_followup: true }
+            : {}),
+          ...(processLanguageRemoved
+            ? { application_process_language_removed: true }
+            : {}),
+          ...(groundedReceiptPreserved
+            ? { application_grounded_receipt_preserved: true }
+            : {}),
+          ...(activeReplyRepair
+            ? { application_active_reply_repair: activeReplyRepair }
+            : {}),
           ...(budgetForcedClose
-            ? { application_budget_forced_close: true }
+            ? {
+                application_budget_forced_close: true,
+                application_budget_forced_close_outcome: {
+                  source: "score_thresholds",
+                  overall: scores.overall,
+                  passThreshold,
+                  rejectThreshold,
+                  status,
+                },
+              }
+            : {}),
+          ...(terminalWasDeferred
+            ? { application_terminal_deferred_for_unasked_core: true }
             : {}),
           ...(proposedBridgePlan.candidates.length
             ? {
@@ -994,6 +1271,7 @@ export async function postSessionMessage(
             ? { conversation_bridge_adjusted: true }
             : {}),
           response_mode: responseMode,
+          participant_orientation: participantOrientation,
           ...(reviewerReport ? { reviewer_report: reviewerReport } : {}),
           conversation_thread: updatedConversationThread,
           ...(nextSignal
@@ -1003,9 +1281,6 @@ export async function postSessionMessage(
       : null
 
   const modelAssistantContent = assistantContent
-  const applicationClosingMessage =
-    settings.applicationExperience.closing_message?.trim() ||
-    DEFAULT_APPLICATION_CLOSING_MESSAGE
   const userVisibleAssistantContent =
     status !== null
       ? applicationClosingMessage
@@ -1038,14 +1313,7 @@ export async function postSessionMessage(
     })
   }
 
-  let successSecret: string | null = null
-  if (status === "passed") {
-    successSecret = randomUUID()
-    await supabase
-      .from("sessions")
-      .update({ status, success_secret: successSecret })
-      .eq("id", sessionRowId)
-  } else if (status !== null) {
+  if (status !== null) {
     await supabase.from("sessions").update({ status }).eq("id", sessionRowId)
   }
 
@@ -1124,9 +1392,9 @@ export async function postSessionMessage(
   return traceJson(input, {
     message: userVisibleAssistantContent,
     status: status ?? "active",
+    reviewStatus: status === null ? "not_ready" : "pending",
     scores,
     ...(structuredToolSeen ? { ui: interactionSpec } : {}),
-    ...(successSecret ? { secret: successSecret } : {}),
     ...(profile ? { profile } : {}),
     ...(reviewerReport ? { reviewerReport } : {}),
   })

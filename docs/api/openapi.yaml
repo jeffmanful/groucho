@@ -155,11 +155,12 @@ paths:
   /v1/sessions/{sessionId}/access:
     post:
       tags: [Access]
-      summary: Submit email after a passed session
+      summary: Submit email after recorded human approval
       description: |
         Aligns with [app/api/access/route.ts](../../app/api/access/route.ts):
-        server verifies pass eligibility (e.g. success secret or server-held token)
-        before upserting profile. **Must not** leak whether email already exists.
+        server verifies an explicit human approval and its access secret before
+        upserting profile. Advisory model outcomes and scores cannot grant access.
+        **Must not** leak whether email already exists.
       operationId: postSessionAccess
       parameters:
         - $ref: "#/components/parameters/sessionId"
@@ -176,7 +177,8 @@ paths:
                   format: email
                 secret:
                   type: string
-                  description: One-time pass secret issued with the terminal pass response (if applicable)
+                  format: uuid
+                  description: Required for gatekeeper access; issued by the human approval action. Optional in the compatibility schema for non-gatekeeper integrations.
       responses:
         "200":
           description: Accepted
@@ -306,6 +308,15 @@ components:
         - redirected
         - rejected
 
+    ApplicationReviewStatus:
+      type: string
+      description: Human-review lifecycle. This—not the advisory session outcome—controls access.
+      enum:
+        - not_ready
+        - pending
+        - approved
+        - declined
+
     ProjectType:
       type: string
       enum: [gatekeeper, onboarding]
@@ -426,6 +437,8 @@ components:
           description: Assistant text for this turn. Terminal application turns return the configured neutral closing message, while `status` carries the internal outcome.
         status:
           $ref: "#/components/schemas/SessionOutcome"
+        reviewStatus:
+          $ref: "#/components/schemas/ApplicationReviewStatus"
         scores:
           $ref: "#/components/schemas/ScoreBreakdown"
         ui:
@@ -434,7 +447,8 @@ components:
         secret:
           type: string
           format: uuid
-          description: Present only when `status` is `passed` and access gating requires a secret
+          deprecated: true
+          description: Legacy onboarding-only field. Gatekeeper completion never issues an access secret.
         profile:
           allOf:
             - $ref: "#/components/schemas/Profile"
@@ -476,6 +490,8 @@ components:
           enum: [PASS, REDIRECT, REJECT]
           nullable: true
           description: Set when session completes; may mirror normalised `status`
+        reviewStatus:
+          $ref: "#/components/schemas/ApplicationReviewStatus"
         turnsUsed:
           type: integer
         startedAt:

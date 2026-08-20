@@ -66,9 +66,8 @@ describe("application conversation depth", () => {
     expect(depth.recentQualities).toEqual(["thin", "rich"])
     expect(depth.openDoorUsed).toBe(true)
     expect(depth.rabbitHoleUsed).toBe(true)
-    expect(depth.conversationPointsRemaining).toBe(0)
+    expect(depth.conversationPointsRemaining).toBe(4)
     expect(depth.adaptiveTurnsUsed).toBe(2)
-    expect(depth.adaptiveTurnsRemaining).toBe(1)
   })
 
   it("allows one open door only after repeated thin evidence", () => {
@@ -165,13 +164,12 @@ describe("application conversation depth", () => {
     ).toMatchObject({ move: "advance", accepted: false })
   })
 
-  it("stops adaptive turns after the shared three-turn budget", () => {
+  it("does not stop a relevant clarification because three earlier adaptive turns were used", () => {
     const depth = collectApplicationConversationDepth([
       { role: "assistant", metadata: { conversation_move: "clarify" } },
       { role: "assistant", metadata: { conversation_move: "open_door" } },
       { role: "assistant", metadata: { conversation_move: "rabbit_hole" } },
     ])
-    expect(depth.adaptiveTurnsRemaining).toBe(0)
     expect(
       validateApplicationConversationMove({
         proposedMove: "clarify",
@@ -181,7 +179,7 @@ describe("application conversation depth", () => {
         followupsRemaining: 2,
         remainingQuestions: 4,
       }),
-    ).toMatchObject({ move: "advance", accepted: false })
+    ).toMatchObject({ move: "clarify", accepted: true })
   })
 
   it("counts repeated thin evidence across distinct goals", () => {

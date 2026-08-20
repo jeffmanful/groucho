@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest"
 import {
   applicationSignalDefinitions,
+  applicationSignalDefinitionsForOrientation,
   buildCompactApplicationStateMessage,
+  collectApplicationInsufficientEvidenceKeys,
   collectApplicationSignalAnswers,
   expectedApplicationSignal,
   hasLegacyUntaggedAnswers,
   resolveNextApplicationSignal,
+  shouldDeferApplicationTerminal,
   withCoveredSignalAnswers,
   withCurrentSignalAnswer,
 } from "@/lib/application-signal-state"
@@ -47,6 +50,142 @@ describe("application signal state", () => {
     expect(goals[2].promptRoutes[0]).toBe(
       "What is one of their songs that you have—or would—share with someone, and why?",
     )
+  })
+
+  it("uses shared goals plus only the applicant's relevant COLORS branch", () => {
+    const goals = applicationSignalDefinitions([
+      "What brought you here?",
+      "Name an artist more people should know about.",
+      "What's the last song you recommended?",
+      "Someone shares unfinished music that isn't really for you. How would you respond?",
+      "Which sounds most like you?",
+      "What's one thing you could realistically contribute in your first month?",
+    ])
+    const artist = applicationSignalDefinitionsForOrientation(goals, {
+      primary: "artist",
+      scores: { artist: 0.9, curator: 0.1, enthusiast: 0.2 },
+      confidence: 0.9,
+      evidence: ["Makes music"],
+    })
+    const curator = applicationSignalDefinitionsForOrientation(goals, {
+      primary: "curator",
+      scores: { artist: 0.1, curator: 0.9, enthusiast: 0.2 },
+      confidence: 0.9,
+      evidence: ["Curates events"],
+    })
+    const enthusiast = applicationSignalDefinitionsForOrientation(goals, {
+      primary: "enthusiast",
+      scores: { artist: 0.05, curator: 0.05, enthusiast: 0.9 },
+      confidence: 0.9,
+      evidence: ["Mostly listens"],
+    })
+
+    expect(artist.some((signal) => signal.cluster === "care_and_feedback")).toBe(false)
+    expect(enthusiast.some((signal) => signal.cluster === "care_and_feedback")).toBe(false)
+    expect(curator.some((signal) => signal.cluster === "care_and_feedback")).toBe(true)
+    expect(goals[1]).toMatchObject({
+      key: "colors_relationship",
+      cluster: "colors_relationship",
+      priority: "core",
+    })
+    expect(
+      artist.find((signal) => signal.cluster === "colors_relationship")
+        ?.promptRoutes[0],
+    ).toContain("presenting or sharing your own work")
+    expect(
+      curator.find((signal) => signal.cluster === "colors_relationship")
+        ?.promptRoutes[0],
+    ).toContain("giving work context")
+    expect(
+      enthusiast.find((signal) => signal.cluster === "colors_relationship")
+        ?.promptRoutes[0],
+    ).toContain("performance that changed how you heard")
+    expect(
+      artist.find((signal) => signal.label.includes("first month"))?.promptRoutes[0],
+    ).toContain("exchange you already have")
+    expect(
+      curator.find((signal) => signal.label.includes("first month"))?.promptRoutes[0],
+    ).toContain("already do around music")
+    expect(
+      enthusiast.find((signal) => signal.label.includes("first month"))?.promptRoutes[0],
+    ).toContain("keeps you coming back")
+    expect(
+      enthusiast.find((signal) => signal.label.includes("first month"))?.goal,
+    ).toContain("what they already give or return to")
+    expect(
+      artist.find((signal) => signal.label.includes("Which sounds"))
+        ?.promptRoutes,
+    ).toContain(
+      "What is happening around music where you are that is shaping the work you make?",
+    )
+    expect(
+      curator.find((signal) => signal.label.includes("Which sounds"))
+        ?.promptRoutes,
+    ).toContain(
+      "What part of the music scene around you do you understand from the inside?",
+    )
+    expect(
+      enthusiast.find((signal) => signal.label.includes("Which sounds"))
+        ?.promptRoutes,
+    ).toContain(
+      "Do you feel inside the music scene around you, adjacent to it, or mostly looking in from outside?",
+    )
+  })
+
+  it("routes a listener towards participation and contribution instead of feedback", () => {
+    const goals = applicationSignalDefinitions([
+      "What brought you here?",
+      "Name an artist more people should know about.",
+      "What's the last song you recommended?",
+      "Someone shares unfinished music that isn't really for you. How would you respond?",
+      "Which sounds most like you?",
+      "What's one thing you could realistically contribute in your first month?",
+    ])
+    const listenerGoals = applicationSignalDefinitionsForOrientation(goals, {
+      primary: "enthusiast",
+      scores: { artist: 0.05, curator: 0.05, enthusiast: 0.9 },
+      confidence: 0.9,
+      evidence: ["Mostly listens"],
+    })
+    const participation = listenerGoals.find((signal) =>
+      signal.label.includes("Which sounds"),
+    )!
+    const covered = listenerGoals
+      .filter(
+        (signal) =>
+          signal.key !== participation.key &&
+          !signal.label.toLowerCase().includes("contribute"),
+      )
+      .map((signal) => ({
+        ...signal,
+        answer: "Covered answer",
+        covered: true,
+      }))
+    const afterParticipation = [
+      ...covered,
+      { ...participation, answer: "I mostly listen", covered: true },
+    ]
+    const next = resolveNextApplicationSignal(
+      null,
+      listenerGoals,
+      afterParticipation,
+      null,
+    )
+
+    expect(listenerGoals.some((signal) => signal.cluster === "care_and_feedback")).toBe(false)
+    expect(next?.label).toContain("contribute")
+    expect(next?.promptRoutes[0]).toContain("keeps you coming back")
+    expect(
+      shouldDeferApplicationTerminal({
+        terminalRequested: true,
+        phase: "explore",
+        currentAnswerConcerning: false,
+        answeredQuestions: 1,
+        remainingQuestions: 2,
+        definitions: listenerGoals,
+        answers: afterParticipation,
+      }),
+    ).toBe(true)
   })
 
   it("points contextual bridges at existing evidence goals", () => {
@@ -106,6 +245,73 @@ describe("application signal state", () => {
     ).toBe(true)
   })
 
+  it("keeps the COLORS orientation playbook out of unrelated applications", () => {
+    const compact = buildCompactApplicationStateMessage({
+      definitions,
+      answers: [],
+      currentSignal: definitions[0],
+      currentQuestion: "Why are you applying?",
+      currentAnswer: "To learn.",
+    })
+    expect(compact).not.toContain("orientationBranches")
+    expect(compact).not.toContain("Update participantOrientation")
+  })
+
+  it("suggests an uncovered COLORS relationship after the opening without requiring it as a separate question", () => {
+    const goals = applicationSignalDefinitions([
+      "What brought you here?",
+      "Name an artist more people should know about.",
+      "What's the last song you recommended?",
+      "Someone shares unfinished music that isn't really for you. How would you respond?",
+      "Which sounds most like you?",
+      "What's one thing you could realistically contribute in your first month?",
+    ])
+    const orientation = goals.find((signal) => signal.cluster === "orientation")!
+    const relationship = goals.find(
+      (signal) => signal.cluster === "colors_relationship",
+    )!
+    const compact = buildCompactApplicationStateMessage({
+      definitions: goals,
+      answers: withCurrentSignalAnswer(
+        [],
+        orientation,
+        "I want a community around music.",
+      ),
+      currentSignal: orientation,
+      currentQuestion: "Why do you want to be an early applicant for the Forum?",
+      currentAnswer: "I want a community around music.",
+      adaptiveOrientationEnabled: true,
+    })
+
+    expect(compact).toContain(
+      `"suggestedGapSignalKey": "${relationship.key}"`,
+    )
+    expect(compact).toContain(
+      "Relationship to COLORS is a high-priority early intent, not a compulsory second question",
+    )
+    expect(compact).toContain(
+      "Treat sustained reciprocity as part of participation and contribution",
+    )
+    expect(compact).toContain(
+      "Treat situated cultural perspective as an enhancement",
+    )
+    expect(compact).toContain('"localSceneContext"')
+    expect(compact).toContain("Do not ask for an exact location")
+
+    const coveredTogether = withCoveredSignalAnswers(
+      withCurrentSignalAnswer(
+        [],
+        orientation,
+        "COLORS showed me how much a simple setting can reveal in a performance.",
+      ),
+      [relationship],
+      "COLORS showed me how much a simple setting can reveal in a performance.",
+    )
+    expect(coveredTogether.find((answer) => answer.key === relationship.key)).toMatchObject({
+      covered: true,
+    })
+  })
+
   it("builds compact JSON state and advances to the next missing signal", () => {
     const answers = withCurrentSignalAnswer([], definitions[0], "Community")
     const compact = buildCompactApplicationStateMessage({
@@ -117,6 +323,7 @@ describe("application signal state", () => {
       answeredQuestionCount: 1,
       maxQuestions: 9,
       maxFollowupsPerSignal: 2,
+      adaptiveOrientationEnabled: true,
       conversationThread: {
         subject: "Artistic restraint",
         strongestDetail: "Space between releases protects the work",
@@ -141,11 +348,15 @@ describe("application signal state", () => {
     expect(compact).toContain('"status": "open"')
     expect(compact).toContain('"questionBudget"')
     expect(compact).toContain('"phase": "explore"')
-    expect(compact).toContain('"adaptiveTurnLimit": 3')
+    expect(compact).toContain('"softTarget": 9')
+    expect(compact).toContain('"emergencyLimit": 12')
+    expect(compact).toContain('"exampleQuestions"')
     expect(compact).toContain('"followupsRemaining": 2')
     expect(compact).toContain('"conversationDepth"')
     expect(compact).toContain('"recentQualities": []')
     expect(compact).toContain("Assess the current answer semantically")
+    expect(compact).toContain("Update participantOrientation")
+    expect(compact).toContain("Listening is a valid orientation")
     expect(compact).toContain("A short but specific answer may be usable or rich")
     expect(compact).toContain("open_door")
     expect(compact).toContain("rabbit_hole")
@@ -167,10 +378,18 @@ describe("application signal state", () => {
     expect(compact).toContain('"bridgeGrammar"')
     expect(compact).toContain('"lastKind": "work_to_detail"')
     expect(compact).toContain("generate up to three bridgeCandidates")
+    expect(compact).toContain("receive → connect → invite")
+    expect(compact).toContain("connectionIntent")
     expect(compact).toContain("maker_to_practice bridge into an open core goal outranks")
-    expect(compact).toContain("Render the bridge without narrating it")
+    expect(compact).toContain("ground the bridge in the applicant's concrete verb or action")
+    expect(compact).toContain("What would you actually do with that in the Forum?")
+    expect(compact).toContain("how would that show up")
+    expect(compact).toContain("Make the bridge felt without narrating the mechanics")
+    expect(compact).toContain("continue: stay inside the current subject")
+    expect(compact).toContain("connect: name or clearly reuse one concrete detail")
+    expect(compact).toContain("pivot: briefly land the previous thread")
     expect(compact).toContain("let me shift")
-    expect(compact).toContain("Do not stack separate asks")
+    expect(compact).toContain("do not stack separate evidence asks")
     expect(
       resolveNextApplicationSignal(null, definitions, answers, definitions[0]),
     ).toEqual(definitions[1])
@@ -212,5 +431,39 @@ describe("application signal state", () => {
       "I host a monthly group.",
     )
     expect(resolveNextApplicationSignal(goals[1].key, goals, covered, null)).toEqual(goals[0])
+  })
+
+  it("persists and exposes exhausted goals as insufficient evidence", () => {
+    const goal = applicationSignalDefinitions(["Contribution"])[0]
+    const keys = collectApplicationInsufficientEvidenceKeys([
+      {
+        role: "user",
+        content: "I don't know.",
+        metadata: {
+          application_insufficient_evidence: {
+            key: goal.key,
+            label: goal.label,
+            attempts: 3,
+          },
+        },
+      },
+    ])
+    expect(keys.has(goal.key)).toBe(true)
+    expect(
+      buildCompactApplicationStateMessage({
+        definitions: [goal],
+        answers: [
+          {
+            ...goal,
+            answer: "Not sure.\nFollow-up: I don't know.\nFollow-up: Still unsure.",
+            covered: false,
+          },
+        ],
+        currentSignal: goal,
+        currentQuestion: "What would you contribute?",
+        currentAnswer: "Still unsure.",
+        insufficientEvidenceKeys: keys,
+      }),
+    ).toContain('"status": "insufficient_evidence"')
   })
 })

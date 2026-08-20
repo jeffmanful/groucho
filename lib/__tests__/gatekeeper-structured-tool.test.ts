@@ -42,6 +42,10 @@ describe("parseGatekeeperStructuredResponse", () => {
         },
         conversationMove: "rabbit_hole",
         responseMode: "deepen",
+        participantOrientation: {
+          scores: { artist: 0.1, curator: 0.72, enthusiast: 0.4 },
+          evidence: ["Creates context around releases"],
+        },
         culturalSignals: [
           { type: "artist_reference", displayLabel: "Kelela", confidence: 0.92 },
         ],
@@ -51,6 +55,8 @@ describe("parseGatekeeperStructuredResponse", () => {
             sourceDetail: "Space between releases protects the work",
             kind: "tension_to_judgment",
             targetSignalKey: "community_contribution",
+            connectionIntent:
+              "Their care for artistic restraint can reveal how they would treat other people's work",
             questionIntent:
               "Connect their care for artistic restraint to how they would participate",
             confidence: 0.82,
@@ -89,6 +95,10 @@ describe("parseGatekeeperStructuredResponse", () => {
     expect(out.answerAssessment?.quality).toBe("rich")
     expect(out.conversationMove).toBe("rabbit_hole")
     expect(out.responseMode).toBe("deepen")
+    expect(out.participantOrientation).toMatchObject({
+      primary: "curator",
+      confidence: 0.72,
+    })
     expect(out.coveredSignalKeys).toEqual([
       "cultural_point_of_view",
       "discovery_and_sharing",
@@ -182,6 +192,7 @@ describe("parseGatekeeperStructuredResponse", () => {
             sourceDetail: "An invented route",
             kind: "interrogate",
             targetSignalKey: "../../bad",
+            connectionIntent: "Invent a connection",
             questionIntent: "Keep digging",
             confidence: 3,
             freshness: "forever",

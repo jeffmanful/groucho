@@ -18,7 +18,9 @@ turning it into a knowledge test or rewarding long, polished answers.
 
 ## Applicant Experience
 
-Groucho has two discretionary depth moves inside a shared two-point budget:
+Groucho has two discretionary depth moves. Their use is governed by relevance,
+the current thread, and per-intent repetition limits rather than a shared
+application-wide point budget:
 
 ### Open door
 
@@ -33,7 +35,7 @@ Example:
 
 ### Rabbit hole
 
-Use after a rich answer while conversation points remain. The purpose is to reward substance
+Use after a rich answer while the thread remains productive. The purpose is to reward substance
 with attention and explore perspective, care, consequence, criticism, or what
 other people miss.
 
@@ -72,17 +74,14 @@ fame, follower count, and recognisable references are not quality signals.
 
 The conversational model proposes the move; the server owns the route.
 
-- Maximum applicant-facing questions: 9.
-- Target session length: 5–7 applicant turns when evidence permits.
-- Closing phase: after answer 7, only unresolved core evidence may justify another question.
-- Final probe: after answer 8, at most one decision-changing core question remains.
-- Hard stop: answer 9 always produces the neutral close.
+- Typical session length: 5–9 applicant answers when evidence permits.
+- Soft target: the configured `max_turns`, normally 9 for COLORS.
+- No closing or final-probe phase is introduced after answers 7 or 8.
+- Emergency stop: three answers above the soft target, capped at 14, always produces the neutral close.
 - Default clarification allowance for one goal: 1.
 - A second clarification requires a core, decision-critical goal and evidence of recovery potential.
-- Maximum adaptive turns across clarifications, open doors, and rabbit holes: 3.
-- Maximum conversation points: 2.
 - Maximum open-door moves: 1.
-- Rabbit-hole moves share the maximum two-point conversation budget with the open door.
+- Rabbit-hole moves remain available when a rich live thread can add relevant understanding.
 - `open_door` requires a current `thin` answer and a previous recent `thin`
   answer.
 - `rabbit_hole` requires a current `rich` answer.
@@ -93,7 +92,6 @@ The conversational model proposes the move; the server owns the route.
   evidence goal.
 - `advance` cannot name the current unresolved goal as a way to repeat it. The
   runtime treats that as a clarification and applies the same budgets.
-- Three distinct goals with thin evidence disable further adaptive coaxing.
 - The six configured goals are not six required questions; one answer may cover
   several goals and related goals share a conversational cluster.
 - Safety boundaries override conversational depth.
@@ -126,8 +124,8 @@ valid transitions, and hard safety handling.
 ### 4. Enable clarification and rabbit holes
 
 Allow targeted clarification for thin evidence and rabbit-hole moves for rich
-answers while the shared conversation-point budget remains. Follow-ups stay
-attached to the current conversational thread.
+answers while the thread remains relevant. Follow-ups stay attached to the current
+conversation and respect per-intent repetition limits.
 
 ### 5. Enable open doors
 

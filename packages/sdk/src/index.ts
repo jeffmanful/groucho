@@ -9,6 +9,7 @@ export {
   type Session,
   type ScoreBreakdown,
   type SessionOutcome,
+  type ApplicationReviewStatus,
   type ReviewerReport,
 } from "./client.js"
 export { GrouchoApiError } from "./errors.js"

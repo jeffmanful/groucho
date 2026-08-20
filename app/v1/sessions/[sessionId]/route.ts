@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server"
+import { applicationReviewStatus } from "@/lib/application-decision"
 import { applicantIdentityFromRow } from "@/lib/applicant-identity"
 import { log } from "@/lib/logger"
 import { getOrCreateRequestId } from "@/lib/request-trace"
@@ -55,6 +56,18 @@ export async function GET(
   const outcome = outcomeLabelFromDbStatus(row.status)
   const concluded = isConcludedSessionStatus(row.status)
   const applicant = applicantIdentityFromRow(row)
+
+  const { data: applicationDecision } = concluded
+    ? await supabase
+        .from("application_decisions")
+        .select("decision")
+        .eq("session_id", row.id)
+        .maybeSingle()
+    : { data: null }
+  const reviewStatus = applicationReviewStatus({
+    concluded,
+    decision: applicationDecision,
+  })
 
   let profile: unknown = row.profile ?? null
   let reviewerReport: unknown = null
@@ -125,6 +138,7 @@ export async function GET(
     clientSessionKey: row.session_id,
     status: row.status,
     outcome,
+    reviewStatus,
     turnsUsed: turnCount ?? 0,
     startedAt: row.created_at,
     completedAt: concluded ? row.updated_at : null,
