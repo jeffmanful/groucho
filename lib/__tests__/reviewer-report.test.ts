@@ -19,6 +19,7 @@ describe("reviewer report helpers", () => {
 
     expect(report?.advisory_recommendation).toBe("recommend")
     expect(report?.confidence_score).toBe(0.84)
+    expect(report?.evidence_references).toEqual([])
   })
 
   it("returns null for malformed reviewer reports", () => {
@@ -40,6 +41,7 @@ describe("reviewer report helpers", () => {
     expect(report.advisory_recommendation).toBe("recommend")
     expect(report.confidence_score).toBe(0.6)
     expect(report.weak_or_missing_signals[0]).toContain("missing or malformed")
+    expect(report.evidence_references).toEqual([])
   })
 
   it("builds a reviewable report from persisted signal evidence", () => {
@@ -69,7 +71,17 @@ describe("reviewer report helpers", () => {
       scores: { overall: 0.58 },
       definitions,
       answers: [
-        { ...definitions[0], answer: "I host a monthly listening night.", covered: true },
+        {
+          ...definitions[0],
+          answer: "I host a monthly listening night.",
+          covered: true,
+          sources: [
+            {
+              messageId: "message-participation",
+              excerpt: "I host a monthly listening night.",
+            },
+          ],
+        },
         { ...definitions[1], answer: "Not sure.\nFollow-up: I don't know.", covered: false },
       ],
       insufficientEvidenceKeys: new Set(["contribution"]),
@@ -86,6 +98,82 @@ describe("reviewer report helpers", () => {
     expect(report.evidence_summary).toEqual([
       "How do you participate?: I host a monthly listening night.",
     ])
+    expect(report.evidence_references).toEqual([
+      {
+        signal_key: "participation",
+        signal_label: "How do you participate?",
+        source_message_id: "message-participation",
+        excerpt: "I host a monthly listening night.",
+      },
+    ])
     expect(report.weak_or_missing_signals[0]).toContain("insufficient evidence")
+  })
+
+  it("replaces untraceable model evidence with persisted application evidence", () => {
+    const definition = {
+      key: "participation",
+      label: "Participation",
+      goal: "Understand participation.",
+      promptRoutes: [],
+      priority: "core" as const,
+      cluster: "participation",
+      audiences: ["shared" as const],
+    }
+    const report = ensureEvidenceBackedReviewerReport({
+      report: normaliseReviewerReport({
+        applicant_bio: "Applicant bio.",
+        advisory_recommendation: "recommend",
+        confidence_score: 0.9,
+        evidence_summary: ["Unsupported model claim"],
+        weak_or_missing_signals: [],
+        safety_or_integrity_flags: [],
+        reviewer_focus: "Review the evidence.",
+      }),
+      terminalStatus: "passed",
+      scores: { overall: 0.8 },
+      definitions: [definition],
+      answers: [
+        {
+          ...definition,
+          answer: "I host a monthly listening night.",
+          covered: true,
+          sources: [{
+            messageId: "message-1",
+            excerpt: "I host a monthly listening night.",
+          }],
+        },
+      ],
+    })
+
+    expect(report.evidence_summary).toEqual([
+      "Participation: I host a monthly listening night.",
+    ])
+    expect(report.evidence_summary).not.toContain("Unsupported model claim")
+    expect(report.evidence_references[0]?.source_message_id).toBe("message-1")
+  })
+
+  it("preserves deterministic integrity flags when the model omits them", () => {
+    const report = ensureEvidenceBackedReviewerReport({
+      report: normaliseReviewerReport({
+        applicant_bio: "Applicant bio.",
+        advisory_recommendation: "human_review",
+        confidence_score: 0.6,
+        evidence_summary: [],
+        weak_or_missing_signals: [],
+        safety_or_integrity_flags: [],
+        reviewer_focus: "Review the concern.",
+      }),
+      terminalStatus: "redirected",
+      scores: { overall: 0.5 },
+      definitions: [],
+      answers: [],
+      integrityFlags: [
+        "Applicant described sharing private artist work without permission.",
+      ],
+    })
+
+    expect(report.safety_or_integrity_flags).toContain(
+      "Applicant described sharing private artist work without permission.",
+    )
   })
 })

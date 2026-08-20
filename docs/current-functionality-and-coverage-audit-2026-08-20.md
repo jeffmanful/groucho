@@ -32,10 +32,10 @@ debt.
 | --- | --- | --- |
 | Opening and session start | `start-gatekeeper-session`, `opening-message` | Strong deterministic coverage |
 | Evidence intents and adaptive branches | `application-signal-state`, `application-participant-orientation` | Strong unit coverage; transcript quality remains evaluative |
-| COLORS relationship, sustained reciprocity, situated perspective | signal-state, experience-prompt, turn-integrity | Contract and routing coverage; no full model trajectory assertion yet |
+| COLORS relationship, sustained reciprocity, situated perspective | signal-state, experience-prompt, turn-integrity, identity/fairness trajectories | Contract, routing, and representative trajectory coverage; broader live variants remain evaluative |
 | Conversation depth, thread, modes, and bridges | dedicated depth, thread, response-mode, and bridge tests | Strong reducer coverage |
 | Active-turn integrity and emergency pacing | turn-integrity, question-budget, contract post-message | Strong deterministic coverage |
-| Reviewer packet fallback | reviewer-report and contract post-message | Covered for evidence-backed fallback; source-link architecture remains planned |
+| Reviewer packet fallback | reviewer-report and contract post-message | Covered with validated source-message IDs and excerpts; legacy reports remain readable without references |
 | Human decision and access boundary | application-decision, decision route, access route, session status | Strong authority-boundary coverage |
 | Local `/doorcheck` fallback | local-gatekeeper-test-turn | Covered, but intentionally not equivalent to live model conversation quality |
 | SDK request and interaction contract | SDK client, bootstrap, decision moment, input serialization | Covered in package tests |
@@ -64,14 +64,23 @@ produce instrumented statement, branch, or function coverage percentages.
 
 ### P0 before production decisions
 
-- Add source-linked evidence spans to reviewer claims and validate them in complete
-  session trajectories.
-- Run representative transcript evaluation for artist, curator, enthusiast,
-  hybrid, vague, contradictory, extractive, and safety-boundary identities.
-- Add fairness pairs for equivalent evidence expressed with different fluency,
-  length, cultural references, city prestige, and insider/outsider scene position.
-- Confirm reviewer calibration with COLORS examples of `recommend`,
-  `human_review`, and `decline`.
+- [x] Add source-linked evidence spans to reviewer claims and validate persistence
+  through the terminal session contract.
+- [x] Run live transcript evaluation for representative artist, curator,
+  enthusiast, and hybrid identities. All four retained the intended orientation,
+  avoided premature or repeated questions, and produced source-linked reports.
+- [x] Run live transcript evaluation for vague, contradictory, extractive, and
+  safety-boundary identities. Deterministic integrity guards now cover explicit
+  fabrication, extractive access intent, and artist-consent violations.
+- [x] Add initial fairness pairs for equivalent evidence expressed with different
+  fluency, artist familiarity, city prestige, and local/online scene context.
+- [x] Confirm the first four reviewer-boundary labels with COLORS and encode
+  their repeated-concern outcomes.
+- [x] Encode five client-confirmed clear recommends spanning artists,
+  enthusiasts, curators, and hybrids, including neutral missing-information
+  invariants for reach, credentials, releases, and formal community roles.
+- [ ] Complete the larger calibration packet across clear recommends, declines,
+  human reviews, early finishes, recovery examples, and fairness pairs.
 
 ### P1 engineering coverage
 

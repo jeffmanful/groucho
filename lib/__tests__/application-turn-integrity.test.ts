@@ -56,6 +56,29 @@ describe("application turn integrity", () => {
     })
   })
 
+  it.each([
+    "Before we dig into that—what is a COLORS performance that stayed with you?",
+    "Before we get into this, what is a COLORS performance that stayed with you?",
+    "Before we go any further: what is a COLORS performance that stayed with you?",
+    "Before we go deeper, what is a COLORS performance that stayed with you?",
+    "Before we continue, what is a COLORS performance that stayed with you?",
+    "Let me ask differently—what is a COLORS performance that stayed with you?",
+    "Let me ask you differently—what is a COLORS performance that stayed with you?",
+    "Let me ask this differently—what is a COLORS performance that stayed with you?",
+    "Let me ask something different. what is a COLORS performance that stayed with you?",
+    "Let me ask something a bit more specific: what is a COLORS performance that stayed with you?",
+    "Let me ask a different way. what is a COLORS performance that stayed with you?",
+    "Let me ask this another way—what is a COLORS performance that stayed with you?",
+    "Let me try it differently—what is a COLORS performance that stayed with you?",
+    "Let me try something simpler—what is a COLORS performance that stayed with you?",
+    "Before you explore, what is a COLORS performance that stayed with you?",
+  ])("removes wider interview-stage narration from %s", (reply) => {
+    expect(stripApplicationProcessLanguage(reply)).toEqual({
+      reply: "What is a COLORS performance that stayed with you?",
+      removed: true,
+    })
+  })
+
   it("preserves a grounded receipt when replacing a mismatched question", () => {
     expect(
       repairApplicationReplyWithQuestion({
@@ -130,6 +153,40 @@ describe("application turn integrity", () => {
         "I like spaces where other people keep the discussion active.",
       ),
     ).toBe(false)
+  })
+
+  it("accepts reciprocal giving and concrete participation as contribution", () => {
+    expect(
+      applicationAnswerSupportsSignal(
+        contribution,
+        "I can give other artists specific production feedback in return.",
+      ),
+    ).toBe(true)
+    expect(
+      applicationAnswerSupportsSignal(
+        contribution,
+        "I can take part through creating, documenting, recommending, organising, and welcoming.",
+      ),
+    ).toBe(true)
+  })
+
+  it("does not cover an artist reference with rich but off-target evidence", () => {
+    const artistReference = applicationSignalDefinitions([
+      "Name an artist more people should know about.",
+    ])[0]
+
+    expect(
+      applicationAnswerSupportsSignal(
+        artistReference,
+        "The useful exchange is specific: what the arrangement is doing, whether the vocal lands, and what the artist wants the track to become.",
+      ),
+    ).toBe(false)
+    expect(
+      applicationAnswerSupportsSignal(
+        artistReference,
+        "dexter in the newsagent. Their delivery leaves room for the lyric to feel lived-in.",
+      ),
+    ).toBe(true)
   })
 
   it("adds a visible question when structured options arrive with only an acknowledgement", () => {
@@ -228,5 +285,87 @@ describe("application turn integrity", () => {
         closingMessage: "Thanks for applying.",
       }),
     ).toBeNull()
+  })
+
+  it("replaces a structured question that does not match its options", () => {
+    expect(
+      ensureExplicitStructuredInputPrompt({
+        reply: "What are you trying to express in your own music?",
+        interaction: {
+          intent: "probe",
+          inputType: "singleSelect",
+          options: [
+            "I mostly listen",
+            "I like discussing music",
+            "I enjoy giving feedback",
+            "I regularly share discoveries",
+          ],
+          emotionalState: "curious",
+          visualState: "curious",
+        },
+        nextSignal: {
+          label: "Which sounds most like you?",
+          promptRoutes: ["How do you usually participate around music?"],
+        },
+      }),
+    ).toEqual({
+      reply: "Which of these sounds most like how you participate around music?",
+      added: true,
+    })
+  })
+
+  it("detects an exact repeated question even when the new reply adds a receipt", () => {
+    expect(
+      activeApplicationReplyIssue({
+        reply:
+          "That tension stays unresolved. What's one of their songs that you have—or would—share with someone, and why?",
+        previousQuestion:
+          "What is one of their songs that you have—or would—share with someone, and why?",
+        interaction: {
+          intent: "probe",
+          inputType: "text",
+          emotionalState: "interested",
+          visualState: "interested",
+        },
+        closingMessage: "It was good getting to understand you better.",
+      }),
+    ).toBe("repeated_question")
+  })
+
+  it("rejects an artist-to-song pronoun bridge before an artist is named", () => {
+    expect(
+      activeApplicationReplyIssue({
+        reply:
+          "What is one of their songs that you have—or would—share with someone, and why?",
+        interaction: {
+          intent: "probe",
+          inputType: "text",
+          emotionalState: "curious",
+          visualState: "thinking",
+        },
+        closingMessage: "It was good getting to understand you better.",
+        hasArtistAntecedent: false,
+      }),
+    ).toBe("missing_artist_antecedent")
+  })
+
+  it("detects a repeated question even when another question intervened", () => {
+    expect(
+      activeApplicationReplyIssue({
+        reply:
+          "Which part of what you already do around music could you keep contributing here?",
+        previousQuestion: [
+          "Which part of what you already do around music could you keep contributing here?",
+          "What do you actually do around music now?",
+        ].join("\n"),
+        interaction: {
+          intent: "probe",
+          inputType: "text",
+          emotionalState: "interested",
+          visualState: "interested",
+        },
+        closingMessage: "It was good getting to understand you better.",
+      }),
+    ).toBe("repeated_question")
   })
 })

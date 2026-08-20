@@ -146,6 +146,21 @@ export function collectApplicationConversationDepth(
   }
 }
 
+/**
+ * Ends unproductive coaxing without imposing a global conversational cap.
+ * The applicant receives several attempts across distinct intents first.
+ */
+export function shouldCloseAfterRepeatedThinEvidence(input: {
+  depth: ApplicationConversationDepth
+  currentAssessment: ApplicationAnswerAssessment | null
+}): boolean {
+  return (
+    input.currentAssessment?.quality === "thin" &&
+    input.depth.thinAnswerCount >= 5 &&
+    input.depth.thinSignalCount >= 3
+  )
+}
+
 export function validateApplicationConversationMove(input: {
   proposedMove: ApplicationConversationMove
   assessment: ApplicationAnswerAssessment | null

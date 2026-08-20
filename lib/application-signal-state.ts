@@ -33,9 +33,17 @@ export type ApplicationSignalAnswer = ApplicationSignalDefinition & {
   answer: string
   /** False means the goal was attempted but the answer did not yet cover it. */
   covered?: boolean
+  /** Exact applicant messages that supplied this evidence. */
+  sources?: ApplicationSignalEvidenceSource[]
+}
+
+export type ApplicationSignalEvidenceSource = {
+  messageId: string
+  excerpt: string
 }
 
 export type ApplicationSignalMessage = {
+  id?: string
   role: "user" | "assistant"
   content: string
   metadata?: unknown
@@ -407,6 +415,11 @@ export function collectApplicationSignalAnswers(
       answers.set(signal.key, {
         ...signal,
         answer: combined.slice(0, MAX_COMPACT_ANSWER_LENGTH),
+        sources: withEvidenceSource(
+          answers.get(signal.key)?.sources,
+          message.id,
+          answer,
+        ),
         covered: hasCoverage
           ? coveredSignals.some((covered) => covered.key === signal.key) || previousAnswerCovered(answers.get(signal.key))
           : true,
@@ -437,6 +450,22 @@ export function collectApplicationInsufficientEvidenceKeys(
 
 function previousAnswerCovered(answer: ApplicationSignalAnswer | undefined): boolean {
   return Boolean(answer && answer.covered !== false)
+}
+
+function withEvidenceSource(
+  sources: ApplicationSignalEvidenceSource[] | undefined,
+  messageId: string | undefined,
+  answer: string,
+): ApplicationSignalEvidenceSource[] | undefined {
+  if (!messageId) return sources
+  const source = {
+    messageId,
+    excerpt: answer.trim().replace(/\s+/g, " ").slice(0, 260),
+  }
+  return [
+    ...(sources ?? []).filter((item) => item.messageId !== messageId),
+    source,
+  ]
 }
 
 export function hasLegacyUntaggedAnswers(
@@ -477,6 +506,7 @@ export function withCurrentSignalAnswer(
   signal: ApplicationSignalDefinition | null,
   currentAnswer: string,
   covered = true,
+  sourceMessageId?: string,
 ): ApplicationSignalAnswer[] {
   if (!signal || !currentAnswer.trim()) return answers
   const next = answers.filter((answer) => answer.key !== signal.key)
@@ -487,6 +517,11 @@ export function withCurrentSignalAnswer(
   next.push({
     ...signal,
     answer: combined.slice(0, MAX_COMPACT_ANSWER_LENGTH),
+    sources: withEvidenceSource(
+      answers.find((answer) => answer.key === signal.key)?.sources,
+      sourceMessageId,
+      currentAnswer,
+    ),
     covered: covered || previousAnswerCovered(answers.find((answer) => answer.key === signal.key)),
   })
   return next
@@ -496,12 +531,32 @@ export function withCoveredSignalAnswers(
   answers: ApplicationSignalAnswer[],
   signals: ApplicationSignalDefinition[],
   currentAnswer: string,
+  sourceMessageId?: string,
 ): ApplicationSignalAnswer[] {
   if (!currentAnswer.trim() || signals.length === 0) return answers
   const marked = markCoveredSignals(answers, signals)
   return signals.reduce((next, signal) => {
-    if (next.some((answer) => answer.key === signal.key)) return next
-    return withCurrentSignalAnswer(next, signal, currentAnswer, true)
+    if (next.some((answer) => answer.key === signal.key)) {
+      return next.map((answer) =>
+        answer.key === signal.key
+          ? {
+              ...answer,
+              sources: withEvidenceSource(
+                answer.sources,
+                sourceMessageId,
+                currentAnswer,
+              ),
+            }
+          : answer,
+      )
+    }
+    return withCurrentSignalAnswer(
+      next,
+      signal,
+      currentAnswer,
+      true,
+      sourceMessageId,
+    )
   }, marked)
 }
 

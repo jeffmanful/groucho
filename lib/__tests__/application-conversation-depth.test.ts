@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   collectApplicationConversationDepth,
   normaliseApplicationAnswerAssessment,
+  shouldCloseAfterRepeatedThinEvidence,
   validateApplicationConversationMove,
   type ApplicationAnswerAssessment,
 } from "@/lib/application-conversation-depth"
@@ -206,6 +207,33 @@ describe("application conversation depth", () => {
       },
     ])
     expect(depth.thinSignalCount).toBe(2)
+  })
+
+  it("closes only after repeated thin answers span several distinct goals", () => {
+    expect(
+      shouldCloseAfterRepeatedThinEvidence({
+        depth: {
+          recentQualities: ["thin", "thin", "thin"],
+          thinAnswerCount: 5,
+          richAnswerCount: 0,
+          openDoorUsed: true,
+          thinSignalCount: 3,
+        },
+        currentAssessment: thinAssessment,
+      }),
+    ).toBe(true)
+    expect(
+      shouldCloseAfterRepeatedThinEvidence({
+        depth: {
+          recentQualities: ["thin", "thin", "rich"],
+          thinAnswerCount: 5,
+          richAnswerCount: 1,
+          openDoorUsed: true,
+          thinSignalCount: 3,
+        },
+        currentAssessment: richAssessment,
+      }),
+    ).toBe(false)
   })
 
   it("advances when no follow-up budget remains", () => {

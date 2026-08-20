@@ -7,6 +7,33 @@ import {
 } from "@/lib/application-participant-orientation"
 
 describe("application participant orientation", () => {
+  it("recognises naturally qualified maker and discovery language", () => {
+    expect(
+      inferApplicationParticipantOrientation({
+        currentAnswer: "I'm a South London producer making sparse electronic R&B.",
+      }).primary,
+    ).toBe("artist")
+    expect(
+      inferApplicationParticipantOrientation({
+        currentAnswer: "I've only been making music seriously for eight months.",
+      }).primary,
+    ).toBe("artist")
+    expect(
+      inferApplicationParticipantOrientation({
+        currentAnswer: "I spend a lot of time finding new music through local radio.",
+      }).primary,
+    ).toBe("enthusiast")
+  })
+
+  it("does not treat an explicit non-artist statement as artist evidence", () => {
+    const orientation = inferApplicationParticipantOrientation({
+      currentAnswer: "I'm not an artist; I spend my time finding new music.",
+    })
+
+    expect(orientation.primary).toBe("enthusiast")
+    expect(orientation.scores.artist).toBe(0)
+  })
+
   it("normalises artist, curator, enthusiast, and hybrid hypotheses", () => {
     expect(
       normaliseApplicationParticipantOrientation({
@@ -69,6 +96,15 @@ describe("application participant orientation", () => {
     })
     expect(merged.primary).toBe("curator")
     expect(merged.scores.enthusiast).toBe(0.12)
+  })
+
+  it("does not classify someone as a maker merely because they discuss artists", () => {
+    const orientation = inferApplicationParticipantOrientation({
+      currentAnswer:
+        "I host a listening group and share context for each artist we feature.",
+    })
+    expect(orientation.primary).toBe("curator")
+    expect(orientation.scores.artist).toBe(0)
   })
 
   it("collects the most recent persisted orientation", () => {

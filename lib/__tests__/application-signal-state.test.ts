@@ -221,6 +221,7 @@ describe("application signal state", () => {
         },
       },
       {
+        id: "msg-community",
         role: "user" as const,
         content: "Community",
         metadata: {
@@ -229,7 +230,12 @@ describe("application signal state", () => {
       },
     ]
     const answers = collectApplicationSignalAnswers(messages, definitions)
-    expect(answers).toEqual([{ ...definitions[0], answer: "Community", covered: true }])
+    expect(answers).toEqual([{
+      ...definitions[0],
+      answer: "Community",
+      covered: true,
+      sources: [{ messageId: "msg-community", excerpt: "Community" }],
+    }])
     expect(expectedApplicationSignal(messages, definitions, answers)).toEqual(
       definitions[0],
     )

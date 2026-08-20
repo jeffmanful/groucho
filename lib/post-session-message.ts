@@ -76,6 +76,7 @@ import {
 } from "@/lib/application-participant-orientation"
 import {
   collectApplicationConversationDepth,
+  shouldCloseAfterRepeatedThinEvidence,
   validateApplicationConversationMove,
   type ApplicationAnswerAssessment,
   type ApplicationConversationMove,
@@ -107,6 +108,13 @@ import {
   stripApplicationProcessLanguage,
   type ActiveApplicationReplyIssue,
 } from "@/lib/application-turn-integrity"
+import {
+  applicationIntegrityChallengeQuestion,
+  assessmentWithIntegrityConcerns,
+  calibratedStatusForIntegrityHistory,
+  collectApplicationIntegrityConcerns,
+  detectApplicationIntegrityConcerns,
+} from "@/lib/application-integrity-concerns"
 
 function traceJson(
   input: PostSessionMessageInput,
@@ -147,11 +155,29 @@ function fallbackInteractionForApplicationSignal(
   }
 }
 
+function isArtistReferenceSignal(signal: { label: string }): boolean {
+  return signal.label.toLowerCase().includes("artist more people should know")
+}
+
+function isRecommendationSignal(signal: { label: string }): boolean {
+  const label = signal.label.toLowerCase()
+  return label.includes("song") && label.includes("recommend")
+}
+
 function fallbackQuestionForApplicationSignal(signal: {
   label: string
   promptRoutes?: string[]
-}): string {
-  const candidate = signal.promptRoutes?.[0]?.trim() || signal.label.trim()
+}, options?: { hasArtistAntecedent?: boolean }): string {
+  const routes = signal.promptRoutes ?? []
+  const candidate =
+    (isRecommendationSignal(signal) && options?.hasArtistAntecedent === false
+      ? routes.find(
+          (route) =>
+            !/\b(?:one|which) of their (?:songs?|tracks?|pieces?|records?)\b/i.test(
+              route,
+            ),
+        )
+      : routes[0])?.trim() || signal.label.trim()
   return candidate.endsWith("?")
     ? candidate
     : `${candidate.replace(/[.!]+$/, "")}?`
@@ -578,6 +604,10 @@ export async function postSessionMessage(
     collectApplicationParticipantOrientation(priorHistory)
   const colorsAdaptiveBranchesEnabled =
     isColorsForumSignalSet(signalDefinitions)
+  const currentIntegrityConcerns = colorsAdaptiveBranchesEnabled
+    ? detectApplicationIntegrityConcerns(message.trim())
+    : []
+  const storedIntegrityConcerns = collectApplicationIntegrityConcerns(priorHistory)
   const routedSignalDefinitions = applicationSignalDefinitionsForOrientation(
     signalDefinitions,
     storedParticipantOrientation,
@@ -610,6 +640,7 @@ export async function postSessionMessage(
     currentSignal,
     message.trim(),
     false,
+    userMsg.id,
   )
   const conversationDepth = collectApplicationConversationDepth(priorHistory)
   const answeredQuestionCount = dbHistory.filter(
@@ -813,6 +844,15 @@ export async function postSessionMessage(
     }
   }
 
+  answerAssessment = assessmentWithIntegrityConcerns(
+    answerAssessment,
+    currentIntegrityConcerns,
+  )
+  if (currentIntegrityConcerns.length > 0) {
+    proposedConversationMove = "challenge"
+    proposedResponseMode = "challenge"
+  }
+
   coveredSignalKeys = coveredSignalKeys.filter((key) => {
     const signal = signalDefinitions.find((definition) => definition.key === key)
     return signal
@@ -877,6 +917,9 @@ export async function postSessionMessage(
                 currentInsufficientEvidence,
             }
           : {}),
+        ...(currentIntegrityConcerns.length
+          ? { application_integrity_concerns: currentIntegrityConcerns }
+          : {}),
       },
     })
     .eq("id", userMsg.id)
@@ -897,20 +940,52 @@ export async function postSessionMessage(
     structuredTerminal,
     structuredToolUsed: structuredToolSeen,
   })
+  const calibratedIntegrityStatus =
+    calibratedStatusForIntegrityHistory({
+      stored: storedIntegrityConcerns,
+      current: currentIntegrityConcerns,
+      terminalProposed: status !== null,
+    })
+  if (currentIntegrityConcerns.length > 0) {
+    if (calibratedIntegrityStatus) {
+      status = calibratedIntegrityStatus
+      structuredTerminal = terminalFieldForSessionStatus(
+        calibratedIntegrityStatus,
+      )
+    } else {
+      // A first explicit concern gets one calm challenge even if the model
+      // attempts to decide immediately.
+      status = null
+      structuredTerminal = "none"
+      reviewerReport = null
+    }
+  } else if (calibratedIntegrityStatus) {
+    status = calibratedIntegrityStatus
+    structuredTerminal = terminalFieldForSessionStatus(
+      calibratedIntegrityStatus,
+    )
+  }
   const coveredSignals = signalDefinitions.filter((signal) =>
     coveredSignalKeys.includes(signal.key),
   )
   const answersWithCoverage = useCompactSignalState
     ? withCoveredSignalAnswers(
-        compactSignalAnswers,
-        coveredSignals,
-        message.trim(),
-      )
+      compactSignalAnswers,
+      coveredSignals,
+      message.trim(),
+      userMsg.id,
+    )
     : compactSignalAnswers
   const answersForRouting = answersWithCoverage.map((answer) =>
     insufficientEvidenceKeys.has(answer.key)
       ? { ...answer, covered: true }
       : answer,
+  )
+  const hasArtistAntecedent = answersForRouting.some(
+    (answer) =>
+      answer.covered !== false &&
+      answer.answer.trim().length > 0 &&
+      answer.label.toLowerCase().includes("artist more people should know"),
   )
   const activeSignalDefinitions = applicationSignalDefinitionsForOrientation(
     signalDefinitions,
@@ -947,10 +1022,22 @@ export async function postSessionMessage(
       .map((signal) => signal.key),
   )
   let budgetForcedClose = false
+  let repeatedThinEvidenceClose = false
   const applicationClosingMessage =
     settings.applicationExperience.closing_message?.trim() ||
     DEFAULT_APPLICATION_CLOSING_MESSAGE
   if (
+    status === null &&
+    useCompactSignalState &&
+    shouldCloseAfterRepeatedThinEvidence({
+      depth: conversationDepth,
+      currentAssessment: answerAssessment,
+    })
+  ) {
+    status = "redirected"
+    budgetForcedClose = true
+    repeatedThinEvidenceClose = true
+  } else if (
     status === null &&
     questionBudget.phase === "emergency_stop"
   ) {
@@ -1010,7 +1097,9 @@ export async function postSessionMessage(
       requestedNextSignalKey === currentSignal?.key &&
       answerAssessment?.quality === "thin"
     const inferredMove: ApplicationConversationMove =
-      advanceRepeatsCurrentSignal
+      currentIntegrityConcerns.length > 0
+        ? "challenge"
+        : advanceRepeatsCurrentSignal
         ? "clarify"
         : proposedConversationMove ??
           (requestedNextSignalKey && requestedNextSignalKey === currentSignal?.key
@@ -1058,7 +1147,40 @@ export async function postSessionMessage(
       )
     }
 
-    if (bridgeSelectionChanged && acceptedBridge && nextSignal) {
+    if (
+      nextSignal &&
+      isRecommendationSignal(nextSignal) &&
+      !hasArtistAntecedent
+    ) {
+      const openArtistReferenceSignal = activeSignalDefinitions.find(
+        (signal) =>
+          isArtistReferenceSignal(signal) &&
+          !answersForRouting.some(
+            (answer) =>
+              answer.key === signal.key && answer.covered !== false,
+          ),
+      )
+      if (openArtistReferenceSignal) {
+        nextSignal = openArtistReferenceSignal
+        acceptedBridge = null
+        bridgeWasAdjusted = true
+        moveWasAdjusted = true
+      }
+    }
+
+    if (
+      moveValidation.move === "challenge" &&
+      currentIntegrityConcerns.length > 0 &&
+      nextSignal
+    ) {
+      assistantContent = applicationIntegrityChallengeQuestion(
+        currentIntegrityConcerns,
+      )
+      interactionSpec = fallbackInteractionForApplicationSignal(nextSignal)
+      acceptedBridge = null
+      bridgeWasAdjusted ||= proposedBridgePlan.selected !== null
+      moveWasAdjusted = true
+    } else if (bridgeSelectionChanged && acceptedBridge && nextSignal) {
       const repaired = repairApplicationReplyWithQuestion({
         reply: assistantContent,
         currentAnswer: message.trim(),
@@ -1073,7 +1195,9 @@ export async function postSessionMessage(
         const repaired = repairApplicationReplyWithQuestion({
           reply: assistantContent,
           currentAnswer: message.trim(),
-          question: fallbackQuestionForApplicationSignal(nextSignal),
+          question: fallbackQuestionForApplicationSignal(nextSignal, {
+            hasArtistAntecedent,
+          }),
         })
         assistantContent = repaired.reply
         groundedReceiptPreserved ||= repaired.receiptPreserved
@@ -1117,10 +1241,17 @@ export async function postSessionMessage(
   }
 
   if (status === null && useCompactSignalState) {
+    const recentApplicationQuestions = priorHistory
+      .filter((entry) => entry.role === "assistant")
+      .slice(-5)
+      .map((entry) => entry.content)
+      .join("\n")
     const replyIssue = activeApplicationReplyIssue({
       reply: assistantContent,
       interaction: interactionSpec,
       closingMessage: applicationClosingMessage,
+      previousQuestion: recentApplicationQuestions || currentQuestion,
+      hasArtistAntecedent,
     })
     if (replyIssue) {
       const openRepairSignals = activeSignalDefinitions.filter(
@@ -1130,10 +1261,21 @@ export async function postSessionMessage(
               answer.key === signal.key && answer.covered !== false,
           ),
       )
+      const repairSignals = openRepairSignals.filter((signal) =>
+        activeApplicationReplyIssue({
+          reply: fallbackQuestionForApplicationSignal(signal, {
+            hasArtistAntecedent,
+          }),
+          interaction: fallbackInteractionForApplicationSignal(signal),
+          closingMessage: applicationClosingMessage,
+          previousQuestion: recentApplicationQuestions || currentQuestion,
+          hasArtistAntecedent,
+        }) === null,
+      )
       const requestedRepairSignalKey = nextSignal?.key ?? null
       const requestedRepairSignal =
         nextSignal &&
-        openRepairSignals.some(
+        repairSignals.some(
           (signal) => signal.key === requestedRepairSignalKey,
         )
           ? nextSignal
@@ -1142,14 +1284,16 @@ export async function postSessionMessage(
         requestedRepairSignal ??
         resolveNextApplicationSignal(
           null,
-          openRepairSignals,
+          repairSignals,
           answersForRouting,
           null,
         )
 
       if (repairSignal) {
         const repairQuestion =
-          fallbackQuestionForApplicationSignal(repairSignal)
+          fallbackQuestionForApplicationSignal(repairSignal, {
+            hasArtistAntecedent,
+          })
         const repaired = repairApplicationReplyWithQuestion({
           reply:
             replyIssue === "terminal_language" ? "" : assistantContent,
@@ -1202,6 +1346,10 @@ export async function postSessionMessage(
       answers: answersWithCoverage,
       insufficientEvidenceKeys,
       orientation: participantOrientation,
+      integrityFlags: [
+        ...storedIntegrityConcerns,
+        ...currentIntegrityConcerns,
+      ].map((concern) => concern.reviewerFlag),
     })
   }
   const responseMode = resolveApplicationResponseMode({
@@ -1244,11 +1392,36 @@ export async function postSessionMessage(
             ? {
                 application_budget_forced_close: true,
                 application_budget_forced_close_outcome: {
-                  source: "score_thresholds",
+                  source: repeatedThinEvidenceClose
+                    ? "repeated_thin_evidence"
+                    : "score_thresholds",
                   overall: scores.overall,
                   passThreshold,
                   rejectThreshold,
                   status,
+                },
+              }
+            : {}),
+          ...(repeatedThinEvidenceClose
+            ? {
+                application_thin_evidence_close: {
+                  priorThinAnswers: conversationDepth.thinAnswerCount,
+                  distinctThinSignals: conversationDepth.thinSignalCount,
+                },
+              }
+            : {}),
+          ...(calibratedIntegrityStatus
+            ? {
+                application_integrity_calibrated_outcome: {
+                  concern:
+                    currentIntegrityConcerns.find((concern) =>
+                      storedIntegrityConcerns.some(
+                        (stored) => stored.kind === concern.kind,
+                      ),
+                    ) ?? storedIntegrityConcerns.find(
+                      (concern) => concern.kind === "admitted_fabrication",
+                    ),
+                  status: calibratedIntegrityStatus,
                 },
               }
             : {}),

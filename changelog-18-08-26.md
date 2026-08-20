@@ -1,5 +1,31 @@
 # Changelog — 18 August 2026
 
+## P0 adversarial trajectories and integrity boundaries — 20 August 2026
+
+- Added reusable vague, contradictory, extractive, and artist-consent safety scenarios to the live replay runner.
+- Added deterministic detection for explicit admitted fabrication, sharing private or unreleased artist work without permission, and Forum access framed primarily as growth for the applicant's own platform.
+- Forced calm concern-specific challenges on active turns and persisted stable private reviewer flags even when the conversation model omits them.
+- Expanded repeated-question protection from the immediately previous question to recent questions and prevented repair from selecting the same repeated fallback.
+- Expanded process-language cleanup across `let me ask differently`, `let me ask you differently`, `let me ask this differently`, and `let me try something simpler`, preserving sentence capitalization.
+- Added a semantic thin-evidence stop after at least six thin answers across three intents; it routes to human review rather than converting missing evidence into a private decline.
+- Replayed all four adversarial scenarios and confirmed neutral endings, source-linked reports, no exact repeated questions, and the expected private concerns.
+- Added a COLORS calibration worksheet containing the four observed boundary cases and the larger labelled packet still required.
+- Encoded the first client-confirmed labels: persistent vagueness and admitted fabrication route to human review; repeated extractive intent routes to human review; knowingly continuing to share private artist work without consent routes to private decline.
+- Preserved one calm challenge before a repeated concern resolves, with an auditable calibrated-outcome record on the terminal assistant message.
+
+## P0 evidence provenance and fairness — 20 August 2026
+
+- Added deterministic reviewer evidence references containing the evidence-goal key and label, exact applicant-message ID, and bounded source excerpt.
+- Carried source message IDs through signal collection, current-turn coverage, multi-goal coverage, terminal persistence, API responses, webhooks, SDK types, and the internal `/doorcheck` reviewer panel.
+- Stopped model-written evidence summaries from bypassing the evidence reducer; terminal evidence summaries are now reconstructed from validated application state.
+- Added representative artist, curator, enthusiast, and hybrid routing trajectories.
+- Added initial fairness pairs for city prestige, local versus online participation, concise versus polished listener language, and familiar versus unfamiliar artist references.
+- Fixed two false-positive orientation rules: mentioning a scene no longer implies curation, and mentioning an artist no longer implies that the applicant is a maker.
+- Updated the COLORS calibration brief with the exact labelled examples and annotations still required from the client.
+- Prevented an immediately repeated visible question even when a covered signal is selected for a bounded deeper move.
+- Expanded the doorman-voice guard to remove `before we dig into that`, `before we get into this`, `before we go further`, `before we go deeper`, and related interview-stage narration.
+- Replayed representative artist, curator, enthusiast, and hybrid identities through the live project; all retained the intended orientation, completed without repeated questions or premature closing, and persisted source-linked reviewer evidence.
+
 ## Runtime and coverage cleanup — 20 August 2026
 
 - Audited the active COLORS application path and its direct regression coverage.
@@ -229,3 +255,20 @@
 - Found unblocked process narration in `Before we go further`.
 - Captured an intermittent structured-question mismatch that can create an untagged current-session answer, disable compact guards, and display the neutral close while the session remains active.
 - Recorded primary live response averages around 9.6–10.1 seconds and a maximum of 14.0 seconds.
+
+## Positive reviewer calibration — 20 August 2026
+
+- Added five client-confirmed `recommend` fixtures covering an active artist, a thoughtful listener, a constructive curator, a community-minded hybrid, and an intentional early-stage artist.
+- Kept the calibration cases outside production question routing so they remain reviewer standards rather than scripted conversation paths or exact-phrase rules.
+- Recorded neutral missing-information invariants: audience size, followers, release history or links, professional credits, industry affiliations, formal reviews, and moderation experience do not become negative community-fit evidence.
+- Expanded the private COLORS reviewer rubric with branch-specific positive anchors for all five cases.
+- Improved deterministic orientation recognition for naturally qualified maker language, early-stage “been making music” phrasing, playlist curation, artist introductions, and “finding new music.”
+- Added a negation guard so “I'm not an artist” does not create artist evidence.
+- Added calibration and orientation regressions using the client-provided wording.
+- Extended the live identity runner with all five positive calibration profiles, expected recommendation matching, and semantic answer routing for paraphrased questions.
+- Replayed all five profiles through the live `Forum Application`; artist, enthusiast, curator, hybrid, and early-stage artist all produced private `recommend` outcomes without treating reach or credentials as weaknesses.
+- Removed a playlist false positive that could promote a thoughtful listener to hybrid and expose an irrelevant feedback route.
+- Added an artist-reference prerequisite for the artist-to-song bridge and prevented rich off-target answers from satisfying the artist-reference intent.
+- Prevented controller-added fallback questions from bypassing repeated-question checks.
+- Replaced structured questions that do not match their displayed options with the signal's coherent structured prompt.
+- Expanded valid contribution language to include reciprocal giving and concrete “take part” phrasing while retaining the guard against conditional “I'd take part if…” answers.

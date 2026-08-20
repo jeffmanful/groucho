@@ -6,11 +6,19 @@ import type {
 
 export type AdvisoryRecommendation = "recommend" | "human_review" | "decline"
 
+export type ReviewerEvidenceReference = {
+  signal_key: string
+  signal_label: string
+  source_message_id: string
+  excerpt: string
+}
+
 export type ReviewerReport = {
   applicant_bio: string
   advisory_recommendation: AdvisoryRecommendation
   confidence_score: number
   evidence_summary: string[]
+  evidence_references: ReviewerEvidenceReference[]
   weak_or_missing_signals: string[]
   safety_or_integrity_flags: string[]
   reviewer_focus: string
@@ -42,6 +50,26 @@ function cleanTextArray(raw: unknown): string[] {
     .slice(0, MAX_ITEMS)
 }
 
+function cleanEvidenceReferences(raw: unknown): ReviewerEvidenceReference[] {
+  if (!Array.isArray(raw)) return []
+  return raw.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return []
+    const value = item as Record<string, unknown>
+    const signalKey = cleanText(value.signal_key)
+    const signalLabel = cleanText(value.signal_label)
+    const sourceMessageId = cleanText(value.source_message_id)
+    const excerpt = cleanText(value.excerpt)
+    return signalKey && signalLabel && sourceMessageId && excerpt
+      ? [{
+          signal_key: signalKey,
+          signal_label: signalLabel,
+          source_message_id: sourceMessageId,
+          excerpt,
+        }]
+      : []
+  }).slice(0, MAX_ITEMS * 2)
+}
+
 function cleanConfidence(raw: unknown): number | null {
   if (typeof raw !== "number" || !Number.isFinite(raw)) return null
   return Math.max(0, Math.min(1, raw))
@@ -69,6 +97,7 @@ export function normaliseReviewerReport(raw: unknown): ReviewerReport | null {
     advisory_recommendation: recommendation as AdvisoryRecommendation,
     confidence_score: confidenceScore,
     evidence_summary: cleanTextArray(data.evidence_summary),
+    evidence_references: cleanEvidenceReferences(data.evidence_references),
     weak_or_missing_signals: cleanTextArray(data.weak_or_missing_signals),
     safety_or_integrity_flags: cleanTextArray(data.safety_or_integrity_flags),
     reviewer_focus: reviewerFocus,
@@ -95,6 +124,7 @@ export function fallbackReviewerReport(input: {
     advisory_recommendation: advisoryRecommendation,
     confidence_score: confidence,
     evidence_summary: [],
+    evidence_references: [],
     weak_or_missing_signals: [
       "Structured reviewer report was missing or malformed on the terminal turn.",
     ],
@@ -130,14 +160,8 @@ export function ensureEvidenceBackedReviewerReport(input: {
   answers: ApplicationSignalAnswer[]
   insufficientEvidenceKeys?: Set<string>
   orientation?: ApplicationParticipantOrientationState
+  integrityFlags?: string[]
 }): ReviewerReport {
-  if (input.report?.evidence_summary.length) {
-    return {
-      ...input.report,
-      advisory_recommendation: recommendationForStatus(input.terminalStatus),
-    }
-  }
-
   const answerByKey = new Map(input.answers.map((answer) => [answer.key, answer]))
   const evidenceSummary = input.definitions.flatMap((signal) => {
     const answer = answerByKey.get(signal.key)
@@ -145,6 +169,16 @@ export function ensureEvidenceBackedReviewerReport(input: {
       ? [`${signal.label}: ${evidenceExcerpt(answer.answer)}`]
       : []
   }).slice(0, MAX_ITEMS)
+  const evidenceReferences = input.definitions.flatMap((signal) => {
+    const answer = answerByKey.get(signal.key)
+    if (answer?.covered === false) return []
+    return (answer?.sources ?? []).map((source) => ({
+      signal_key: signal.key,
+      signal_label: signal.label,
+      source_message_id: source.messageId,
+      excerpt: source.excerpt,
+    }))
+  }).slice(0, MAX_ITEMS * 2)
   const weakOrMissingSignals = input.definitions.flatMap((signal) => {
     const answer = answerByKey.get(signal.key)
     if (answer?.covered !== false) return []
@@ -176,9 +210,12 @@ export function ensureEvidenceBackedReviewerReport(input: {
     advisory_recommendation: recommendationForStatus(input.terminalStatus),
     confidence_score: Number(confidence.toFixed(2)),
     evidence_summary: evidenceSummary,
+    evidence_references: evidenceReferences,
     weak_or_missing_signals: weakOrMissingSignals,
-    safety_or_integrity_flags:
-      input.report?.safety_or_integrity_flags ?? fallback.safety_or_integrity_flags,
+    safety_or_integrity_flags: [...new Set([
+      ...(input.report?.safety_or_integrity_flags ?? fallback.safety_or_integrity_flags),
+      ...(input.integrityFlags ?? []),
+    ])].slice(0, MAX_ITEMS),
     reviewer_focus:
       input.report?.reviewer_focus ||
       (weakOrMissingSignals.length

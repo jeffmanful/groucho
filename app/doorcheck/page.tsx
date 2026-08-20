@@ -97,6 +97,12 @@ type ReviewerReport = {
   advisory_recommendation: "recommend" | "human_review" | "decline"
   confidence_score: number
   evidence_summary: string[]
+  evidence_references: Array<{
+    signal_key: string
+    signal_label: string
+    source_message_id: string
+    excerpt: string
+  }>
   weak_or_missing_signals: string[]
   safety_or_integrity_flags: string[]
   reviewer_focus: string
@@ -319,11 +325,29 @@ function parseReviewerReport(raw: unknown): ReviewerReport | null {
     Array.isArray(value)
       ? value.filter((item): item is string => typeof item === "string")
       : []
+  const evidenceReferences = Array.isArray(data.evidence_references)
+    ? data.evidence_references.flatMap((item) => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) return []
+        const value = item as Record<string, unknown>
+        return typeof value.signal_key === "string" &&
+          typeof value.signal_label === "string" &&
+          typeof value.source_message_id === "string" &&
+          typeof value.excerpt === "string"
+          ? [{
+              signal_key: value.signal_key,
+              signal_label: value.signal_label,
+              source_message_id: value.source_message_id,
+              excerpt: value.excerpt,
+            }]
+          : []
+      })
+    : []
   return {
     applicant_bio: data.applicant_bio,
     advisory_recommendation: recommendation,
     confidence_score: Math.max(0, Math.min(1, data.confidence_score)),
     evidence_summary: textItems(data.evidence_summary),
+    evidence_references: evidenceReferences,
     weak_or_missing_signals: textItems(data.weak_or_missing_signals),
     safety_or_integrity_flags: textItems(data.safety_or_integrity_flags),
     reviewer_focus: data.reviewer_focus,
@@ -382,6 +406,24 @@ function ReviewerReportPanel({ report }: { report: ReviewerReport }) {
         </div>
       </div>
       <p className="text-sm leading-relaxed text-white/68">{report.applicant_bio}</p>
+      {report.evidence_references.length > 0 ? (
+        <div className="mt-4">
+          <p className="mb-1 text-[0.62rem] uppercase tracking-[0.14em] text-white/32">
+            source-linked evidence
+          </p>
+          <ul className="space-y-2 text-sm leading-relaxed text-white/58">
+            {report.evidence_references.map((reference) => (
+              <li key={`${reference.signal_key}-${reference.source_message_id}`}>
+                <span className="text-white/72">{reference.signal_label}:</span>{" "}
+                {reference.excerpt}{" "}
+                <span className="font-mono text-[0.65rem] text-white/28">
+                  [{reference.source_message_id.slice(0, 8)}]
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         {listSection("evidence", report.evidence_summary)}
         {listSection("weak signals", report.weak_or_missing_signals)}

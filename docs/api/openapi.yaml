@@ -285,6 +285,21 @@ components:
           items:
             type: string
           description: Concrete evidence supporting the advisory recommendation.
+        evidence_references:
+          type: array
+          description: Deterministic links from evidence goals to the exact applicant messages that supplied them. Empty for legacy sessions without source metadata.
+          items:
+            type: object
+            required: [signal_key, signal_label, source_message_id, excerpt]
+            properties:
+              signal_key:
+                type: string
+              signal_label:
+                type: string
+              source_message_id:
+                type: string
+              excerpt:
+                type: string
         weak_or_missing_signals:
           type: array
           items:

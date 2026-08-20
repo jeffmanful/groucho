@@ -318,6 +318,14 @@ function reportForTerminal(input: {
       input.scores.overall * (input.terminal === "redirect" ? 0.75 : 0.9),
     ),
     evidence_summary: evidence,
+    evidence_references: input.answers.flatMap((answer) =>
+      (answer.sources ?? []).map((source) => ({
+        signal_key: answer.key,
+        signal_label: answer.label,
+        source_message_id: source.messageId,
+        excerpt: source.excerpt,
+      })),
+    ),
     weak_or_missing_signals:
       weak.length > 0
         ? weak

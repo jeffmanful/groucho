@@ -1,6 +1,6 @@
 # COLORS Evaluation Rubric Discovery
 
-Updated: 2026-07-30
+Updated: 2026-08-20
 
 This document captures what is still needed from COLORS before Groucho can evaluate forum applications with a reliable, auditable rubric.
 
@@ -15,13 +15,16 @@ The persona brief gives strong tone and values guidance. The missing product wor
 - The final decision always belongs to COLORS/the client.
 - Every applicant should produce a reviewer-facing report or bio with a confidence score.
 - Groucho may finish early once it has enough evidence to make a private recommendation.
-- Groucho must ask no more than nine applicant-facing questions total, including the opening question and follow-ups.
+- Nine applicant answers is a soft pacing target, not a hard cap. The runtime uses a separate emergency stop three answers later, capped at fourteen.
 - Groucho may ask no more than two follow-ups for any one core question.
-- The nine-question total cap overrides the per-question follow-up allowance.
+- The emergency stop overrides the per-question follow-up allowance.
 - After two unsuccessful follow-ups on the same signal, Groucho records `insufficient_evidence` for that signal and moves on or concludes.
 - Name and location are not needed for the decision and should not be treated as scored evidence.
 - The applicant-facing close must be neutral and must not imply acceptance.
 - The close may mention an accurate, non-evaluative detail from the applicant's answers.
+- Evidence claims in the reviewer packet must link to the exact applicant message and excerpt that supplied them.
+- Artist, curator, enthusiast, and hybrid are revisable routing hypotheses, not measures of cultural worth.
+- Mentioning an artist or music scene is not maker or curator evidence by itself; a role, action, relationship, or explicit identity is required.
 
 Until the platform exposes project-specific terminal enums, the COLORS product recommendation maps onto Groucho's current terminal statuses:
 
@@ -73,11 +76,40 @@ Each completed application should produce:
 - Advisory recommendation: `recommend`, `human_review`, or `decline`.
 - Confidence score: how confident Groucho is in its advisory recommendation, based only on evidence quality.
 - Evidence summary: the strongest concrete details from the application.
+- Evidence references: signal key, signal label, exact applicant-message ID, and a bounded excerpt for every supported evidence item.
 - Missing or weak signals: any important rubric areas left vague or unresolved.
 - Safety or integrity flags: contradictions, repeated avoidance, refusal, abusive language, or other review concerns.
 - Suggested reviewer focus: what the human should pay attention to when making the final decision.
 
 This report should help COLORS review consistently. It must not grant access, reject an applicant, send invitations, or determine final status by itself.
+
+## Calibration packet to request from COLORS
+
+The platform can enforce evidence provenance and fairness invariants without client
+input. It cannot decide COLORS' minimum acceptance threshold honestly without
+examples of COLORS' judgment. Ask the client to return a small labelled packet:
+
+1. Five applications they would clearly recommend.
+2. Five they would clearly decline internally.
+3. Five they would send to human review because the evidence is incomplete or
+   genuinely ambiguous.
+4. Three applications where the conversation could appropriately finish early.
+5. Three pairs with equivalent substance but different fluency, answer length,
+   artist familiarity, city visibility, or insider/outsider scene position.
+6. Three safety-boundary examples, labelled with the desired applicant response
+   and private reviewer outcome.
+
+For every example, request:
+
+- the final label;
+- the two or three answer details that caused it;
+- any evidence that should remain neutral;
+- the uncertainty a reviewer should inspect;
+- whether a missing signal is disqualifying or merely unknown.
+
+Do not train or tune thresholds from unlabelled historical outcomes. Previous
+acceptance may contain the status, fluency, geography, and network biases that the
+new rubric is intended to avoid.
 
 ## Examples Needed From COLORS
 

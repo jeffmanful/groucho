@@ -451,7 +451,7 @@ describe("contract: postSessionMessage", () => {
     expect(Array.isArray(opts.transcript)).toBe(true)
   })
 
-  it("surfaces terminal reviewer report and forwards it to verdict payload creation", async () => {
+  it("replaces untraceable model evidence before forwarding the reviewer report", async () => {
     const reviewerReport = {
       applicant_bio:
         "Runs a monthly listening session and writes context notes for artists.",
@@ -501,9 +501,14 @@ describe("contract: postSessionMessage", () => {
 
     expect(res.status).toBe(200)
     const body = await jsonFromResponse(res as any)
-    expect(body.reviewerReport).toEqual(reviewerReport)
+    expect(body.reviewerReport).toMatchObject({
+      applicant_bio: reviewerReport.applicant_bio,
+      advisory_recommendation: "recommend",
+      evidence_summary: [],
+      evidence_references: [],
+    })
     const [opts] = recordVerdictMock.mock.calls[0] as [Record<string, unknown>]
-    expect(opts.reviewerReport).toEqual(reviewerReport)
+    expect(opts.reviewerReport).toEqual(body.reviewerReport)
   })
 
   it("200: returns message/status/scores", async () => {
@@ -1096,6 +1101,300 @@ describe("contract: postSessionMessage", () => {
     expect(persistedAssessment.quality).toBe("thin")
     expect(assistantMetadata.conversation_move).toBe("open_door")
     expect(assistantMetadata.conversation_move_adjusted).toBe(undefined)
+  })
+
+  it("deterministically challenges an explicit artist-consent violation", async () => {
+    const requiredSignals = [
+      "What brought you here?",
+      "Name an artist more people should know about.",
+      "What's the last song you recommended, and why?",
+      "Someone shares unfinished music that isn't for you. How would you respond?",
+      "Which sounds most like you?",
+      "What's one thing you could realistically contribute in your first month?",
+    ]
+    const { resolveProjectContext } = await import("@/lib/project-resolution")
+    vi.mocked(resolveProjectContext).mockResolvedValueOnce({
+      ok: true,
+      context: {
+        organisationId: "org1",
+        projectId: "proj1",
+        apiKeyId: "key1",
+        settings: {
+          projectType: "gatekeeper" as const,
+          applicationExperience: {
+            opening_message: "What brought you here?",
+            closing_message: "It was good getting to understand you better.",
+            required_signals: requiredSignals,
+            max_turns: 9,
+          },
+          flowConfig: null,
+          onboardingExperience: {
+            bridge_enabled: true,
+            followup_enabled: true,
+            boundary_enabled: true,
+            personalized_completion: true,
+          },
+          raw: { project_type: "gatekeeper" },
+        },
+      },
+    })
+    const { applicationSignalDefinitions } = await import(
+      "@/lib/application-signal-state"
+    )
+    const feedbackSignal = applicationSignalDefinitions(requiredSignals).find(
+      (signal) => signal.cluster === "care_and_feedback",
+    )
+    expect(feedbackSignal).toBeTruthy()
+
+    const supa = await import("@/lib/supabase")
+    const state = (supa as any).__state
+    state.sessions.push({
+      id: "s_consent",
+      session_id: "sess_consent_1",
+      project_id: "proj1",
+      applicant_email: testApplicant.email,
+      status: "active",
+    })
+    state.messages.push({
+      id: "m_consent_question",
+      session_id: "s_consent",
+      role: "assistant",
+      content: "How do you respond to unfinished work?",
+      metadata: {
+        application_next_signal: {
+          key: feedbackSignal?.key,
+          label: feedbackSignal?.label,
+        },
+      },
+    })
+
+    anthropicCreateImpl = async () => ({
+      content: [
+        {
+          type: "tool_use",
+          id: "toolu_consent",
+          name: "groucho_respond",
+          input: {
+            reply: "That can help an artist. What do you share next?",
+            terminal: "none",
+            intent: "probe",
+            inputType: "text",
+            emotionalState: "curious",
+            visualState: "curious",
+            scores: {
+              specificity: 0.7,
+              authenticity: 0.6,
+              cultural_depth: 0.4,
+              overall: 0.5,
+            },
+            answerAssessment: {
+              quality: "usable",
+              reason: "Describes a concrete sharing practice.",
+              evidence: {
+                personalPointOfView: true,
+                concreteDetail: true,
+                emotionalConnection: false,
+                independentJudgment: true,
+                careOrContext: false,
+              },
+            },
+            conversationMove: "advance",
+          },
+        },
+      ],
+    })
+
+    const { postSessionMessage } = await import("@/lib/post-session-message")
+    const res = await postSessionMessage({
+      authorization: "Bearer gk_test_x",
+      sessionId: "sess_consent_1",
+      message:
+        "If an artist sends me a private demo, I post it without asking because exposure helps.",
+      applicantIdentity: testApplicant,
+    })
+    const body = await jsonFromResponse(res)
+
+    expect(body.status).toBe("active")
+    expect(body.message).toContain("their permission matters")
+    const userRow = state.messages.find((row: FakeRow) =>
+      String(row.content).includes("without asking"),
+    )
+    const userUpdate = state.updates.find(
+      (update: { table: string; filters: Array<{ col: string; val: unknown }> }) =>
+        update.table === "messages" &&
+        update.filters.some(
+          (filter) => filter.col === "id" && filter.val === userRow?.id,
+        ),
+    )
+    expect(userUpdate?.payload.metadata).toMatchObject({
+      answer_assessment: { quality: "concerning" },
+      application_integrity_concerns: [
+        { kind: "artist_consent_violation" },
+      ],
+    })
+    expect(state.messages.at(-1)?.metadata).toMatchObject({
+      conversation_move: "challenge",
+      response_mode: "challenge",
+    })
+  })
+
+  it("routes repeated thin evidence to human review instead of private decline", async () => {
+    const requiredSignals = [
+      "What brought you here?",
+      "Name an artist more people should know about.",
+      "What's the last song you recommended, and why?",
+      "Someone shares unfinished music that isn't for you. How would you respond?",
+      "Which sounds most like you?",
+      "What's one thing you could realistically contribute in your first month?",
+    ]
+    const { resolveProjectContext } = await import("@/lib/project-resolution")
+    vi.mocked(resolveProjectContext).mockResolvedValueOnce({
+      ok: true,
+      context: {
+        organisationId: "org1",
+        projectId: "proj1",
+        apiKeyId: "key1",
+        settings: {
+          projectType: "gatekeeper" as const,
+          applicationExperience: {
+            opening_message: "What brought you here?",
+            closing_message: "It was good getting to understand you better.",
+            required_signals: requiredSignals,
+            max_turns: 9,
+          },
+          flowConfig: null,
+          onboardingExperience: {
+            bridge_enabled: true,
+            followup_enabled: true,
+            boundary_enabled: true,
+            personalized_completion: true,
+          },
+          raw: { project_type: "gatekeeper" },
+        },
+      },
+    })
+    const { applicationSignalDefinitions } = await import(
+      "@/lib/application-signal-state"
+    )
+    const definitions = applicationSignalDefinitions(requiredSignals)
+    const priorSignals = [
+      definitions[0],
+      definitions.find((signal) => signal.cluster === "colors_relationship"),
+      definitions.find((signal) => signal.cluster === "cultural_point_of_view"),
+      definitions.find((signal) => signal.cluster === "cultural_point_of_view"),
+      definitions.find((signal) => signal.cluster === "participation_and_contribution"),
+    ].filter((signal): signal is NonNullable<typeof signal> => Boolean(signal))
+    expect(new Set(priorSignals.map((signal) => signal.key)).size).toBeGreaterThanOrEqual(3)
+
+    const thinAssessment = {
+      quality: "thin",
+      reason: "No usable evidence.",
+      evidence: {
+        personalPointOfView: false,
+        concreteDetail: false,
+        emotionalConnection: false,
+        independentJudgment: false,
+        careOrContext: false,
+      },
+    }
+    const supa = await import("@/lib/supabase")
+    const state = (supa as any).__state
+    state.sessions.push({
+      id: "s_thin_close",
+      session_id: "sess_thin_close_1",
+      project_id: "proj1",
+      applicant_email: testApplicant.email,
+      status: "active",
+    })
+    priorSignals.forEach((signal, index) => {
+      state.messages.push(
+        {
+          id: `m_thin_q_${index}`,
+          session_id: "s_thin_close",
+          role: "assistant",
+          content: `Question ${index + 1}?`,
+          metadata: {
+            application_next_signal: { key: signal.key, label: signal.label },
+          },
+        },
+        {
+          id: `m_thin_a_${index}`,
+          session_id: "s_thin_close",
+          role: "user",
+          content: "I am not sure.",
+          metadata: {
+            application_signal: { key: signal.key, label: signal.label },
+            answer_assessment: thinAssessment,
+          },
+        },
+      )
+    })
+    const currentSignal = definitions.find(
+      (signal) => signal.cluster === "recommendation",
+    ) ?? definitions.at(-1)
+    state.messages.push({
+      id: "m_thin_current_q",
+      session_id: "s_thin_close",
+      role: "assistant",
+      content: "What have you listened to lately?",
+      metadata: {
+        application_next_signal: {
+          key: currentSignal?.key,
+          label: currentSignal?.label,
+        },
+      },
+    })
+
+    anthropicCreateImpl = async () => ({
+      content: [
+        {
+          type: "tool_use",
+          id: "toolu_thin_close",
+          name: "groucho_respond",
+          input: {
+            reply: "Could you name one example?",
+            terminal: "none",
+            intent: "clarify",
+            inputType: "text",
+            emotionalState: "curious",
+            visualState: "curious",
+            scores: {
+              specificity: 0.1,
+              authenticity: 0.2,
+              cultural_depth: 0.1,
+              overall: 0.1,
+            },
+            answerAssessment: thinAssessment,
+            conversationMove: "clarify",
+          },
+        },
+      ],
+    })
+
+    const { postSessionMessage } = await import("@/lib/post-session-message")
+    const res = await postSessionMessage({
+      authorization: "Bearer gk_test_x",
+      sessionId: "sess_thin_close_1",
+      message: "I am not sure.",
+      applicantIdentity: testApplicant,
+    })
+    const body = await jsonFromResponse(res)
+
+    expect(body.status).toBe("redirected")
+    expect(body.reviewerReport).toMatchObject({
+      advisory_recommendation: "human_review",
+    })
+    expect(state.messages.at(-1)?.metadata).toMatchObject({
+      gatekeeper_terminal: "redirect",
+      application_budget_forced_close_outcome: {
+        source: "repeated_thin_evidence",
+        status: "redirected",
+      },
+      application_thin_evidence_close: {
+        priorThinAnswers: 5,
+        distinctThinSignals: 4,
+      },
+    })
   })
 
   it("prefers a fresh maker bridge over a supporting artist recommendation", async () => {
@@ -1732,6 +2031,22 @@ describe("contract: postSessionMessage", () => {
       (completedMetadata.reviewer_report as { evidence_summary: string[] })
         .evidence_summary.length,
     ).toBeGreaterThan(0)
+    expect(
+      (completedMetadata.reviewer_report as {
+        evidence_references: Array<{
+          signal_key: string
+          signal_label: string
+          source_message_id: string
+          excerpt: string
+        }>
+      }).evidence_references,
+    ).toContainEqual({
+      signal_key: motivationSignal.key,
+      signal_label: motivationSignal.label,
+      source_message_id: persistedUser?.id,
+      excerpt:
+        "I'd take part if a comment could be as simple as connecting a song to a feeling.",
+    })
   })
 
   it("adds a question when a single-select response only contains acknowledgement", async () => {
@@ -1979,6 +2294,163 @@ describe("contract: postSessionMessage", () => {
         confidence: 0.72,
       },
       application_next_signal: openingSignal,
+    })
+  })
+
+  it("asks for an artist before using the artist-to-song bridge", async () => {
+    const { resolveProjectContext } = await import("@/lib/project-resolution")
+    vi.mocked(resolveProjectContext).mockResolvedValueOnce({
+      ok: true,
+      context: {
+        organisationId: "org1",
+        projectId: "proj1",
+        apiKeyId: "key1",
+        settings: {
+          projectType: "gatekeeper" as const,
+          applicationExperience: {
+            opening_message: "What brought you here?",
+            required_signals: [
+              "What brought you here?",
+              "Name an artist more people should know about.",
+              "What's the last song you recommended, and why?",
+              "Someone shares unfinished music that isn't really for you. How would you respond?",
+              "Which sounds most like you?",
+              "What's one thing you could realistically contribute in your first month?",
+            ],
+            max_turns: 9,
+          },
+          flowConfig: null,
+          onboardingExperience: {
+            bridge_enabled: true,
+            followup_enabled: true,
+            boundary_enabled: true,
+            personalized_completion: true,
+          },
+          raw: { project_type: "gatekeeper" },
+        },
+      },
+    })
+
+    const openingSignal = {
+      key: "what_brought_you_here",
+      label: "What brought you here?",
+    }
+    const orientationSignal = {
+      key: "which_sounds_most_like_you",
+      label: "Which sounds most like you?",
+    }
+    const artistSignal = {
+      key: "name_an_artist_more_people_should_know_about",
+      label: "Name an artist more people should know about.",
+    }
+    const recommendationSignal = {
+      key: "what_s_the_last_song_you_recommended_and_why",
+      label: "What's the last song you recommended, and why?",
+    }
+    const artistOrientation = {
+      primary: "artist",
+      confidence: 0.9,
+      scores: { artist: 0.9, curator: 0, enthusiast: 0 },
+      evidence: ["Describes making music"],
+    }
+    const supa = await import("@/lib/supabase")
+    const state = (supa as any).__state
+    state.sessions.push({
+      id: "s_artist_prerequisite",
+      session_id: "sess_artist_prerequisite",
+      project_id: "proj1",
+      applicant_email: testApplicant.email,
+      status: "active",
+    })
+    state.messages.push(
+      {
+        id: "m_artist_prerequisite_opening",
+        session_id: "s_artist_prerequisite",
+        role: "assistant",
+        content: "Why do you want to be an early applicant for the Forum?",
+        metadata: {
+          application_next_signal: openingSignal,
+          participant_orientation: artistOrientation,
+        },
+      },
+      {
+        id: "m_artist_prerequisite_opening_answer",
+        session_id: "s_artist_prerequisite",
+        role: "user",
+        content: "I've been making music seriously for eight months.",
+        metadata: {
+          application_signal: openingSignal,
+          application_signals: [openingSignal],
+          participant_orientation: artistOrientation,
+        },
+      },
+      {
+        id: "m_artist_prerequisite_practice",
+        session_id: "s_artist_prerequisite",
+        role: "assistant",
+        content: "What are you trying to express in your own music?",
+        metadata: {
+          application_next_signal: orientationSignal,
+          participant_orientation: artistOrientation,
+        },
+      },
+    )
+
+    anthropicCreateImpl = async () => ({
+      content: [
+        {
+          type: "tool_use",
+          id: "toolu_artist_prerequisite",
+          name: "groucho_respond",
+          input: {
+            reply:
+              "What is one of their songs that you have—or would—share with someone, and why?",
+            terminal: "none",
+            intent: "probe",
+            inputType: "text",
+            emotionalState: "curious",
+            visualState: "thinking",
+            scores: {
+              specificity: 0.72,
+              authenticity: 0.82,
+              cultural_depth: 0.62,
+              overall: 0.72,
+            },
+            answerAssessment: {
+              quality: "usable",
+              reason: "Names a concrete early-stage creative problem.",
+              evidence: {
+                personalPointOfView: true,
+                concreteDetail: true,
+                emotionalConnection: false,
+                independentJudgment: true,
+                careOrContext: true,
+              },
+            },
+            conversationMove: "advance",
+            coveredSignalKeys: [orientationSignal.key],
+            nextSignalKey: recommendationSignal.key,
+            participantOrientation: artistOrientation,
+          },
+        },
+      ],
+    })
+
+    const { postSessionMessage } = await import("@/lib/post-session-message")
+    const res = await postSessionMessage({
+      authorization: "Bearer gk_test_x",
+      sessionId: "sess_artist_prerequisite",
+      message: "I'm trying to turn voice notes and rough loops into complete songs.",
+      applicantIdentity: testApplicant,
+    })
+    const body = await jsonFromResponse(res)
+
+    expect(body.status).toBe("active")
+    expect(body.message).toContain("Who is making work you think deserves more attention?")
+    expect(body.message).not.toContain("one of their songs")
+    expect(state.messages.at(-1).metadata).toMatchObject({
+      application_next_signal: artistSignal,
+      conversation_move_adjusted: true,
     })
   })
 

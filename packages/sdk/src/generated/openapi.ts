@@ -130,6 +130,13 @@ export interface components {
             confidence_score: number;
             /** @description Concrete evidence supporting the advisory recommendation. */
             evidence_summary: string[];
+            /** @description Deterministic links from evidence goals to the exact applicant messages that supplied them. Empty for legacy sessions without source metadata. */
+            evidence_references?: {
+                signal_key: string;
+                signal_label: string;
+                source_message_id: string;
+                excerpt: string;
+            }[];
             /** @description Signals that remain vague, unresolved, contradictory, or insufficient. */
             weak_or_missing_signals: string[];
             /** @description Contradictions, refusals, repeated avoidance, abusive/discriminatory language, or other reviewer concerns. */

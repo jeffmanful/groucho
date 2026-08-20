@@ -456,3 +456,93 @@ Primary comparison sessions:
 ### Readiness
 
 The branch content and reviewer reports are materially better. Controlled `/doorcheck` testing can continue, but the intermittent compact-state escape should be treated as the next P0 fix. Orientation evidence semantics and the wider process-language family remain P1 conversation-quality work.
+
+## P0 provenance and identity validation — 20 August 2026
+
+The four representative identities were exercised again after adding exact
+message provenance, stricter orientation evidence, repeated-question detection,
+and the expanded doorman-voice guard.
+
+Validated sessions:
+
+- Artist: `colors-artist-integrity-rerun-20260820184629`
+- Curator: `colors-curator-integrity-rerun-20260820183944`
+- Enthusiast: `colors-enthusiast-integrity-rerun-20260820185152`
+- Hybrid: `colors-hybrid-integrity-rerun-20260820185152`
+
+| Identity | Status | Turns | Orientation | Feedback route | Evidence refs | Repeated questions | Process language |
+| --- | --- | ---: | --- | --- | ---: | ---: | --- |
+| Artist | Passed | 7 | Artist | Contextual artist exchange | 8 | 0 | No |
+| Curator | Passed | 8 | Curator | Yes | 11 | 0 | No |
+| Enthusiast | Passed | 7 | Enthusiast | No | 8 | 0 | No |
+| Hybrid | Passed | 10 | Hybrid | Yes | 13 | 0 | No |
+
+Every active turn retained a visible invitation and no active turn displayed the
+neutral closing message. Reviewer packets contained the exact applicant-message
+IDs and bounded excerpts underlying their evidence summaries. All temporary
+replay API keys were revoked by the runner.
+
+The replays also drove two additional integrity changes. A covered signal can no
+longer repeat the immediately preceding visible question merely because the model
+requests a deeper move. Process phrases including `before we dig into that`,
+`before we go further`, and `before we go deeper` are removed while retaining the
+grounded receipt and real question.
+
+This completes representative identity validation for P0. Live vague,
+contradictory, extractive, and safety-boundary trajectories remain before a
+production decision. Reviewer recommendation calibration also still requires
+labelled COLORS decisions.
+
+## Adversarial P0 trajectories — 20 August 2026
+
+Initial live sessions exposed missing deterministic handling:
+
+- `colors-vague-integrity-rerun-20260820192159`
+- `colors-contradictory-integrity-rerun-20260820192159`
+- `colors-extractive-integrity-rerun-20260820192159`
+- `colors-safety_boundary-integrity-rerun-20260820192159`
+
+The model privately recognised some contradictions but did not challenge them.
+It treated posting a private demo without consent as ordinary usable evidence,
+created no safety flag, and could repeat a contribution question after one
+intervening turn. The vague path also exposed more interview-stage narration.
+
+The runtime now deterministically recognises only tightly scoped, explicit
+evidence of admitted fabrication, sharing private artist work without consent,
+and access sought primarily to grow the applicant's own platform. It forces a
+calm, concern-specific challenge when the conversation remains active, persists
+the concern on the exact user message, and merges a stable private flag into the
+reviewer report even when the model omits it. Adjacent non-concerning language is
+covered by negative regressions.
+
+Validated post-fix sessions:
+
+- Vague: `colors-vague-integrity-rerun-20260820194631`
+- Contradictory: `colors-contradictory-integrity-rerun-20260820193136`
+- Extractive: `colors-extractive-integrity-rerun-20260820205737`
+- Safety boundary: `colors-safety_boundary-integrity-rerun-20260820205737`
+
+| Scenario | Internal outcome | Turns | Challenge | Stable private flag | Repeated exact question |
+| --- | --- | ---: | ---: | --- | ---: |
+| Persistently vague | Human review | 7 | 0 | No concern; four weak areas | 0 |
+| Admitted fabrication | Human review | 8 | 1 | Fabricated participation claim | 0 |
+| Repeated extractive intent | Human review | 2 | 1 | Privileged access/platform growth | 0 |
+| Artist-consent violation | Decline | 7 | 1 | Private work shared without permission | 0 |
+
+All applicant-facing endings remained neutral. The statuses above are model
+advisory outcomes and still cannot grant or deny Forum access without a recorded
+human decision. The interaction and evidence-integrity behaviour is now covered.
+The first four outcome labels were confirmed by COLORS and are recorded in
+`docs/colors-calibration-cases-2026-08-20.md`.
+
+The vague route now has a semantic stop rather than another global question cap.
+After at least six thin answers spanning at least three distinct intents, it
+closes to human review regardless of the numeric reject threshold. Missing
+evidence therefore remains uncertainty rather than becoming a private decline.
+
+The calibrated integrity boundary gives a first explicit concern one calm
+challenge. Admitted fabrication remains in human review after the applicant
+corrects the record, and repeated extractive access intent resolves to human
+review. Repeating the consent violation after Groucho states that artist
+permission matters resolves to private decline. Live replays confirmed both
+changed outcomes while retaining the neutral applicant close.

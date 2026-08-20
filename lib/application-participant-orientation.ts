@@ -45,14 +45,14 @@ export function isExplicitCommunityIntent(value: string): boolean {
 function explicitOrientationEvidence(value: string): Set<RoutedOrientation> {
   const answer = value.trim().toLowerCase()
   const evidence = new Set<RoutedOrientation>()
-  if (/\b(i make|i write|i produce|my music|my songs?|my tracks?|share work|artist|musician|producer|singer|rapper|dj)\b/.test(answer)) {
+  if (/\b(i make|i write|i produce|i sing|i rap|i dj|my music|my songs?|my tracks?|share work|(?:i(?:'ve| have) (?:only )?been|i(?:'m| am)) making (?:my own )?(?:music|songs?|tracks?)|i(?:'m| am) (?!not\b)[^.!?]{0,40}\b(?:artist|musician|producer|singer|rapper|dj)|as an? (?:artist|musician|producer|singer|rapper|dj)|i work as an? (?:artist|musician|producer|singer|rapper|dj))\b/.test(answer)) {
     evidence.add("artist")
   }
-  if (/\b(curat|organis|organiz|host|run a|book|programme|program|label|promoter|connect people|scene|community manager)\w*/.test(answer)) {
+  if (/\b(curat|organis|organiz|host|run a|book|programme|program|label|promoter|connect people|community manager|introduc(?:e|ed|ing) (?:two |independent |local )?artists?)\w*/.test(answer)) {
     evidence.add("curator")
   }
   if (
-    /\b(mostly listen|listener|music fan|colors fan|colours fan|discover|find new music|enthusiast|like discussing music|discuss music)\b/.test(
+    /\b(mostly listen|listener|music fan|colors fan|colours fan|discover|find(?:ing)? new music|enthusiast|like discussing music|discuss music)\b/.test(
       answer,
     ) || isExplicitCommunityIntent(value)
   ) {
@@ -149,7 +149,7 @@ export function inferApplicationParticipantOrientation(input: {
     scores.curator = Math.max(scores.curator, 0.82)
     addEvidence("Describes curating, organising, or connecting people around music")
   }
-  if (/\b(mostly listen|listener|music fan|colors fan|colours fan|discover|find new music|enthusiast)\b/.test(answer)) {
+  if (/\b(mostly listen|listener|music fan|colors fan|colours fan|discover|find(?:ing)? new music|enthusiast)\b/.test(answer)) {
     scores.enthusiast = Math.max(scores.enthusiast, 0.82)
     addEvidence("Describes listening or discovery as their main relationship to music")
   }

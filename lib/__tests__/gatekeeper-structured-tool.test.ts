@@ -267,6 +267,7 @@ describe("parseGatekeeperStructuredResponse", () => {
         "Monthly listening night",
         "Specific role selecting artists",
       ],
+      evidence_references: [],
       weak_or_missing_signals: [],
       safety_or_integrity_flags: [],
       reviewer_focus: "Confirm whether the proposed Forum thread is useful.",

@@ -8,14 +8,17 @@ const STRUCTURED_INPUT_TYPES = new Set([
 ])
 
 const CONTRIBUTION_ACTION =
-  "contribute|bring|share|start|host|organise|organize|connect|introduce|write|post|reply|comment|recommend|listen|moderate|document|help|make|do|add"
+  "contribute|bring|give|share|start|host|organise|organize|connect|introduce|write|post|reply|comment|recommend|listen|moderate|document|help|make|do|add|take part"
+
+type ApplicationSignalDescriptor = Pick<ApplicationSignalDefinition, "label"> &
+  Partial<Pick<ApplicationSignalDefinition, "goal">>
 
 function normalized(value: string): string {
   return value.trim().toLowerCase().replace(/[’]/g, "'")
 }
 
 function isConcreteContributionSignal(
-  signal: Pick<ApplicationSignalDefinition, "label" | "goal">,
+  signal: ApplicationSignalDescriptor,
 ): boolean {
   const description = normalized(`${signal.label} ${signal.goal}`)
   return (
@@ -24,9 +27,9 @@ function isConcreteContributionSignal(
 }
 
 function signalDescription(
-  signal: Pick<ApplicationSignalDefinition, "label" | "goal">,
+  signal: ApplicationSignalDescriptor,
 ): string {
-  return normalized(`${signal.label} ${signal.goal}`)
+  return normalized(`${signal.label} ${signal.goal ?? ""}`)
 }
 
 /**
@@ -35,7 +38,7 @@ function signalDescription(
  * are useful evidence, but they are not the same question.
  */
 export function applicationQuestionSupportsSignal(
-  signal: Pick<ApplicationSignalDefinition, "label" | "goal">,
+  signal: ApplicationSignalDescriptor,
   question: string,
 ): boolean {
   const value = normalized(question)
@@ -87,8 +90,12 @@ export function stripApplicationProcessLanguage(reply: string): {
 } {
   const cleaned = reply
     .replace(
-      /\b(?:before we (?:wrap(?: things up| up)?|finish|close)|one last (?:thing|question))\b[,:;—-]*\s*/gi,
-      "",
+      /\b(?:before we (?:wrap(?: things up| up)?|finish|close|dig into (?:that|this)|get into (?:that|this)|go (?:any )?further|go deeper|continue)|one last (?:thing|question))\b[,:.;—-]*\s*([a-z])?/gi,
+      (_match, next: string | undefined) => next?.toUpperCase() ?? "",
+    )
+    .replace(
+      /\b(?:let me (?:ask(?: you| this)?(?: differently| something (?:different|a bit more specific)| (?:a|another) (?:different )?way)?|try (?:it differently|something simpler))|before you explore)\b[,:.;—-]*\s*([a-z])?/gi,
+      (_match, next: string | undefined) => next?.toUpperCase() ?? "",
     )
     .replace(/ {2,}/g, " ")
     .trim()
@@ -136,12 +143,27 @@ export function repairApplicationReplyWithQuestion(input: {
  * concrete contribution. Other signal types remain model-assessed.
  */
 export function applicationAnswerSupportsSignal(
-  signal: Pick<ApplicationSignalDefinition, "label" | "goal">,
+  signal: ApplicationSignalDescriptor,
   answer: string,
 ): boolean {
+  const description = signalDescription(signal)
+  if (description.includes("artist more people should know")) {
+    const raw = answer.trim()
+    if (!raw) return false
+    if (
+      /^(?:i (?:do not|don't|cannot|can't) know|there are (?:loads|many)|any(?:one|thing)|whatever|someone|an? artist|the useful|the exchange|it depends|not sure)\b/i.test(
+        raw,
+      ) ||
+      /^i (?:like|love|listen to) artists?\b/i.test(raw)
+    ) {
+      return false
+    }
+    return true
+  }
   if (!isConcreteContributionSignal(signal)) return true
   const value = normalized(answer)
   if (!/\b(?:i|i'd|my)\b/.test(value)) return false
+  if (/\bi(?:'d| would) take part if\b/.test(value)) return false
   const firstPersonAction = new RegExp(
     `\\b(?:i(?:'d| would| will| can| could| might| plan to| want to)|my contribution (?:would|will) be|would|will|can|could|might)\\s+(?:realistically\\s+)?(?:${CONTRIBUTION_ACTION})\\b`,
   )
@@ -163,6 +185,19 @@ function hasExplicitResponsePrompt(reply: string): boolean {
 export type ActiveApplicationReplyIssue =
   | "terminal_language"
   | "missing_invitation"
+  | "missing_artist_antecedent"
+  | "repeated_question"
+
+function normalizedQuestions(value: string): string[] {
+  return (value.match(/[^?]+\?/g) ?? []).flatMap((question) => {
+    const result = normalized(question.split(/(?<=[.!])\s+|\n+/).at(-1) ?? question)
+      .replace(/\bwhat's\b/g, "what is")
+      .replace(/[*_`]/g, "")
+      .replace(/[^a-z0-9']+/g, " ")
+      .trim()
+    return result.split(/\s+/).length >= 5 ? [result] : []
+  })
+}
 
 function containsTerminalApplicationLanguage(
   reply: string,
@@ -185,6 +220,8 @@ export function activeApplicationReplyIssue(input: {
   reply: string
   interaction: GrouchoInteractionSpec
   closingMessage: string
+  previousQuestion?: string
+  hasArtistAntecedent?: boolean
 }): ActiveApplicationReplyIssue | null {
   if (
     containsTerminalApplicationLanguage(input.reply, input.closingMessage)
@@ -192,11 +229,24 @@ export function activeApplicationReplyIssue(input: {
     return "terminal_language"
   }
   if (
+    input.hasArtistAntecedent === false &&
+    /\b(?:one|which) of their (?:songs?|tracks?|pieces?|records?)\b/i.test(
+      input.reply,
+    )
+  ) {
+    return "missing_artist_antecedent"
+  }
+  if (
     (input.interaction.inputType === "text" ||
       input.interaction.inputType === "voice") &&
     !hasExplicitResponsePrompt(input.reply)
   ) {
     return "missing_invitation"
+  }
+  const previousQuestions = normalizedQuestions(input.previousQuestion ?? "")
+  const replyQuestions = new Set(normalizedQuestions(input.reply))
+  if (previousQuestions.some((question) => replyQuestions.has(question))) {
+    return "repeated_question"
   }
   return null
 }
@@ -221,14 +271,17 @@ export function ensureExplicitStructuredInputPrompt(input: {
   interaction: GrouchoInteractionSpec
   nextSignal: Pick<ApplicationSignalDefinition, "label" | "promptRoutes"> | null
 }): { reply: string; added: boolean } {
-  if (
-    !STRUCTURED_INPUT_TYPES.has(input.interaction.inputType) ||
-    hasExplicitResponsePrompt(input.reply)
-  ) {
+  if (!STRUCTURED_INPUT_TYPES.has(input.interaction.inputType)) {
     return { reply: input.reply, added: false }
   }
 
   const prompt = structuredPromptForSignal(input.nextSignal)
+  if (hasExplicitResponsePrompt(input.reply)) {
+    return input.nextSignal &&
+      !applicationQuestionSupportsSignal(input.nextSignal, input.reply)
+      ? { reply: prompt, added: true }
+      : { reply: input.reply, added: false }
+  }
   const reply = input.reply.trim()
   return {
     reply: reply ? `${reply}\n\n${prompt}` : prompt,
