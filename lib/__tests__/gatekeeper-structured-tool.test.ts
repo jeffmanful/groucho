@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   GATEKEEPER_RESPONSE_TOOL_NAME,
+  gatekeeperResponseTool,
   parseGatekeeperStructuredResponse,
 } from "@/lib/gatekeeper-structured-tool"
 
@@ -14,6 +15,94 @@ function toolBlock(input: Record<string, unknown>) {
 }
 
 describe("parseGatekeeperStructuredResponse", () => {
+  it("keeps the live model contract focused on conversation-critical fields", () => {
+    const properties = gatekeeperResponseTool.input_schema.properties
+    const required = gatekeeperResponseTool.input_schema.required
+
+    expect(properties).toHaveProperty("answerRelation")
+    expect(properties).not.toHaveProperty("selectedBridge")
+    expect(properties).not.toHaveProperty("threadState")
+    expect(properties).not.toHaveProperty("participantOrientation")
+    expect(properties).not.toHaveProperty("responseMode")
+    expect(properties).not.toHaveProperty("culturalSignals")
+    expect(properties).not.toHaveProperty("bridgeCandidates")
+    expect(properties).not.toHaveProperty("reviewerReport")
+    expect(properties).not.toHaveProperty("inputType")
+    expect(properties).not.toHaveProperty("visualState")
+    expect(required).toContain("answerRelation")
+    expect(required).toHaveLength(8)
+  })
+
+  it("reads compact answer evidence and a single selected bridge", () => {
+    const out = parseGatekeeperStructuredResponse([
+      toolBlock({
+        reply: "The restraint is doing real work. What are you making with that same tension?",
+        terminal: "none",
+        scores: {
+          specificity: 0.8,
+          authenticity: 0.8,
+          cultural_depth: 0.75,
+          overall: 0.78,
+        },
+        answerAssessment: {
+          quality: "rich",
+          reason: "Specific independent reading.",
+          evidenceFlags: ["point_of_view", "detail", "judgment"],
+        },
+        answerRelation: {
+          kind: "subject_shift",
+          reason: "The artist name does not answer the project-status question.",
+        },
+        conversationMove: "rabbit_hole",
+        responseMode: "connect",
+        participantOrientation: {
+          scores: { artist: 0.9, curator: 0, enthusiast: 0.4 },
+        },
+        culturalSignals: [],
+        coveredSignalKeys: ["artist_reference"],
+        selectedBridge: {
+          sourceDetail: "Restraint makes small changes register",
+          kind: "maker_to_practice",
+          targetSignalKey: "creative_practice",
+          connectionIntent: "Connect their listening judgment to their own work",
+          questionIntent: "Understand what they make",
+          confidence: 0.9,
+          freshness: "current",
+        },
+        threadState: {
+          subject: "Artistic restraint",
+          strongestDetail: "Small changes register",
+          openHook: "How this appears in their own work",
+          momentum: "high",
+          acknowledgedDetails: ["Restraint"],
+        },
+        nextSignalKey: "creative_practice",
+      }),
+    ] as never)
+
+    expect(out.answerAssessment?.evidence).toMatchObject({
+      personalPointOfView: true,
+      concreteDetail: true,
+      independentJudgment: true,
+      emotionalConnection: false,
+    })
+    expect(out.answerRelation).toEqual({
+      kind: "subject_shift",
+      reason: "The artist name does not answer the project-status question.",
+    })
+    expect(out.bridgePlan.candidates).toHaveLength(1)
+    expect(out.bridgePlan.selected?.kind).toBe("maker_to_practice")
+    expect(out.participantOrientation.evidence).toEqual([])
+  })
+
+  it("normalises double-escaped line breaks in a model reply", () => {
+    const out = parseGatekeeperStructuredResponse([
+      toolBlock({ reply: "A grounded receipt.\\n\\nWhat changed?", terminal: "none" }),
+    ] as never)
+
+    expect(out.reply).toBe("A grounded receipt.\n\nWhat changed?")
+  })
+
   it("reads reply, terminal, and interaction spec from groucho_respond", () => {
     const content = [
       toolBlock({

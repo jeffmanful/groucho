@@ -96,8 +96,9 @@ type GatekeeperProps = {
     meta: { scores: ScoreBreakdown; secret?: string; profile?: Profile }
   ) => void
   /**
-   * `profile` is included on terminal turns when the project has profile extraction
-   * enabled (default) and the persona declares a `profile_schema`. The shape follows
+   * `profile` remains optional in the immediate terminal callback. Gatekeeper
+   * extraction runs asynchronously after the neutral close is persisted; read the
+   * completed session to retrieve it. The shape follows
    * `docs/profile-payload.schema.json`; see also `docs/profile-schema-guide.md`.
    */
   /** Slots for host branding */

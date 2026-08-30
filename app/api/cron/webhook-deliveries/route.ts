@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { processPendingWebhookDeliveries } from "@/lib/verdict-webhook"
+import { processPendingSessionCompletionJobs } from "@/lib/session-completion-jobs"
 
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET
@@ -13,6 +14,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const n = await processPendingWebhookDeliveries(50)
-  return NextResponse.json({ processed: n })
+  const completions = await processPendingSessionCompletionJobs(10)
+  const webhookDeliveries = await processPendingWebhookDeliveries(50)
+  return NextResponse.json({ completions, webhookDeliveries })
 }

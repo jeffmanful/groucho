@@ -467,7 +467,7 @@ components:
         profile:
           allOf:
             - $ref: "#/components/schemas/Profile"
-          description: Structured profile extracted on terminal turns; absent on non-terminal turns and when extraction is disabled.
+          description: Optional compatibility field. Gatekeeper terminal profile extraction now runs asynchronously; read the completed session to retrieve the persisted profile.
         reviewerReport:
           allOf:
             - $ref: "#/components/schemas/ReviewerReport"
@@ -521,7 +521,7 @@ components:
         profile:
           allOf:
             - $ref: "#/components/schemas/Profile"
-          description: Structured profile from the latest verdict; present once the session has concluded.
+          description: Structured profile from the latest verdict; present after asynchronous terminal completion finishes.
         reviewerReport:
           allOf:
             - $ref: "#/components/schemas/ReviewerReport"

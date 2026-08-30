@@ -525,8 +525,19 @@ function OrganisationDetailPageInner() {
     )
     if (res.ok) {
       const j = await res.json()
-      setSessions(j.sessions ?? [])
+      const nextSessions = (j.sessions ?? []) as SessionRow[]
+      setSessions(nextSessions)
       setSessionTotal(j.total ?? 0)
+      setSelectedSessionId((current) => {
+        if (current && nextSessions.some((session) => session.id === current)) {
+          return current
+        }
+        return (
+          nextSessions.find((session) => session.status === "active") ??
+          nextSessions[0] ??
+          null
+        )?.id ?? null
+      })
     }
   }, [orgId, selectedProjectId])
 
@@ -675,6 +686,7 @@ function OrganisationDetailPageInner() {
 
   async function generateSessionProfile(session: SessionRow) {
     if (!selectedProjectId) return
+    const wasRegeneration = profile !== null
     setErr(null)
     setMsg(null)
     setSessionAction({ sessionId: session.id, kind: "profile" })
@@ -694,7 +706,7 @@ function OrganisationDetailPageInner() {
       return
     }
 
-    setMsg(profile ? "Profile regenerated." : "Profile generated.")
+    setMsg(wasRegeneration ? "Profile regenerated." : "Profile generated.")
     await Promise.all([loadSessions(), loadSessionProfiles(), loadTranscript()])
   }
 
@@ -1021,7 +1033,7 @@ function OrganisationDetailPageInner() {
   const selectedSession = sessions.find((session) => session.id === selectedSessionId) ?? null
 
   return (
-    <div style={{ padding: "2rem", fontFamily: "system-ui, sans-serif", maxWidth: "52rem" }}>
+    <div style={{ padding: "2rem", fontFamily: "system-ui, sans-serif", maxWidth: "96rem", margin: "0 auto" }}>
       <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", fontSize: "0.7rem" }}>
         <Link
           href="/admin"
@@ -1704,20 +1716,41 @@ function OrganisationDetailPageInner() {
           <h2 style={{ ...label, marginBottom: "0.75rem" }}>
             SESSIONS — {selected.name} ({sessionTotal})
           </h2>
-          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 25rem), 1fr))",
+              gap: "1rem",
+              alignItems: "start",
+            }}
+          >
+          <ul
+            style={{
+              listStyle: "none",
+              padding: 0,
+              margin: 0,
+              border: "1px solid rgba(255,255,255,0.08)",
+              maxHeight: "46rem",
+              overflowY: "auto",
+            }}
+          >
             {sessions.map((s) => (
               <li key={s.id}>
                 <button
                   type="button"
-                  onClick={() =>
-                    setSelectedSessionId((prev) => (prev === s.id ? null : s.id))
-                  }
+                  onClick={() => setSelectedSessionId(s.id)}
+                  aria-pressed={selectedSessionId === s.id}
                   style={{
                     width: "100%",
                     fontSize: "0.75rem",
-                    padding: "0.4rem 0",
+                    minHeight: "3.75rem",
+                    padding: "0.65rem 0.75rem",
                     border: "none",
                     borderBottom: "1px solid rgba(255,255,255,0.06)",
+                    borderLeft:
+                      selectedSessionId === s.id
+                        ? "2px solid rgba(255,255,255,0.9)"
+                        : "2px solid transparent",
                     display: "flex",
                     gap: "1rem",
                     fontFamily: "monospace",
@@ -1745,10 +1778,11 @@ function OrganisationDetailPageInner() {
           {selectedSessionId && (
             <div
               style={{
-                marginTop: "1rem",
                 padding: "1rem",
                 background: "rgba(255,255,255,0.03)",
                 border: "1px solid rgba(255,255,255,0.08)",
+                maxHeight: "46rem",
+                overflowY: "auto",
               }}
             >
               <div
@@ -1879,6 +1913,7 @@ function OrganisationDetailPageInner() {
               )}
             </div>
           )}
+          </div>
         </section>
       )}
 

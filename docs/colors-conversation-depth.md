@@ -74,7 +74,8 @@ fame, follower count, and recognisable references are not quality signals.
 
 ## Runtime Rules
 
-The conversational model proposes the move; the server owns the route.
+The conversational model owns the live route. The server validates durable
+boundaries without substituting a different conversational destination.
 
 - Typical session length: 5–9 applicant answers when evidence permits.
 - Soft target: the configured `max_turns`, normally 9 for COLORS.
@@ -90,14 +91,16 @@ The conversational model proposes the move; the server owns the route.
 - `challenge` requires a current `concerning` answer.
 - A move that stays on the current signal requires remaining question and
   follow-up budget.
-- Invalid adaptive moves fall back to clarification or a route into an unresolved
-  evidence goal.
+- Unsafe, repeated, or malformed moves may be repaired. A valid contextual question
+  is preserved even when it does not map neatly to an unresolved evidence goal.
 - `advance` cannot name the current unresolved goal as a way to repeat it. The
   runtime treats that as a clarification and applies the same budgets.
 - The six configured goals are not six required questions; one answer may cover
   several goals and related goals share a conversational cluster.
 - Safety boundaries override conversational depth.
 - Terminal applicant copy remains the configured neutral closing message.
+- Accumulated `thin` labels never force a close; only an explicit terminal decision,
+  a calibrated integrity boundary, or the emergency loop stop can end the exchange.
 
 Assessments are stored on user-message metadata. Accepted conversation moves are
 stored on assistant-message metadata. The compact state contains only the recent

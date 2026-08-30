@@ -61,7 +61,7 @@ export type GatekeeperV2Props = {
   collectApplicant?: boolean
   /** Show terminal outcome banner (default: hidden in V2) */
   showOutcome?: boolean
-  /** Pause before revealing terminal copy (default: true) */
+  /** Pause before revealing terminal copy (default: false) */
   decisionMoment?: boolean
   evaluatingDurationMs?: number
   decisionDurationMs?: number
@@ -81,7 +81,7 @@ export function GatekeeperV2({
   applicant: applicantProp,
   collectApplicant = true,
   showOutcome = false,
-  decisionMoment = true,
+  decisionMoment = false,
   evaluatingDurationMs = DEFAULT_EVALUATING_DURATION_MS,
   decisionDurationMs = DEFAULT_DECISION_DURATION_MS,
   evaluatingLabel = DEFAULT_EVALUATING_LABEL,

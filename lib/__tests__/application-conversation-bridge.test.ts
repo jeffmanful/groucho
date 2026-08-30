@@ -109,7 +109,7 @@ describe("application conversation bridge", () => {
     })
   })
 
-  it("prefers a fresh core maker disclosure over a supporting artist bridge", () => {
+  it("validates the model-selected bridge without substituting another candidate", () => {
     const makerBridge = {
       sourceDetail: "They make music influenced by the artist",
       kind: "maker_to_practice",
@@ -131,11 +131,7 @@ describe("application conversation bridge", () => {
         eligibleSignalKeys: new Set(["recommendation", "contribution"]),
         remainingQuestions: 5,
         isTerminal: false,
-        signalPriorities: new Map([
-          ["recommendation", "supporting"],
-          ["contribution", "core"],
-        ]),
       }),
-    ).toMatchObject({ kind: "maker_to_practice", targetSignalKey: "contribution" })
+    ).toMatchObject({ kind: "person_to_work", targetSignalKey: "recommendation" })
   })
 })

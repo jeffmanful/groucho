@@ -3,6 +3,7 @@ import { resolveAdminActor } from "@/lib/admin-actor"
 import { normalizeAdminSlug } from "@/lib/admin-slug"
 import { requireOrgAdmin, requireOrgMember, unauthorized } from "@/lib/org-access"
 import { validateProjectSettings } from "@/lib/project-settings"
+import { invalidateProjectSettingsCache } from "@/lib/project-resolution"
 import { supabase } from "@/lib/supabase"
 
 export async function GET(
@@ -31,6 +32,8 @@ export async function GET(
   if (!data) {
     return NextResponse.json({ error: "Not found" }, { status: 404 })
   }
+
+  invalidateProjectSettingsCache(projectId)
 
   return NextResponse.json(data)
 }
@@ -179,6 +182,8 @@ export async function DELETE(
     console.error("project delete:", error)
     return NextResponse.json({ error: "Database error" }, { status: 500 })
   }
+
+  invalidateProjectSettingsCache(projectId)
 
   return NextResponse.json({ success: true })
 }

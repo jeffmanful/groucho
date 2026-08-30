@@ -3,6 +3,7 @@
 | Document | Description |
 |----------|-------------|
 | [groucho-state-of-play-2026-08-20.md](./groucho-state-of-play-2026-08-20.md) | Authoritative end-of-day COLORS status, verification snapshot, known limitations, and next priorities |
+| [groucho-latency-improvements-2026-08-21.md](./groucho-latency-improvements-2026-08-21.md) | Implemented response-time architecture, operational requirements, measurements, and retained quality safeguards |
 | [PRD.md](./PRD.md) | v1.1 product requirements (gatekeeper + onboarding flows, structured `profile`), personas, FR/NFR, acceptance criteria |
 | [adr/0001-api-key-and-client-access.md](./adr/0001-api-key-and-client-access.md) | ADR: where API keys may run (browser vs server) |
 | [database-setup.md](./database-setup.md) | Local or hosted Supabase + env vars for the team |

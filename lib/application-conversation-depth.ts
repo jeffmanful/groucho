@@ -74,18 +74,35 @@ export function normaliseApplicationAnswerAssessment(
   if (!QUALITY_SET.has(value.quality)) return null
 
   const evidence = record(value.evidence)
-  if (!evidence) return null
+  const evidenceFlags = new Set(
+    Array.isArray(value.evidenceFlags)
+      ? value.evidenceFlags.filter((flag): flag is string => typeof flag === "string")
+      : [],
+  )
+  if (!evidence && evidenceFlags.size === 0 && value.quality !== "thin") {
+    return null
+  }
 
   return {
     quality: value.quality as ApplicationAnswerQuality,
     reason:
       typeof value.reason === "string" ? value.reason.trim().slice(0, 280) : "",
     evidence: {
-      personalPointOfView: booleanEvidence(evidence, "personalPointOfView"),
-      concreteDetail: booleanEvidence(evidence, "concreteDetail"),
-      emotionalConnection: booleanEvidence(evidence, "emotionalConnection"),
-      independentJudgment: booleanEvidence(evidence, "independentJudgment"),
-      careOrContext: booleanEvidence(evidence, "careOrContext"),
+      personalPointOfView:
+        evidenceFlags.has("point_of_view") ||
+        (evidence ? booleanEvidence(evidence, "personalPointOfView") : false),
+      concreteDetail:
+        evidenceFlags.has("detail") ||
+        (evidence ? booleanEvidence(evidence, "concreteDetail") : false),
+      emotionalConnection:
+        evidenceFlags.has("emotion") ||
+        (evidence ? booleanEvidence(evidence, "emotionalConnection") : false),
+      independentJudgment:
+        evidenceFlags.has("judgment") ||
+        (evidence ? booleanEvidence(evidence, "independentJudgment") : false),
+      careOrContext:
+        evidenceFlags.has("care") ||
+        (evidence ? booleanEvidence(evidence, "careOrContext") : false),
     },
   }
 }
@@ -144,21 +161,6 @@ export function collectApplicationConversationDepth(
     openDoorUsed,
     thinSignalCount,
   }
-}
-
-/**
- * Ends unproductive coaxing without imposing a global conversational cap.
- * The applicant receives several attempts across distinct intents first.
- */
-export function shouldCloseAfterRepeatedThinEvidence(input: {
-  depth: ApplicationConversationDepth
-  currentAssessment: ApplicationAnswerAssessment | null
-}): boolean {
-  return (
-    input.currentAssessment?.quality === "thin" &&
-    input.depth.thinAnswerCount >= 5 &&
-    input.depth.thinSignalCount >= 3
-  )
 }
 
 export function validateApplicationConversationMove(input: {

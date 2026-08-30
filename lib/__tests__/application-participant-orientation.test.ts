@@ -23,6 +23,53 @@ describe("application participant orientation", () => {
         currentAnswer: "I spend a lot of time finding new music through local radio.",
       }).primary,
     ).toBe("enthusiast")
+    expect(
+      inferApplicationParticipantOrientation({
+        currentAnswer: "I have started making my own music to upload too.",
+      }).primary,
+    ).toBe("artist")
+  })
+
+  it("keeps future participation out of current-practice orientation", () => {
+    const emergingCurator = inferApplicationParticipantOrientation({
+      currentAnswer:
+        "I mostly listen now, but I would like to start organising a listening night.",
+    })
+    const emergingArtist = inferApplicationParticipantOrientation({
+      currentAnswer: "I curate releases now and want to start making my own music.",
+    })
+
+    expect(emergingCurator.scores.curator).toBe(0)
+    expect(emergingCurator.primary).toBe("enthusiast")
+    expect(emergingArtist.scores.artist).toBe(0)
+    expect(emergingArtist.primary).toBe("curator")
+  })
+
+  it("does not infer curation from admiration or a desire for collaborators", () => {
+    expect(
+      inferApplicationParticipantOrientation({
+        currentAnswer: "I admire the strength of their curation and art direction.",
+      }).scores.curator,
+    ).toBe(0)
+    expect(
+      inferApplicationParticipantOrientation({
+        currentAnswer: "I want to connect with other artists.",
+      }).scores.curator,
+    ).toBe(0)
+    const merged = mergeApplicationParticipantOrientation({
+      previous: {
+        primary: "unknown",
+        scores: { artist: 0, curator: 0, enthusiast: 0 },
+        confidence: 0,
+        evidence: [],
+      },
+      proposed: normaliseApplicationParticipantOrientation({
+        scores: { artist: 0.1, curator: 0.9, enthusiast: 0 },
+        evidence: ["Mentions curation"],
+      }),
+      currentAnswer: "I admire the strength of their curation and art direction.",
+    })
+    expect(merged.scores.curator).toBe(0)
   })
 
   it("does not treat an explicit non-artist statement as artist evidence", () => {

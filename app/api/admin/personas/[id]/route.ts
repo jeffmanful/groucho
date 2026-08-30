@@ -6,6 +6,7 @@ import {
   parseProfileSchemaInput,
 } from "@/lib/persona-profile-schema"
 import { supabase } from "@/lib/supabase"
+import { invalidatePersonaCache } from "@/lib/persona-resolution"
 
 export async function PUT(
   req: NextRequest,
@@ -84,6 +85,8 @@ export async function PUT(
     return NextResponse.json({ error: "Database error" }, { status: 500 })
   }
 
+  invalidatePersonaCache(id)
+
   return NextResponse.json(data)
 }
 
@@ -117,6 +120,8 @@ export async function DELETE(
   if (error) {
     return NextResponse.json({ error: "Database error" }, { status: 500 })
   }
+
+  invalidatePersonaCache(id)
 
   return NextResponse.json({ success: true })
 }

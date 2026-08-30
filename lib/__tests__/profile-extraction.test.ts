@@ -3,12 +3,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 let anthropicCreateImpl: (args: unknown) => Promise<unknown> = async () => ({
   content: [{ type: "text", text: "{}" }],
 })
+let lastAnthropicArgs: Record<string, unknown> | null = null
 
 vi.mock("@anthropic-ai/sdk", () => {
   return {
     default: class Anthropic {
       messages = {
-        create: (args: unknown) => anthropicCreateImpl(args),
+        create: (args: unknown) => {
+          lastAnthropicArgs = args as Record<string, unknown>
+          return anthropicCreateImpl(args)
+        },
       }
     },
   }
@@ -42,6 +46,7 @@ describe("redactPiiInText", () => {
 
 describe("extractProfile", () => {
   beforeEach(() => {
+    lastAnthropicArgs = null
     anthropicCreateImpl = async () => ({
       content: [{ type: "text", text: "{}" }],
     })
@@ -74,6 +79,18 @@ describe("extractProfile", () => {
     expect(out.extraction.status).toBe("ok")
     expect(out.core?.summary).toBe("Friendly Berlin attendee.")
     expect(out.custom).toBeNull()
+    expect(lastAnthropicArgs).toMatchObject({
+      max_tokens: 2048,
+      output_config: {
+        format: {
+          type: "json_schema",
+          schema: {
+            required: ["core"],
+            additionalProperties: false,
+          },
+        },
+      },
+    })
   })
 
   it("keeps declared custom fields, drops unknown LLM keys", async () => {
@@ -121,6 +138,24 @@ describe("extractProfile", () => {
       age_band: "25-34",
       referral: "friend",
       email_secret: "leak@me.com",
+    })
+    expect(lastAnthropicArgs).toMatchObject({
+      output_config: {
+        format: {
+          schema: {
+            properties: {
+              custom: {
+                additionalProperties: false,
+                properties: {
+                  age_band: { type: "string" },
+                  referral: { type: "string" },
+                  email_secret: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+      },
     })
   })
 

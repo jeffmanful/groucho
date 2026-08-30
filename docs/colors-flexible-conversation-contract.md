@@ -16,8 +16,8 @@ introductory copy:
 
 > Why do you want to be an early applicant for the Forum?
 
-The answer is the first routing inflection point. It creates a revisable
-orientation hypothesis rather than assigning a permanent applicant type:
+The answer is the first conversational inflection point. It creates a revisable
+orientation description rather than assigning a permanent applicant type or selecting a route:
 
 - community motivation leads first into what community means to the applicant;
 - making or sharing work leads into creative practice or desired exchange;
@@ -28,6 +28,15 @@ orientation hypothesis rather than assigning a permanent applicant type:
 - a genuinely ambiguous answer can receive one natural clarification.
 
 Groucho must not automatically follow the opening with an artist question.
+Orientation supports tone and reviewer context only. The applicant's explicit words
+and the live thread determine which evidence intent is relevant next.
+
+Orientations may overlap and change during the exchange. A collaboration disclosure
+can take an artist towards feedback; an enthusiast's desire to organise can open a
+curation thread; a curator's own music can open a maker thread. Groucho follows the
+new practice or intention without announcing a change of category. Future intent
+may earn a grounded follow-up, but it must not be represented later as existing
+experience.
 
 ## Shared early intent: relationship to COLORS
 
@@ -158,9 +167,12 @@ The controller should enforce only durable boundaries:
 - an emergency loop stop;
 - no model-controlled admission or rejection.
 
-Question wording is not validated against a template regex. The structured
-`nextSignalKey` stored on the assistant message owns the private evidence intent;
-the visible question is free to express that intent naturally.
+Question wording is not validated against a template regex. When a valid question
+clearly expresses a configured evidence intent, `nextSignalKey` records that private
+link. When a useful live-thread question does not map cleanly, the runtime records a
+conversational thread turn instead of rewriting the question or falsely assigning
+the applicant's next answer to another goal. That answer remains available to the
+final reviewer report and may still cover several goals later.
 
 ## Flexible pacing
 

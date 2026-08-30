@@ -81,7 +81,7 @@ The stronger V1 does not require:
 | --- | --- |
 | Exact transcript in `messages` | Retain as the authoritative conversational record |
 | Per-turn metadata | Retain as an event source during migration |
-| Artist / curator / enthusiast / hybrid routing | Retain as a revisable routing hypothesis, not assessment evidence by itself |
+| Artist / curator / enthusiast / hybrid orientation | Retain as a revisable descriptive lens for tone and reviewer context; never use it to control goal availability or priority |
 | Evidence goals and multi-goal coverage | Evolve into criterion assessments backed by evidence record IDs |
 | Question and follow-up budgets | Retain per-intent repetition limits and a deterministic emergency loop stop; treat normal conversation length as soft pacing guidance |
 | Conversation moves and response modes | Retain; policy chooses the move and dialogue generation chooses the expression |

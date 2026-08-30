@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   DEFAULT_INTERACTION_SPEC,
+  interactionSpecForApplicationMove,
   normaliseInteractionSpec,
 } from "@/lib/gatekeeper-interaction-spec"
 
@@ -69,5 +70,26 @@ describe("normaliseInteractionSpec", () => {
       "none",
     )
     expect(spec).toEqual(DEFAULT_INTERACTION_SPEC)
+  })
+
+  it("derives application UI posture without model-generated UI fields", () => {
+    expect(interactionSpecForApplicationMove("rabbit_hole", "none")).toEqual({
+      intent: "probe",
+      inputType: "text",
+      emotionalState: "interested",
+      visualState: "interested",
+    })
+    expect(interactionSpecForApplicationMove("challenge", "none")).toEqual({
+      intent: "challenge",
+      inputType: "text",
+      emotionalState: "skeptical",
+      visualState: "evaluating",
+    })
+    expect(interactionSpecForApplicationMove("decide", "pass")).toEqual({
+      intent: "decide",
+      inputType: "text",
+      emotionalState: "decisive",
+      visualState: "decision",
+    })
   })
 })

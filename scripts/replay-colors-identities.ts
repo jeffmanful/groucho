@@ -19,6 +19,49 @@ type IdentityName =
   | "extractive"
   | "safety_boundary"
 type Turn = { role: "assistant" | "user"; content: string }
+type RequestTiming = {
+  phase: "start" | "message"
+  durationMs: number
+  serverTiming: string | null
+}
+
+function percentile(values: number[], fraction: number): number | null {
+  if (values.length === 0) return null
+  const sorted = [...values].sort((left, right) => left - right)
+  const index = (sorted.length - 1) * fraction
+  const lower = Math.floor(index)
+  const upper = Math.ceil(index)
+  return sorted[lower] + (sorted[upper] - sorted[lower]) * (index - lower)
+}
+
+function serverTimingValue(header: string | null, name: string): number | null {
+  if (!header) return null
+  for (const entry of header.split(",")) {
+    const [entryName, ...parameters] = entry.trim().split(";")
+    if (entryName !== name) continue
+    const duration = parameters
+      .map((parameter) => parameter.trim())
+      .find((parameter) => parameter.startsWith("dur="))
+    if (!duration) return null
+    const value = Number(duration.slice(4))
+    return Number.isFinite(value) ? value : null
+  }
+  return null
+}
+
+function latencyStats(values: number[]) {
+  const p50 = percentile(values, 0.5)
+  const p95 = percentile(values, 0.95)
+  return {
+    samples: values.length,
+    meanMs: values.length > 0
+      ? Math.round((values.reduce((sum, value) => sum + value, 0) / values.length) * 10) / 10
+      : null,
+    p50Ms: p50 === null ? null : Math.round(p50 * 10) / 10,
+    p95Ms: p95 === null ? null : Math.round(p95 * 10) / 10,
+    maxMs: values.length > 0 ? Math.max(...values) : null,
+  }
+}
 
 const calibrationExpectedRecommendations: Partial<
   Record<IdentityName, "recommend" | "human_review" | "decline">
@@ -282,7 +325,11 @@ async function jsonRequest(url: string, apiKey: string, body: unknown) {
   })
   const data = await response.json() as Record<string, unknown>
   if (!response.ok) throw new Error(`${response.status}: ${JSON.stringify(data)}`)
-  return { data, durationMs: Date.now() - started }
+  return {
+    data,
+    durationMs: Date.now() - started,
+    serverTiming: response.headers.get("server-timing"),
+  }
 }
 
 async function main() {
@@ -314,6 +361,7 @@ async function main() {
 
   const runStamp = new Date().toISOString().replace(/\D/g, "").slice(0, 14)
   const summaries: Record<string, unknown>[] = []
+  const allRequestTimings: RequestTiming[] = []
   try {
     const requestedIdentities = new Set(
       (process.env.IDENTITY_REPLAY_IDENTITIES ?? "artist,curator,enthusiast,hybrid")
@@ -330,12 +378,18 @@ async function main() {
       }
       const transcript: Turn[] = []
       const durations: number[] = []
+      const requestTimings: RequestTiming[] = []
       const started = await jsonRequest(
         `${BASE_URL}/v1/sessions/${encodeURIComponent(sessionId)}/start`,
         plaintext,
         { applicant },
       )
       durations.push(started.durationMs)
+      requestTimings.push({
+        phase: "start",
+        durationMs: started.durationMs,
+        serverTiming: started.serverTiming,
+      })
       let response = started.data
       let assistantMessage = String(response.message ?? "")
       transcript.push({ role: "assistant", content: assistantMessage })
@@ -357,6 +411,11 @@ async function main() {
           { message: answer, applicant },
         )
         durations.push(next.durationMs)
+        requestTimings.push({
+          phase: "message",
+          durationMs: next.durationMs,
+          serverTiming: next.serverTiming,
+        })
         response = next.data
         assistantMessage = String(response.message ?? "")
         transcript.push({ role: "assistant", content: assistantMessage })
@@ -450,8 +509,11 @@ async function main() {
         genericThatMatters: /(?:^|[.!?]\s+)that matters(?:[—,.]|\b)/i.test(allText),
         averageMs: Math.round(durations.reduce((sum, value) => sum + value, 0) / durations.length),
         maxMs: Math.max(...durations),
+        terminalRequestMs: requestTimings.at(-1)?.durationMs ?? null,
+        requestTimings,
         transcript,
       })
+      allRequestTimings.push(...requestTimings)
       process.stdout.write(`\n[${identity} complete] ${sessionResult.data.status}\n`)
     }
   } finally {
@@ -461,7 +523,19 @@ async function main() {
       .eq("id", keyRow.data.id)
   }
 
-  process.stdout.write(`\nIDENTITY_REPLAY_RESULT=${JSON.stringify(summaries)}\n`)
+  const messageTimings = allRequestTimings.filter((timing) => timing.phase === "message")
+  const totalTimings = messageTimings
+    .map((timing) => serverTimingValue(timing.serverTiming, "total"))
+    .filter((value): value is number => value !== null)
+  const modelTimings = messageTimings
+    .map((timing) => serverTimingValue(timing.serverTiming, "conversation_model"))
+    .filter((value): value is number => value !== null)
+  process.stdout.write(`\nIDENTITY_REPLAY_LATENCY=${JSON.stringify({
+    browserObserved: latencyStats(messageTimings.map((timing) => timing.durationMs)),
+    serverTotal: latencyStats(totalTimings),
+    conversationModel: latencyStats(modelTimings),
+  })}\n`)
+  process.stdout.write(`IDENTITY_REPLAY_RESULT=${JSON.stringify(summaries)}\n`)
 }
 
 main().catch((error) => {

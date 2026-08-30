@@ -1,7 +1,7 @@
-import type { ApplicationParticipantOrientationState } from "@/lib/application-participant-orientation"
 import type {
   ApplicationSignalAnswer,
   ApplicationSignalDefinition,
+  ApplicationSignalMessage,
 } from "@/lib/application-signal-state"
 
 export type AdvisoryRecommendation = "recommend" | "human_review" | "decline"
@@ -148,6 +148,41 @@ function evidenceExcerpt(answer: string): string {
   return answer.trim().replace(/\s+/g, " ").slice(0, 260)
 }
 
+function metadataRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
+}
+
+function transcriptEvidence(
+  messages: ApplicationSignalMessage[],
+): Array<{
+  id: string
+  excerpt: string
+  signalKey: string
+  signalLabel: string
+  quality: string | null
+}> {
+  return messages.flatMap((message) => {
+    if (message.role !== "user" || !message.id || !message.content.trim()) return []
+    const metadata = metadataRecord(message.metadata)
+    const signal = metadataRecord(metadata?.application_signal)
+    const assessment = metadataRecord(metadata?.answer_assessment)
+    return [{
+      id: message.id,
+      excerpt: evidenceExcerpt(message.content),
+      signalKey:
+        typeof signal?.key === "string" ? signal.key : "conversation_context",
+      signalLabel:
+        typeof signal?.label === "string"
+          ? signal.label
+          : "Conversation context",
+      quality:
+        typeof assessment?.quality === "string" ? assessment.quality : null,
+    }]
+  })
+}
+
 /**
  * Repairs missing or evidence-free model reports from the application state
  * already persisted in message metadata. It never invents applicant evidence.
@@ -158,18 +193,18 @@ export function ensureEvidenceBackedReviewerReport(input: {
   scores: ScoreLike
   definitions: ApplicationSignalDefinition[]
   answers: ApplicationSignalAnswer[]
+  messages?: ApplicationSignalMessage[]
   insufficientEvidenceKeys?: Set<string>
-  orientation?: ApplicationParticipantOrientationState
   integrityFlags?: string[]
 }): ReviewerReport {
   const answerByKey = new Map(input.answers.map((answer) => [answer.key, answer]))
-  const evidenceSummary = input.definitions.flatMap((signal) => {
+  const coveredEvidenceSummary = input.definitions.flatMap((signal) => {
     const answer = answerByKey.get(signal.key)
     return answer?.covered !== false && answer?.answer.trim()
       ? [`${signal.label}: ${evidenceExcerpt(answer.answer)}`]
       : []
-  }).slice(0, MAX_ITEMS)
-  const evidenceReferences = input.definitions.flatMap((signal) => {
+  })
+  const coveredEvidenceReferences = input.definitions.flatMap((signal) => {
     const answer = answerByKey.get(signal.key)
     if (answer?.covered === false) return []
     return (answer?.sources ?? []).map((source) => ({
@@ -178,7 +213,27 @@ export function ensureEvidenceBackedReviewerReport(input: {
       source_message_id: source.messageId,
       excerpt: source.excerpt,
     }))
-  }).slice(0, MAX_ITEMS * 2)
+  })
+  const coveredSourceIds = new Set(
+    coveredEvidenceReferences.map((reference) => reference.source_message_id),
+  )
+  const additionalTranscriptEvidence = transcriptEvidence(input.messages ?? [])
+    .filter((item) => !coveredSourceIds.has(item.id))
+  const evidenceSummary = [
+    ...coveredEvidenceSummary,
+    ...additionalTranscriptEvidence.map((item) =>
+      `${item.quality === "thin" ? "Context needing follow-up" : "Additional transcript evidence"}: ${item.excerpt}`,
+    ),
+  ].slice(0, MAX_ITEMS)
+  const evidenceReferences = [
+    ...coveredEvidenceReferences,
+    ...additionalTranscriptEvidence.map((item) => ({
+      signal_key: item.signalKey,
+      signal_label: item.signalLabel,
+      source_message_id: item.id,
+      excerpt: item.excerpt,
+    })),
+  ].slice(0, MAX_ITEMS * 2)
   const weakOrMissingSignals = input.definitions.flatMap((signal) => {
     const answer = answerByKey.get(signal.key)
     if (answer?.covered !== false) return []
@@ -188,25 +243,29 @@ export function ensureEvidenceBackedReviewerReport(input: {
         : `${signal.label}: no usable evidence was established.`,
     ]
   }).slice(0, MAX_ITEMS)
-  const orientation = input.orientation?.primary ?? "unknown"
-  const orientationLabel =
-    orientation === "unknown" ? "an unresolved participant orientation" : `a primarily ${orientation} orientation`
-  const usableCount = evidenceSummary.length
-  const relevantCount = input.definitions.length
+  const usableCount = coveredEvidenceSummary.length
+  const contextualCount = additionalTranscriptEvidence.length
   const fallback = fallbackReviewerReport({
     terminalStatus: input.terminalStatus,
     scores: input.scores,
   })
-  const coverage = relevantCount > 0 ? usableCount / relevantCount : 0
   const confidence = Math.max(
     0.2,
-    Math.min(0.9, input.scores.overall * 0.65 + coverage * 0.35),
+    Math.min(0.9, input.scores.overall * 0.8 + Math.min(0.1, usableCount * 0.03)),
   )
+  const suppliedBio = input.report?.applicant_bio?.trim() ?? ""
+  const safeSuppliedBio =
+    suppliedBio &&
+    !/\b(?:primarily|primary)\s+(?:an?\s+)?(?:artist|curator|enthusiast|hybrid)\s+orientation\b|\brelevant areas?\b/i.test(
+      suppliedBio,
+    )
+      ? suppliedBio
+      : ""
 
   return {
     applicant_bio:
-      input.report?.applicant_bio ||
-      `Applicant presented with ${orientationLabel}. Usable evidence was established across ${usableCount} of ${relevantCount} relevant areas.`,
+      safeSuppliedBio ||
+      `Applicant shared ${usableCount} established evidence ${usableCount === 1 ? "area" : "areas"} and ${contextualCount} additional transcript ${contextualCount === 1 ? "statement" : "statements"} that may need reviewer context.`,
     advisory_recommendation: recommendationForStatus(input.terminalStatus),
     confidence_score: Number(confidence.toFixed(2)),
     evidence_summary: evidenceSummary,

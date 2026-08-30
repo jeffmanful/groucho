@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   applicationSignalDefinitions,
+  applicationSignalDefinitionsForEvidence,
   applicationSignalDefinitionsForOrientation,
 } from "@/lib/application-signal-state"
 import {
@@ -26,13 +27,51 @@ function orientationAfter(answers: string[]) {
 }
 
 function routedClusters(answers: string[]) {
-  return applicationSignalDefinitionsForOrientation(
-    definitions,
-    orientationAfter(answers),
+  return applicationSignalDefinitionsForEvidence(
+    applicationSignalDefinitionsForOrientation(
+      definitions,
+      orientationAfter(answers),
+    ),
+    answers.map((answer) => ({ answer })),
   ).map((signal) => signal.cluster)
 }
 
 describe("COLORS identity and fairness trajectories", () => {
+  it("does not let orientation labels control available goals", () => {
+    const artist = applicationSignalDefinitionsForOrientation(definitions, {
+      primary: "artist",
+      scores: { artist: 1, curator: 0, enthusiast: 0 },
+      confidence: 1,
+      evidence: ["Makes music"],
+    })
+    const curator = applicationSignalDefinitionsForOrientation(definitions, {
+      primary: "curator",
+      scores: { artist: 0, curator: 1, enthusiast: 0 },
+      confidence: 1,
+      evidence: ["Hosts events"],
+    })
+
+    expect(artist).toEqual(definitions)
+    expect(curator).toEqual(definitions)
+  })
+
+  it("allows fluid crossovers without requiring an orientation change first", () => {
+    const artistCollaborator = [
+      "I make music and trade unfinished demos when I collaborate with other artists.",
+    ]
+    const aspiringListenerCurator = [
+      "I mostly listen now, but I want to start a listening night for overlooked local work.",
+    ]
+    const curatorMaker = [
+      "I curate a radio show, and I have started making my own music to upload too.",
+    ]
+
+    expect(routedClusters(artistCollaborator)).toContain("care_and_feedback")
+    expect(routedClusters(aspiringListenerCurator)).toContain("care_and_feedback")
+    expect(orientationAfter(curatorMaker).scores.artist).toBeGreaterThan(0)
+    expect(orientationAfter(curatorMaker).scores.curator).toBeGreaterThan(0)
+  })
+
   it.each([
     {
       identity: "artist",

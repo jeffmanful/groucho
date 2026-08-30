@@ -221,7 +221,7 @@ export interface components {
              * @description Legacy onboarding-only field. Gatekeeper completion never issues an access secret.
              */
             secret?: string;
-            /** @description Structured profile extracted on terminal turns; absent on non-terminal turns and when extraction is disabled. */
+            /** @description Optional compatibility field. Gatekeeper terminal profile extraction now runs asynchronously; read the completed session to retrieve the persisted profile. */
             profile?: components["schemas"]["Profile"];
             /** @description Private reviewer-facing report produced on terminal gatekeeper turns when available. */
             reviewerReport?: components["schemas"]["ReviewerReport"];
@@ -254,7 +254,7 @@ export interface components {
             /** Format: date-time */
             completedAt?: string | null;
             applicant?: components["schemas"]["ApplicantIdentity"];
-            /** @description Structured profile from the latest verdict; present once the session has concluded. */
+            /** @description Structured profile from the latest verdict; present after asynchronous terminal completion finishes. */
             profile?: components["schemas"]["Profile"];
             /** @description Private reviewer-facing report from the latest verdict, when available. */
             reviewerReport?: components["schemas"]["ReviewerReport"];

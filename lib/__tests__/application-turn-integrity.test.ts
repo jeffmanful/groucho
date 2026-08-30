@@ -4,8 +4,8 @@ import {
   applicationAnswerSupportsSignal,
   applicationQuestionSupportsSignal,
   ensureExplicitStructuredInputPrompt,
+  keepFirstApplicationQuestion,
   repairApplicationReplyWithQuestion,
-  stripApplicationProcessLanguage,
 } from "@/lib/application-turn-integrity"
 import { applicationSignalDefinitions } from "@/lib/application-signal-state"
 
@@ -14,6 +14,27 @@ const contribution = applicationSignalDefinitions([
 ])[0]
 
 describe("application turn integrity", () => {
+  it("keeps the first live question instead of replacing a stacked ask with another signal", () => {
+    const reply =
+      "Since you make cinematic soundtracks, what draws you to working that way, and what kind of collaborators would help your practice?"
+    expect(
+      activeApplicationReplyIssue({
+        reply,
+        interaction: {
+          inputType: "text",
+          options: [],
+          intent: "probe",
+          emotionalState: "curious",
+          visualState: "curious",
+        },
+        closingMessage: "It was good getting to understand you better.",
+      }),
+    ).toBe("multiple_questions")
+    expect(keepFirstApplicationQuestion(reply)).toBe(
+      "Since you make cinematic soundtracks, what draws you to working that way?",
+    )
+  })
+
   it("does not accept an artist question as a participation question", () => {
     const participation = applicationSignalDefinitions([
       "Which sounds most like you?",
@@ -42,41 +63,6 @@ describe("application turn integrity", () => {
         "Do you feel inside the music scene around you, adjacent to it, or mostly looking in from outside?",
       ),
     ).toBe(true)
-  })
-
-  it("removes interview-stage narration without losing the grounded receipt", () => {
-    expect(
-      stripApplicationProcessLanguage(
-        "Got it—that track settles you. Before we wrap, I want to understand what you'd actually bring here.",
-      ),
-    ).toEqual({
-      reply:
-        "Got it—that track settles you. I want to understand what you'd actually bring here.",
-      removed: true,
-    })
-  })
-
-  it.each([
-    "Before we dig into that—what is a COLORS performance that stayed with you?",
-    "Before we get into this, what is a COLORS performance that stayed with you?",
-    "Before we go any further: what is a COLORS performance that stayed with you?",
-    "Before we go deeper, what is a COLORS performance that stayed with you?",
-    "Before we continue, what is a COLORS performance that stayed with you?",
-    "Let me ask differently—what is a COLORS performance that stayed with you?",
-    "Let me ask you differently—what is a COLORS performance that stayed with you?",
-    "Let me ask this differently—what is a COLORS performance that stayed with you?",
-    "Let me ask something different. what is a COLORS performance that stayed with you?",
-    "Let me ask something a bit more specific: what is a COLORS performance that stayed with you?",
-    "Let me ask a different way. what is a COLORS performance that stayed with you?",
-    "Let me ask this another way—what is a COLORS performance that stayed with you?",
-    "Let me try it differently—what is a COLORS performance that stayed with you?",
-    "Let me try something simpler—what is a COLORS performance that stayed with you?",
-    "Before you explore, what is a COLORS performance that stayed with you?",
-  ])("removes wider interview-stage narration from %s", (reply) => {
-    expect(stripApplicationProcessLanguage(reply)).toEqual({
-      reply: "What is a COLORS performance that stayed with you?",
-      removed: true,
-    })
   })
 
   it("preserves a grounded receipt when replacing a mismatched question", () => {
@@ -285,6 +271,22 @@ describe("application turn integrity", () => {
         closingMessage: "Thanks for applying.",
       }),
     ).toBeNull()
+  })
+
+  it("detects two separately phrased questions in one active reply", () => {
+    expect(
+      activeApplicationReplyIssue({
+        reply:
+          "What draws you to the Forum specifically? Is there something COLORS could make room for?",
+        interaction: {
+          intent: "probe",
+          inputType: "text",
+          emotionalState: "curious",
+          visualState: "curious",
+        },
+        closingMessage: "It was good getting to understand you better.",
+      }),
+    ).toBe("multiple_questions")
   })
 
   it("replaces a structured question that does not match its options", () => {

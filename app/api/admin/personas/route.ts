@@ -6,6 +6,7 @@ import {
   parseProfileSchemaInput,
 } from "@/lib/persona-profile-schema"
 import { supabase } from "@/lib/supabase"
+import { invalidatePersonaCache } from "@/lib/persona-resolution"
 
 export async function GET() {
   const actor = await resolveAdminActor()
@@ -90,6 +91,8 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ error: "Database error" }, { status: 500 })
   }
+
+  invalidatePersonaCache()
 
   return NextResponse.json(data, { status: 201 })
 }

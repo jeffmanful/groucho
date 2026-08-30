@@ -6,6 +6,19 @@ function jsonFromResponse(res: Response) {
   return res.json() as Promise<Record<string, unknown>>
 }
 
+function systemTextFromRequest(args: unknown): string {
+  const system = (args as { system?: unknown }).system
+  if (typeof system === "string") return system
+  if (!Array.isArray(system)) return ""
+  return system
+    .map((block) =>
+      block && typeof block === "object" && "text" in block
+        ? String((block as { text: unknown }).text)
+        : "",
+    )
+    .join("\n")
+}
+
 // --- Module mocks (no DB, no network) ---
 vi.mock("@/lib/project-resolution", () => ({
   resolveProjectContext: vi.fn(async () => ({
@@ -32,10 +45,21 @@ vi.mock("@/lib/project-resolution", () => ({
 }))
 
 const recordVerdictMock = vi.fn().mockResolvedValue({ profile: null })
+const enqueueCompletionMock = vi.fn().mockResolvedValue(undefined)
+const completeImmediatelyMock = vi.fn().mockResolvedValue(undefined)
+const scheduleCompletionDrainMock = vi.fn()
 const testApplicant = { email: "applicant@example.com", name: "Test Applicant" }
 
 vi.mock("@/lib/verdict-webhook", () => ({
   recordVerdictAndEnqueueWebhooks: (...args: unknown[]) => recordVerdictMock(...args),
+}))
+
+vi.mock("@/lib/session-completion-jobs", () => ({
+  enqueueSessionCompletionJob: (...args: unknown[]) =>
+    enqueueCompletionMock(...args),
+  completeSessionImmediately: (...args: unknown[]) =>
+    completeImmediatelyMock(...args),
+  scheduleSessionCompletionDrain: () => scheduleCompletionDrainMock(),
 }))
 
 // Anthropic is used in two places; we mock the constructor + messages.create
@@ -228,6 +252,11 @@ describe("contract: postSessionMessage", () => {
       ],
     })
     recordVerdictMock.mockReset().mockResolvedValue({ profile: null })
+    enqueueCompletionMock.mockReset().mockResolvedValue(undefined)
+    completeImmediatelyMock.mockReset().mockResolvedValue(undefined)
+    scheduleCompletionDrainMock.mockReset()
+    const { invalidatePersonaCache } = await import("@/lib/persona-resolution")
+    invalidatePersonaCache()
     const supa = await import("@/lib/supabase")
     const state = (supa as any).__state
     state.sessions = []
@@ -273,7 +302,15 @@ describe("contract: postSessionMessage", () => {
       },
     })
     const supa = await import("@/lib/supabase")
-    const state = (supa as any).__state
+    const state = (
+      supa as unknown as {
+        __state: {
+          messages: FakeRow[]
+          sessions: FakeRow[]
+          personas: FakeRow[]
+        }
+      }
+    ).__state
     state.sessions.push({
       id: "s_persona",
       session_id: "sess_stored_persona_1",
@@ -302,8 +339,16 @@ describe("contract: postSessionMessage", () => {
     )
 
     let capturedSystem = ""
+    let capturedSystemCacheType = ""
     anthropicCreateImpl = async (args: unknown) => {
-      capturedSystem = (args as { system?: string }).system ?? ""
+      capturedSystem = systemTextFromRequest(args)
+      const system = (args as { system?: unknown }).system
+      if (Array.isArray(system)) {
+        const first = system[0] as {
+          cache_control?: { type?: unknown }
+        }
+        capturedSystemCacheType = String(first.cache_control?.type ?? "")
+      }
       return {
         content: [
           {
@@ -334,6 +379,7 @@ describe("contract: postSessionMessage", () => {
     expect(res.status).toBe(200)
     expect(capturedSystem).toContain("SESSION PERSONA PROMPT")
     expect(capturedSystem).not.toContain("PROJECT PERSONA PROMPT")
+    expect(capturedSystemCacheType).toBe("ephemeral")
   })
 
   it("starts public message sessions with the project persona", async () => {
@@ -374,7 +420,7 @@ describe("contract: postSessionMessage", () => {
 
     let capturedSystem = ""
     anthropicCreateImpl = async (args: unknown) => {
-      capturedSystem = (args as { system?: string }).system ?? ""
+      capturedSystem = systemTextFromRequest(args)
       return {
         content: [
           {
@@ -407,7 +453,7 @@ describe("contract: postSessionMessage", () => {
     expect(state.sessions[0]?.persona_id).toBe("project-persona")
   })
 
-  it("forwards persona + transcript to verdict and surfaces profile in response", async () => {
+  it("queues terminal completion and returns the neutral close without waiting for profile extraction", async () => {
     anthropicCreateImpl = async () => ({
       content: [
         {
@@ -425,15 +471,6 @@ describe("contract: postSessionMessage", () => {
         },
       ],
     })
-    recordVerdictMock.mockResolvedValueOnce({
-      profile: {
-        schema_version: 1,
-        core: null,
-        custom: null,
-        extraction: { model: "m", status: "ok" },
-      },
-    })
-
     const { postSessionMessage } = await import("@/lib/post-session-message")
     const res = await postSessionMessage({
       authorization: "Bearer gk_test_x",
@@ -443,12 +480,16 @@ describe("contract: postSessionMessage", () => {
     })
     expect(res.status).toBe(200)
     const body = await jsonFromResponse(res as any)
-    expect(body.profile).toBeTruthy()
+    expect(body.profile).toBeUndefined()
     expect(body.message).toBe("It was good getting to understand you better.")
-    expect(recordVerdictMock).toHaveBeenCalled()
-    const [opts] = recordVerdictMock.mock.calls[0] as [Record<string, unknown>]
-    expect(opts.persona).toBeTruthy()
-    expect(Array.isArray(opts.transcript)).toBe(true)
+    expect(enqueueCompletionMock).toHaveBeenCalledWith({
+      organisationId: "org1",
+      projectId: "proj1",
+      sessionId: expect.any(String),
+      likelyBot: false,
+    })
+    expect(completeImmediatelyMock).not.toHaveBeenCalled()
+    expect(scheduleCompletionDrainMock).toHaveBeenCalledTimes(1)
   })
 
   it("replaces untraceable model evidence before forwarding the reviewer report", async () => {
@@ -504,11 +545,25 @@ describe("contract: postSessionMessage", () => {
     expect(body.reviewerReport).toMatchObject({
       applicant_bio: reviewerReport.applicant_bio,
       advisory_recommendation: "recommend",
-      evidence_summary: [],
-      evidence_references: [],
+      evidence_summary: ["Additional transcript evidence: hello"],
+      evidence_references: [
+        expect.objectContaining({
+          source_message_id: expect.any(String),
+          excerpt: "hello",
+        }),
+      ],
     })
-    const [opts] = recordVerdictMock.mock.calls[0] as [Record<string, unknown>]
-    expect(opts.reviewerReport).toEqual(body.reviewerReport)
+    const supa = await import("@/lib/supabase")
+    const state = (
+      supa as unknown as { __state: { messages: FakeRow[] } }
+    ).__state
+    const terminalAssistant = [...state.messages]
+      .reverse()
+      .find((message) => message.role === "assistant")
+    expect(
+      (terminalAssistant?.metadata as Record<string, unknown>)
+        .reviewer_report,
+    ).toEqual(body.reviewerReport)
   })
 
   it("200: returns message/status/scores", async () => {
@@ -580,7 +635,7 @@ describe("contract: postSessionMessage", () => {
     expect(modelCalls).toBe(1)
     expect(capturedRequest).toMatchObject({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 1100,
+      max_tokens: 500,
     })
     expect(body.status).toBe("active")
     expect(body.scores).toEqual({
@@ -797,7 +852,7 @@ describe("contract: postSessionMessage", () => {
     let capturedSystem = ""
     let capturedMessages: Array<{ role: string; content: string }> = []
     anthropicCreateImpl = async (args: unknown) => {
-      capturedSystem = (args as { system?: string }).system ?? ""
+      capturedSystem = systemTextFromRequest(args)
       capturedMessages =
         (args as { messages?: Array<{ role: string; content: string }> })
           .messages ?? []
@@ -858,17 +913,19 @@ describe("contract: postSessionMessage", () => {
     expect(capturedSystem).toContain("- contribution")
     expect(capturedSystem).toContain("Preferred input types")
     expect(capturedSystem).toContain("Soft conversational target: around 4 applicant answers")
-    expect(capturedSystem).toContain("receive → connect → invite")
-    expect(capturedSystem).toContain("connectionIntent")
-    expect(capturedSystem).toContain("one or two short sentences")
-    expect(capturedSystem).toContain("reuse the applicant's concrete action")
-    expect(capturedSystem).toContain("What would you actually do with that in the Forum?")
-    expect(capturedSystem).toContain("that kind of listening")
+    expect(capturedMessages[0]?.content).toContain("receive → connect → invite")
+    expect(capturedMessages[0]?.content).toContain(
+      "Make the relationship you choose internally explain why the next turn follows",
+    )
+    expect(capturedMessages[0]?.content).toContain("one or two short sentences")
+    expect(capturedMessages[0]?.content).toContain("ground the bridge in the applicant's concrete verb or action")
+    expect(capturedMessages[0]?.content).toContain("What would you actually do with that in the Forum?")
+    expect(capturedMessages[0]?.content).toContain("that kind of listening")
     expect(capturedMessages).toHaveLength(1)
     expect(capturedMessages[0]?.role).toBe("user")
     expect(capturedMessages[0]?.content).toContain("compact application state")
     expect(capturedMessages[0]?.content).toContain('"intent"')
-    expect(capturedMessages[0]?.content).toContain('"status": "open"')
+    expect(capturedMessages[0]?.content).toContain('"status":"open"')
     expect(capturedMessages[0]?.content).toContain(
       "private evidence intents, not a checklist",
     )
@@ -910,30 +967,21 @@ describe("contract: postSessionMessage", () => {
       | { conversation_thread?: unknown }
       | undefined
     expect(assistantMetadata?.conversation_thread).toMatchObject({
-      subject: "Participation",
-      momentum: "medium",
+      subject: "hello",
+      momentum: "new",
     })
     expect(
       (assistantRow?.metadata as { response_mode?: unknown } | undefined)
         ?.response_mode,
     ).toBe("connect")
     expect(
-      (
-        assistantRow?.metadata as
-          | { conversation_bridge?: Record<string, unknown> }
-          | undefined
-      )?.conversation_bridge,
-    ).toMatchObject({
-      kind: "aspiration_to_contribution",
-      targetSignalKey: "contribution",
-    })
+      (assistantRow?.metadata as Record<string, unknown>)
+        .conversation_bridge,
+    ).toBeUndefined()
     expect(
-      (
-        assistantRow?.metadata as
-          | { application_next_signal?: Record<string, unknown> }
-          | undefined
-      )?.application_next_signal,
-    ).toMatchObject({ key: "contribution", label: "contribution" })
+      (assistantRow?.metadata as Record<string, unknown>)
+        .application_conversation_thread_turn,
+    ).toBe(true)
     expect(
       (
         assistantRow?.metadata as
@@ -1074,7 +1122,7 @@ describe("contract: postSessionMessage", () => {
     })
 
     expect(res.status).toBe(200)
-    expect(compactPrompt).toContain('"recentQualities": [\n      "thin"')
+    expect(compactPrompt).toContain('"recentQualities":["thin"')
     const persistedUser = state.messages.find(
       (row: FakeRow) => row.content === "Something useful.",
     )
@@ -1238,7 +1286,7 @@ describe("contract: postSessionMessage", () => {
     })
   })
 
-  it("routes repeated thin evidence to human review instead of private decline", async () => {
+  it("does not let accumulated thin labels force a close while a valid question remains", async () => {
     const requiredSignals = [
       "What brought you here?",
       "Name an artist more people should know about.",
@@ -1380,24 +1428,18 @@ describe("contract: postSessionMessage", () => {
     })
     const body = await jsonFromResponse(res)
 
-    expect(body.status).toBe("redirected")
-    expect(body.reviewerReport).toMatchObject({
-      advisory_recommendation: "human_review",
-    })
+    expect(body.status).toBe("active")
+    expect(body.message).toBe("Could you name one example?")
     expect(state.messages.at(-1)?.metadata).toMatchObject({
-      gatekeeper_terminal: "redirect",
-      application_budget_forced_close_outcome: {
-        source: "repeated_thin_evidence",
-        status: "redirected",
-      },
-      application_thin_evidence_close: {
-        priorThinAnswers: 5,
-        distinctThinSignals: 4,
-      },
+      gatekeeper_terminal: "none",
+      application_conversation_thread_turn: true,
     })
+    expect(state.messages.at(-1)?.metadata).not.toHaveProperty(
+      "application_budget_forced_close_outcome",
+    )
   })
 
-  it("prefers a fresh maker bridge over a supporting artist recommendation", async () => {
+  it("does not substitute a different bridge after the model has written a valid question", async () => {
     const { resolveProjectContext } = await import("@/lib/project-resolution")
     vi.mocked(resolveProjectContext).mockResolvedValueOnce({
       ok: true,
@@ -1495,7 +1537,7 @@ describe("contract: postSessionMessage", () => {
     const body = await jsonFromResponse(res)
     expect(body.status).toBe("active")
     expect(body.message).toBe(
-      "What are you trying to express in your own music?",
+      "That connection matters. Let me shift slightly. What's one track of theirs you'd share?",
     )
 
     const supa = await import("@/lib/supabase")
@@ -1504,13 +1546,10 @@ describe("contract: postSessionMessage", () => {
       string,
       unknown
     >
-    expect(assistantMetadata.conversation_bridge_adjusted).toBe(true)
-    expect(assistantMetadata.conversation_bridge).toMatchObject({
-      kind: "maker_to_practice",
-      targetSignalKey: "contribution",
-    })
+    expect(assistantMetadata.conversation_bridge_adjusted).toBeUndefined()
+    expect(assistantMetadata.conversation_bridge).toBeUndefined()
     expect(assistantMetadata.application_next_signal).toMatchObject({
-      key: "contribution",
+      key: "last_song_recommended",
     })
     expect(assistantMetadata.application_question_signal_mismatch).toBeUndefined()
   })
@@ -1841,7 +1880,7 @@ describe("contract: postSessionMessage", () => {
     let capturedSystem = ""
     anthropicCreateImpl = async (args: unknown) => {
       modelCalls += 1
-      capturedSystem = (args as { system?: string }).system ?? ""
+      capturedSystem = systemTextFromRequest(args)
       return {
         content: [
           {
@@ -2571,6 +2610,156 @@ describe("contract: postSessionMessage", () => {
         action: "next_signal",
         signalKey: contributionSignal.key,
       },
+    })
+  })
+
+  it("opens a clarification turn when an answer introduces an ambiguous new subject", async () => {
+    const { resolveProjectContext } = await import("@/lib/project-resolution")
+    vi.mocked(resolveProjectContext).mockResolvedValueOnce({
+      ok: true,
+      context: {
+        organisationId: "org1",
+        projectId: "proj1",
+        apiKeyId: "key1",
+        settings: {
+          projectType: "gatekeeper" as const,
+          applicationExperience: {
+            opening_message: "What brought you here?",
+            required_signals: [
+              "What brought you here?",
+              "Name an artist more people should know about.",
+              "What's one thing you could realistically contribute in your first month?",
+            ],
+            max_turns: 9,
+          },
+          flowConfig: null,
+          onboardingExperience: {
+            bridge_enabled: true,
+            followup_enabled: true,
+            boundary_enabled: true,
+            personalized_completion: true,
+          },
+          raw: { project_type: "gatekeeper" },
+        },
+      },
+    })
+
+    const artistSignal = {
+      key: "name_an_artist_more_people_should_know_about",
+      label: "Name an artist more people should know about.",
+    }
+    const supa = await import("@/lib/supabase")
+    const state = (supa as any).__state
+    state.sessions.push({
+      id: "s_ambiguous_subject",
+      session_id: "sess_ambiguous_subject",
+      project_id: "proj1",
+      applicant_email: testApplicant.email,
+      status: "active",
+    })
+    state.messages.push({
+      id: "m_ambiguous_question",
+      session_id: "s_ambiguous_subject",
+      role: "assistant",
+      content:
+        "Are you working on a project right now, or still building towards it?",
+      metadata: { application_next_signal: artistSignal },
+    })
+
+    anthropicCreateImpl = async () => ({
+      content: [
+        {
+          type: "tool_use",
+          id: "toolu_ambiguous_subject",
+          name: "groucho_respond",
+          input: {
+            reply: "Lucki—are you bringing him up as an influence on your own work?",
+            terminal: "none",
+            scores: {
+              specificity: 0.65,
+              authenticity: 0.7,
+              cultural_depth: 0.6,
+              overall: 0.64,
+            },
+            answerAssessment: {
+              quality: "usable",
+              reason: "Names a specific artist but does not explain the connection.",
+              evidenceFlags: ["detail"],
+            },
+            answerRelation: {
+              kind: "subject_shift",
+              reason:
+                "The artist name does not answer whether they have a current project.",
+            },
+            conversationMove: "advance",
+            responseMode: "interpret",
+            participantOrientation: {
+              scores: { artist: 0.8, curator: 0, enthusiast: 0.2 },
+            },
+            culturalSignals: [
+              {
+                type: "artist_reference",
+                displayLabel: "Lucki",
+                confidence: 0.95,
+              },
+            ],
+            coveredSignalKeys: [artistSignal.key],
+            selectedBridge: {
+              sourceDetail: "Lucki",
+              kind: "maker_to_practice",
+              targetSignalKey: artistSignal.key,
+              connectionIntent: "Assume the artist shapes their work",
+              questionIntent: "Ask about the influence",
+              confidence: 0.8,
+              freshness: "current",
+            },
+            threadState: {
+              subject: "Why the applicant introduced Lucki",
+              strongestDetail: "Lucki",
+              openHook: "Whether he is an influence or a separate reference",
+              momentum: "new",
+              acknowledgedDetails: [],
+            },
+            nextSignalKey: artistSignal.key,
+          },
+        },
+      ],
+    })
+
+    const { postSessionMessage } = await import("@/lib/post-session-message")
+    const res = await postSessionMessage({
+      authorization: "Bearer gk_test_x",
+      sessionId: "sess_ambiguous_subject",
+      message: "Lucki",
+      applicantIdentity: testApplicant,
+    })
+    const body = await jsonFromResponse(res)
+
+    expect(body.status).toBe("active")
+    expect(body.message).toBe(
+      "Lucki—are you bringing him up as an influence on your own work?",
+    )
+    const assistantMetadata = state.messages.at(-1).metadata as Record<
+      string,
+      unknown
+    >
+    expect(assistantMetadata).toMatchObject({
+      conversation_move: "clarify",
+      conversation_move_adjusted: true,
+      application_conversation_thread_turn: true,
+      application_turn_repair: { relation: "subject_shift" },
+    })
+    expect(assistantMetadata.conversation_bridge).toBeUndefined()
+    expect(assistantMetadata.application_next_signal).toBeUndefined()
+
+    const userUpdate = state.updates.find(
+      (update: { table: string; payload: { metadata?: unknown } }) =>
+        update.table === "messages" &&
+        JSON.stringify(update.payload.metadata).includes("subject_shift"),
+    )
+    expect(userUpdate?.payload.metadata).toMatchObject({
+      application_answer_relation: { kind: "subject_shift" },
+      application_signals: [artistSignal],
     })
   })
 })

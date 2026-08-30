@@ -172,3 +172,36 @@ export function normaliseInteractionSpec(
     ...(options ? { options } : {}),
   }
 }
+
+/** Derive application UI posture from the validated conversational move. */
+export function interactionSpecForApplicationMove(
+  move: string | null,
+  terminal: GatekeeperTerminalField,
+): GrouchoInteractionSpec {
+  if (terminal !== "none") return normaliseInteractionSpec({}, terminal)
+  if (move === "challenge") {
+    return {
+      intent: "challenge",
+      inputType: "text",
+      emotionalState: "skeptical",
+      visualState: "evaluating",
+    }
+  }
+  if (move === "clarify" || move === "open_door") {
+    return {
+      intent: "clarify",
+      inputType: "text",
+      emotionalState: "curious",
+      visualState: "curious",
+    }
+  }
+  if (move === "rabbit_hole") {
+    return {
+      intent: "probe",
+      inputType: "text",
+      emotionalState: "interested",
+      visualState: "interested",
+    }
+  }
+  return { ...DEFAULT_INTERACTION_SPEC }
+}

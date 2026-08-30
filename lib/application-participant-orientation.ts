@@ -45,10 +45,10 @@ export function isExplicitCommunityIntent(value: string): boolean {
 function explicitOrientationEvidence(value: string): Set<RoutedOrientation> {
   const answer = value.trim().toLowerCase()
   const evidence = new Set<RoutedOrientation>()
-  if (/\b(i make|i write|i produce|i sing|i rap|i dj|my music|my songs?|my tracks?|share work|(?:i(?:'ve| have) (?:only )?been|i(?:'m| am)) making (?:my own )?(?:music|songs?|tracks?)|i(?:'m| am) (?!not\b)[^.!?]{0,40}\b(?:artist|musician|producer|singer|rapper|dj)|as an? (?:artist|musician|producer|singer|rapper|dj)|i work as an? (?:artist|musician|producer|singer|rapper|dj))\b/.test(answer)) {
+  if (/\b(i make|i write|i produce|i sing|i rap|i dj|my music|my songs?|my tracks?|share work|(?:i(?:'ve| have) (?:only )?(?:been|started)|i(?:'m| am)) making (?:my own )?(?:music|songs?|tracks?)|started making (?:my own )?(?:music|songs?|tracks?)|i(?:'m| am) (?!not\b)[^.!?]{0,40}\b(?:artist|musician|producer|singer|rapper|dj)|as an? (?:artist|musician|producer|singer|rapper|dj)|i work as an? (?:artist|musician|producer|singer|rapper|dj))\b/.test(answer)) {
     evidence.add("artist")
   }
-  if (/\b(curat|organis|organiz|host|run a|book|programme|program|label|promoter|connect people|community manager|introduc(?:e|ed|ing) (?:two |independent |local )?artists?)\w*/.test(answer)) {
+  if (/\b(?:(?:i|we|and) (?:help )?(?:curat\w*|organis\w*|organiz\w*|host\w*|run|book\w*|program\w*|connect\w*|introduc\w*)|my (?:playlist|radio show|listening (?:night|session|group)|label)|(?:i(?:'m| am)|i work as) (?:a |an )?(?:curator|organiser|organizer|host|promoter|community manager))\b/.test(answer)) {
     evidence.add("curator")
   }
   if (
@@ -184,15 +184,10 @@ export function mergeApplicationParticipantOrientation(input: {
     currentAnswer: input.currentAnswer,
   })
   const explicitEvidence = explicitOrientationEvidence(input.currentAnswer)
-  const proposedEntries = Object.entries(input.proposed.scores) as Array<
-    [RoutedOrientation, number]
-  >
-  const proposedPrimary = proposedEntries.sort((a, b) => b[1] - a[1])[0]?.[0]
   const acceptProposedScore = (orientation: RoutedOrientation): boolean => {
     if (explicitEvidence.has(orientation)) return true
-    if (input.previous.primary === orientation) return true
     if (input.previous.scores[orientation] >= 0.5) return true
-    return input.previous.primary === "unknown" && proposedPrimary === orientation
+    return false
   }
   return normaliseApplicationParticipantOrientation({
     scores: {
@@ -216,10 +211,4 @@ export function mergeApplicationParticipantOrientation(input: {
       ...input.proposed.evidence,
     ].slice(-MAX_EVIDENCE_ITEMS),
   })
-}
-
-export function orientationHasCuratorRoute(
-  orientation: ApplicationParticipantOrientationState,
-): boolean {
-  return orientation.primary === "curator" || orientation.scores.curator >= 0.5
 }

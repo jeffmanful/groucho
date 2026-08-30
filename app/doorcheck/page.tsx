@@ -482,7 +482,6 @@ export default function DoorCheck() {
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   /** Bot reply is committed after the thinking row exits so layout doesn’t stack two tails */
   const assistantHandoffRef = useRef<Message | null>(null)
-  const pendingDecisionMessageRef = useRef<Message | null>(null)
   const bootstrapInFlightRef = useRef(false)
   const router = useRouter()
 
@@ -842,34 +841,18 @@ export default function DoorCheck() {
           selectedProject?.projectType === "onboarding" ||
           data.projectType === "onboarding"
         if (!isOnboarding) {
-          pendingDecisionMessageRef.current = nextMessage
-          setMessages([])
+          setMessages([nextMessage])
           setInteractionUi(nextUi)
-          setDecisionPhase("evaluating")
-          window.setTimeout(() => setDecisionPhase("decision"), 1400)
-          window.setTimeout(() => {
-            const pending = pendingDecisionMessageRef.current
-            pendingDecisionMessageRef.current = null
-            if (pending) setMessages([pending])
-            setDecisionPhase("revealed")
-          }, 2300)
+          setDecisionPhase("revealed")
         } else {
           assistantHandoffRef.current = nextMessage
         }
       } else if (data.status === "redirected" || data.status === "rejected") {
         setConcluded(true)
         if (isGatekeeperPreview) {
-          pendingDecisionMessageRef.current = nextMessage
-          setMessages([])
+          setMessages([nextMessage])
           setInteractionUi(nextUi)
-          setDecisionPhase("evaluating")
-          window.setTimeout(() => setDecisionPhase("decision"), 1400)
-          window.setTimeout(() => {
-            const pending = pendingDecisionMessageRef.current
-            pendingDecisionMessageRef.current = null
-            if (pending) setMessages([pending])
-            setDecisionPhase("revealed")
-          }, 2300)
+          setDecisionPhase("revealed")
         } else {
           assistantHandoffRef.current = nextMessage
         }
@@ -935,7 +918,6 @@ export default function DoorCheck() {
     localStorage.removeItem(PROFILE_KEY)
     localStorage.removeItem(REVIEWER_REPORT_KEY)
     assistantHandoffRef.current = null
-    pendingDecisionMessageRef.current = null
     setSessionId(newId)
     setInput("")
     setApplicantEmail("")

@@ -1,7 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk"
 import { NextResponse } from "next/server"
 import {
-  applicantIdentityFromRow,
   applicantIdentityPayload,
   type ApplicantIdentity,
 } from "@/lib/applicant-identity"
@@ -18,14 +17,21 @@ import { REQUEST_ID_HEADER } from "@/lib/request-trace"
 import { supabase } from "@/lib/supabase"
 import { isConcludedSessionStatus } from "@/lib/session-status"
 import { botSignalFromHeaders } from "@/lib/bot-signals"
-import { recordVerdictAndEnqueueWebhooks } from "@/lib/verdict-webhook"
+import {
+  completeSessionImmediately,
+  enqueueSessionCompletionJob,
+  scheduleSessionCompletionDrain,
+} from "@/lib/session-completion-jobs"
 import {
   gatekeeperResponseTool,
   GATEKEEPER_STRUCTURED_SYSTEM_SUFFIX,
   parseGatekeeperStructuredResponse,
   type GatekeeperTerminalField,
 } from "@/lib/gatekeeper-structured-tool"
-import { DEFAULT_INTERACTION_SPEC } from "@/lib/gatekeeper-interaction-spec"
+import {
+  DEFAULT_INTERACTION_SPEC,
+  interactionSpecForApplicationMove,
+} from "@/lib/gatekeeper-interaction-spec"
 import {
   computeTerminalStatusFromGatekeeperTurn,
   forcedCloseStatusFromScores,
@@ -51,6 +57,7 @@ import {
 import { logLlmUsage } from "@/lib/llm-usage"
 import {
   applicationSignalDefinitions,
+  applicationSignalDefinitionsForEvidence,
   applicationSignalDefinitionsForOrientation,
   applicationOpeningMessageForSignals,
   applicationSignalAnswerAttemptCount,
@@ -71,18 +78,18 @@ import {
   collectApplicationParticipantOrientation,
   inferApplicationParticipantOrientation,
   isExplicitCommunityIntent,
-  mergeApplicationParticipantOrientation,
   type ApplicationParticipantOrientationState,
 } from "@/lib/application-participant-orientation"
 import {
   collectApplicationConversationDepth,
-  shouldCloseAfterRepeatedThinEvidence,
   validateApplicationConversationMove,
   type ApplicationAnswerAssessment,
   type ApplicationConversationMove,
 } from "@/lib/application-conversation-depth"
-import { recordCompletedSessionCulturalSignals } from "@/lib/cultural-signals"
-import type { CulturalSignal } from "@/lib/cultural-signal-contract"
+import {
+  applicationAnswerNeedsRepair,
+  type ApplicationAnswerRelation,
+} from "@/lib/application-answer-relation"
 import {
   collectApplicationConversationThread,
   fallbackApplicationConversationThread,
@@ -103,9 +110,10 @@ import {
 import {
   activeApplicationReplyIssue,
   applicationAnswerSupportsSignal,
+  applicationQuestionSupportsSignal,
   ensureExplicitStructuredInputPrompt,
+  keepFirstApplicationQuestion,
   repairApplicationReplyWithQuestion,
-  stripApplicationProcessLanguage,
   type ActiveApplicationReplyIssue,
 } from "@/lib/application-turn-integrity"
 import {
@@ -115,6 +123,11 @@ import {
   collectApplicationIntegrityConcerns,
   detectApplicationIntegrityConcerns,
 } from "@/lib/application-integrity-concerns"
+import {
+  RequestTimings,
+  shouldExposeServerTimings,
+} from "@/lib/request-timings"
+import { resolveActiveGatekeeperPersona } from "@/lib/persona-resolution"
 
 function traceJson(
   input: PostSessionMessageInput,
@@ -123,6 +136,16 @@ function traceJson(
 ): NextResponse {
   const headers = new Headers(init?.headers)
   if (input.requestId) headers.set(REQUEST_ID_HEADER, input.requestId)
+  if (input.timings) {
+    if (shouldExposeServerTimings()) {
+      headers.set("Server-Timing", input.timings.serverTimingHeader())
+    }
+    input.timings.logOnce({
+      requestId: input.requestId,
+      projectId: input.timingProjectId,
+      sessionId: input.sessionId,
+    })
+  }
   return NextResponse.json(body, { ...init, headers })
 }
 
@@ -181,17 +204,6 @@ function fallbackQuestionForApplicationSignal(signal: {
   return candidate.endsWith("?")
     ? candidate
     : `${candidate.replace(/[.!]+$/, "")}?`
-}
-
-function fallbackQuestionForApplicationBridge(
-  bridge: ApplicationBridgeCandidate,
-): string {
-  if (bridge.kind === "maker_to_practice") {
-    return "What are you trying to express in your own music?"
-  }
-  return bridge.questionIntent.endsWith("?")
-    ? bridge.questionIntent
-    : `${bridge.questionIntent}?`
 }
 
 const DOORMAN_SYSTEM_PROMPT_CORE = `You are Lou. You work the door at Public Equity™.
@@ -298,6 +310,9 @@ export type PostSessionMessageInput = {
   requestId?: string
   /** When set, used for optional bot UA heuristics (`GROUPCHO_*` env). */
   incomingHeaders?: Headers
+  /** Internal per-request latency tracing; never supplied by public callers. */
+  timings?: RequestTimings
+  timingProjectId?: string
 }
 
 /**
@@ -306,6 +321,8 @@ export type PostSessionMessageInput = {
 export async function postSessionMessage(
   input: PostSessionMessageInput,
 ): Promise<NextResponse> {
+  input.timings ??= new RequestTimings()
+  const timings = input.timings
   const { message, sessionId, personaId, applicantIdentity } = input
   if (!message?.trim() || !sessionId?.trim()) {
     return traceJson(
@@ -318,6 +335,7 @@ export async function postSessionMessage(
   const projectIdOverride = input.projectId?.trim() || null
   let projectResolved: Awaited<ReturnType<typeof resolveProjectContext>>
 
+  const finishProjectResolution = timings.start("project_resolution")
   if (projectIdOverride) {
     if (!input.playgroundActor) {
       return traceJson(
@@ -342,8 +360,10 @@ export async function postSessionMessage(
       })
     }
   }
+  finishProjectResolution()
   const { organisationId, projectId, apiKeyId, settings } =
     projectResolved.context
+  input.timingProjectId = projectId
 
   const botSignal = input.incomingHeaders
     ? botSignalFromHeaders(input.incomingHeaders)
@@ -429,12 +449,12 @@ export async function postSessionMessage(
     ),
   )
 
-  const { data: existing } = await supabase
+  const { data: existing } = await timings.measure("session_lookup", () => supabase
     .from("sessions")
     .select("id, status, persona_id, applicant_email, applicant_name")
     .eq("session_id", sessionId)
     .eq("project_id", projectId)
-    .maybeSingle()
+    .maybeSingle())
 
   if (existing) {
     if (isConcludedSessionStatus(existing.status)) {
@@ -457,18 +477,6 @@ export async function postSessionMessage(
     }
   }
 
-  type PersonaRow = {
-    id: string
-    prompt: string
-    pass_threshold: number
-    reject_threshold: number
-    profile_schema?: unknown
-    profile_extractor_hint?: string | null
-  }
-
-  let resolvedPersona: PersonaRow | null = null
-  const personaCols =
-    "id, prompt, pass_threshold, reject_threshold, profile_schema, profile_extractor_hint"
   const projectPersonaId =
     typeof settings.raw.persona_id === "string"
       ? settings.raw.persona_id.trim()
@@ -479,28 +487,9 @@ export async function postSessionMessage(
     projectPersonaId,
   ].filter((id, index, ids): id is string => Boolean(id) && ids.indexOf(id) === index)
 
-  for (const candidateId of personaCandidates) {
-    const { data } = await supabase
-      .from("personas")
-      .select(personaCols)
-      .eq("id", candidateId)
-      .eq("is_active", true)
-      .maybeSingle()
-    if (data) {
-      resolvedPersona = data as PersonaRow
-      break
-    }
-  }
-
-  if (!resolvedPersona) {
-    const { data } = await supabase
-      .from("personas")
-      .select(personaCols)
-      .eq("is_active", true)
-      .eq("is_default", true)
-      .single()
-    resolvedPersona = data as PersonaRow | null
-  }
+  const resolvedPersona = await timings.measure("persona_resolution", () =>
+    resolveActiveGatekeeperPersona(personaCandidates),
+  )
 
   const baseSystem = resolvedPersona
     ? withTerminalDecisionAppendix(resolvedPersona.prompt)
@@ -510,8 +499,6 @@ export async function postSessionMessage(
   const rejectThreshold: number = resolvedPersona?.reject_threshold ?? 0.25
 
   let sessionRowId: string
-  let sessionApplicantIdentity: ApplicantIdentity | null = applicantIdentity ?? null
-
   if (existing) {
     if (applicantIdentity && !existing.applicant_email) {
       await supabase
@@ -519,7 +506,6 @@ export async function postSessionMessage(
         .update(applicantIdentityPayload(applicantIdentity))
         .eq("id", existing.id)
     }
-    sessionApplicantIdentity = applicantIdentity ?? applicantIdentityFromRow(existing)
     sessionRowId = existing.id
   } else {
     if (!applicantIdentity && !projectIdOverride) {
@@ -553,7 +539,7 @@ export async function postSessionMessage(
     sessionRowId = created.id
   }
 
-  const { data: userMsg, error: userMsgError } = await supabase
+  const { data: userMsg, error: userMsgError } = await timings.measure("user_persistence", () => supabase
     .from("messages")
     .insert({
       session_id: sessionRowId,
@@ -563,7 +549,7 @@ export async function postSessionMessage(
       content: message.trim(),
     })
     .select("id")
-    .single()
+    .single())
 
   if (userMsgError || !userMsg) {
     log.error("user_message_insert_failed", {
@@ -575,11 +561,11 @@ export async function postSessionMessage(
     return traceJson(input, { error: "Database error" }, { status: 500 })
   }
 
-  const { data: history } = await supabase
+  const { data: history } = await timings.measure("history_load", () => supabase
     .from("messages")
     .select("id, role, content, metadata")
     .eq("session_id", sessionRowId)
-    .order("sent_at", { ascending: true })
+    .order("sent_at", { ascending: true }))
 
   const historyRows: Array<ApplicationSignalMessage & { id: string }> = (history ?? []).map((m) => ({
     id: m.id,
@@ -616,6 +602,14 @@ export async function postSessionMessage(
     priorHistory,
     signalDefinitions,
   )
+  const priorConversationEvidence = priorHistory
+    .filter((entry) => entry.role === "user")
+    .map((entry) => ({ answer: entry.content }))
+  const priorRelevantSignalDefinitions =
+    applicationSignalDefinitionsForEvidence(
+      routedSignalDefinitions,
+      priorConversationEvidence,
+    )
   const storedInsufficientEvidenceKeys =
     collectApplicationInsufficientEvidenceKeys(priorHistory)
   const previousAssistant = [...priorHistory]
@@ -625,9 +619,9 @@ export async function postSessionMessage(
     signalDefinitions.length > 0 &&
     !hasLegacyUntaggedAnswers(priorHistory, signalDefinitions)
   const expectedSignal = useCompactSignalState
-    ? expectedApplicationSignal(
+      ? expectedApplicationSignal(
         priorHistory,
-        routedSignalDefinitions,
+        priorRelevantSignalDefinitions,
         storedSignalAnswers,
       )
     : null
@@ -704,11 +698,11 @@ export async function postSessionMessage(
   let structuredTerminal: GatekeeperTerminalField | null = null
   let parsedNextSignalKey: string | null = null
   let answerAssessment: ApplicationAnswerAssessment | null = null
+  let answerRelation: ApplicationAnswerRelation | null = null
   let proposedConversationMove: ApplicationConversationMove | null = null
   let proposedResponseMode: ApplicationResponseMode | null = null
   let participantOrientation: ApplicationParticipantOrientationState =
     storedParticipantOrientation
-  let culturalSignals: CulturalSignal[] = []
   let coveredSignalKeys: string[] = []
   let proposedBridgePlan: ApplicationBridgePlan = {
     candidates: [],
@@ -771,14 +765,20 @@ export async function postSessionMessage(
   } else {
     try {
       const model = gatekeeperConversationModel()
-      const response = await client.messages.create({
+      const response = await timings.measure("conversation_model", () => client.messages.create({
         model,
-        max_tokens: 1100,
-        system: systemPrompt,
+        max_tokens: 500,
+        system: [
+          {
+            type: "text",
+            text: systemPrompt,
+            cache_control: { type: "ephemeral" },
+          },
+        ],
         messages: claudeMessages,
         tools: [gatekeeperResponseTool],
         tool_choice: { type: "tool", name: gatekeeperResponseTool.name },
-      })
+      }))
       logLlmUsage({
         operation: "gatekeeper_turn",
         provider: "anthropic",
@@ -796,29 +796,27 @@ export async function postSessionMessage(
       structuredTerminal = parsed.terminal
       parsedNextSignalKey = parsed.nextSignalKey
       answerAssessment = parsed.answerAssessment
+      answerRelation = parsed.answerRelation
       proposedConversationMove = parsed.conversationMove
-      proposedResponseMode = parsed.responseMode
-      participantOrientation = mergeApplicationParticipantOrientation({
+      proposedResponseMode = null
+      participantOrientation = inferApplicationParticipantOrientation({
         previous: storedParticipantOrientation,
-        proposed: parsed.participantOrientation,
         currentAnswer: message.trim(),
       })
-      culturalSignals = parsed.culturalSignals
       coveredSignalKeys = parsed.coveredSignalKeys
-      proposedBridgePlan = parsed.bridgePlan
-      updatedConversationThread =
-        parsed.threadState.subject ||
-        parsed.threadState.strongestDetail ||
-        parsed.threadState.openHook ||
-        parsed.threadState.momentum !== "new"
-          ? parsed.threadState
-          : fallbackApplicationConversationThread({
-              previous: conversationThread,
-              currentAnswer: message.trim(),
-              assessment: parsed.answerAssessment,
-            })
+      proposedBridgePlan = { candidates: [], selectedIndex: -1, selected: null }
+      updatedConversationThread = fallbackApplicationConversationThread({
+        previous: conversationThread,
+        currentAnswer: message.trim(),
+        assessment: parsed.answerAssessment,
+      })
       reviewerReport = parsed.reviewerReport
-      interactionSpec = parsed.interaction
+      interactionSpec = useCompactSignalState
+        ? interactionSpecForApplicationMove(
+            parsed.conversationMove,
+            parsed.terminal ?? "none",
+          )
+        : parsed.interaction
       scores = parsed.scores
 
       if (!parsed.toolSeen) {
@@ -848,6 +846,10 @@ export async function postSessionMessage(
     answerAssessment,
     currentIntegrityConcerns,
   )
+  const turnNeedsConversationalRepair =
+    useCompactSignalState &&
+    currentIntegrityConcerns.length === 0 &&
+    applicationAnswerNeedsRepair(answerRelation)
   if (currentIntegrityConcerns.length > 0) {
     proposedConversationMove = "challenge"
     proposedResponseMode = "challenge"
@@ -861,6 +863,7 @@ export async function postSessionMessage(
   })
   if (
     coveredSignalKeys.length === 0 &&
+    !turnNeedsConversationalRepair &&
     currentSignal &&
     answerAssessment &&
     ["usable", "rich"].includes(answerAssessment.quality) &&
@@ -897,6 +900,9 @@ export async function postSessionMessage(
         ...(answerAssessment
           ? { answer_assessment: answerAssessment }
           : {}),
+        ...(answerRelation
+          ? { application_answer_relation: answerRelation }
+          : {}),
         ...(useCompactSignalState && currentSignal
           ? { application_signal: applicationSignalMetadata(currentSignal) }
           : {}),
@@ -907,9 +913,6 @@ export async function postSessionMessage(
                 .map((signal) => applicationSignalMetadata(signal)),
             }
           : {}),
-          ...(culturalSignals.length
-            ? { cultural_signals: culturalSignals }
-            : {}),
         participant_orientation: participantOrientation,
         ...(currentInsufficientEvidence
           ? {
@@ -940,6 +943,14 @@ export async function postSessionMessage(
     structuredTerminal,
     structuredToolUsed: structuredToolSeen,
   })
+  if (
+    turnNeedsConversationalRepair &&
+    questionBudget.phase !== "emergency_stop"
+  ) {
+    status = null
+    structuredTerminal = "none"
+    reviewerReport = null
+  }
   const calibratedIntegrityStatus =
     calibratedStatusForIntegrityHistory({
       stored: storedIntegrityConcerns,
@@ -987,9 +998,15 @@ export async function postSessionMessage(
       answer.answer.trim().length > 0 &&
       answer.label.toLowerCase().includes("artist more people should know"),
   )
-  const activeSignalDefinitions = applicationSignalDefinitionsForOrientation(
-    signalDefinitions,
-    participantOrientation,
+  const activeSignalDefinitions = applicationSignalDefinitionsForEvidence(
+    applicationSignalDefinitionsForOrientation(
+      signalDefinitions,
+      participantOrientation,
+    ),
+    [
+      ...priorConversationEvidence,
+      { answer: message.trim() },
+    ],
   )
   const activeSignalKeys = new Set(
     activeSignalDefinitions.map((signal) => signal.key),
@@ -1022,22 +1039,10 @@ export async function postSessionMessage(
       .map((signal) => signal.key),
   )
   let budgetForcedClose = false
-  let repeatedThinEvidenceClose = false
   const applicationClosingMessage =
     settings.applicationExperience.closing_message?.trim() ||
     DEFAULT_APPLICATION_CLOSING_MESSAGE
   if (
-    status === null &&
-    useCompactSignalState &&
-    shouldCloseAfterRepeatedThinEvidence({
-      depth: conversationDepth,
-      currentAssessment: answerAssessment,
-    })
-  ) {
-    status = "redirected"
-    budgetForcedClose = true
-    repeatedThinEvidenceClose = true
-  } else if (
     status === null &&
     questionBudget.phase === "emergency_stop"
   ) {
@@ -1057,10 +1062,10 @@ export async function postSessionMessage(
         proposedConversationMove === "rabbit_hole" ? currentSignal?.key : null,
       remainingQuestions: questionBudget.remainingQuestions,
       isTerminal: status !== null,
-      signalPriorities: new Map(
-        activeSignalDefinitions.map((signal) => [signal.key, signal.priority]),
-      ),
     })
+  if (turnNeedsConversationalRepair) {
+    acceptedBridge = null
+  }
   const bridgeSelectionChanged =
     acceptedBridge !== null && acceptedBridge !== proposedBridgePlan.selected
   let bridgeWasAdjusted =
@@ -1070,7 +1075,7 @@ export async function postSessionMessage(
     status !== null ? "decide" : null
   let moveWasAdjusted = false
   let communityIntentFollowup = false
-  let processLanguageRemoved = false
+  let conversationalThreadTurn = false
   let groundedReceiptPreserved = false
   let activeReplyRepair: {
     issue: ActiveApplicationReplyIssue
@@ -1079,7 +1084,22 @@ export async function postSessionMessage(
   } | null = null
   let nextSignal = null as (typeof signalDefinitions)[number] | null
 
-  if (status === null && useCompactSignalState) {
+  if (
+    status === null &&
+    useCompactSignalState &&
+    turnNeedsConversationalRepair
+  ) {
+    acceptedConversationMove = "clarify"
+    moveWasAdjusted = proposedConversationMove !== "clarify"
+    bridgeWasAdjusted ||= proposedBridgePlan.selected !== null
+    conversationalThreadTurn = true
+  }
+
+  if (
+    status === null &&
+    useCompactSignalState &&
+    !turnNeedsConversationalRepair
+  ) {
     const currentAnswer = compactSignalAnswers.find(
       (answer) => answer.key === currentSignal?.key,
     )
@@ -1181,40 +1201,24 @@ export async function postSessionMessage(
       bridgeWasAdjusted ||= proposedBridgePlan.selected !== null
       moveWasAdjusted = true
     } else if (bridgeSelectionChanged && acceptedBridge && nextSignal) {
-      const repaired = repairApplicationReplyWithQuestion({
-        reply: assistantContent,
-        currentAnswer: message.trim(),
-        question: fallbackQuestionForApplicationBridge(acceptedBridge),
-      })
-      assistantContent = repaired.reply
-      groundedReceiptPreserved ||= repaired.receiptPreserved
       interactionSpec = fallbackInteractionForApplicationSignal(nextSignal)
     } else if (moveValidation.move === "advance" && nextSignal) {
       const signalWasAdjusted = requestedNextSignalKey !== nextSignal.key
       if (moveWasAdjusted || signalWasAdjusted) {
-        const repaired = repairApplicationReplyWithQuestion({
-          reply: assistantContent,
-          currentAnswer: message.trim(),
-          question: fallbackQuestionForApplicationSignal(nextSignal, {
-            hasArtistAntecedent,
-          }),
-        })
-        assistantContent = repaired.reply
-        groundedReceiptPreserved ||= repaired.receiptPreserved
         interactionSpec = fallbackInteractionForApplicationSignal(nextSignal)
         moveWasAdjusted = true
       }
     } else if (moveValidation.move === "advance" && !nextSignal) {
-      status = forcedCloseStatusFromScores({
-        scores,
-        passThreshold,
-        rejectThreshold,
-      })
-      budgetForcedClose = true
-      acceptedConversationMove = "decide"
-      acceptedBridge = null
+      conversationalThreadTurn = true
     }
 
+  }
+
+  if (status === null && nextSignal) {
+    const signalInteraction = fallbackInteractionForApplicationSignal(nextSignal)
+    if (signalInteraction.inputType !== "text") {
+      interactionSpec = signalInteraction
+    }
   }
 
   if (
@@ -1235,12 +1239,6 @@ export async function postSessionMessage(
   }
 
   if (status === null && useCompactSignalState) {
-    const strippedReply = stripApplicationProcessLanguage(assistantContent)
-    assistantContent = strippedReply.reply
-    processLanguageRemoved = strippedReply.removed
-  }
-
-  if (status === null && useCompactSignalState) {
     const recentApplicationQuestions = priorHistory
       .filter((entry) => entry.role === "assistant")
       .slice(-5)
@@ -1253,7 +1251,12 @@ export async function postSessionMessage(
       previousQuestion: recentApplicationQuestions || currentQuestion,
       hasArtistAntecedent,
     })
-    if (replyIssue) {
+    if (replyIssue === "multiple_questions") {
+      assistantContent = keepFirstApplicationQuestion(assistantContent)
+      acceptedConversationMove =
+        acceptedConversationMove ?? proposedConversationMove ?? "advance"
+      moveWasAdjusted = true
+    } else if (replyIssue) {
       const openRepairSignals = activeSignalDefinitions.filter(
         (signal) =>
           !answersForRouting.some(
@@ -1331,6 +1334,20 @@ export async function postSessionMessage(
     }
   }
 
+  if (
+    status === null &&
+    nextSignal &&
+    ["text", "voice"].includes(interactionSpec.inputType) &&
+    !applicationQuestionSupportsSignal(nextSignal, assistantContent)
+  ) {
+    nextSignal = null
+    acceptedBridge = null
+    bridgeWasAdjusted = true
+    conversationalThreadTurn = true
+  } else if (status === null && !nextSignal) {
+    conversationalThreadTurn = true
+  }
+
   const explicitPrompt = ensureExplicitStructuredInputPrompt({
     reply: assistantContent,
     interaction: interactionSpec,
@@ -1344,8 +1361,23 @@ export async function postSessionMessage(
       scores,
       definitions: activeSignalDefinitions,
       answers: answersWithCoverage,
+      messages: historyRows.map((entry) =>
+        entry.id === userMsg.id
+          ? {
+              ...entry,
+              metadata: {
+                answer_assessment: answerAssessment,
+                ...(currentSignal
+                  ? {
+                      application_signal:
+                        applicationSignalMetadata(currentSignal),
+                    }
+                  : {}),
+              },
+            }
+          : entry,
+      ),
       insufficientEvidenceKeys,
-      orientation: participantOrientation,
       integrityFlags: [
         ...storedIntegrityConcerns,
         ...currentIntegrityConcerns,
@@ -1379,8 +1411,16 @@ export async function postSessionMessage(
           ...(communityIntentFollowup
             ? { application_community_intent_followup: true }
             : {}),
-          ...(processLanguageRemoved
-            ? { application_process_language_removed: true }
+          ...(conversationalThreadTurn
+            ? { application_conversation_thread_turn: true }
+            : {}),
+          ...(turnNeedsConversationalRepair && answerRelation
+            ? {
+                application_turn_repair: {
+                  relation: answerRelation.kind,
+                  reason: answerRelation.reason,
+                },
+              }
             : {}),
           ...(groundedReceiptPreserved
             ? { application_grounded_receipt_preserved: true }
@@ -1392,21 +1432,11 @@ export async function postSessionMessage(
             ? {
                 application_budget_forced_close: true,
                 application_budget_forced_close_outcome: {
-                  source: repeatedThinEvidenceClose
-                    ? "repeated_thin_evidence"
-                    : "score_thresholds",
+                  source: "emergency_stop",
                   overall: scores.overall,
                   passThreshold,
                   rejectThreshold,
                   status,
-                },
-              }
-            : {}),
-          ...(repeatedThinEvidenceClose
-            ? {
-                application_thin_evidence_close: {
-                  priorThinAnswers: conversationDepth.thinAnswerCount,
-                  distinctThinSignals: conversationDepth.thinSignalCount,
                 },
               }
             : {}),
@@ -1465,14 +1495,14 @@ export async function postSessionMessage(
         }
       : assistantMetadata
 
-  const { error: asstError } = await supabase.from("messages").insert({
+  const { error: asstError } = await timings.measure("assistant_persistence", () => supabase.from("messages").insert({
     session_id: sessionRowId,
     organisation_id: organisationId,
     project_id: projectId,
     role: "assistant",
     content: userVisibleAssistantContent,
     ...(persistedAssistantMetadata ? { metadata: persistedAssistantMetadata } : {}),
-  })
+  }))
 
   if (asstError) {
     log.error("assistant_message_insert_failed", {
@@ -1484,76 +1514,43 @@ export async function postSessionMessage(
   }
 
   if (status !== null) {
-    await supabase.from("sessions").update({ status }).eq("id", sessionRowId)
+    await timings.measure("terminal_state_persistence", () =>
+      supabase.from("sessions").update({ status }).eq("id", sessionRowId),
+    )
   }
 
-  let profile: Awaited<ReturnType<typeof recordVerdictAndEnqueueWebhooks>>["profile"] = null
   if (status !== null) {
-    const transcriptForExtraction: ConversationMessage[] = localTestMode
-      ? []
-      : [
-          ...dbHistory,
-          { role: "assistant", content: userVisibleAssistantContent },
-        ]
     try {
-      const result = await recordVerdictAndEnqueueWebhooks({
+      await timings.measure("terminal_job_enqueue", () => enqueueSessionCompletionJob({
         organisationId,
         projectId,
-        sessionInternalId: sessionRowId,
-        clientSessionKey: sessionId,
-        terminalStatus: status,
-        scores,
-        reviewerReport,
-        requestId: input.requestId,
-        persona: resolvedPersona
-          ? {
-              profile_schema: resolvedPersona.profile_schema ?? null,
-              profile_extractor_hint:
-                resolvedPersona.profile_extractor_hint ?? null,
-            }
-          : null,
-        transcript: transcriptForExtraction,
-        applicant: sessionApplicantIdentity,
-      })
-      profile = result?.profile ?? null
+        sessionId: sessionRowId,
+        likelyBot: botSignal.likelyBot,
+      }))
+      scheduleSessionCompletionDrain()
     } catch (err) {
-      log.error("verdict_webhook_failed", {
+      log.error("session_completion_enqueue_failed", {
         requestId: input.requestId,
         projectId,
         sessionId,
         detail: err instanceof Error ? err.message : String(err),
       })
-    }
-
-    if (!localTestMode) {
-      const signalMessages = historyRows.map((entry) => ({
-        id: entry.id,
-        role: entry.role,
-        metadata:
-          entry.id === userMsg.id && culturalSignals.length
-            ? {
-                ...(entry.metadata && typeof entry.metadata === "object"
-                  ? entry.metadata
-                  : {}),
-                cultural_signals: culturalSignals,
-              }
-            : entry.metadata,
-      }))
       try {
-        await recordCompletedSessionCulturalSignals({
+        await timings.measure("terminal_completion_fallback", () => completeSessionImmediately({
           organisationId,
           projectId,
           sessionId: sessionRowId,
-          settings: settings.raw,
           likelyBot: botSignal.likelyBot,
-          messages: signalMessages,
-        })
-      } catch (err) {
-        log.error("cultural_signal_record_failed", {
+        }))
+      } catch (fallbackError) {
+        log.error("session_completion_fallback_failed", {
           requestId: input.requestId,
           projectId,
           sessionId,
-          detail: err instanceof Error ? err.message : String(err),
+          detail:
+            fallbackError instanceof Error
+              ? fallbackError.message
+              : String(fallbackError),
         })
       }
     }
@@ -1565,7 +1562,6 @@ export async function postSessionMessage(
     reviewStatus: status === null ? "not_ready" : "pending",
     scores,
     ...(structuredToolSeen ? { ui: interactionSpec } : {}),
-    ...(profile ? { profile } : {}),
     ...(reviewerReport ? { reviewerReport } : {}),
   })
 }

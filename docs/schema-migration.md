@@ -125,6 +125,7 @@ profiles (organisation_id, email)
 | `sessions` | Member of org (+ optional project filter) | **API key role** via service role or custom claim | System / API | — | Public chat uses **validated API key**, not end-user JWT — see §4.1 |
 | `messages` | Same as session parent | Same | — | — | |
 | `verdicts` | Member | System only | Webhook worker updates `webhook_*` | — | |
+| `session_completion_jobs` | System only | System only | Completion worker | System only | Service-role queue; no applicant or member policies |
 | `webhooks` | Admin | Admin | Admin | Admin | |
 | `profiles` | Admin / own email policy | Access API with service role | Upsert via controlled API | GDPR export only | |
 
@@ -148,6 +149,9 @@ RLS alone with anon key is insufficient for arbitrary browsers unless you use **
 5. Add `api_keys`, `webhooks`, `verdicts`.  
 6. Enable RLS + policies; run regression tests on chat + access routes.  
 7. Remove global-only assumptions in app code (`lib/supabase.ts` patterns).
+8. Apply `20260821100000_add_session_completion_jobs.sql` before enabling
+   asynchronous gatekeeper terminal completion. The runtime retains an inline
+   fallback until the queue is available.
 
 ---
 

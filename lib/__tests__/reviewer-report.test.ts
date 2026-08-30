@@ -85,16 +85,11 @@ describe("reviewer report helpers", () => {
         { ...definitions[1], answer: "Not sure.\nFollow-up: I don't know.", covered: false },
       ],
       insufficientEvidenceKeys: new Set(["contribution"]),
-      orientation: {
-        primary: "curator",
-        scores: { artist: 0.1, curator: 0.84, enthusiast: 0.3 },
-        confidence: 0.84,
-        evidence: ["Hosts a listening night"],
-      },
     })
 
     expect(report.advisory_recommendation).toBe("human_review")
-    expect(report.applicant_bio).toContain("curator")
+    expect(report.applicant_bio).not.toContain("curator")
+    expect(report.applicant_bio).toContain("1 established evidence area")
     expect(report.evidence_summary).toEqual([
       "How do you participate?: I host a monthly listening night.",
     ])
@@ -107,6 +102,47 @@ describe("reviewer report helpers", () => {
       },
     ])
     expect(report.weak_or_missing_signals[0]).toContain("insufficient evidence")
+  })
+
+  it("retains contextual transcript evidence that did not map to a signal", () => {
+    const report = ensureEvidenceBackedReviewerReport({
+      report: null,
+      terminalStatus: "redirected",
+      scores: { overall: 0.6 },
+      definitions: [],
+      answers: [],
+      messages: [
+        {
+          id: "maker-context",
+          role: "user",
+          content: "I make cinematic soundtracks.",
+          metadata: {
+            answer_assessment: { quality: "usable" },
+          },
+        },
+        {
+          id: "cultural-context",
+          role: "user",
+          content: "Lucki's songwriting feels almost poetic.",
+          metadata: {
+            answer_assessment: { quality: "thin" },
+          },
+        },
+      ],
+    })
+
+    expect(report.evidence_summary).toContain(
+      "Additional transcript evidence: I make cinematic soundtracks.",
+    )
+    expect(report.evidence_summary).toContain(
+      "Context needing follow-up: Lucki's songwriting feels almost poetic.",
+    )
+    expect(report.evidence_references).toContainEqual({
+      signal_key: "conversation_context",
+      signal_label: "Conversation context",
+      source_message_id: "maker-context",
+      excerpt: "I make cinematic soundtracks.",
+    })
   })
 
   it("replaces untraceable model evidence with persisted application evidence", () => {

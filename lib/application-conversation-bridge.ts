@@ -47,7 +47,6 @@ const FRESHNESS_SET = new Set<string>(["current", "recent", "earlier"])
 const SIGNAL_KEY_PATTERN = /^[a-z0-9_]{1,64}$/
 const MAX_BRIDGE_CANDIDATES = 3
 export const MIN_APPLICATION_BRIDGE_CONFIDENCE = 0.55
-const MIN_PRIORITY_MAKER_BRIDGE_CONFIDENCE = 0.7
 
 function record(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null
@@ -165,7 +164,6 @@ export function validateApplicationBridgeSelection(input: {
   allowCurrentSignalKey?: string | null
   remainingQuestions: number
   isTerminal: boolean
-  signalPriorities?: Map<string, "core" | "supporting">
 }): ApplicationBridgeCandidate | null {
   if (input.isTerminal || input.remainingQuestions <= 0) return null
   const isValid = (candidate: ApplicationBridgeCandidate): boolean => {
@@ -183,24 +181,5 @@ export function validateApplicationBridgeSelection(input: {
     )
   }
   const selected = input.plan.selected
-  const priorityMakerBridge = input.plan.candidates.find(
-    (candidate) =>
-      candidate.kind === "maker_to_practice" &&
-      candidate.freshness === "current" &&
-      candidate.confidence >= MIN_PRIORITY_MAKER_BRIDGE_CONFIDENCE &&
-      candidate.targetSignalKey !== null &&
-      input.signalPriorities?.get(candidate.targetSignalKey) === "core" &&
-      isValid(candidate),
-  )
-  const selectedTargetsSupportingGoal =
-    selected?.targetSignalKey !== null &&
-    selected?.targetSignalKey !== undefined &&
-    input.signalPriorities?.get(selected.targetSignalKey) === "supporting"
-  if (
-    priorityMakerBridge &&
-    (!selected || selectedTargetsSupportingGoal)
-  ) {
-    return priorityMakerBridge
-  }
   return selected && isValid(selected) ? selected : null
 }

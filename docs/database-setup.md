@@ -53,6 +53,9 @@ From the **repository root**:
      - `GROUCHO_ONBOARDING_TURN_MODEL`
      - `GROUCHO_ONBOARDING_COMPLETION_MODEL`
    - Successful model calls emit structured `llm_usage` log lines with token counts and `estimatedCostUsd` when the model is in Groucho's pricing map.
+   - Set `CRON_SECRET` for authenticated completion-job and webhook drains. Terminal
+     profile extraction and webhook preparation run after the applicant-facing
+     response and retry through `GET /api/cron/webhook-deliveries`.
 
 5. **Smoke check:** open Supabase **Studio** (URL from `supabase status`) → **Table Editor** → confirm `personas` has the seeded Lou row and tables exist.
 

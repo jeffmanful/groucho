@@ -12,9 +12,22 @@ export type ProjectContext = {
   settings: NormalizedProjectSettings
 }
 
+const PROJECT_SETTINGS_CACHE_TTL_MS = 60_000
+const projectSettingsCache = new Map<
+  string,
+  { expiresAt: number; settings: NormalizedProjectSettings }
+>()
+
+export function invalidateProjectSettingsCache(projectId?: string): void {
+  if (projectId) projectSettingsCache.delete(projectId)
+  else projectSettingsCache.clear()
+}
+
 async function loadProjectSettings(
   projectId: string,
 ): Promise<NormalizedProjectSettings> {
+  const cached = projectSettingsCache.get(projectId)
+  if (cached && cached.expiresAt > Date.now()) return cached.settings
   const { data, error } = await supabase
     .from("projects")
     .select("settings")
@@ -23,7 +36,14 @@ async function loadProjectSettings(
   if (error) {
     console.warn("projects settings lookup:", error)
   }
-  return normalizeProjectSettings(data?.settings ?? {})
+  const settings = normalizeProjectSettings(data?.settings ?? {})
+  if (!error) {
+    projectSettingsCache.set(projectId, {
+      expiresAt: Date.now() + PROJECT_SETTINGS_CACHE_TTL_MS,
+      settings,
+    })
+  }
+  return settings
 }
 
 export async function contextFromIds(

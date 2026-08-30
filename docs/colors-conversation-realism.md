@@ -54,7 +54,7 @@ Contribution bridges should also stay concrete. Groucho should recall the applic
 
 ## Adaptive applicant branches
 
-Continuity now sits inside a shared-trunk, adaptive-branch model for artists, curators or scene participants, music or COLORS enthusiasts, and hybrids. Groucho persists a private revisable orientation hypothesis, removes branch-inapplicable goals, and rewrites participation and contribution routes for the applicant's relationship to music. The unfinished-work feedback scenario is no longer universal: it is available only when curator, scene, organising, or feedback evidence supports it.
+Continuity now sits inside a shared foundation with descriptive orientation lenses for artists, curators or scene participants, music or COLORS enthusiasts, and hybrids. Groucho persists a private revisable orientation summary for tone and reviewer context, but it does not remove, rewrite, force, or prioritise goals from that label. Conditional areas such as unfinished-work feedback become relevant only when the applicant's own words introduce feedback, curation, hosting, organising, unfinished work, or a comparable practice.
 
 The server also defers an ordinary terminal decision while a relevant core goal has never been attempted and question budget remains. This prevents the final report from blaming an applicant for evidence the conversation never invited. See [colors-adaptive-applicant-branches.md](./colors-adaptive-applicant-branches.md).
 
@@ -69,6 +69,17 @@ Allow brief, grounded observations and respectful disagreement. Groucho should c
 ## Layer 5 — Conversational repair
 
 Let Groucho recognise when a question was too broad, check an interpretation, rephrase, or offer another route. Applicants may skip a route without that choice automatically becoming negative character evidence.
+
+Implementation baseline: Groucho now assesses answer quality and answer-to-question
+relation separately. A reply can contain useful cultural evidence while still being
+`partial`, a `subject_shift`, or `ambiguous` in relation to the preceding question.
+For a subject shift or ambiguous connection, Groucho opens one short clarification
+turn around the new detail. The runtime removes any proposed bridge and next-signal
+attachment for that turn, prevents automatic coverage of the preceding intent, and
+records the repair privately. This allows a line such as `Lucki` after a question
+about the applicant's current project to become `Lucki—are you bringing him up as
+an influence on your own work?` rather than an invented claim about how the artist
+relates to their practice.
 
 ## Layer 6 — Flexible pacing
 

@@ -1,11 +1,176 @@
+import Anthropic from "@anthropic-ai/sdk"
+import {
+  DEFAULT_LOW_COST_ANTHROPIC_MODEL,
+  logLlmUsage,
+  modelFromEnv,
+} from "@/lib/llm-usage"
+import { log } from "@/lib/logger"
 import { supabase } from "@/lib/supabase"
 import {
   aggregateCulturalSignalEvents,
+  CULTURAL_SIGNAL_TYPES,
   culturalSignalsFromMessageMetadata,
+  normaliseCulturalSignals,
   parseCulturalSignalsSettings,
+  type CulturalSignal,
   type CulturalSignalEvent,
   type CulturalSignalSnapshot,
 } from "@/lib/cultural-signal-contract"
+
+const CULTURAL_SIGNAL_EXTRACTION_MODEL_ENV =
+  "GROUCHO_CULTURAL_SIGNAL_EXTRACTION_MODEL"
+
+type CulturalSignalSourceMessage = {
+  id: string
+  role: "user" | "assistant"
+  content?: string
+  metadata?: unknown
+}
+
+export type ExtractedCulturalSignal = {
+  sourceMessageId: string
+  signal: CulturalSignal
+}
+
+let anthropicClient: Anthropic | null = null
+
+function getAnthropicClient(): Anthropic {
+  if (!anthropicClient) anthropicClient = new Anthropic()
+  return anthropicClient
+}
+
+function culturalSignalExtractionSchema(sourceMessageIds: string[]) {
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      signals: {
+        type: "array",
+        maxItems: 24,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            sourceMessageId: { type: "string", enum: sourceMessageIds },
+            type: { type: "string", enum: CULTURAL_SIGNAL_TYPES },
+            displayLabel: { type: "string" },
+            confidence: { type: "number", minimum: 0, maximum: 1 },
+          },
+          required: [
+            "sourceMessageId",
+            "type",
+            "displayLabel",
+            "confidence",
+          ],
+        },
+      },
+    },
+    required: ["signals"],
+  } as const
+}
+
+const CULTURAL_SIGNAL_EXTRACTION_SYSTEM = `You extract privacy-safe, project-level cultural signals from completed application conversations.
+
+Return only signals explicitly present in an applicant message. Never infer identity, protected traits, health, politics, religion, sexuality, precise location, contact details, or socioeconomic status. Never return quotes, stories, sentences, names of applicants, or personal descriptions.
+
+Use artist_reference, creative_discipline, and scene_or_genre only for short explicit cultural references. Use fixed thematic types only when directly supported. Use emerging_theme sparingly for a short reusable theme that does not fit another type. Keep displayLabel to eight words or fewer. Return no more than four signals per source message and an empty array when nothing is safe and useful.`
+
+export async function extractCompletedSessionCulturalSignals(input: {
+  organisationId: string
+  projectId: string
+  sessionId: string
+  messages: CulturalSignalSourceMessage[]
+}): Promise<ExtractedCulturalSignal[]> {
+  const userMessages = input.messages
+    .filter(
+      (message) =>
+        message.role === "user" &&
+        typeof message.content === "string" &&
+        message.content.trim().length > 0,
+    )
+    .map((message) => ({
+      id: message.id,
+      content: message.content!.trim(),
+    }))
+  if (!userMessages.length) return []
+
+  const sourceMessageIds = userMessages.map((message) => message.id)
+  const sourceMessageIdSet = new Set(sourceMessageIds)
+  const model = modelFromEnv(
+    CULTURAL_SIGNAL_EXTRACTION_MODEL_ENV,
+    DEFAULT_LOW_COST_ANTHROPIC_MODEL,
+  )
+
+  try {
+    const response = await getAnthropicClient().messages.create({
+      model,
+      max_tokens: 768,
+      system: CULTURAL_SIGNAL_EXTRACTION_SYSTEM,
+      output_config: {
+        format: {
+          type: "json_schema",
+          schema: culturalSignalExtractionSchema(sourceMessageIds),
+        },
+      },
+      messages: [
+        {
+          role: "user",
+          content: JSON.stringify({ messages: userMessages }),
+        },
+      ],
+    })
+    logLlmUsage({
+      operation: "cultural_signal_extraction",
+      provider: "anthropic",
+      model,
+      usage: response.usage,
+      organisationId: input.organisationId,
+      projectId: input.projectId,
+      sessionId: input.sessionId,
+    })
+
+    if (response.stop_reason === "max_tokens") {
+      throw new Error("Cultural-signal extraction reached its token limit")
+    }
+    if (response.stop_reason === "refusal") {
+      log.info("cultural_signal_extraction_refused", {
+        projectId: input.projectId,
+        sessionId: input.sessionId,
+      })
+      return []
+    }
+    const textBlock = response.content.find((block) => block.type === "text")
+    if (!textBlock || textBlock.type !== "text") {
+      throw new Error("Cultural-signal extraction returned no text")
+    }
+
+    const parsed = JSON.parse(textBlock.text) as { signals?: unknown }
+    if (!Array.isArray(parsed.signals)) return []
+    const extracted: ExtractedCulturalSignal[] = []
+    for (const raw of parsed.signals) {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue
+      const value = raw as Record<string, unknown>
+      if (
+        typeof value.sourceMessageId !== "string" ||
+        !sourceMessageIdSet.has(value.sourceMessageId)
+      ) {
+        continue
+      }
+      const [signal] = normaliseCulturalSignals([value])
+      if (signal) {
+        extracted.push({ sourceMessageId: value.sourceMessageId, signal })
+      }
+    }
+    return extracted
+  } catch (error) {
+    log.error("cultural_signal_extraction_failed", {
+      projectId: input.projectId,
+      sessionId: input.sessionId,
+      detail: error instanceof Error ? error.message : String(error),
+    })
+    throw error
+  }
+}
 
 export async function recordCompletedSessionCulturalSignals(input: {
   organisationId: string
@@ -13,22 +178,44 @@ export async function recordCompletedSessionCulturalSignals(input: {
   sessionId: string
   settings: unknown
   likelyBot: boolean
-  messages: Array<{ id: string; role: "user" | "assistant"; metadata?: unknown }>
+  messages: CulturalSignalSourceMessage[]
 }): Promise<void> {
   const settings = parseCulturalSignalsSettings(input.settings)
   if (!settings.enabled || input.likelyBot) return
-  const events = input.messages.flatMap((message) => message.role !== "user" ? [] :
+  const metadataSignals = input.messages.flatMap((message) => message.role !== "user" ? [] :
     culturalSignalsFromMessageMetadata(message.metadata).map((signal) => ({
+      sourceMessageId: message.id,
+      signal,
+    })))
+  const sourceIdsWithMetadataSignals = new Set(
+    metadataSignals.map((item) => item.sourceMessageId),
+  )
+  const extractedSignals = await extractCompletedSessionCulturalSignals({
+    organisationId: input.organisationId,
+    projectId: input.projectId,
+    sessionId: input.sessionId,
+    messages: input.messages.filter(
+      (message) => !sourceIdsWithMetadataSignals.has(message.id),
+    ),
+  })
+  const uniqueSignals = new Map<string, ExtractedCulturalSignal>()
+  for (const item of [...metadataSignals, ...extractedSignals]) {
+    uniqueSignals.set(
+      `${item.sourceMessageId}:${item.signal.type}:${item.signal.normalizedKey}`,
+      item,
+    )
+  }
+  const events = [...uniqueSignals.values()].map(({ sourceMessageId, signal }) => ({
       organisation_id: input.organisationId,
       project_id: input.projectId,
       session_id: input.sessionId,
-      source_message_id: message.id,
+      source_message_id: sourceMessageId,
       signal_type: signal.type,
       normalized_key: signal.normalizedKey,
       display_label: signal.displayLabel,
       confidence: signal.confidence,
       is_sensitive: signal.isSensitive,
-    })))
+    }))
   if (!events.length) return
 
   const { error } = await supabase.from("cultural_signal_events").upsert(events, {

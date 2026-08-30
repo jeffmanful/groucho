@@ -53,6 +53,132 @@ export type PersonaForExtraction = {
 const SENTIMENTS: Sentiment[] = ["positive", "neutral", "negative"]
 const ENGAGEMENTS: Engagement[] = ["high", "medium", "low"]
 
+const PROFILE_CORE_OUTPUT_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    summary: { type: "string" },
+    sentiment: { type: "string", enum: SENTIMENTS },
+    engagement: { type: "string", enum: ENGAGEMENTS },
+    language: { type: "string" },
+    intent_tags: { type: "array", items: { type: "string" } },
+    interests: { type: "array", items: { type: "string" } },
+    risk_flags: { type: "array", items: { type: "string" } },
+    qa: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          question: { type: "string" },
+          answer: { type: "string" },
+        },
+        required: ["question", "answer"],
+      },
+    },
+    confidence: { type: "number" },
+  },
+  required: [
+    "summary",
+    "sentiment",
+    "engagement",
+    "language",
+    "intent_tags",
+    "interests",
+    "risk_flags",
+    "qa",
+    "confidence",
+  ],
+} as const
+
+function structuredCustomProperty(raw: unknown, depth = 0): Record<string, unknown> {
+  const value =
+    raw && typeof raw === "object" && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {}
+  const type = typeof value.type === "string" ? value.type : "string"
+  const description =
+    typeof value.description === "string"
+      ? { description: value.description.slice(0, 240) }
+      : {}
+  if (type === "boolean" || type === "number" || type === "integer") {
+    return { type, ...description }
+  }
+  if (type === "array") {
+    return {
+      type: "array",
+      items: structuredCustomProperty(value.items, depth + 1),
+      ...description,
+    }
+  }
+  if (type === "object" && depth < 2) {
+    const rawProperties =
+      value.properties &&
+      typeof value.properties === "object" &&
+      !Array.isArray(value.properties)
+        ? (value.properties as Record<string, unknown>)
+        : {}
+    const properties = Object.fromEntries(
+      Object.entries(rawProperties).map(([key, definition]) => [
+        key,
+        structuredCustomProperty(definition, depth + 1),
+      ]),
+    )
+    const required = Array.isArray(value.required)
+      ? value.required.filter(
+          (key): key is string =>
+            typeof key === "string" && Object.hasOwn(properties, key),
+        )
+      : []
+    return {
+      type: "object",
+      additionalProperties: false,
+      properties,
+      ...(required.length ? { required } : {}),
+      ...description,
+    }
+  }
+  return { type: "string", ...description }
+}
+
+function profileOutputSchema(personaSchema: unknown): Record<string, unknown> {
+  const schema =
+    personaSchema && typeof personaSchema === "object" && !Array.isArray(personaSchema)
+      ? (personaSchema as Record<string, unknown>)
+      : null
+  const rawProperties =
+    schema?.properties &&
+    typeof schema.properties === "object" &&
+    !Array.isArray(schema.properties)
+      ? (schema.properties as Record<string, unknown>)
+      : null
+  const customProperties = rawProperties
+    ? Object.fromEntries(
+        Object.entries(rawProperties).map(([key, definition]) => [
+          key,
+          structuredCustomProperty(definition),
+        ]),
+      )
+    : null
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      core: PROFILE_CORE_OUTPUT_SCHEMA,
+      ...(customProperties
+        ? {
+            custom: {
+              type: "object",
+              additionalProperties: false,
+              properties: customProperties,
+            },
+          }
+        : {}),
+    },
+    required: ["core"],
+  }
+}
+
 const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/gi
 const PHONE_RE = /(?:\+?\d[\d\s().-]{7,}\d)/g
 
@@ -213,8 +339,14 @@ export async function extractProfile(opts: ExtractProfileOpts): Promise<Profile>
   try {
     const response = await getClient().messages.create({
       model,
-      max_tokens: 1024,
+      max_tokens: 2048,
       system,
+      output_config: {
+        format: {
+          type: "json_schema",
+          schema: profileOutputSchema(personaSchema),
+        },
+      },
       messages: [
         {
           role: "user",
@@ -235,6 +367,12 @@ export async function extractProfile(opts: ExtractProfileOpts): Promise<Profile>
     })
 
     const textBlock = response.content.find((b) => b.type === "text")
+    if (response.stop_reason === "max_tokens") {
+      return failed("max_tokens", model)
+    }
+    if (response.stop_reason === "refusal") {
+      return failed("refusal", model)
+    }
     if (!textBlock || textBlock.type !== "text") {
       return failed("no_text_block")
     }

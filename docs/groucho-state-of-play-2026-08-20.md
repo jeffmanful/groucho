@@ -15,10 +15,10 @@ to access.
 ## What is working now
 
 - The opening question is: “Why do you want to be an early applicant for the Forum?”
-- The first answer is the main routing inflection point rather than a preselected
+- The first answer is the main conversational inflection point rather than a preselected
   application category.
 - Artist, curator, enthusiast, and hybrid orientations are treated as revisable
-  conversation hypotheses.
+  descriptive context. They do not add, remove, or prioritise questions.
 - Groucho can pursue shared intents in different ways: reason for joining, COLORS
   relationship, taste and discovery, scene connection, participation, contribution,
   and sustained reciprocity.

@@ -48,6 +48,11 @@ export function applicationQuestionSupportsSignal(
       value,
     )
   }
+  if (description.includes("relationship to colors")) {
+    return /\b(?:colors|colours|this forum|the forum|this community|this particular (?:space|community)|here specifically|this door)\b/.test(
+      value,
+    )
+  }
   if (description.includes("artist more people should know")) {
     return /\b(?:artist|creative|maker|musician|work)\b[^?]{0,100}\b(?:attention|know|miss|care about|deserves?)\b|\b(?:who\b[^?]{0,80}\b(?:making|artist|musician)|what do people\b[^?]{0,80}\bmiss\b[^?]{0,60}\bwork)\b/.test(
       value,
@@ -81,25 +86,6 @@ export function applicationQuestionSupportsSignal(
     contributionNounQuestion.test(value) ||
     existingReciprocityQuestion.test(value)
   )
-}
-
-/** Removes process narration that makes Groucho sound like an interviewer. */
-export function stripApplicationProcessLanguage(reply: string): {
-  reply: string
-  removed: boolean
-} {
-  const cleaned = reply
-    .replace(
-      /\b(?:before we (?:wrap(?: things up| up)?|finish|close|dig into (?:that|this)|get into (?:that|this)|go (?:any )?further|go deeper|continue)|one last (?:thing|question))\b[,:.;—-]*\s*([a-z])?/gi,
-      (_match, next: string | undefined) => next?.toUpperCase() ?? "",
-    )
-    .replace(
-      /\b(?:let me (?:ask(?: you| this)?(?: differently| something (?:different|a bit more specific)| (?:a|another) (?:different )?way)?|try (?:it differently|something simpler))|before you explore)\b[,:.;—-]*\s*([a-z])?/gi,
-      (_match, next: string | undefined) => next?.toUpperCase() ?? "",
-    )
-    .replace(/ {2,}/g, " ")
-    .trim()
-  return { reply: cleaned, removed: cleaned !== reply.trim() }
 }
 
 const RECEIPT_STOP_WORDS = new Set([
@@ -186,7 +172,21 @@ export type ActiveApplicationReplyIssue =
   | "terminal_language"
   | "missing_invitation"
   | "missing_artist_antecedent"
+  | "multiple_questions"
   | "repeated_question"
+
+export function keepFirstApplicationQuestion(reply: string): string {
+  const firstQuestionEnd = reply.indexOf("?")
+  const firstQuestion =
+    firstQuestionEnd >= 0 ? reply.slice(0, firstQuestionEnd + 1) : reply
+  const stackedAsk = firstQuestion.search(
+    /,?\s+(?:and|plus)\s+(?=(?:what|how|where|when|who|which)\b)/i,
+  )
+  if (stackedAsk >= 0) {
+    return `${firstQuestion.slice(0, stackedAsk).trim().replace(/[.!?]+$/, "")}?`
+  }
+  return firstQuestion.trim()
+}
 
 function normalizedQuestions(value: string): string[] {
   return (value.match(/[^?]+\?/g) ?? []).flatMap((question) => {
@@ -243,6 +243,14 @@ export function activeApplicationReplyIssue(input: {
   ) {
     return "missing_invitation"
   }
+  if (
+    normalizedQuestions(input.reply).length > 1 ||
+    /\b(?:what|how|why|where|when|who|which)\b[^?]{0,180},?\s+(?:and|plus)\s+(?:what|how|where|when|who|which)\b/i.test(
+      input.reply,
+    )
+  ) {
+    return "multiple_questions"
+  }
   const previousQuestions = normalizedQuestions(input.previousQuestion ?? "")
   const replyQuestions = new Set(normalizedQuestions(input.reply))
   if (previousQuestions.some((question) => replyQuestions.has(question))) {
@@ -278,7 +286,8 @@ export function ensureExplicitStructuredInputPrompt(input: {
   const prompt = structuredPromptForSignal(input.nextSignal)
   if (hasExplicitResponsePrompt(input.reply)) {
     return input.nextSignal &&
-      !applicationQuestionSupportsSignal(input.nextSignal, input.reply)
+      (!applicationQuestionSupportsSignal(input.nextSignal, input.reply) ||
+        !/\b(?:which|choose|select|pick)\b/i.test(input.reply))
       ? { reply: prompt, added: true }
       : { reply: input.reply, added: false }
   }

@@ -37,6 +37,9 @@ Teams need to qualify visitors for culture-, community-, or premium-access surfa
   [`lib/post-session-message.ts`](./lib/post-session-message.ts), with compact turns,
   adaptive evidence routing, and deterministic integrity guards.
 - The main structured response includes accumulated `specificity`, `authenticity`, `cultural_depth`, and `overall` assessments, which are stored on `messages.metadata.scores` without a second model request.
+- Participant orientation, response mode, and conversation-thread bookkeeping are
+  derived in application code rather than generated in the live model contract;
+  bridge audit output is omitted. The live structured response is capped at 500 tokens.
 - Conversational gatekeeper turns use the pinned `claude-haiku-4-5-20251001` model by default and can be overridden server-side with `GROUCHO_GATEKEEPER_CONVERSATION_MODEL` for evaluation.
 - Profile extraction, onboarding turn intelligence, and onboarding completion also
   default to the low-cost Haiku model unless overridden with their `GROUCHO_*_MODEL`
@@ -71,15 +74,24 @@ Legacy routes `/api/chat` and `/api/access` exist for the in-repo `/doorcheck` e
 ### Webhooks
 
 - Webhook configuration tables and `verdicts` rows (migration [`20260422120000_phase4_webhooks_verdicts.sql`](./supabase/migrations/20260422120000_phase4_webhooks_verdicts.sql)).
-- HMAC-signed deliveries enqueued from terminal turns ([`lib/verdict-webhook.ts`](./lib/verdict-webhook.ts)).
-- Background drain via cron at `app/api/cron/webhook-deliveries` with retry/backoff.
+- Terminal turns durably enqueue profile extraction, verdict creation, webhook
+  preparation, and cultural-signal extraction/persistence without delaying the
+  neutral close. Cultural extraction is opt-in, skips likely bots, retains exact
+  source-message provenance, and can use
+  `GROUCHO_CULTURAL_SIGNAL_EXTRACTION_MODEL` as an evaluation override.
+- HMAC-signed deliveries are prepared by the completion worker
+  ([`lib/verdict-webhook.ts`](./lib/verdict-webhook.ts)).
+- Background completion and webhook drains run after the response and through the
+  retry cron at `app/api/cron/webhook-deliveries`.
 
 ### SDK (`@groucho/sdk`)
 
 Published from [`packages/sdk`](./packages/sdk):
 
 - `createClient` / `createServerClient` — headless HTTP clients (the latter is the only place a `gk_*` key should live in user code).
-- `<Gatekeeper />` — batteries-included React component that runs a session against either a host-mounted proxy (`proxyBasePath`) or an injected client; surfaces the terminal outcome plus scores, optional success secret, and the extracted `profile`.
+- `<Gatekeeper />` — batteries-included React component that runs a session against either a host-mounted proxy (`proxyBasePath`) or an injected client; surfaces the terminal outcome plus scores and optional immediate profile compatibility data. Gatekeeper profiles normally become available from the completed session after asynchronous extraction.
+- `<GatekeeperV2 />` reveals terminal copy immediately by default; consumers can opt
+  into the configurable decision-moment pause with `decisionMoment`.
 - Primitives — `GrouchoProvider`, `Transcript`, `Composer`, `OutcomeBanner`, `ThinkingIndicator`, `MessageBubble`, `useGroucho`.
 - A single dark theme stylesheet at `@groucho/sdk/groucho.css` exposing CSS variables under `.groucho-root`.
 - TypeScript types generated from the live OpenAPI spec; release flow runs through [Changesets](https://github.com/changesets/changesets) (`.github/workflows/release.yml`).

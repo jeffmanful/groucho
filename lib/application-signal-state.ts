@@ -7,7 +7,6 @@ import type { ApplicationResponseModeHistory } from "@/lib/application-response-
 import type { ApplicationBridgeHistory } from "@/lib/application-conversation-bridge"
 import {
   EMPTY_APPLICATION_PARTICIPANT_ORIENTATION,
-  orientationHasCuratorRoute,
   type ApplicationParticipantOrientationState,
 } from "@/lib/application-participant-orientation"
 import {
@@ -25,7 +24,7 @@ export type ApplicationSignalDefinition = {
   promptRoutes: string[]
   priority: "core" | "supporting"
   cluster: string
-  /** Applicant orientations for which this evidence goal is relevant. */
+  /** Explicit conversational contexts that can make this goal relevant. */
   audiences: Array<"shared" | "artist" | "curator" | "enthusiast">
 }
 
@@ -231,136 +230,52 @@ export function applicationOpeningMessageForSignals(
     : configuredOpening
 }
 
-function orientedPromptRoutes(
-  signal: ApplicationSignalDefinition,
-  orientation: ApplicationParticipantOrientationState,
-): string[] {
-  const branch = orientation.primary
-  if (branch === "unknown") return signal.promptRoutes
-
-  if (signal.cluster === "colors_relationship") {
-    if (branch === "artist") {
-      return [
-        "Has COLORS changed how you think about presenting or sharing your own work?",
-        "What could the Forum add to your relationship with COLORS as an artist?",
-      ]
-    }
-    if (branch === "curator") {
-      return [
-        "What do you think COLORS gets right about giving work context—and what could the Forum add?",
-        "Where does the way COLORS introduces artists connect with the role you already play around music?",
-      ]
-    }
-    if (branch === "enthusiast") {
-      return [
-        "Is there a COLORS performance that changed how you heard an artist?",
-        "What does COLORS give you as a listener that you would want the Forum to carry forward?",
-      ]
-    }
-    return [
-      "Which part of your relationship with COLORS are you hoping the Forum carries forward?",
-    ]
-  }
-
-  if (signal.cluster === "orientation") {
-    if (branch === "artist") {
-      return [
-        "What are you making at the moment, and what are you hoping a community around music could give that work?",
-      ]
-    }
-    if (branch === "curator") {
-      return [
-        "What role do you already play around music, and what are you hoping the Forum would let you do more meaningfully?",
-      ]
-    }
-    if (branch === "enthusiast") {
-      return [
-        "What are you hoping to discover or understand here that you are not finding elsewhere?",
-      ]
-    }
-    return [
-      "You seem to relate to music in more than one way. Which part of that are you hoping to bring into the Forum?",
-    ]
-  }
-
-  if (
-    signal.cluster === "participation_and_contribution" &&
-    signal.label.toLowerCase().includes("which sounds most like you")
-  ) {
-    if (branch === "artist") {
-      return [
-        "Outside making the work itself, what kind of exchange with other artists or listeners is useful to you?",
-        "What do you naturally offer back when another artist gives your work real attention?",
-        "What is happening around music where you are that is shaping the work you make?",
-      ]
-    }
-    if (branch === "curator") {
-      return [
-        "What do you actually do around music now—select, organise, introduce, document, host, or something else?",
-        "What do people already rely on you to keep doing around music?",
-        "What part of the music scene around you do you understand from the inside?",
-      ]
-    }
-    if (branch === "enthusiast") {
-      return [
-        "Where does music become social for you now, even informally?",
-        "When a music space keeps you coming back, how do you tend to take part?",
-        "Do you feel inside the music scene around you, adjacent to it, or mostly looking in from outside?",
-      ]
-    }
-    return [
-      "How do the different parts of your relationship to music show up around other people?",
-      "What are you noticing in the music scene around you that someone outside it might miss?",
-    ]
-  }
-
-  if (signal.cluster === "participation_and_contribution") {
-    if (branch === "artist") {
-      return [
-        "What part of the exchange you already have with other artists or listeners would you want to keep building here?",
-        "What would you actually share or do with other artists here during your first month?",
-      ]
-    }
-    if (branch === "curator") {
-      return [
-        "Which part of what you already do around music could you keep contributing here?",
-        "What would you realistically start, share, organise, or connect in your first month here?",
-      ]
-    }
-    if (branch === "enthusiast") {
-      return [
-        "When a music space keeps you coming back, what do you naturally give to it?",
-        "What would you actually share, notice, or do here during your first month?",
-      ]
-    }
-    return [
-      "Across the different roles you described, what do you already keep giving—and which part could continue in the Forum?",
-    ]
-  }
-
-  return signal.promptRoutes
-}
-
+/**
+ * Kept as a compatibility boundary for callers and stored tests. Orientation is
+ * descriptive context only: it must not add, remove, reprioritise, or rewrite
+ * evidence goals.
+ */
 export function applicationSignalDefinitionsForOrientation(
   definitions: ApplicationSignalDefinition[],
   orientation: ApplicationParticipantOrientationState,
 ): ApplicationSignalDefinition[] {
-  if (!isColorsForumSignalSet(definitions)) return definitions
+  void orientation
   return definitions
-    .filter(
-      (signal) =>
-        signal.audiences.includes("shared") ||
-        (signal.audiences.includes("curator") &&
-          orientationHasCuratorRoute(orientation)) ||
-        (signal.audiences.includes("artist") &&
-          orientation.scores.artist >= 0.5) ||
-        (signal.audiences.includes("enthusiast") &&
-          orientation.scores.enthusiast >= 0.5),
-    )
-    .map((signal) => ({
-      ...signal,
-      promptRoutes: orientedPromptRoutes(signal, orientation),
-    }))
+}
+
+function answerShowsAudienceRelevance(
+  audience: "artist" | "curator" | "enthusiast",
+  answer: string,
+): boolean {
+  const value = answer.toLowerCase()
+  if (audience === "artist") {
+    return /\b(?:i (?:make|write|produce|sing|rap|record|perform)|i(?:'m| am) (?:making|writing|producing|recording)|my (?:music|songs?|tracks?|demos?|practice)|artist|musician|producer|performer|making (?:music|songs?|tracks?)|upload(?:ing)? my (?:music|songs?|tracks?))\b/.test(value)
+  }
+  if (audience === "curator") {
+    return /\b(?:(?:i|we|and) (?:curat\w*|organis\w*|organiz\w*|host\w*|run (?:a |an )?(?:small |monthly |local )?(?:playlist|radio show|listening (?:night|session|group))|program\w*|select\w*|introduc\w*|document\w*|moderate\w*)|(?:i|we) (?:want|hope|plan|would like) to (?:(?:start )?(?:curat\w*|organis\w*|organiz\w*|host\w*|program\w*|select\w*|put on|put together)|start (?:a |an )?(?:playlist|radio show|listening (?:night|session|group)))|my (?:playlist|radio show|listening (?:night|session|group))|(?:give|giving|gave|offer|offering|offered) feedback|unfinished (?:music|work|demo)|private demo|i collaborat\w*|when i collaborat\w*|collaborating with (?:other )?(?:artists?|musicians?|producers?)|co-?creat\w* with|i work with (?:other )?(?:artists?|musicians?|producers?)|i exchange (?:ideas?|music|demos?|works?)|i trade (?:ideas?|tracks?|demos?)|i share (?:rough|unfinished|unreleased) (?:music|work|tracks?|demos?)|i help (?:shape|develop|finish) (?:someone(?:'s)?|another artist(?:'s)?) (?:music|work|song|track|idea))\b/.test(value)
+  }
+  return /\b(?:mostly listen|listener|music fan|enthusiast|discover\w*|discuss\w* music|community)\b/.test(value)
+}
+
+/**
+ * Conditional goals become eligible from explicit conversational evidence, not
+ * from the applicant's orientation label or score.
+ */
+export function applicationSignalDefinitionsForEvidence(
+  definitions: ApplicationSignalDefinition[],
+  answers: Array<Pick<ApplicationSignalAnswer, "answer">>,
+): ApplicationSignalDefinition[] {
+  if (!isColorsForumSignalSet(definitions)) return definitions
+  const answerText = answers.map((answer) => answer.answer).join("\n")
+  return definitions.filter(
+    (signal) =>
+      signal.audiences.includes("shared") ||
+      signal.audiences.some(
+        (audience) =>
+          audience !== "shared" &&
+          answerShowsAudienceRelevance(audience, answerText),
+      ),
+  )
 }
 
 function metadataRecord(metadata: unknown): Record<string, unknown> | null {
@@ -472,12 +387,18 @@ export function hasLegacyUntaggedAnswers(
   messages: ApplicationSignalMessage[],
   definitions: ApplicationSignalDefinition[],
 ): boolean {
-  return messages.some(
-    (message) =>
-      message.role === "user" &&
+  return messages.some((message, index) => {
+    if (message.role !== "user") return false
+    const previous = messages[index - 1]
+    const followsConversationalThread =
+      previous?.role === "assistant" &&
+      metadataRecord(previous.metadata)?.application_conversation_thread_turn === true
+    return (
+      !followsConversationalThread &&
       signalsFromMetadata(message.metadata, "application_signals", definitions).length === 0 &&
-      signalsFromMetadata(message.metadata, "application_signal", definitions).length === 0,
-  )
+      signalsFromMetadata(message.metadata, "application_signal", definitions).length === 0
+    )
+  })
 }
 
 export function expectedApplicationSignal(
@@ -489,6 +410,12 @@ export function expectedApplicationSignal(
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]
     if (message.role !== "assistant") continue
+    if (
+      metadataRecord(message.metadata)?.application_conversation_thread_turn ===
+      true
+    ) {
+      return null
+    }
     requestedSignal = signalsFromMetadata(
       message.metadata,
       "application_next_signal",
@@ -647,12 +574,19 @@ export function buildCompactApplicationStateMessage(input: {
   insufficientEvidenceKeys?: Set<string>
 }): string {
   const answersByKey = new Map(input.answers.map((answer) => [answer.key, answer]))
+  const relevantDefinitions = applicationSignalDefinitionsForEvidence(
+    input.definitions,
+    input.answers,
+  )
+  const relevantSignalKeys = new Set(
+    relevantDefinitions.map((signal) => signal.key),
+  )
   const orientation =
     input.participantOrientation ??
     EMPTY_APPLICATION_PARTICIPANT_ORIENTATION
   const earlyColorsRelationship =
     input.currentSignal?.cluster === "orientation"
-      ? input.definitions.find(
+      ? relevantDefinitions.find(
           (signal) =>
             signal.cluster === "colors_relationship" &&
             !previousAnswerCovered(answersByKey.get(signal.key)),
@@ -667,7 +601,7 @@ export function buildCompactApplicationStateMessage(input: {
             !previousAnswerCovered(answersByKey.get(signal.key)),
         )
       : null)?.key ??
-    input.definitions.find(
+    relevantDefinitions.find(
       (signal) => !previousAnswerCovered(answersByKey.get(signal.key)),
     )?.key ??
     null
@@ -703,6 +637,14 @@ export function buildCompactApplicationStateMessage(input: {
         signal.cluster === "participation_and_contribution",
     )
     .map((signal) => signal.key)
+  const crossoverSignalKeys = relevantDefinitions
+    .filter(
+      (signal) =>
+        signal.cluster === "care_and_feedback" ||
+        signal.cluster === "participation_and_contribution" ||
+        signal.cluster === "cultural_point_of_view",
+    )
+    .map((signal) => signal.key)
   const state = {
     questionBudget: {
       ...resolvedQuestionBudget,
@@ -719,6 +661,11 @@ export function buildCompactApplicationStateMessage(input: {
           signal.promptRoutes ?? evidenceGoal(signal.label).promptRoutes,
         priority: signal.priority ?? evidenceGoal(signal.label).priority,
         cluster: signal.cluster ?? evidenceGoal(signal.label).cluster,
+        relevance: signal.audiences.includes("shared")
+          ? "shared"
+          : relevantSignalKeys.has(signal.key)
+            ? "explicit"
+            : "conditional",
         status: previousAnswerCovered(answer)
           ? "covered"
           : input.insufficientEvidenceKeys?.has(signal.key)
@@ -773,7 +720,11 @@ export function buildCompactApplicationStateMessage(input: {
     ...(input.adaptiveOrientationEnabled
       ? {
           participantOrientation: orientation,
-          orientationBranches: {
+          orientationLenses: {
+            rule:
+              "Descriptive context only. Never use an orientation label or score to add, remove, force, or prioritise an evidence goal. Goal relevance comes from explicit conversational evidence.",
+            fluidity:
+              "These are overlapping, changing facets rather than fixed positions. Follow practices and intentions that cross the current description without announcing a relabelling.",
             shared:
               "All applicants may show motivation, cultural attention, relationship to community, and a realistic form of participation.",
             artist:
@@ -833,21 +784,34 @@ export function buildCompactApplicationStateMessage(input: {
           "Do not ask for an exact location, reward prestigious cities, equate industry proximity with insight, or treat being outside a scene as a weakness.",
         candidateSignalKeys: situatedPerspectiveSignalKeys,
       },
+      roleCrossover: {
+        trigger:
+          "The applicant reveals a practice or credible intention beyond their current primary orientation: an artist collaborating or curating, a listener wanting to organise or select, or a curator making and sharing their own work.",
+        route:
+          "Stay with the newly revealed possibility while it has momentum. Ask about the concrete exchange, action, work, or responsibility they mean rather than testing whether they qualify for a new label.",
+        evidenceBoundary:
+          "A future intention may open a conversation, but preserve the difference between something they want to begin and something they already do. Do not rewrite aspiration as established practice.",
+        candidateSignalKeys: crossoverSignalKeys,
+      },
     },
     suggestedGapSignalKey,
   }
 
   const orientationInstructions = input.adaptiveOrientationEnabled
     ? `
-Update participantOrientation from explicit evidence in the current answer and prior state before choosing the next goal. This is a revisable routing hypothesis, not an identity label or applicant-facing judgment. Artist means they make or perform work; curator means they select, organise, contextualise, host, document, or connect people around music; enthusiast means listening, discovery, fandom, discussion, or community-seeking is their main relationship. Use hybrid only when at least two orientations have meaningful evidence. Never infer protected traits, status, or cultural worth.
+Treat participantOrientation as read-only context derived by the runtime from explicit evidence. It is a descriptive summary for tone, not a routing decision, identity label, reviewer verdict, or applicant-facing judgment. Never return or update it.
 
-Tailor the route to the strongest supported orientation. Shared values do not require identical questions. Only use the evidence goals present in signals; branch-inapplicable goals have already been removed. In particular, do not ask artists or enthusiasts the unfinished-work feedback scenario unless their own answer makes feedback or curation genuinely relevant. For enthusiasts, explore community meaning and goals rather than treating formal curation, organising, or multiplier activity as expected proof.
+Never add, remove, force, or prioritise an evidence goal because of participantOrientation, its scores, or its primary label. Choose from the live thread and each signal's relevance. A conditional signal becomes relevant only when the applicant's own current or prior words provide explicit evidence for it. In particular, use the unfinished-work feedback route only after they discuss feedback, curation, hosting, organising, unfinished work, or a comparable practice—not merely because they are labelled curator or hybrid. For enthusiasts, explore community meaning and goals without treating formal curation, organising, or multiplier activity as expected proof.
+
+Treat artist, curator, and enthusiast as overlapping, fluid facets. Current practice and credible future intent can both make a thread relevant: an artist may collaborate, exchange unfinished work, or curate; an enthusiast may want to start selecting, hosting, or connecting; a curator may make or want to upload their own music. Follow that crossover without announcing a new classification. Ask what they mean or would actually do. Keep evidence maturity accurate: “wants to start” is a meaningful intention, not proof that they already run the activity.
 `
     : ""
 
   return `Review this compact application state and produce the next Groucho turn.
 
-Assess the current answer semantically as thin, usable, rich, or concerning. A short but specific answer may be usable or rich. Do not use length, fluency, vocabulary, professional status, fame, follower count, or whether you recognise a reference as a proxy for quality.
+Assess the current answer semantically as thin, usable, rich, or concerning. Use usable as the normal baseline for a clear answer that supplies any relevant fact, intention, preference, cultural judgment, or personal point of view, even when it deserves another question. Reserve thin for genuinely empty, evasive, non-responsive, or content-free answers. A short answer such as a creative medium, a concrete goal, or a reason for valuing COLORS is usable. Do not use length, fluency, vocabulary, professional status, fame, follower count, or whether you recognise a reference as a proxy for quality.
+
+Separately compare current.answer with current.question and set answerRelation. Use direct when it answers what was asked, partial when it answers only part, subject_shift when it clearly introduces another person, work, idea, or topic, and ambiguous when several connections are plausible but none is established. Do not lower a culturally meaningful answer's quality merely because its relation is unclear. For subject_shift or ambiguous, do not manufacture continuity, answer the missing question on the applicant's behalf, or make an unsupported observation about the new reference. Briefly receive the exact new detail and ask one natural disambiguating question, such as “Lucki—are you bringing him up as an influence on your own work?” Leave nextSignalKey empty and let this be a conversational repair turn. The applicant's next answer can establish the new thread or return to the earlier one.
 ${orientationInstructions}
 
 Choose one conversationMove:
@@ -858,7 +822,7 @@ Choose one conversationMove:
 - challenge: calmly address a concerning safety, dignity, integrity, or extractive signal;
 - decide: use only with a terminal decision.
 
-Use open_door only when conversationDepth shows repeated thin evidence and openDoorUsed is false. Use rabbit_hole for a rich current answer when the live thread can still add relevant understanding. The runtime validates per-intent repetition and emergency-loop limits.
+Use open_door only when conversationDepth shows repeated thin evidence and openDoorUsed is false. Use rabbit_hole for a rich current answer when the live thread can still add relevant understanding. The runtime validates safety, per-intent repetition, reply shape, and the emergency loop limit. When your reply contains one valid, relevant question, it remains the conversational authority even if it does not map neatly to a configured evidence goal.
 
 Follow-up limits:
 - Ask at most questionBudget.maxFollowupsPerSignal follow-ups for any one signal.
@@ -870,11 +834,11 @@ Flexible pacing:
 - explore: follow productive threads and gather evidence naturally;
 - consider_close: the soft target has been reached. Ask another question only when it grows naturally from the live thread or would materially improve the reviewer brief; otherwise conclude;
 - emergency_stop: do not ask another question. Set a terminal decision and use the neutral close.
-There is no closing phase at answers seven or eight. Missing evidence belongs in reviewerReport rather than compulsory gap-filling.
+There is no closing phase at answers seven or eight. Missing evidence belongs in the later reviewer brief rather than compulsory gap-filling.
 
 Treat signals as private evidence intents, not a checklist and not a bank of required questions. exampleQuestions are illustrative routes only. Infer the actual question from the applicant's words, the live thread, the relevant unresolved intent, and Groucho's persona. Do not copy an example merely because its signal is open. One answer can cover several goals. Return every goal supported by the current answer in coveredSignalKeys, even if it was not the goal that prompted the answer. Never ask for evidence that is already covered unless a genuine conversational thread warrants one bounded depth question.
 
-The opening answer is the first routing inflection point. Use it to form a revisable participantOrientation and continue from the motivation actually expressed. Community intent should lead into what community means to them; making work should lead into practice or desired exchange; curation or organising should lead into their real role and actions; discovery or listening should lead into how music becomes social or what they hope to find. Do not automatically jump from the opening answer to an artist question.
+The opening answer is the first conversational inflection point. Continue from the motivation actually expressed; participantOrientation only describes what emerges and must not select the next question. Community intent should lead into what community means to them; making work should lead into practice or desired exchange; curation or organising should lead into their real role and actions; discovery or listening should lead into how music becomes social or what they hope to find. Do not automatically jump from the opening answer to an artist question.
 
 Relationship to COLORS is a high-priority early intent, not a compulsory second question. First decide whether the opening answer already gives real evidence for it and mark it covered when it does. If the applicant's reason could apply to any music community, find a natural early route into why COLORS in particular feels like the right door. Adapt that route to their orientation and words: a listener may recall a performance that changed how they heard someone; an artist may reflect on how COLORS presents work; a curator may notice how COLORS gives artists context; anyone may distinguish what the Forum could add to the performances. Explore a lived relationship, perception, or expectation—not brand praise, fandom credentials, recall trivia, or a test of how much COLORS content they know. If community is the opening thread, honour what community means to them first, then connect to why that matters here when it can be done naturally.
 
@@ -882,11 +846,11 @@ Treat sustained reciprocity as part of participation and contribution, not as an
 
 Treat situated cultural perspective as an enhancement across cultural point of view and participation, not another required signal. When relevant, explore what is happening in the music scene around the applicant, what they notice that someone outside it might miss, and whether they feel inside it, adjacent to it, or outside it. Prefer observable detail over asking whether they believe they have unique insight. A city, venue, collective, genre, online network, diasporic space, or informal group can all provide context. Scene membership is not required: distance, isolation, or an outsider position may produce useful perspective too. Do not ask for an exact location, reward prestigious cities, use industry access as a proxy for insight, or treat scene proximity itself as contribution. If they claim to be connected, seek one concrete role, action, relationship, or observation.
 
-Before writing the reply, generate up to three bridgeCandidates from explicit details in the current answer or conversationThread, then select at most one. A bridge joins a source detail to an open evidence goal; it is not an extra question. For each candidate, privately plan receive → connect → invite: preserve the concrete source detail, describe in connectionIntent the meaningful relationship that earns the next question, then state the questionIntent. Rank candidates by continuity, evidence value, specificity, momentum, freshness, and novelty. Prefer a current detail over a callback. Use a callback only when it genuinely makes the conversation cohere. If no candidate is strong, set selectedBridgeIndex to -1 and pivot or close naturally.
+Before writing the reply, use at most one meaningful bridge from an explicit detail in the current answer or conversationThread to an open evidence goal. A bridge is not an extra question. Shape the visible reply as receive → connect → invite when the connection is earned. Prefer a current detail over a callback; pivot or close naturally when no bridge is strong. Bridge audit data is not part of the live response and must not be returned.
 
 When the current answer both discusses an artist and reveals that the applicant makes music, a fresh maker_to_practice bridge into an open core goal outranks person_to_work, work_to_detail, or sharing_to_selection into the supporting recommendation goal. Carry the relationship into a natural response ending in at most one question, for example: “You hear space in their music as something active rather than empty. What part of your own music feels closest to theirs?” Do not acknowledge the maker disclosure and then ignore it.
 
-Use bridgeGrammar as relationships, not templates: person_to_work, work_to_detail, judgment_to_reason, personal_connection_to_origin, maker_to_practice, action_to_consequence, sharing_to_selection, feedback_to_care, aspiration_to_contribution, tension_to_judgment, and callback. The selected candidate's connectionIntent explains why the next turn follows and questionIntent explains what to understand; write the actual response in Groucho's voice from both. Do not use the same kind mechanically when bridgeHistory shows repetition.
+Use bridgeGrammar as relationships, not templates: person_to_work, work_to_detail, judgment_to_reason, personal_connection_to_origin, maker_to_practice, action_to_consequence, sharing_to_selection, feedback_to_care, aspiration_to_contribution, tension_to_judgment, and callback. Make the relationship you choose internally explain why the next turn follows and what it needs to understand; write the actual response in Groucho's voice. Do not use the same kind mechanically when bridgeHistory shows repetition.
 
 For aspiration_to_contribution and other contribution questions, ground the bridge in the applicant's concrete verb or action before asking about the Forum. Example: “You said you'd help someone understand what their song is trying to become. What would you actually do with that in the Forum?” Do not replace the applicant's action with vague referents such as “that kind of listening”, “that approach”, or “that instinct”, and avoid the abstract construction “how would that show up”.
 
@@ -895,12 +859,13 @@ Use priorityConversationBridges when their trigger is genuinely present in the c
 - For an album, LP, or record mention, prefer the albumMention route while its preferred signal is open: ask which song from that album they would recommend and why. This should replace a generic recommendation question, not add another question to the flow.
 - When the applicant reveals that they make or share their own music, do not glide past it. Carry the specific disclosure into a natural response about their music. A brief observation may earn the invitation; avoid generic evaluative praise, use at most one question, and mark every goal their answer already supports.
 - When the applicant supplies local-scene context, use localSceneContext when it offers the strongest live thread. Ask what is happening there, what outsiders might miss, how it shapes them, or where they sit within it. Do not demand a city name or assume that being an insider is better than being adjacent or outside.
+- When the applicant reveals a role crossover, use roleCrossover if it is the strongest live thread. An artist's collaboration can lead into how they exchange unfinished work; a listener's desire to organise can lead into what they would create; a curator's own music can lead into their maker practice. Never present this as an exception or tell them they are becoming a different type of applicant.
 - A bridge must respect per-intent repetition and the emergency stop. Do not force it when the detail was incidental, its evidence goal is already covered, the thread has moved on, or the session should conclude.
 - Never invent an album title, track, release, genre, creative practice, or personal detail. Reuse only what the applicant actually supplied.
 
-Use conversationThread as working memory for continuity. If its momentum is high or medium and the current answer keeps the openHook or strongestDetail alive, continue that thread before filling an unrelated goal. Connect the next reply to what was actually said, and do not repeat a generic acknowledgement of anything already in acknowledgedDetails. Pivot when momentum is low or exhausted, the hook is resolved, the relevant depth/follow-up budget is unavailable, or an important gap must be checked near the end. Update threadState for the reply you produce.
+Use conversationThread as read-only working memory for continuity. If its momentum is high or medium and the current answer keeps the openHook or strongestDetail alive, continue that thread before filling an unrelated goal. Connect the next reply to what was actually said, and do not repeat a generic acknowledgement of anything already in acknowledgedDetails. Pivot when momentum is low or exhausted, the hook is resolved, the relevant depth/follow-up budget is unavailable, or an important gap must be checked near the end. Thread bookkeeping is updated by the runtime and must not be returned.
 
-Choose a responseMode as well as a conversationMove:
+Choose a conversational shape internally as well as returning conversationMove:
 - reflect: name a concrete detail and give it room;
 - interpret: offer a tentative reading the applicant can confirm or correct;
 - probe: ask for a concrete example, role, action, or consequence;
@@ -910,7 +875,7 @@ Choose a responseMode as well as a conversationMove:
 - pivot: change to a different open goal cleanly, without announcing the transition;
 - close: use only on a terminal turn.
 
-These are conversational shapes, not fixed templates. Do not mechanically produce “acknowledgement + question” every turn, and do not force “receive → connect → invite” into identical phrasing. On an active turn, leave one clear invitation for the applicant to respond and ask at most one question. Use responseModeHistory to avoid repeating the same shape, especially when repeatedModeCount is 2 or more.
+These are conversational shapes, not fixed templates. Do not mechanically produce “acknowledgement + question” every turn, and do not force “receive → connect → invite” into identical phrasing. On an active turn, leave one clear invitation for the applicant to respond and ask at most one question. Use responseModeHistory to avoid repeating the same shape, especially when repeatedModeCount is 2 or more. The runtime derives responseMode; do not return it.
 
 Make the bridge felt without narrating the mechanics. Never announce “let me shift”, “let me pivot”, or “moving on”. Avoid empty receipts such as “that matters”, “that connection matters”, or a bare “interesting”, but do use a specific receipt, interpretation, contrast, or consequence when it helps the applicant feel heard and creates the next question. A bridge may use one or two short sentences; ask at most one question and do not stack separate evidence asks. The connection can live across the receipt and question rather than being forced into one sentence.
 
@@ -919,5 +884,5 @@ Use transition shape deliberately:
 - connect: name or clearly reuse one concrete detail and make its relationship to the next evidence goal perceptible;
 - pivot: briefly land the previous thread, then change subject cleanly without claiming a false connection.
 
-Keep the exchange conversational: respond to one concrete detail, tension, or gap before asking. Prefer a question that grows out of the current answer. Treat exampleQuestions as adaptable inspiration only when the thread offers no natural route. Avoid generic praise and do not sound like a form. Never call an answer interesting unless you name the specific thing that interested you. Do not force the same acknowledgement-plus-question shape every turn, but do not skip over a meaningful disclosure merely to sound concise. Do not ask who received, was sent, or was recommended music. Set nextSignalKey to the private evidence intent your visible question is exploring; use current.signalKey for clarify, open_door, rabbit_hole, or challenge, choose any relevant open signal for advance, and use an empty string on terminal turns.\n\n${JSON.stringify(state, null, 2)}`
+Keep the exchange conversational: respond to one concrete detail, tension, or gap before asking. Prefer a question that grows out of the current answer. Treat exampleQuestions as adaptable inspiration only when the thread offers no natural route. Avoid generic praise and do not sound like a form. Never call an answer interesting unless you name the specific thing that interested you. Do not force the same acknowledgement-plus-question shape every turn, but do not skip over a meaningful disclosure merely to sound concise. Do not ask who received, was sent, or was recommended music. Set nextSignalKey to the private evidence intent your visible question is exploring; use current.signalKey for clarify, open_door, rabbit_hole, or challenge, choose any relevant open signal for advance, and use an empty string on terminal turns.\n\n${JSON.stringify(state)}`
 }

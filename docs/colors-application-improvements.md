@@ -142,7 +142,7 @@ See [colors-adaptive-applicant-branches.md](./colors-adaptive-applicant-branches
 - [ ] Compare the final evaluator against representative accepted, uncertain, and unsuitable applications before changing production decisions.
 - [ ] Ensure every completed application is reviewable by a human regardless of advisory recommendation.
 
-Runtime fallback reports are now evidence-backed: when the model omits a usable report, Groucho reconstructs the relevant orientation, covered evidence, unresolved or insufficient goals, confidence, and reviewer focus from persisted message metadata. This removes the previous empty generic report while keeping the final community decision human-owned.
+Runtime fallback reports are now evidence-backed: when the model omits a usable report, Groucho reconstructs covered evidence, additional transcript context, unresolved or insufficient attempted goals, confidence, and reviewer focus from persisted messages. Orientation is not used as the applicant biography or as an evidence denominator. This removes the previous empty generic report while keeping the final community decision human-owned.
 
 ### P1: Complete The COLORS Evaluation Rubric
 

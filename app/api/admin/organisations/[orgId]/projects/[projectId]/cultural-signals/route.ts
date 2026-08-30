@@ -7,6 +7,7 @@ import {
 import { getCulturalSignalSnapshot } from "@/lib/cultural-signals"
 import { requireOrgAdmin, requireOrgMember, unauthorized } from "@/lib/org-access"
 import { supabase } from "@/lib/supabase"
+import { invalidateProjectSettingsCache } from "@/lib/project-resolution"
 
 type Context = { params: Promise<{ orgId: string; projectId: string }> }
 
@@ -57,6 +58,7 @@ export async function POST(request: NextRequest, { params }: Context) {
     const { error: updateError } = await supabase.from("projects").update({ settings })
       .eq("id", projectId).eq("organisation_id", orgId)
     if (updateError) return NextResponse.json({ error: "Database error" }, { status: 500 })
+    invalidateProjectSettingsCache(projectId)
     await supabase.from("cultural_signal_project_state").upsert({
       organisation_id: orgId, project_id: projectId, snapshot_dirty: true, updated_at: new Date().toISOString(),
     }, { onConflict: "project_id" })
