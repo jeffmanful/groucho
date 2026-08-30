@@ -5,12 +5,16 @@ import {
   modelFromEnv,
 } from "@/lib/llm-usage"
 import type { ConversationMessage } from "@/lib/scoring"
+import {
+  applyNaturalLanguageStyle,
+  NATURAL_LANGUAGE_REPLY_GUIDANCE,
+} from "@/lib/natural-language-style"
 
 const COMPLETION_MODEL_ENV = "GROUCHO_ONBOARDING_COMPLETION_MODEL"
 const MAX_TOKENS = 120
 
 const DEFAULT_CLOSING =
-  "Thanks — you're all set. We'll use what you shared to personalise your experience."
+  "Thanks, you're all set. We'll use what you shared to personalise your experience."
 
 let client: Anthropic | null = null
 function getClient(): Anthropic {
@@ -44,7 +48,9 @@ export async function generateOnboardingCompletion(
       max_tokens: MAX_TOKENS,
       system: `${personaPrompt.trim()}
 
-Write ONE short closing message (max 2 sentences) thanking the user and reflecting one specific thing they shared. Calm, human, no hype. Do not ask another question.`,
+Write ONE short closing message (max 2 sentences) thanking the user and reflecting one specific thing they shared. Calm, human, no hype. Do not ask another question.
+
+${NATURAL_LANGUAGE_REPLY_GUIDANCE}`,
       messages: [
         {
           role: "user",
@@ -64,7 +70,7 @@ Write ONE short closing message (max 2 sentences) thanking the user and reflecti
     })
     const text = response.content.find((b) => b.type === "text")
     if (text && text.type === "text" && text.text.trim()) {
-      return text.text.trim().slice(0, 400)
+      return applyNaturalLanguageStyle(text.text.trim().slice(0, 400))
     }
   } catch {
     /* fallback */

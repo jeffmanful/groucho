@@ -32,6 +32,7 @@ import {
   shouldHeuristicFollowup,
   verbatimNextMessage,
 } from "@/lib/onboarding-turn-intelligence"
+import { applyNaturalLanguageStyle } from "@/lib/natural-language-style"
 
 const NEUTRAL_SCORES = {
   specificity: 0.5,
@@ -447,6 +448,7 @@ export async function postOnboardingMessage(
     } else {
       assistantContent = DEFAULT_CLOSING
     }
+    assistantContent = applyNaturalLanguageStyle(assistantContent)
 
     await supabase.from("messages").insert({
       session_id: sessionRowId,
@@ -507,6 +509,7 @@ export async function postOnboardingMessage(
     })
   }
 
+  assistantContent = applyNaturalLanguageStyle(assistantContent)
   await supabase.from("messages").insert({
     session_id: sessionRowId,
     organisation_id: organisationId,

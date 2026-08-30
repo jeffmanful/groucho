@@ -2737,7 +2737,7 @@ describe("contract: postSessionMessage", () => {
 
     expect(body.status).toBe("active")
     expect(body.message).toBe(
-      "Lucki—are you bringing him up as an influence on your own work?",
+      "Lucki, are you bringing him up as an influence on your own work?",
     )
     const assistantMetadata = state.messages.at(-1).metadata as Record<
       string,

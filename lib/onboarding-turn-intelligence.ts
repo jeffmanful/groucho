@@ -13,6 +13,10 @@ import {
 } from "@/lib/onboarding-structured-tool"
 import type { OnboardingFlowStep } from "@/lib/project-settings"
 import { stepMinAnswerChars } from "@/lib/project-settings"
+import {
+  applyNaturalLanguageStyle,
+  NATURAL_LANGUAGE_REPLY_GUIDANCE,
+} from "@/lib/natural-language-style"
 
 const ONBOARDING_TURN_MODEL_ENV = "GROUCHO_ONBOARDING_TURN_MODEL"
 const MAX_TOKENS = 400
@@ -81,7 +85,7 @@ export function shouldHeuristicFollowup(
 export function defaultFollowupPrompt(step: OnboardingFlowStep): string {
   return (
     step.followup_prompt?.trim() ||
-    "Can you make that a little more concrete — what would that look like in practice?"
+    "Can you make that a little more concrete? What would that look like in practice?"
   )
 }
 
@@ -115,7 +119,8 @@ export async function runOnboardingTurnIntelligence(
       : "\n\nDo not use action `boundary` for this project.") +
     (ctx.followupEnabled && !ctx.alreadyInFollowup
       ? "\n\nUse action `followup` at most once per step when the answer is too brief or vague."
-      : "\n\nDo not use action `followup` — either continue or boundary.")
+      : "\n\nDo not use action `followup`. Either continue or use boundary.") +
+    `\n\n${NATURAL_LANGUAGE_REPLY_GUIDANCE}`
 
   try {
     const model = modelFromEnv(
@@ -149,7 +154,11 @@ export async function runOnboardingTurnIntelligence(
       reply = ensureEndsWithQuestion(reply, ctx.nextStep.question)
     }
 
-    return { reply, action: parsed.action, usedLlm: true }
+    return {
+      reply: applyNaturalLanguageStyle(reply),
+      action: parsed.action,
+      usedLlm: true,
+    }
   } catch {
     return null
   }

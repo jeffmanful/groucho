@@ -13,6 +13,7 @@ import {
   applicationQuestionBudget,
   type ApplicationQuestionBudget,
 } from "@/lib/application-question-budget"
+import { NATURAL_LANGUAGE_REPLY_GUIDANCE } from "@/lib/natural-language-style"
 
 export type ApplicationSignalDefinition = {
   key: string
@@ -808,6 +809,8 @@ Treat artist, curator, and enthusiast as overlapping, fluid facets. Current prac
     : ""
 
   return `Review this compact application state and produce the next Groucho turn.
+
+${NATURAL_LANGUAGE_REPLY_GUIDANCE}
 
 Assess the current answer semantically as thin, usable, rich, or concerning. Use usable as the normal baseline for a clear answer that supplies any relevant fact, intention, preference, cultural judgment, or personal point of view, even when it deserves another question. Reserve thin for genuinely empty, evasive, non-responsive, or content-free answers. A short answer such as a creative medium, a concrete goal, or a reason for valuing COLORS is usable. Do not use length, fluency, vocabulary, professional status, fame, follower count, or whether you recognise a reference as a proxy for quality.
 

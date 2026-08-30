@@ -43,6 +43,7 @@ import {
 } from "@/lib/terminal-decision-prompt"
 import { buildApplicationExperiencePromptAppendix } from "@/lib/application-experience-prompt"
 import { DEFAULT_APPLICATION_CLOSING_MESSAGE } from "@/lib/project-settings"
+import { applyNaturalLanguageStyle } from "@/lib/natural-language-style"
 import {
   ensureEvidenceBackedReviewerReport,
   type ReviewerReport,
@@ -1480,10 +1481,10 @@ export async function postSessionMessage(
         }
       : null
 
-  const modelAssistantContent = assistantContent
+  const modelAssistantContent = applyNaturalLanguageStyle(assistantContent)
   const userVisibleAssistantContent =
     status !== null
-      ? applicationClosingMessage
+      ? applyNaturalLanguageStyle(applicationClosingMessage)
       : modelAssistantContent
 
   const persistedAssistantMetadata =

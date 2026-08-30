@@ -2,6 +2,7 @@ import {
   DEFAULT_APPLICATION_CLOSING_MESSAGE,
   type ApplicationExperience,
 } from "@/lib/project-settings"
+import { NATURAL_LANGUAGE_REPLY_GUIDANCE } from "@/lib/natural-language-style"
 
 function isColorsForumApplication(signals: string[]): boolean {
   const joined = signals.join("\n").toLowerCase()
@@ -17,6 +18,8 @@ export function buildApplicationExperiencePromptAppendix(
   app: ApplicationExperience,
 ): string {
   const sections: string[] = []
+
+  sections.push(NATURAL_LANGUAGE_REPLY_GUIDANCE)
 
   if (app.required_signals?.length) {
     sections.push(

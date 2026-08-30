@@ -9,6 +9,7 @@ import {
   useCallback,
 } from "react"
 import { useRouter } from "next/navigation"
+import Image from "next/image"
 import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 import { MessageScroller } from "@shadcn/react/message-scroller"
 import {
@@ -211,24 +212,129 @@ const LAYOUT_SPRING = {
   mass: 0.92,
 }
 
-const PRESENCE_GRID_SIZE = 9
-const PRESENCE_CENTER = (PRESENCE_GRID_SIZE - 1) / 2
-const PRESENCE_RADIUS = PRESENCE_CENTER + 0.15
-const DOTS = Array.from(
-  { length: PRESENCE_GRID_SIZE * PRESENCE_GRID_SIZE },
-  (_, index) => {
-    const row = Math.floor(index / PRESENCE_GRID_SIZE)
-    const col = index % PRESENCE_GRID_SIZE
-    return {
-      id: index,
-      row,
-      col,
-      visible:
-        Math.hypot(row - PRESENCE_CENTER, col - PRESENCE_CENTER) <=
-        PRESENCE_RADIUS,
-    }
+type DoorcheckScene = {
+  id: "threshold" | "signal" | "studio" | "gathering" | "reflection" | "afterglow"
+  eyebrow: string
+  caption: string
+}
+
+type ColorsVisual = {
+  id: "latin-mafia" | "fireboy-dml" | "violin-portrait" | "ho99o9"
+  src: string
+  layout: "full" | "right" | "corner"
+  position: string
+}
+
+const COLORS_VISUALS: ColorsVisual[] = [
+  {
+    id: "latin-mafia",
+    src: "/doorcheck/colors/latin-mafia.jpg",
+    layout: "corner",
+    position: "50% 32%",
   },
-)
+  {
+    id: "fireboy-dml",
+    src: "/doorcheck/colors/fireboy-dml.jpg",
+    layout: "full",
+    position: "50% 36%",
+  },
+  {
+    id: "violin-portrait",
+    src: "/doorcheck/colors/violin-portrait.jpg",
+    layout: "right",
+    position: "50% 50%",
+  },
+  {
+    id: "ho99o9",
+    src: "/doorcheck/colors/ho99o9.jpg",
+    layout: "right",
+    position: "50% 44%",
+  },
+]
+
+function colorsVisualForQuestion(question: string): ColorsVisual {
+  const copy = question.toLowerCase()
+  if (/artist|music|song|sound|album|listen/.test(copy)) return COLORS_VISUALS[3]
+  if (/make|work|build|create|process|practice|project/.test(copy)) return COLORS_VISUALS[2]
+  if (/people|community|forum|together|room|belong/.test(copy)) return COLORS_VISUALS[0]
+  if (/honest|feel|think|why|learn|change|matter/.test(copy)) return COLORS_VISUALS[1]
+
+  const hash = Array.from(question).reduce(
+    (total, character) => total + character.charCodeAt(0),
+    0,
+  )
+  return COLORS_VISUALS[hash % COLORS_VISUALS.length]
+}
+
+function sceneForQuestion(
+  question: string,
+  presenceState: GrouchoVisualState,
+  concluded: boolean,
+): DoorcheckScene {
+  if (concluded || presenceState === "decision" || presenceState === "evaluating") {
+    return { id: "afterglow", eyebrow: "The last word", caption: "A view is forming" }
+  }
+
+  const copy = question.toLowerCase()
+  if (/music|song|sound|listen|album|artist/.test(copy)) {
+    return { id: "signal", eyebrow: "On your wavelength", caption: "Signal / noise" }
+  }
+  if (/make|work|build|create|process|practice|project/.test(copy)) {
+    return { id: "studio", eyebrow: "Inside the work", caption: "Work in progress" }
+  }
+  if (/people|community|forum|together|room|belong/.test(copy)) {
+    return { id: "gathering", eyebrow: "The room around us", caption: "People make the place" }
+  }
+  if (/honest|feel|think|why|learn|change|matter/.test(copy)) {
+    return { id: "reflection", eyebrow: "A little closer", caption: "No stock answers" }
+  }
+  return { id: "threshold", eyebrow: "At the door", caption: "Come as you are" }
+}
+
+function TypewriterQuestion({ text }: { text: string }) {
+  const reduceMotion =
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  const [visibleText, setVisibleText] = useState(reduceMotion ? text : "")
+  const [complete, setComplete] = useState(reduceMotion)
+
+  useEffect(() => {
+    if (reduceMotion) return
+
+    let index = 0
+    let timer = 0
+    const baseDelay = Math.max(9, Math.min(24, 1180 / Math.max(text.length, 1)))
+
+    const typeNextCharacter = () => {
+      index += 1
+      setVisibleText(text.slice(0, index))
+      if (index >= text.length) {
+        setComplete(true)
+        return
+      }
+      const character = text[index - 1]
+      const punctuationPause = /[.!?]/.test(character) ? 85 : /[,;:]/.test(character) ? 42 : 0
+      timer = window.setTimeout(typeNextCharacter, baseDelay + punctuationPause)
+    }
+
+    timer = window.setTimeout(() => {
+      setVisibleText("")
+      setComplete(false)
+      timer = window.setTimeout(typeNextCharacter, 120)
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [reduceMotion, text])
+
+  return (
+    <p className="doorcheck-question-text" aria-label={text}>
+      <span aria-hidden="true">{visibleText}</span>
+      <span
+        className={cn("doorcheck-type-cursor", complete && "doorcheck-type-cursor--resting")}
+        aria-hidden="true"
+      />
+    </p>
+  )
+}
 
 function parseInteractionUi(raw: unknown): GrouchoInteractionUi {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
@@ -475,6 +581,7 @@ export default function DoorCheck() {
   const openingInputType: OpeningInputType = "text"
   const openingOptionsText = ""
   const [selectedOptions, setSelectedOptions] = useState<string[]>([])
+  const [isSpeaking, setIsSpeaking] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const typingChannelRef = useRef<ReturnType<SupabaseClient["channel"]> | null>(
     null,
@@ -956,6 +1063,9 @@ export default function DoorCheck() {
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId)
   const isGatekeeperPreview = selectedProject?.projectType === "gatekeeper"
+  const isColorsProject =
+    isGatekeeperPreview &&
+    selectedProject?.organisationName.trim().toLowerCase() === "colors"
   const showConclusionActions =
     concluded && (!isGatekeeperPreview || decisionPhase === "revealed")
   const showReviewerReport = Boolean(showConclusionActions && reviewerReport)
@@ -981,6 +1091,41 @@ export default function DoorCheck() {
     !concluded &&
     !bootstrapping &&
     (!isGatekeeperPreview || decisionPhase === "none")
+  const doorcheckScene = sceneForQuestion(
+    currentBotMessage?.content ?? "",
+    presenceState,
+    concluded,
+  )
+  const colorsVisual = colorsVisualForQuestion(currentBotMessage?.content ?? "")
+  const speechSupported =
+    typeof window !== "undefined" && "speechSynthesis" in window
+
+  useEffect(() => {
+    window.speechSynthesis?.cancel()
+    const frame = window.requestAnimationFrame(() => setIsSpeaking(false))
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.speechSynthesis?.cancel()
+    }
+  }, [currentBotMessage?.id])
+
+  function toggleQuestionAudio() {
+    if (!speechSupported || !currentBotMessage) return
+    if (isSpeaking) {
+      window.speechSynthesis.cancel()
+      setIsSpeaking(false)
+      return
+    }
+
+    const utterance = new SpeechSynthesisUtterance(currentBotMessage.content)
+    utterance.rate = 0.92
+    utterance.pitch = 0.96
+    utterance.onend = () => setIsSpeaking(false)
+    utterance.onerror = () => setIsSpeaking(false)
+    window.speechSynthesis.cancel()
+    window.speechSynthesis.speak(utterance)
+    setIsSpeaking(true)
+  }
 
   function projectLabel(p: ProjectOption): string {
     const bits = [p.name]
@@ -999,17 +1144,117 @@ export default function DoorCheck() {
         damping: 30,
       }}
     >
-      <div className="relative flex h-[100dvh] min-h-0 flex-col overflow-hidden">
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-end px-4 pt-4 md:px-8">
+      <div
+        className={cn(
+          "relative flex h-[100dvh] min-h-0 flex-col overflow-hidden",
+          isGatekeeperPreview && "doorcheck-stage",
+          isColorsProject && "colors-doorcheck",
+        )}
+        data-scene={isGatekeeperPreview ? doorcheckScene.id : undefined}
+      >
+        {isGatekeeperPreview ? (
+          <div className="doorcheck-backdrop" aria-hidden="true">
+            {isColorsProject ? (
+              <div
+                className="colors-doorcheck-media"
+                data-media-slot="conversation-scene"
+                data-layout={colorsVisual.layout}
+              >
+                {COLORS_VISUALS.map((visual) => (
+                  <div
+                    key={visual.id}
+                    className="colors-doorcheck-media__visual"
+                    data-active={visual.id === colorsVisual.id}
+                    data-layout={visual.layout}
+                  >
+                    <Image
+                      src={visual.src}
+                      alt=""
+                      fill
+                      unoptimized
+                      sizes={visual.layout === "full" ? "100vw" : "60vw"}
+                      priority={visual.id === colorsVisual.id}
+                      style={{ objectPosition: visual.position }}
+                    />
+                  </div>
+                ))}
+                <div className="colors-doorcheck-media__veil" />
+              </div>
+            ) : (
+              <>
+                <div className="doorcheck-media" data-media-slot="conversation-scene">
+                  <div className="doorcheck-media__shape doorcheck-media__shape--one" />
+                  <div className="doorcheck-media__shape doorcheck-media__shape--two" />
+                  <div className="doorcheck-media__grain" />
+                  <p className="doorcheck-media__caption">
+                    <span>{doorcheckScene.caption}</span>
+                    <span>Groucho / door check</span>
+                  </p>
+                </div>
+                <div className="doorcheck-colour-field" />
+              </>
+            )}
+          </div>
+        ) : null}
+        <header
+          className={cn(
+            "pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center px-4 pt-4 md:px-8",
+            isGatekeeperPreview ? "justify-between" : "justify-end",
+          )}
+        >
+          {isGatekeeperPreview ? (
+            <div className="pointer-events-auto flex items-center gap-3 text-[0.66rem] uppercase tracking-[0.18em] text-white/72">
+              {isColorsProject ? (
+                <span className="colors-doorcheck-wordmark">COLORS*STUDIOS</span>
+              ) : (
+                <>
+                  <span className="doorcheck-brand-mark" aria-hidden="true" />
+                  <span>Groucho / Door check</span>
+                </>
+              )}
+            </div>
+          ) : null}
+          <div className="flex items-center gap-2">
+            {isColorsProject ? (
+              <span className="colors-doorcheck-project-label">
+                {selectedProject?.name ?? "Forum application"}
+              </span>
+            ) : null}
+            {isGatekeeperPreview ? (
+              <button
+                type="button"
+                onClick={toggleQuestionAudio}
+                disabled={!speechSupported || !currentBotMessage}
+                aria-pressed={isSpeaking}
+                aria-label={isSpeaking ? "Stop reading the question" : "Listen to the question"}
+                className="doorcheck-utility-button pointer-events-auto"
+              >
+                <svg viewBox="0 0 24 24" className="size-4" fill="none" aria-hidden="true">
+                  {isSpeaking ? (
+                    <path d="M8 8h8v8H8z" fill="currentColor" />
+                  ) : (
+                    <>
+                      <path d="M5 10v4h3l4 3V7L8 10H5Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+                      <path d="M15 9.5c.8.65 1.2 1.48 1.2 2.5s-.4 1.85-1.2 2.5M17.5 7c1.55 1.3 2.32 2.97 2.32 5s-.77 3.7-2.32 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                    </>
+                  )}
+                </svg>
+                <span className="hidden sm:inline">{isSpeaking ? "Stop" : "Listen"}</span>
+              </button>
+            ) : null}
           <button
             type="button"
             onClick={() => void signOut()}
             disabled={signingOut}
-            className="pointer-events-auto rounded-md border border-white/15 bg-zinc-950/80 px-3 py-1.5 text-[0.68rem] font-normal uppercase tracking-[0.12em] text-white/50 backdrop-blur-sm transition-colors hover:border-white/25 hover:text-white/75 disabled:cursor-wait disabled:opacity-50"
+            className={cn(
+              "pointer-events-auto rounded-md border border-white/15 bg-zinc-950/80 px-3 py-1.5 text-[0.68rem] font-normal uppercase tracking-[0.12em] text-white/50 backdrop-blur-sm transition-colors hover:border-white/25 hover:text-white/75 disabled:cursor-wait disabled:opacity-50",
+              isGatekeeperPreview && "doorcheck-utility-button",
+            )}
           >
             {signingOut ? "Signing out…" : "Sign out"}
           </button>
-        </div>
+          </div>
+        </header>
         <MessageScroller.Provider
           autoScroll
           defaultScrollPosition="end"
@@ -1020,12 +1265,26 @@ export default function DoorCheck() {
             className="relative min-h-0 flex-1"
             aria-busy={loading || bootstrapping}
           >
-            <MessageScroller.Viewport className="scrollbar-hidden h-full overflow-y-auto overscroll-contain px-4 pt-14 pb-4 sm:px-6">
+            <MessageScroller.Viewport
+              className={cn(
+                "scrollbar-hidden h-full overflow-y-auto overscroll-contain px-4 pt-14 pb-4 sm:px-6",
+                isGatekeeperPreview &&
+                  (isColorsProject
+                    ? "doorcheck-viewport colors-doorcheck-viewport"
+                    : "doorcheck-viewport lg:pl-[44vw]"),
+              )}
+            >
               <MessageScroller.Content
-                className="mx-auto flex min-h-full w-full max-w-[900px] flex-col gap-5"
+                className={cn(
+                  "mx-auto flex min-h-full w-full max-w-[900px] flex-col gap-5",
+                  isGatekeeperPreview &&
+                    (isColorsProject
+                      ? "doorcheck-content colors-doorcheck-content justify-center"
+                      : "doorcheck-content max-w-[780px] justify-center"),
+                )}
                 spacerClassName="shrink-0"
               >
-                <MessageScroller.Item className="mt-auto h-0 shrink-0" />
+                <MessageScroller.Item className={cn("h-0 shrink-0", !isGatekeeperPreview && "mt-auto")} />
                 {currentStep && !concluded && !isGatekeeperPreview && (
                   <MessageScroller.Item messageId={`step-${currentStep.id}`}>
                     <p
@@ -1039,52 +1298,47 @@ export default function DoorCheck() {
             {isGatekeeperPreview ? (
               <MessageScroller.Item messageId="gatekeeper-preview">
                 <motion.div
-                  key="v2-preview"
+                  key={`doorcheck-question-${currentBotMessage?.id ?? "loading"}`}
                   layout
-                  initial={{ opacity: 0, y: 12, filter: "blur(4px)" }}
+                  initial={{ opacity: 0, y: 14, filter: "blur(5px)" }}
                   animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                  transition={{ duration: 0.35, ease: EASE_OUT }}
-                  className="mx-auto grid min-h-68 w-full max-w-[520px] grid-rows-[6rem_minmax(7rem,1fr)] items-start gap-5 text-center md:min-h-76 md:grid-rows-[7rem_minmax(8rem,1fr)]"
+                  transition={{ duration: 0.46, ease: EASE_OUT }}
+                  className="doorcheck-question-stage mx-auto w-full"
                 >
-                <div
-                  className={cn(
-                    "mx-auto grid size-20 grid-cols-9 gap-1 rounded-full md:size-24",
-                    `groucho-demo-presence--${presenceState}`,
-                  )}
-                  aria-hidden
-                >
-                  {DOTS.map((dot) => (
-                    <span
-                      key={dot.id}
-                      className={cn(
-                        "m-auto size-[3px] rounded-full bg-white/70 opacity-35",
-                        !dot.visible && "invisible",
-                      )}
-                      style={{
-                        animationDelay: `${(dot.col + dot.row) * 0.04}s`,
-                      }}
-                    />
-                  ))}
-                </div>
-
-                {decisionPhase === "evaluating" ? (
-                  <p className="self-start text-sm tracking-[0.08em] text-white/35">
-                    Groucho is considering…
-                  </p>
-                ) : null}
-
-                {currentBotMessage && decisionPhase !== "evaluating" && decisionPhase !== "decision" ? (
-                  <div className="mx-auto flex min-h-28 max-w-120 flex-col justify-start space-y-2 md:min-h-32">
-                    <p className="font-sans text-sm text-white/35">{personaName}</p>
-                    <p className="whitespace-pre-wrap font-sans text-xl leading-[1.42] text-white/85 md:text-2xl">
-                      {currentBotMessage.content}
-                    </p>
+                  <div
+                    className={cn(
+                      "mb-5 flex items-center gap-3 text-[0.68rem] uppercase tracking-[0.17em] text-white/48",
+                      isColorsProject && "sr-only",
+                    )}
+                  >
+                    <span>{personaName}</span>
+                    <span className="h-px w-5 bg-white/25" aria-hidden="true" />
+                    <span>{doorcheckScene.eyebrow}</span>
                   </div>
-                ) : bootstrapping ? (
-                  <p className="self-start text-sm tracking-[0.08em] text-white/35">
-                    Connecting…
-                  </p>
-                ) : null}
+
+                  {decisionPhase === "evaluating" ? (
+                    <p className="doorcheck-question-text">Let me sit with that for a moment.</p>
+                  ) : currentBotMessage && decisionPhase !== "decision" ? (
+                    <TypewriterQuestion text={currentBotMessage.content} />
+                  ) : bootstrapping ? (
+                    <p className="doorcheck-question-text">Opening the door…</p>
+                  ) : null}
+
+                  <AnimatePresence initial={false}>
+                    {loading ? (
+                      <motion.div
+                        key="doorcheck-reading"
+                        initial={{ opacity: 0, y: 4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -3 }}
+                        className="mt-6 flex items-center gap-3 text-sm text-white/48"
+                        role="status"
+                      >
+                        <span className="doorcheck-reading-mark" aria-hidden="true" />
+                        Reading your answer…
+                      </motion.div>
+                    ) : null}
+                  </AnimatePresence>
                 </motion.div>
               </MessageScroller.Item>
             ) : (
@@ -1214,7 +1468,13 @@ export default function DoorCheck() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.25 }}
-            className="mx-auto w-full max-w-[900px] shrink-0 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6"
+            className={cn(
+              "mx-auto w-full max-w-[900px] shrink-0 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6",
+              isGatekeeperPreview &&
+                (isColorsProject
+                  ? "doorcheck-answer-shell colors-doorcheck-answer-shell"
+                  : "doorcheck-answer-shell lg:ml-[44vw] lg:max-w-none lg:pr-8 lg:pl-8"),
+            )}
           >
             <button
               type="button"
@@ -1240,16 +1500,31 @@ export default function DoorCheck() {
         {showAnswerArea && (
           <motion.div
             layout
-            className="mx-auto w-full max-w-[900px] shrink-0 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6"
+            className={cn(
+              "mx-auto w-full max-w-[900px] shrink-0 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6",
+              isGatekeeperPreview &&
+                (isColorsProject
+                  ? "doorcheck-answer-shell colors-doorcheck-answer-shell"
+                  : "doorcheck-answer-shell lg:ml-[44vw] lg:max-w-none lg:pr-8 lg:pl-8"),
+            )}
             animate={{ opacity: 1 }}
             transition={{ layout: LAYOUT_SPRING, opacity: { duration: 0.22 } }}
           >
             {showStructuredOptions ? (
               <motion.div
                 layout
-                className="relative w-full rounded-2xl border border-white/10 bg-zinc-950/70 px-4 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] backdrop-blur-md"
+                className={
+                  isGatekeeperPreview
+                    ? "doorcheck-options relative w-full px-0 py-3"
+                    : "relative w-full rounded-2xl border border-white/10 bg-zinc-950/70 px-4 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] backdrop-blur-md"
+                }
               >
-                <div className="flex flex-wrap items-center justify-center gap-2">
+                <div
+                  className={cn(
+                    "flex flex-wrap items-center gap-2",
+                    isGatekeeperPreview ? "justify-start gap-2.5" : "justify-center",
+                  )}
+                >
                   {interactionUi.options?.map((option) => {
                     const active = selectedOptions.includes(option)
                     return (
@@ -1271,9 +1546,13 @@ export default function DoorCheck() {
                         }}
                         className={cn(
                           "min-h-11 rounded-full border px-4 py-2 text-sm transition-[border-color,background-color,color,scale] active:scale-[0.96]",
-                          active
-                            ? "border-white/45 bg-white/10 text-white/85"
-                            : "border-white/12 bg-zinc-950/70 text-white/55 hover:border-white/25 hover:text-white/80",
+                          isGatekeeperPreview
+                            ? active
+                              ? "doorcheck-choice doorcheck-choice--active"
+                              : "doorcheck-choice"
+                            : active
+                              ? "border-white/45 bg-white/10 text-white/85"
+                              : "border-white/12 bg-zinc-950/70 text-white/55 hover:border-white/25 hover:text-white/80",
                         )}
                       >
                         {option}
@@ -1293,7 +1572,10 @@ export default function DoorCheck() {
                         ),
                       )
                     }
-                    className="mx-auto mt-3 block min-h-11 rounded-full border border-white/15 bg-transparent px-4 py-2 text-[0.7rem] tracking-[0.08em] text-white/50 transition-[border-color,color,scale] hover:border-white/25 hover:text-white/75 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-35"
+                    className={cn(
+                      "mx-auto mt-3 block min-h-11 rounded-full border border-white/15 bg-transparent px-4 py-2 text-[0.7rem] tracking-[0.08em] text-white/50 transition-[border-color,color,scale] hover:border-white/25 hover:text-white/75 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-35",
+                      isGatekeeperPreview && "doorcheck-choice ml-0",
+                    )}
                   >
                     continue
                   </button>
@@ -1307,7 +1589,11 @@ export default function DoorCheck() {
                   if (applicantEmail) void submit()
                   else submitApplicantEmail()
                 }}
-                className="relative flex min-h-14 items-end gap-2 rounded-2xl border border-white/10 bg-zinc-950/70 p-2 pl-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] backdrop-blur-md transition-[border-color,box-shadow,background-color,opacity] duration-200 focus-within:border-white/18 focus-within:bg-zinc-950/85 focus-within:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_0_0_1px_rgba(255,255,255,0.06),0_0_0_3px_rgba(255,255,255,0.05)]"
+                className={
+                  isGatekeeperPreview
+                    ? "doorcheck-input relative flex min-h-14 items-end gap-2 border-b p-0 pb-2"
+                    : "relative flex min-h-14 items-end gap-2 rounded-2xl border border-white/10 bg-zinc-950/70 p-2 pl-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] backdrop-blur-md transition-[border-color,box-shadow,background-color,opacity] duration-200 focus-within:border-white/18 focus-within:bg-zinc-950/85 focus-within:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_0_0_1px_rgba(255,255,255,0.06),0_0_0_3px_rgba(255,255,255,0.05)]"
+                }
               >
                 {applicantEmail ? (
                   <textarea
@@ -1350,7 +1636,10 @@ export default function DoorCheck() {
                   type="submit"
                   disabled={loading || !input.trim()}
                   aria-label={applicantEmail ? "Send message" : "Continue"}
-                  className="grid size-11 shrink-0 place-items-center rounded-xl bg-white text-black transition-[opacity,scale,background-color] duration-150 hover:bg-white/90 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-25"
+                  className={cn(
+                    "grid size-11 shrink-0 place-items-center rounded-xl bg-white text-black transition-[opacity,scale,background-color] duration-150 hover:bg-white/90 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-25",
+                    isGatekeeperPreview && "doorcheck-send rounded-full",
+                  )}
                 >
                   <svg viewBox="0 0 24 24" className="size-4" fill="none" aria-hidden>
                     <path
@@ -1437,103 +1726,437 @@ export default function DoorCheck() {
             )}
           </motion.div>
         )}
+        {isColorsProject ? (
+          <p className="colors-doorcheck-credit">Powered by Groucho</p>
+        ) : null}
       </div>
       <style jsx global>{`
-        .groucho-demo-presence--idle span {
-          animation: groucho-demo-presence-idle 2.4s ease-in-out infinite;
+        .doorcheck-stage {
+          --scene-ink: #15132b;
+          --scene-deep: #211943;
+          --scene-glow: #9a5cf2;
+          --scene-light: #f6c85f;
+          background: var(--scene-deep);
+          color: white;
+          isolation: isolate;
+          transition: background-color 700ms cubic-bezier(0.22, 1, 0.36, 1);
         }
-        .groucho-demo-presence--listening span {
-          animation: groucho-demo-presence-listening 1.6s ease-in-out infinite;
+        .doorcheck-stage[data-scene="signal"] {
+          --scene-ink: #101c2b;
+          --scene-deep: #17384a;
+          --scene-glow: #28b9ad;
+          --scene-light: #ffcd58;
         }
-        .groucho-demo-presence--thinking span {
-          animation: groucho-demo-presence-thinking 1.1s ease-in-out infinite;
+        .doorcheck-stage[data-scene="studio"] {
+          --scene-ink: #291717;
+          --scene-deep: #62332e;
+          --scene-glow: #e0724f;
+          --scene-light: #f9cf72;
         }
-        .groucho-demo-presence--curious span {
-          animation: groucho-demo-presence-curious 1.8s ease-in-out infinite;
+        .doorcheck-stage[data-scene="gathering"] {
+          --scene-ink: #12251f;
+          --scene-deep: #245b49;
+          --scene-glow: #8bcf8a;
+          --scene-light: #ffd15c;
         }
-        .groucho-demo-presence--interested span {
-          animation: groucho-demo-presence-interested 1.2s ease-in-out infinite;
+        .doorcheck-stage[data-scene="reflection"] {
+          --scene-ink: #181b38;
+          --scene-deep: #263f77;
+          --scene-glow: #798bed;
+          --scene-light: #ffc857;
         }
-        .groucho-demo-presence--evaluating span {
-          animation: groucho-demo-presence-evaluating 1.35s linear infinite;
+        .doorcheck-stage[data-scene="afterglow"] {
+          --scene-ink: #25151e;
+          --scene-deep: #593044;
+          --scene-glow: #d36e8d;
+          --scene-light: #ffc965;
         }
-        .groucho-demo-presence--decision span {
-          animation: groucho-demo-presence-decision 2s ease-in-out infinite;
+        .doorcheck-backdrop {
+          position: absolute;
+          inset: 0;
+          z-index: -1;
+          overflow: hidden;
+          background: var(--scene-ink);
         }
-        @keyframes groucho-demo-presence-idle {
-          0%,
-          100% {
-            opacity: 0.18;
-            transform: scale(0.86);
+        .colors-doorcheck {
+          --scene-light: #f4f1ea;
+          background: #1d1d1d;
+        }
+        .colors-doorcheck .doorcheck-backdrop {
+          background: #1d1d1d;
+        }
+        .colors-doorcheck-media {
+          position: absolute;
+          inset: 0;
+          overflow: hidden;
+          background: #1d1d1d;
+        }
+        .colors-doorcheck-media__visual {
+          position: absolute;
+          overflow: hidden;
+          opacity: 0;
+          transform: scale(1.015);
+          transition:
+            opacity 650ms cubic-bezier(0.22, 1, 0.36, 1),
+            transform 1100ms cubic-bezier(0.22, 1, 0.36, 1);
+          will-change: opacity, transform;
+        }
+        .colors-doorcheck-media__visual[data-layout="full"] {
+          inset: 0;
+        }
+        .colors-doorcheck-media__visual[data-layout="right"] {
+          inset-block: 0;
+          right: 0;
+          left: 40.8%;
+        }
+        .colors-doorcheck-media__visual[data-layout="corner"] {
+          right: 58%;
+          bottom: 0;
+          left: 0;
+          height: 31%;
+        }
+        .colors-doorcheck-media__visual img {
+          object-fit: cover;
+          filter: saturate(0.82) contrast(1.04);
+          outline: 1px solid oklch(1 0 0 / 0.1);
+          outline-offset: -1px;
+        }
+        .colors-doorcheck-media__visual[data-active="true"] {
+          z-index: 1;
+          opacity: 1;
+          transform: scale(1);
+        }
+        .colors-doorcheck-media__veil {
+          position: absolute;
+          inset: 0;
+          z-index: 2;
+          pointer-events: none;
+          transition: background 500ms cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        .colors-doorcheck-media[data-layout="full"] .colors-doorcheck-media__veil {
+          background:
+            radial-gradient(circle at 48% 54%, rgb(0 0 0 / 0.32), rgb(0 0 0 / 0.7) 72%),
+            rgb(0 0 0 / 0.22);
+        }
+        .colors-doorcheck-media[data-layout="right"] .colors-doorcheck-media__veil {
+          background:
+            linear-gradient(90deg, #171717 0 39%, rgb(23 23 23 / 0.66) 50%, rgb(0 0 0 / 0.15) 76%),
+            linear-gradient(180deg, rgb(0 0 0 / 0.12), rgb(0 0 0 / 0.24));
+        }
+        .colors-doorcheck-media[data-layout="corner"] .colors-doorcheck-media__veil {
+          background: linear-gradient(180deg, transparent 55%, rgb(0 0 0 / 0.1));
+        }
+        .colors-doorcheck-wordmark {
+          font-size: 1rem;
+          font-weight: 600;
+          letter-spacing: 0.2em;
+          color: white;
+        }
+        .colors-doorcheck-project-label {
+          max-width: 18rem;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          font-size: 0.67rem;
+          letter-spacing: 0.03em;
+          text-transform: uppercase;
+          color: rgb(255 255 255 / 0.62);
+        }
+        .colors-doorcheck-content {
+          width: min(34rem, 48vw);
+          max-width: none;
+          margin-right: auto;
+          margin-left: 33vw;
+          padding-block: 0;
+        }
+        .colors-doorcheck .doorcheck-question-stage {
+          display: grid;
+          width: 100%;
+          height: clamp(16rem, 45vh, 24rem);
+          max-width: none;
+          grid-template-rows: minmax(0, 1fr) 2.5rem;
+          align-items: center;
+        }
+        .colors-doorcheck .doorcheck-question-text {
+          width: 100%;
+          max-width: 29ch;
+          align-self: center;
+          font-size: clamp(1.45rem, 2.05vw, 1.85rem);
+          font-weight: 400;
+          line-height: 1.32;
+          letter-spacing: -0.018em;
+          color: rgb(255 255 255 / 0.96);
+          text-wrap: pretty;
+        }
+        .colors-doorcheck .doorcheck-type-cursor {
+          width: 0.055em;
+          background: rgb(255 255 255 / 0.82);
+        }
+        .colors-doorcheck .doorcheck-reading-mark {
+          background: white;
+        }
+        .colors-doorcheck-answer-shell {
+          width: min(34rem, 48vw);
+          height: clamp(8.5rem, 18vh, 10.5rem);
+          max-width: none;
+          margin-right: auto;
+          margin-left: 33vw;
+          overflow-y: auto;
+          padding: 0 0 1rem;
+          scrollbar-width: none;
+        }
+        .colors-doorcheck-answer-shell::-webkit-scrollbar {
+          display: none;
+        }
+        .colors-doorcheck .doorcheck-input {
+          border-bottom-color: rgb(255 255 255 / 0.14);
+        }
+        .colors-doorcheck .doorcheck-input:focus-within {
+          border-bottom-color: rgb(255 255 255 / 0.48);
+        }
+        .colors-doorcheck .doorcheck-input textarea,
+        .colors-doorcheck .doorcheck-input input {
+          font-size: clamp(1.15rem, 1.8vw, 1.55rem);
+        }
+        .colors-doorcheck .doorcheck-send,
+        .colors-doorcheck .doorcheck-choice {
+          background: #f4f1ea;
+          color: #151515;
+        }
+        .colors-doorcheck-credit {
+          position: absolute;
+          right: 2rem;
+          bottom: 1.35rem;
+          z-index: 4;
+          margin: 0;
+          font-size: 0.56rem;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          color: rgb(255 255 255 / 0.7);
+          pointer-events: none;
+        }
+        .doorcheck-media,
+        .doorcheck-colour-field {
+          position: absolute;
+          inset-block: 0;
+          transition: background-color 700ms cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        .doorcheck-media {
+          left: 0;
+          width: 44%;
+          overflow: hidden;
+          background:
+            linear-gradient(155deg, color-mix(in srgb, var(--scene-glow) 72%, white 8%), transparent 65%),
+            radial-gradient(circle at 25% 75%, var(--scene-light), transparent 44%),
+            var(--scene-ink);
+        }
+        .doorcheck-colour-field {
+          right: 0;
+          width: 56%;
+          background:
+            radial-gradient(circle at 78% 18%, color-mix(in srgb, var(--scene-glow) 24%, transparent), transparent 34%),
+            var(--scene-deep);
+        }
+        .doorcheck-media::after {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(90deg, transparent 65%, color-mix(in srgb, var(--scene-deep) 22%, transparent));
+        }
+        .doorcheck-media__shape {
+          position: absolute;
+          border-radius: 48% 52% 62% 38% / 45% 42% 58% 55%;
+          filter: blur(4px);
+          will-change: transform;
+          animation: doorcheck-drift 16s ease-in-out infinite alternate;
+        }
+        .doorcheck-media__shape--one {
+          top: -18%;
+          left: 18%;
+          width: 58%;
+          height: 76%;
+          rotate: 24deg;
+          background: color-mix(in srgb, var(--scene-deep) 75%, black 12%);
+          box-shadow: 0 0 90px color-mix(in srgb, var(--scene-glow) 55%, transparent);
+        }
+        .doorcheck-media__shape--two {
+          right: -12%;
+          bottom: -12%;
+          width: 70%;
+          height: 50%;
+          rotate: -18deg;
+          background: color-mix(in srgb, var(--scene-glow) 52%, transparent);
+          animation-delay: -7s;
+        }
+        .doorcheck-media__grain {
+          position: absolute;
+          inset: 0;
+          opacity: 0.18;
+          background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.25'/%3E%3C/svg%3E");
+          mix-blend-mode: soft-light;
+        }
+        .doorcheck-media__caption {
+          position: absolute;
+          z-index: 1;
+          right: 2rem;
+          bottom: 1.75rem;
+          left: 2rem;
+          display: flex;
+          justify-content: space-between;
+          gap: 1rem;
+          font-size: 0.62rem;
+          line-height: 1.4;
+          letter-spacing: 0.16em;
+          text-transform: uppercase;
+          color: rgb(255 255 255 / 0.6);
+        }
+        .doorcheck-brand-mark {
+          width: 0.55rem;
+          height: 0.55rem;
+          border-radius: 999px;
+          background: var(--scene-light);
+          box-shadow: 0 0 0 4px color-mix(in srgb, var(--scene-light) 16%, transparent);
+          transition: background-color 500ms ease, box-shadow 500ms ease;
+        }
+        .doorcheck-utility-button {
+          display: inline-flex;
+          min-height: 2.75rem;
+          align-items: center;
+          gap: 0.5rem;
+          border: 1px solid rgb(255 255 255 / 0.15);
+          border-radius: 999px;
+          background: rgb(5 6 12 / 0.2);
+          padding-inline: 0.8rem;
+          color: rgb(255 255 255 / 0.68);
+          backdrop-filter: blur(14px);
+          transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
+        }
+        .doorcheck-utility-button:hover {
+          border-color: rgb(255 255 255 / 0.32);
+          background: rgb(5 6 12 / 0.32);
+          color: white;
+        }
+        .doorcheck-utility-button:active { transform: scale(0.97); }
+        .doorcheck-utility-button:disabled { cursor: not-allowed; opacity: 0.35; }
+        .doorcheck-content { padding-block: clamp(5rem, 12vh, 8rem) 1.25rem; }
+        .doorcheck-question-stage { max-width: 42rem; text-wrap: balance; }
+        .doorcheck-question-text {
+          max-width: 18ch;
+          white-space: pre-wrap;
+          font-family: var(--font-sans), sans-serif;
+          font-size: clamp(2.3rem, 4.2vw, 4.85rem);
+          font-weight: 430;
+          line-height: 1.03;
+          letter-spacing: -0.045em;
+          color: rgb(255 255 255 / 0.9);
+          text-wrap: balance;
+        }
+        .doorcheck-type-cursor {
+          display: inline-block;
+          width: 0.08em;
+          height: 0.85em;
+          margin-left: 0.08em;
+          translate: 0 0.08em;
+          border-radius: 999px;
+          background: var(--scene-light);
+        }
+        .doorcheck-type-cursor--resting { animation: doorcheck-cursor 1s steps(1, end) infinite; }
+        .doorcheck-reading-mark {
+          width: 0.55rem;
+          height: 0.55rem;
+          border-radius: 50%;
+          background: var(--scene-light);
+          animation: doorcheck-reading 1.1s ease-in-out infinite;
+        }
+        .doorcheck-answer-shell { position: relative; z-index: 2; }
+        .doorcheck-options { animation: doorcheck-options-in 380ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+        .doorcheck-choice {
+          border-color: color-mix(in srgb, var(--scene-light) 75%, white 10%);
+          background: var(--scene-light);
+          color: #15110a;
+          box-shadow: 0 8px 24px rgb(0 0 0 / 0.12);
+          font-weight: 550;
+        }
+        .doorcheck-choice:hover { border-color: white; background: color-mix(in srgb, var(--scene-light) 86%, white); color: #090705; }
+        .doorcheck-choice--active { box-shadow: inset 0 0 0 2px #15110a, 0 8px 24px rgb(0 0 0 / 0.15); }
+        .doorcheck-input { border-bottom-color: rgb(255 255 255 / 0.28); }
+        .doorcheck-input:focus-within { border-bottom-color: var(--scene-light); }
+        .doorcheck-input textarea,
+        .doorcheck-input input { font-size: clamp(1.1rem, 2vw, 1.45rem); }
+        .doorcheck-send { background: var(--scene-light); color: #15110a; }
+        .doorcheck-send:hover { background: color-mix(in srgb, var(--scene-light) 86%, white); }
+        @keyframes doorcheck-drift {
+          from { transform: translate3d(-2%, -1%, 0) scale(1); }
+          to { transform: translate3d(5%, 4%, 0) scale(1.08); }
+        }
+        @keyframes doorcheck-cursor { 0%, 52% { opacity: 1; } 53%, 100% { opacity: 0; } }
+        @keyframes doorcheck-reading { 0%, 100% { opacity: 0.3; transform: scale(0.78); } 50% { opacity: 1; transform: scale(1); } }
+        @keyframes doorcheck-options-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+        @media (max-width: 1023px) {
+          .doorcheck-media { width: 100%; opacity: 0.58; }
+          .doorcheck-colour-field { width: 100%; background: linear-gradient(180deg, color-mix(in srgb, var(--scene-deep) 50%, transparent), var(--scene-deep) 74%); }
+          .doorcheck-media__caption { display: none; }
+          .doorcheck-viewport { background: rgb(3 5 12 / 0.14); }
+          .doorcheck-question-stage { max-width: 38rem; }
+          .colors-doorcheck-viewport { background: transparent; }
+          .colors-doorcheck-content,
+          .colors-doorcheck-answer-shell {
+            width: min(36rem, calc(100vw - 3rem));
+            margin-right: auto;
+            margin-left: auto;
           }
-          50% {
-            opacity: 0.5;
-            transform: scale(1);
+          .colors-doorcheck-media__visual[data-layout="right"] {
+            left: 26%;
+          }
+          .colors-doorcheck-media__visual[data-layout="corner"] {
+            right: 42%;
+            height: 38%;
+          }
+          .colors-doorcheck-media[data-layout="right"] .colors-doorcheck-media__veil {
+            background: linear-gradient(90deg, rgb(20 20 20 / 0.82), rgb(0 0 0 / 0.38));
           }
         }
-        @keyframes groucho-demo-presence-listening {
-          0%,
-          100% {
-            opacity: 0.22;
-            transform: scale(0.9);
+        @media (max-width: 639px) {
+          .doorcheck-question-text { font-size: clamp(2rem, 10vw, 3.25rem); line-height: 1.06; }
+          .doorcheck-content { padding-top: 5.25rem; padding-bottom: 0.5rem; }
+          .doorcheck-question-stage { text-wrap: pretty; }
+          .colors-doorcheck-content {
+            width: calc(100vw - 2rem);
+            padding-top: 4.25rem;
+            padding-bottom: 0;
           }
-          50% {
-            opacity: 0.82;
-            transform: scale(1.08);
+          .colors-doorcheck-answer-shell {
+            width: calc(100vw - 2rem);
+            height: 9.25rem;
+            padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
           }
+          .colors-doorcheck .doorcheck-question-stage {
+            height: clamp(15rem, 45vh, 21rem);
+          }
+          .colors-doorcheck .doorcheck-question-text {
+            font-size: clamp(1.35rem, 6.4vw, 1.75rem);
+            line-height: 1.3;
+          }
+          .colors-doorcheck-media__visual[data-layout="right"],
+          .colors-doorcheck-media__visual[data-layout="corner"] {
+            inset: 0;
+            height: auto;
+          }
+          .colors-doorcheck-media__veil,
+          .colors-doorcheck-media[data-layout="right"] .colors-doorcheck-media__veil,
+          .colors-doorcheck-media[data-layout="corner"] .colors-doorcheck-media__veil {
+            background: rgb(0 0 0 / 0.58);
+          }
+          .colors-doorcheck-project-label { display: none; }
+          .colors-doorcheck-wordmark { font-size: 0.76rem; }
+          .colors-doorcheck-credit { right: 1rem; bottom: 0.65rem; }
         }
-        @keyframes groucho-demo-presence-thinking {
-          0%,
-          100% {
-            opacity: 0.14;
-            transform: translateY(0);
-          }
-          50% {
-            opacity: 0.7;
-            transform: translateY(-1px);
-          }
-        }
-        @keyframes groucho-demo-presence-curious {
-          0%,
-          100% {
-            opacity: 0.3;
-            transform: translateX(0);
-          }
-          50% {
-            opacity: 0.75;
-            transform: translateX(1px);
-          }
-        }
-        @keyframes groucho-demo-presence-interested {
-          0%,
-          100% {
-            opacity: 0.35;
-            transform: scale(0.95);
-          }
-          50% {
-            opacity: 0.95;
-            transform: scale(1.05);
-          }
-        }
-        @keyframes groucho-demo-presence-evaluating {
-          0%,
-          100% {
-            opacity: 0.25;
-          }
-          50% {
-            opacity: 0.85;
-          }
-        }
-        @keyframes groucho-demo-presence-decision {
-          0%,
-          100% {
-            opacity: 0.45;
-            transform: scale(0.92);
-          }
-          50% {
-            opacity: 1;
-            transform: scale(1);
-          }
+        @media (prefers-reduced-motion: reduce) {
+          .doorcheck-media__shape,
+          .doorcheck-type-cursor--resting,
+          .doorcheck-reading-mark,
+          .doorcheck-options { animation: none; }
+          .colors-doorcheck-media__visual { transition: none; }
         }
       `}</style>
     </MotionConfig>

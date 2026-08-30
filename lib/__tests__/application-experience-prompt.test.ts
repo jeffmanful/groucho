@@ -9,6 +9,8 @@ describe("buildApplicationExperiencePromptAppendix", () => {
     })
     expect(appendix).toContain("Terminal applicant-facing close")
     expect(appendix).toContain("Thanks. We'll be in touch.")
+    expect(appendix).toContain("Do not use em dashes")
+    expect(appendix).toContain("sounds natural when spoken")
   })
 
   it("includes required signals, preferred input types, and max turns", () => {
