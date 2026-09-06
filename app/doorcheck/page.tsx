@@ -21,6 +21,7 @@ import {
 import { TextShimmer } from "@/components/doorcheck/TextShimmer"
 import { cn } from "@/lib/utils"
 import { DEFAULT_APPLICATION_OPENING_MESSAGE } from "@/lib/project-settings"
+import { useBrowserDictation } from "@/lib/use-browser-dictation"
 
 function createDoorcheckSupabase(): SupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
@@ -624,6 +625,7 @@ export default function DoorCheck() {
   const settingsTriggerRef = useRef<HTMLButtonElement>(null)
   const resumeTitleRef = useRef<HTMLHeadingElement>(null)
   const settingsPanelId = useId()
+  const dictationStatusId = useId()
   const typingChannelRef = useRef<ReturnType<SupabaseClient["channel"]> | null>(
     null,
   )
@@ -978,6 +980,7 @@ export default function DoorCheck() {
     const text = (messageOverride ?? input).trim()
     if (!text || !applicantEmail || loading || concluded || !sessionId) return
 
+    voiceInput.cancel()
     broadcastTyping(false)
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
 
@@ -1341,6 +1344,25 @@ export default function DoorCheck() {
   const colorsVisual = colorsVisualForQuestion(currentBotMessage?.content ?? "")
   const speechSupported =
     typeof window !== "undefined" && "speechSynthesis" in window
+  const acceptsDictation =
+    interactionUi.inputType === "text" || interactionUi.inputType === "voice"
+  const voiceInput = useBrowserDictation({
+    value: input,
+    onChange: (nextValue) => {
+      setInput(nextValue)
+      broadcastTyping(Boolean(nextValue))
+    },
+    disabled:
+      interactionBusy ||
+      concluded ||
+      !applicantEmail ||
+      !acceptsDictation ||
+      !showAnswerArea,
+    onStart: () => {
+      window.speechSynthesis?.cancel()
+      setIsSpeaking(false)
+    },
+  })
 
   const handleQuestionComplete = useCallback((messageId: string) => {
     setRevealedQuestionId(messageId)
@@ -2055,16 +2077,24 @@ export default function DoorCheck() {
                     onKeyDown={handleKeyDown}
                     autoFocus
                     disabled={interactionBusy}
+                    readOnly={voiceInput.listening}
                     placeholder={
-                      loading && !isColorsProject
-                        ? `${personaName} is replying…`
-                        : stepHint?.trim() ||
-                          (selectedProject?.projectType === "onboarding"
-                            ? "Your answer"
-                            : "Type your message")
+                      voiceInput.listening
+                        ? "Listening…"
+                        : loading && !isColorsProject
+                          ? `${personaName} is replying…`
+                          : stepHint?.trim() ||
+                            (selectedProject?.projectType === "onboarding"
+                              ? "Your answer"
+                              : "Type your message")
                     }
                     aria-label="Message"
                     aria-disabled={interactionBusy}
+                    aria-describedby={
+                      voiceInput.listening || voiceInput.error
+                        ? dictationStatusId
+                        : undefined
+                    }
                     className="field-sizing-content max-h-40 min-h-10 flex-1 resize-none overflow-y-auto bg-transparent py-2 pr-1 font-inherit text-base leading-6 font-normal text-white/95 outline-none placeholder:text-white/38 selection:bg-white/20 selection:text-white disabled:cursor-wait disabled:opacity-55 sm:text-lg"
                   />
                 ) : (
@@ -2083,6 +2113,50 @@ export default function DoorCheck() {
                     className="min-h-10 flex-1 bg-transparent py-2 pr-1 font-inherit text-base font-normal text-white/95 outline-none placeholder:text-white/38 selection:bg-white/20 selection:text-white sm:text-lg"
                   />
                 )}
+                {applicantEmail && acceptsDictation ? (
+                  <button
+                    type="button"
+                    onClick={voiceInput.toggle}
+                    disabled={interactionBusy || !voiceInput.supported}
+                    aria-label={
+                      voiceInput.supported
+                        ? voiceInput.listening
+                          ? "Stop voice input"
+                          : "Start voice input"
+                        : "Voice input is unavailable in this browser"
+                    }
+                    aria-pressed={voiceInput.listening}
+                    title={
+                      voiceInput.supported
+                        ? voiceInput.listening
+                          ? "Stop listening"
+                          : "Answer with your voice"
+                        : "Voice input is unavailable in this browser"
+                    }
+                    data-listening={voiceInput.listening}
+                    className="doorcheck-dictation grid size-11 shrink-0 place-items-center rounded-full transition-[color,background-color,scale,opacity] duration-150 active:scale-[0.96] disabled:cursor-not-allowed"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="size-[1.1rem]"
+                      fill="none"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M12 4.25a3 3 0 0 0-3 3v4.5a3 3 0 0 0 6 0v-4.5a3 3 0 0 0-3-3Z"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                      />
+                      <path
+                        d="M6.75 11.5v.25a5.25 5.25 0 0 0 10.5 0v-.25M12 17v3M9.5 20h5"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    <span className="doorcheck-dictation-dot" aria-hidden="true" />
+                  </button>
+                ) : null}
                 <button
                   type="submit"
                   disabled={interactionBusy || !input.trim()}
@@ -2147,6 +2221,18 @@ export default function DoorCheck() {
                 </AnimatePresence>
               </motion.form>
             )}
+            {applicantEmail &&
+            acceptsDictation &&
+            (voiceInput.listening || voiceInput.error) ? (
+              <p
+                id={dictationStatusId}
+                className="doorcheck-dictation-status"
+                aria-live="polite"
+              >
+                {voiceInput.error ??
+                  "Listening… speak naturally, then review your answer."}
+              </p>
+            ) : null}
             {applicantEmailError ? (
               <p className="mt-2 text-sm text-red-300" role="alert">
                 {applicantEmailError}
@@ -2657,6 +2743,49 @@ export default function DoorCheck() {
         .doorcheck-input:focus-within { border-bottom-color: var(--scene-light); }
         .doorcheck-input textarea,
         .doorcheck-input input { font-size: clamp(1.1rem, 2vw, 1.45rem); }
+        .doorcheck-dictation {
+          position: relative;
+          border: 1px solid rgb(255 255 255 / 0.12);
+          background: rgb(255 255 255 / 0.04);
+          color: rgb(255 255 255 / 0.55);
+        }
+        .doorcheck-dictation:hover:not(:disabled) {
+          border-color: rgb(255 255 255 / 0.28);
+          background: rgb(255 255 255 / 0.08);
+          color: white;
+        }
+        .doorcheck-dictation:focus-visible {
+          outline: 2px solid var(--scene-light);
+          outline-offset: 2px;
+        }
+        .doorcheck-dictation:disabled { opacity: 0.28; }
+        .doorcheck-dictation[data-listening="true"] {
+          border-color: color-mix(in srgb, var(--scene-light) 68%, white);
+          background: color-mix(in srgb, var(--scene-light) 14%, transparent);
+          color: var(--scene-light);
+          opacity: 1;
+        }
+        .doorcheck-dictation-dot {
+          position: absolute;
+          top: 0.42rem;
+          right: 0.42rem;
+          width: 0.38rem;
+          height: 0.38rem;
+          border-radius: 999px;
+          background: #ff6b6b;
+          opacity: 0;
+        }
+        .doorcheck-dictation[data-listening="true"] .doorcheck-dictation-dot {
+          opacity: 1;
+          animation: doorcheck-dictation-pulse 1.2s ease-in-out infinite;
+        }
+        .doorcheck-dictation-status {
+          margin: 0.55rem 0 0;
+          color: rgb(255 255 255 / 0.52);
+          font-size: 0.72rem;
+          line-height: 1.4;
+          text-wrap: pretty;
+        }
         .doorcheck-send { background: var(--scene-light); color: #15110a; }
         .doorcheck-send:hover { background: color-mix(in srgb, var(--scene-light) 86%, white); }
         @keyframes doorcheck-drift {
@@ -2665,6 +2794,7 @@ export default function DoorCheck() {
         }
         @keyframes doorcheck-cursor { 0%, 52% { opacity: 1; } 53%, 100% { opacity: 0; } }
         @keyframes doorcheck-reading { 0%, 100% { opacity: 0.3; transform: scale(0.78); } 50% { opacity: 1; transform: scale(1); } }
+        @keyframes doorcheck-dictation-pulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
         @keyframes doorcheck-options-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
         @media (max-width: 1023px) {
           .doorcheck-media { width: 100%; opacity: 0.58; }
@@ -2722,6 +2852,7 @@ export default function DoorCheck() {
           .doorcheck-media__shape,
           .doorcheck-type-cursor--resting,
           .doorcheck-reading-mark,
+          .doorcheck-dictation-dot,
           .doorcheck-options { animation: none; }
           .colors-doorcheck-media__visual { transition: none; }
         }
