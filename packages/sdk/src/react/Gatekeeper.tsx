@@ -8,16 +8,19 @@ import type {
   ReviewerReport,
   ScoreBreakdown,
   SessionOutcome,
+  StartSessionResponse,
 } from "../client.js"
 import { GrouchoApiError } from "../errors.js"
 import { useGroucho } from "./context.js"
 import { Composer } from "./Composer.js"
 import { OutcomeBanner } from "./OutcomeBanner.js"
+import { ResumeSessionPrompt } from "./ResumeSessionPrompt.js"
 import { ThinkingIndicator } from "./ThinkingIndicator.js"
 import { Transcript, type TranscriptLine } from "./Transcript.js"
 
 const STORAGE_PREFIX = "groucho.session:"
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const SLOW_RESPONSE_DELAY_MS = 6000
 
 export type GatekeeperProps = {
   sessionId?: string
@@ -43,6 +46,8 @@ export type GatekeeperProps = {
   renderFooter?: () => ReactNode
   className?: string
   transcriptLabel?: string
+  /** Ask before restoring an existing active session (default: true) */
+  confirmResume?: boolean
 }
 
 type ChatLine = { id: string; role: "user" | "assistant"; content: string }
@@ -60,9 +65,14 @@ export function Gatekeeper({
   renderFooter,
   className,
   transcriptLabel,
+  confirmResume = true,
 }: GatekeeperProps) {
   const client = useGroucho()
   const [internalId, setInternalId] = useState<string | null>(null)
+  const [replacementSession, setReplacementSession] = useState<{
+    id: string
+    sourceSessionId?: string
+  } | null>(null)
 
   useEffect(() => {
     if (sessionIdProp) return
@@ -76,7 +86,11 @@ export function Gatekeeper({
     setInternalId(id)
   }, [sessionIdProp])
 
-  const sessionId = sessionIdProp ?? internalId ?? ""
+  const replacementId =
+    replacementSession && replacementSession.sourceSessionId === sessionIdProp
+      ? replacementSession.id
+      : null
+  const sessionId = replacementId ?? sessionIdProp ?? internalId ?? ""
 
   useEffect(() => {
     if (sessionId) onSessionId?.(sessionId)
@@ -90,9 +104,23 @@ export function Gatekeeper({
   const [loading, setLoading] = useState(false)
   const [bootstrapping, setBootstrapping] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [failedAnswer, setFailedAnswer] = useState<string | null>(null)
+  const [showSlowResponse, setShowSlowResponse] = useState(false)
   const [outcome, setOutcome] = useState<SessionOutcome>("active")
+  const [pendingResume, setPendingResume] =
+    useState<StartSessionResponse | null>(null)
   const bootstrappedSessionRef = useRef<string | null>(null)
   const bootstrapInFlightRef = useRef(false)
+  const slowResponseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(
+    () => () => {
+      if (slowResponseTimerRef.current) {
+        clearTimeout(slowResponseTimerRef.current)
+      }
+    },
+    [],
+  )
 
   const terminal =
     outcome === "passed" ||
@@ -116,6 +144,35 @@ export function Gatekeeper({
     setSubmittedApplicant({ email })
   }, [applicantEmail])
 
+  const applyStartResponse = useCallback(
+    (res: StartSessionResponse, activeSessionId: string) => {
+      setLines([
+        {
+          id: `a_bootstrap_${activeSessionId}`,
+          role: "assistant",
+          content: res.message,
+        },
+      ])
+    },
+    [],
+  )
+
+  const startOver = useCallback(() => {
+    const newId = crypto.randomUUID()
+    if (typeof window !== "undefined" && !sessionIdProp) {
+      sessionStorage.setItem(STORAGE_PREFIX + window.location.pathname, newId)
+    }
+    bootstrappedSessionRef.current = null
+    setPendingResume(null)
+    setReplacementSession({ id: newId, sourceSessionId: sessionIdProp })
+    setLines([])
+    setDraft("")
+    setError(null)
+    setFailedAnswer(null)
+    setShowSlowResponse(false)
+    setOutcome("active")
+  }, [sessionIdProp])
+
   useEffect(() => {
     if (!sessionId || needsApplicant || terminal) return
     if (bootstrappedSessionRef.current === sessionId) return
@@ -134,16 +191,15 @@ export function Gatekeeper({
       })
       .then((res) => {
         bootstrappedSessionRef.current = sessionId
-        setLines([
-          {
-            id: `a_bootstrap_${sessionId}`,
-            role: "assistant",
-            content: res.message,
-          },
-        ])
+        if (confirmResume && res.resumed === true) {
+          setPendingResume(res)
+          return
+        }
+        applyStartResponse(res, sessionId)
       })
       .catch((e) => {
         if (e instanceof GrouchoApiError && e.status === 409) {
+          setPendingResume(null)
           setOutcome("active")
           setLines([])
           bootstrappedSessionRef.current = null
@@ -152,7 +208,7 @@ export function Gatekeeper({
             if (!sessionIdProp) {
               const newId = crypto.randomUUID()
               sessionStorage.setItem(key, newId)
-              setInternalId(newId)
+              setReplacementSession({ id: newId })
               setError("This session has ended — starting a new one.")
             } else {
               setError("This session has ended. Start a new session id from your host.")
@@ -176,21 +232,31 @@ export function Gatekeeper({
     sessionIdProp,
     openingMessage,
     openingInteraction,
+    confirmResume,
+    applyStartResponse,
   ])
 
-  const send = useCallback(async () => {
-    const text = draft.trim()
+  const send = useCallback(async (messageOverride?: string, isRetry = false) => {
+    const text = (messageOverride ?? draft).trim()
     if (!text || !sessionId || loading || terminal || needsApplicant) return
 
     setError(null)
+    setFailedAnswer(null)
+    setShowSlowResponse(false)
     setLoading(true)
     setDraft("")
-    const userLine: ChatLine = {
-      id: `u_${Date.now()}`,
-      role: "user",
-      content: text,
+    if (!isRetry) {
+      const userLine: ChatLine = {
+        id: `u_${Date.now()}`,
+        role: "user",
+        content: text,
+      }
+      setLines((prev) => [...prev, userLine])
     }
-    setLines((prev) => [...prev, userLine])
+    slowResponseTimerRef.current = setTimeout(
+      () => setShowSlowResponse(true),
+      SLOW_RESPONSE_DELAY_MS,
+    )
 
     try {
       const res = await client.sendMessage(sessionId, {
@@ -225,7 +291,7 @@ export function Gatekeeper({
           if (!sessionIdProp) {
             const newId = crypto.randomUUID()
             sessionStorage.setItem(key, newId)
-            setInternalId(newId)
+            setReplacementSession({ id: newId })
             setError("This session has ended — starting a new one.")
           } else {
             setError("This session has ended. Start a new session id from your host.")
@@ -234,8 +300,14 @@ export function Gatekeeper({
         return
       }
       setError(e instanceof Error ? e.message : "Something went wrong.")
+      setFailedAnswer(text)
       setDraft(text)
     } finally {
+      if (slowResponseTimerRef.current) {
+        clearTimeout(slowResponseTimerRef.current)
+        slowResponseTimerRef.current = null
+      }
+      setShowSlowResponse(false)
       setLoading(false)
     }
   }, [
@@ -271,9 +343,19 @@ export function Gatekeeper({
       {renderHeader?.()}
       <OutcomeBanner status={outcome} />
       {error ? (
-        <p className="groucho-error" role="alert">
-          {error}
-        </p>
+        <div className="groucho-error-panel" role="alert">
+          <p className="groucho-error">{error}</p>
+          {failedAnswer ? (
+            <button
+              type="button"
+              className="groucho-retry"
+              onClick={() => void send(failedAnswer, true)}
+              disabled={loading}
+            >
+              Retry answer
+            </button>
+          ) : null}
+        </div>
       ) : null}
       {needsApplicant ? (
         <form
@@ -298,10 +380,25 @@ export function Gatekeeper({
             Start
           </button>
         </form>
+      ) : pendingResume ? (
+        <ResumeSessionPrompt
+          onContinue={() => {
+            applyStartResponse(pendingResume, sessionId)
+            setPendingResume(null)
+          }}
+          onStartOver={startOver}
+        />
       ) : (
         <>
           <Transcript lines={transcriptLines} label={transcriptLabel} />
           <ThinkingIndicator visible={loading || bootstrapping} />
+          {loading ? (
+            <p className="groucho-muted groucho-wait-message" aria-live="polite">
+              {showSlowResponse
+                ? "Still with you — thoughtful answers can take a little longer."
+                : "Considering your answer…"}
+            </p>
+          ) : null}
           <Composer
             value={draft}
             onChange={setDraft}

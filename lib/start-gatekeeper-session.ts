@@ -168,6 +168,7 @@ export async function startGatekeeperSession(
       projectType: "gatekeeper",
       ui: lastUi,
       bootstrapped: true,
+      resumed: true,
     })
   }
 
@@ -221,6 +222,7 @@ export async function startGatekeeperSession(
         projectType: "gatekeeper",
         ui: lastUi,
         bootstrapped: true,
+        resumed: true,
       })
     }
   }
@@ -266,5 +268,6 @@ export async function startGatekeeperSession(
     projectType: "gatekeeper",
     ui: openingInteraction,
     bootstrapped: true,
+    resumed: false,
   })
 }

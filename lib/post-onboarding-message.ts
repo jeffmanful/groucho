@@ -1,9 +1,7 @@
 import { randomUUID } from "crypto"
 import { NextResponse } from "next/server"
 import {
-  applicantIdentityFromRow,
   applicantIdentityPayload,
-  type ApplicantIdentity,
 } from "@/lib/applicant-identity"
 import type { ConversationMessage } from "@/lib/scoring"
 import { log } from "@/lib/logger"
@@ -11,7 +9,6 @@ import { REQUEST_ID_HEADER } from "@/lib/request-trace"
 import { supabase } from "@/lib/supabase"
 import { isConcludedSessionStatus } from "@/lib/session-status"
 import {
-  buildOnboardingProfileSchema,
   formatStepPrompt,
   resolveRuntimeFlowConfig,
   type NormalizedProjectSettings,
@@ -19,8 +16,12 @@ import {
 } from "@/lib/project-settings"
 import type { ProjectContext } from "@/lib/project-resolution"
 import { touchApiKeyLastUsed } from "@/lib/project-resolution"
-import { recordVerdictAndEnqueueWebhooks } from "@/lib/verdict-webhook"
 import type { PostSessionMessageInput } from "@/lib/post-session-message"
+import {
+  completeSessionImmediately,
+  enqueueSessionCompletionJob,
+  scheduleSessionCompletionDrain,
+} from "@/lib/session-completion-jobs"
 import {
   DEFAULT_CLOSING,
   generateOnboardingCompletion,
@@ -122,12 +123,10 @@ export async function postOnboardingMessage(
   type PersonaRow = {
     id: string
     prompt: string
-    profile_schema?: unknown
-    profile_extractor_hint?: string | null
   }
 
   let personaForExtraction: PersonaRow | null = null
-  const personaCols = "id, prompt, profile_schema, profile_extractor_hint"
+  const personaCols = "id, prompt"
 
   if (personaLookupId) {
     const { data } = await supabase
@@ -155,18 +154,7 @@ export async function postOnboardingMessage(
     personaForExtraction?.prompt?.trim() ||
     "You are a calm, thoughtful onboarding host. Keep replies brief and human."
 
-  const onboardingSchema = buildOnboardingProfileSchema(steps)
-  const mergedPersona = {
-    profile_schema:
-      personaForExtraction?.profile_schema ?? onboardingSchema,
-    profile_extractor_hint:
-      personaForExtraction?.profile_extractor_hint ??
-      "Map each onboarding step answer to the matching custom profile_key from the transcript.",
-  }
-
   let sessionRowId: string
-  let sessionApplicantIdentity: ApplicantIdentity | null =
-    input.applicantIdentity ?? null
   let currentStepId: string | null = null
   let flowVersion: string | null = null
   let onboardingState: OnboardingState = {}
@@ -224,8 +212,6 @@ export async function postOnboardingMessage(
         .eq("id", existing.id)
     }
     sessionRowId = existing.id
-    sessionApplicantIdentity =
-      input.applicantIdentity ?? applicantIdentityFromRow(existing)
     currentStepId = existing.current_step_id ?? null
     flowVersion = existing.flow_version ?? flow.version
     onboardingState = parseOnboardingState(existing.onboarding_state)
@@ -450,52 +436,61 @@ export async function postOnboardingMessage(
     }
     assistantContent = applyNaturalLanguageStyle(assistantContent)
 
-    await supabase.from("messages").insert({
-      session_id: sessionRowId,
-      organisation_id: organisationId,
-      project_id: projectId,
-      role: "assistant",
-      content: assistantContent,
-      metadata: { onboarding_complete: true },
-    })
-
     const successSecret = randomUUID()
-    await supabase
-      .from("sessions")
-      .update({
-        status: "passed",
-        success_secret: successSecret,
-        current_step_id: null,
-        flow_version: flowVersion,
-        onboarding_state: null,
-      })
-      .eq("id", sessionRowId)
-
-    let profile: Awaited<
-      ReturnType<typeof recordVerdictAndEnqueueWebhooks>
-    >["profile"] = null
+    await Promise.all([
+      supabase.from("messages").insert({
+        session_id: sessionRowId,
+        organisation_id: organisationId,
+        project_id: projectId,
+        role: "assistant",
+        content: assistantContent,
+        metadata: { onboarding_complete: true },
+      }),
+      supabase
+        .from("sessions")
+        .update({
+          status: "passed",
+          success_secret: successSecret,
+          current_step_id: null,
+          flow_version: flowVersion,
+          onboarding_state: null,
+        })
+        .eq("id", sessionRowId),
+    ])
 
     try {
-      const result = await recordVerdictAndEnqueueWebhooks({
+      await enqueueSessionCompletionJob({
         organisationId,
         projectId,
-        sessionInternalId: sessionRowId,
-        clientSessionKey: sessionId,
-        terminalStatus: "passed",
-        scores: NEUTRAL_SCORES,
-        requestId: input.requestId,
-        persona: mergedPersona,
-        transcript,
-        applicant: sessionApplicantIdentity,
+        sessionId: sessionRowId,
+        likelyBot: false,
       })
-      profile = result?.profile ?? null
+      scheduleSessionCompletionDrain()
     } catch (err) {
-      log.error("onboarding_verdict_failed", {
+      log.error("onboarding_completion_enqueue_failed", {
         requestId: input.requestId,
         projectId,
         sessionId,
         detail: err instanceof Error ? err.message : String(err),
       })
+      try {
+        await completeSessionImmediately({
+          organisationId,
+          projectId,
+          sessionId: sessionRowId,
+          likelyBot: false,
+        })
+      } catch (fallbackError) {
+        log.error("onboarding_completion_fallback_failed", {
+          requestId: input.requestId,
+          projectId,
+          sessionId,
+          detail:
+            fallbackError instanceof Error
+              ? fallbackError.message
+              : String(fallbackError),
+        })
+      }
     }
 
     return traceJson(input, {
@@ -505,27 +500,28 @@ export async function postOnboardingMessage(
       secret: successSecret,
       projectType: "onboarding",
       flowVersion,
-      ...(profile ? { profile } : {}),
+      reviewStatus: "pending",
     })
   }
 
   assistantContent = applyNaturalLanguageStyle(assistantContent)
-  await supabase.from("messages").insert({
-    session_id: sessionRowId,
-    organisation_id: organisationId,
-    project_id: projectId,
-    role: "assistant",
-    content: assistantContent,
-    metadata: { onboarding_step_id: nextCurrentStepId },
-  })
-
-  await supabase
-    .from("sessions")
-    .update({
-      current_step_id: nextCurrentStepId,
-      flow_version: flowVersion,
-    })
-    .eq("id", sessionRowId)
+  await Promise.all([
+    supabase.from("messages").insert({
+      session_id: sessionRowId,
+      organisation_id: organisationId,
+      project_id: projectId,
+      role: "assistant",
+      content: assistantContent,
+      metadata: { onboarding_step_id: nextCurrentStepId },
+    }),
+    supabase
+      .from("sessions")
+      .update({
+        current_step_id: nextCurrentStepId,
+        flow_version: flowVersion,
+      })
+      .eq("id", sessionRowId),
+  ])
 
   const currentStep = nextCurrentStepId
     ? currentStepPayload(steps, nextCurrentStepId)

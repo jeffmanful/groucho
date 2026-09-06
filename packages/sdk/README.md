@@ -130,10 +130,21 @@ import {
 | `renderHeader` / `renderFooter` | `() => ReactNode` | — | Slots for host branding. |
 | `className` | `string` | — | Appended to the root `groucho-root groucho-gatekeeper` class list. |
 | `transcriptLabel` | `string` | — | aria-label for the transcript region. |
+| `confirmResume` | `boolean` | `true` | When an active session is restored, show Continue and Start over before revealing its last question. |
 
-`onOutcome` receives the response body of the terminal turn. `meta.profile` is present when:
-- The project has profile extraction enabled (default: all three terminal statuses), and
-- The persona resolves with a `profile_schema` and the extractor returns `ok` (or core-only when no `profile_schema`).
+Both `<Gatekeeper />` and `<GatekeeperV2 />` use the same explicit resume checkpoint.
+Choosing **Start over** creates a fresh session id, keeps the supplied applicant identity,
+and calls `onSessionId` with the replacement id. The earlier partial session is preserved
+for audit and abandonment reporting.
+
+While an answer is being processed, both components show a short thinking state and switch
+to a reassuring message after six seconds. Failed submissions retain the exact answer and
+offer an explicit **Retry answer** action. `<GatekeeperV2 />` also softens the outgoing
+question away as soon as the answer is submitted.
+
+`onOutcome` receives the response body of the terminal turn. Profile extraction runs after
+the response so terminal screens are not held up by profile and webhook work. Use
+`getSession(sessionId)` to retrieve the persisted profile once completion finishes.
 
 See [`profile-schema-guide.md`](https://github.com/thompson-mcdonald/groucho/blob/main/docs/profile-schema-guide.md) for the schema authoring contract.
 

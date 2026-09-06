@@ -10,18 +10,16 @@ function jsonFromResponse(res: Response) {
   return res.json() as Promise<Record<string, unknown>>
 }
 
-const recordVerdictMock = vi.fn().mockResolvedValue({
-  profile: {
-    schema_version: 1,
-    core: null,
-    custom: { intent: "join" },
-    extraction: { model: "m", status: "ok" },
-  },
-})
+const enqueueCompletionMock = vi.fn().mockResolvedValue(undefined)
+const completeImmediatelyMock = vi.fn().mockResolvedValue(undefined)
+const scheduleCompletionDrainMock = vi.fn()
 
-vi.mock("@/lib/verdict-webhook", () => ({
-  recordVerdictAndEnqueueWebhooks: (...args: unknown[]) =>
-    recordVerdictMock(...args),
+vi.mock("@/lib/session-completion-jobs", () => ({
+  enqueueSessionCompletionJob: (...args: unknown[]) =>
+    enqueueCompletionMock(...args),
+  completeSessionImmediately: (...args: unknown[]) =>
+    completeImmediatelyMock(...args),
+  scheduleSessionCompletionDrain: () => scheduleCompletionDrainMock(),
 }))
 
 vi.mock("@/lib/project-resolution", () => ({
@@ -161,14 +159,9 @@ const experienceOff = {
 
 describe("postOnboardingMessage", () => {
   beforeEach(() => {
-    recordVerdictMock.mockClear().mockResolvedValue({
-      profile: {
-        schema_version: 1,
-        core: null,
-        custom: { intent: "x", interests: "y", values: "z" },
-        extraction: { model: "m", status: "ok" },
-      },
-    })
+    enqueueCompletionMock.mockClear().mockResolvedValue(undefined)
+    completeImmediatelyMock.mockClear().mockResolvedValue(undefined)
+    scheduleCompletionDrainMock.mockClear()
   })
 
   async function loadState() {
@@ -181,7 +174,7 @@ describe("postOnboardingMessage", () => {
     return s
   }
 
-  it("asks configured questions in order then completes with profile", async () => {
+  it("asks configured questions in order then queues completion", async () => {
     await loadState()
     const { postOnboardingMessage } = await import("@/lib/post-onboarding-message")
 
@@ -247,8 +240,16 @@ describe("postOnboardingMessage", () => {
     })
     const b4 = await jsonFromResponse(r4 as Response)
     expect(b4.status).toBe("passed")
-    expect(b4.profile).toBeTruthy()
-    expect(recordVerdictMock).toHaveBeenCalledTimes(1)
+    expect(b4.profile).toBeUndefined()
+    expect(b4.reviewStatus).toBe("pending")
+    expect(enqueueCompletionMock).toHaveBeenCalledWith({
+      organisationId: "org1",
+      projectId: "proj1",
+      sessionId: expect.any(String),
+      likelyBot: false,
+    })
+    expect(scheduleCompletionDrainMock).toHaveBeenCalledTimes(1)
+    expect(completeImmediatelyMock).not.toHaveBeenCalled()
   })
 
   it("returns 409 when session already concluded", async () => {

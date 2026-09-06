@@ -9,6 +9,7 @@ import type {
   ReviewerReport,
   ScoreBreakdown,
   SessionOutcome,
+  StartSessionResponse,
 } from "../client.js"
 import { GrouchoApiError } from "../errors.js"
 import { useGroucho } from "./context.js"
@@ -30,9 +31,11 @@ import {
 } from "./gatekeeper-turn.js"
 import { InteractionInput } from "./InteractionInput.js"
 import { OutcomeBanner } from "./OutcomeBanner.js"
+import { ResumeSessionPrompt } from "./ResumeSessionPrompt.js"
 
 const STORAGE_PREFIX = "groucho.session:"
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const SLOW_RESPONSE_DELAY_MS = 6000
 
 type TurnState = {
   message: string
@@ -69,6 +72,8 @@ export type GatekeeperV2Props = {
   renderHeader?: () => ReactNode
   renderFooter?: () => ReactNode
   className?: string
+  /** Ask before restoring an existing active session (default: true) */
+  confirmResume?: boolean
 }
 
 export function GatekeeperV2({
@@ -88,9 +93,14 @@ export function GatekeeperV2({
   renderHeader,
   renderFooter,
   className,
+  confirmResume = true,
 }: GatekeeperV2Props) {
   const client = useGroucho()
   const [internalId, setInternalId] = useState<string | null>(null)
+  const [replacementSession, setReplacementSession] = useState<{
+    id: string
+    sourceSessionId?: string
+  } | null>(null)
 
   useEffect(() => {
     if (sessionIdProp) return
@@ -104,7 +114,11 @@ export function GatekeeperV2({
     setInternalId(id)
   }, [sessionIdProp])
 
-  const sessionId = sessionIdProp ?? internalId ?? ""
+  const replacementId =
+    replacementSession && replacementSession.sourceSessionId === sessionIdProp
+      ? replacementSession.id
+      : null
+  const sessionId = replacementId ?? sessionIdProp ?? internalId ?? ""
 
   useEffect(() => {
     if (sessionId) onSessionId?.(sessionId)
@@ -118,10 +132,24 @@ export function GatekeeperV2({
   const [loading, setLoading] = useState(false)
   const [bootstrapping, setBootstrapping] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [failedAnswer, setFailedAnswer] = useState<string | null>(null)
+  const [showSlowResponse, setShowSlowResponse] = useState(false)
   const [outcome, setOutcome] = useState<SessionOutcome>("active")
+  const [pendingResume, setPendingResume] =
+    useState<StartSessionResponse | null>(null)
   const bootstrappedSessionRef = useRef<string | null>(null)
   const bootstrapInFlightRef = useRef(false)
   const pendingTerminalTurnRef = useRef<TurnState | null>(null)
+  const slowResponseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(
+    () => () => {
+      if (slowResponseTimerRef.current) {
+        clearTimeout(slowResponseTimerRef.current)
+      }
+    },
+    [],
+  )
 
   const terminal = isTerminalOutcome(outcome)
 
@@ -148,6 +176,28 @@ export function GatekeeperV2({
     setError(null)
     setSubmittedApplicant({ email })
   }, [applicantEmail])
+
+  const applyStartResponse = useCallback((res: StartSessionResponse) => {
+    setDecisionPhase("none")
+    setTurn(turnFromStartResponse(res))
+  }, [])
+
+  const startOver = useCallback(() => {
+    const newId = crypto.randomUUID()
+    if (typeof window !== "undefined" && !sessionIdProp) {
+      sessionStorage.setItem(STORAGE_PREFIX + window.location.pathname, newId)
+    }
+    bootstrappedSessionRef.current = null
+    pendingTerminalTurnRef.current = null
+    setPendingResume(null)
+    setReplacementSession({ id: newId, sourceSessionId: sessionIdProp })
+    setTurn(null)
+    setDecisionPhase("none")
+    setError(null)
+    setFailedAnswer(null)
+    setShowSlowResponse(false)
+    setOutcome("active")
+  }, [sessionIdProp])
 
   useEffect(() => {
     if (decisionPhase !== "evaluating") return
@@ -185,11 +235,15 @@ export function GatekeeperV2({
       })
       .then((res) => {
         bootstrappedSessionRef.current = sessionId
-        setDecisionPhase("none")
-        setTurn(turnFromStartResponse(res))
+        if (confirmResume && res.resumed === true) {
+          setPendingResume(res)
+          return
+        }
+        applyStartResponse(res)
       })
       .catch((e) => {
         if (e instanceof GrouchoApiError && e.status === 409) {
+          setPendingResume(null)
           setOutcome("active")
           setTurn(null)
           setDecisionPhase("none")
@@ -199,7 +253,7 @@ export function GatekeeperV2({
             if (!sessionIdProp) {
               const newId = crypto.randomUUID()
               sessionStorage.setItem(key, newId)
-              setInternalId(newId)
+              setReplacementSession({ id: newId })
               setError("This session has ended — starting a new one.")
             } else {
               setError("This session has ended. Start a new session id from your host.")
@@ -223,6 +277,8 @@ export function GatekeeperV2({
     sessionIdProp,
     openingMessage,
     openingInteraction,
+    confirmResume,
+    applyStartResponse,
   ])
 
   const beginTerminalReveal = useCallback(
@@ -246,7 +302,13 @@ export function GatekeeperV2({
       if (decisionPhase === "evaluating" || decisionPhase === "decision") return
 
       setError(null)
+      setFailedAnswer(null)
+      setShowSlowResponse(false)
       setLoading(true)
+      slowResponseTimerRef.current = setTimeout(
+        () => setShowSlowResponse(true),
+        SLOW_RESPONSE_DELAY_MS,
+      )
 
       try {
         const res = await client.sendMessage(sessionId, {
@@ -287,7 +349,7 @@ export function GatekeeperV2({
             if (!sessionIdProp) {
               const newId = crypto.randomUUID()
               sessionStorage.setItem(key, newId)
-              setInternalId(newId)
+              setReplacementSession({ id: newId })
               setError("This session has ended — starting a new one.")
             } else {
               setError("This session has ended. Start a new session id from your host.")
@@ -296,7 +358,13 @@ export function GatekeeperV2({
           return
         }
         setError(e instanceof Error ? e.message : "Something went wrong.")
+        setFailedAnswer(text)
       } finally {
+        if (slowResponseTimerRef.current) {
+          clearTimeout(slowResponseTimerRef.current)
+          slowResponseTimerRef.current = null
+        }
+        setShowSlowResponse(false)
         setLoading(false)
       }
     },
@@ -348,9 +416,19 @@ export function GatekeeperV2({
       {renderHeader?.()}
       {showOutcome ? <OutcomeBanner status={outcome} /> : null}
       {error ? (
-        <p className="groucho-error" role="alert">
-          {error}
-        </p>
+        <div className="groucho-error-panel" role="alert">
+          <p className="groucho-error">{error}</p>
+          {failedAnswer ? (
+            <button
+              type="button"
+              className="groucho-retry"
+              onClick={() => void send(failedAnswer)}
+              disabled={loading}
+            >
+              Retry answer
+            </button>
+          ) : null}
+        </div>
       ) : null}
       {needsApplicant ? (
         <form
@@ -375,26 +453,49 @@ export function GatekeeperV2({
             Start
           </button>
         </form>
+      ) : pendingResume ? (
+        <ResumeSessionPrompt
+          onContinue={() => {
+            applyStartResponse(pendingResume)
+            setPendingResume(null)
+          }}
+          onStartOver={startOver}
+        />
       ) : (
         <div className="groucho-v2">
           <DotMatrixPresence visualState={presenceState} />
-          {showEvaluatingLabel ? (
+          <div className="groucho-v2__question-slot">
+            {showQuestion && turn ? (
+              <p
+                className={`groucho-v2__question${loading ? " groucho-v2__question--submitting" : ""}`}
+                aria-hidden={loading}
+              >
+                {turn.message}
+              </p>
+            ) : bootstrapping ? (
+              <p className="groucho-muted groucho-v2__status">Connecting…</p>
+            ) : null}
+          </div>
+          <div className="groucho-v2__status-slot">
             <p className="groucho-muted groucho-v2__status" aria-live="polite">
-              {evaluatingLabel}
+              {showEvaluatingLabel
+                ? evaluatingLabel
+                : loading
+                  ? showSlowResponse
+                    ? "Still with you — thoughtful answers can take a little longer."
+                    : "Considering your answer…"
+                  : ""}
             </p>
-          ) : null}
-          {showQuestion && turn ? (
-            <p className="groucho-v2__question">{turn.message}</p>
-          ) : bootstrapping ? (
-            <p className="groucho-muted groucho-v2__status">Connecting…</p>
-          ) : null}
-          {showInput && turn ? (
-            <InteractionInput
-              ui={turn.ui}
-              disabled={loading}
-              onSubmit={(message) => void send(message)}
-            />
-          ) : null}
+          </div>
+          <div className="groucho-v2__input-slot">
+            {showInput && turn ? (
+              <InteractionInput
+                ui={turn.ui}
+                disabled={loading}
+                onSubmit={(message) => void send(message)}
+              />
+            ) : null}
+          </div>
         </div>
       )}
       {renderFooter?.()}

@@ -140,6 +140,7 @@ describe("startGatekeeperSession", () => {
     expect(res.status).toBe(200)
     const body = await jsonFromResponse(res as Response)
     expect(body.bootstrapped).toBe(true)
+    expect(body.resumed).toBe(false)
     expect(body.projectType).toBe("gatekeeper")
     expect(body.message).toBe(customOpening)
     expect((body.ui as { inputType: string }).inputType).toBe("text")
@@ -329,6 +330,7 @@ describe("startGatekeeperSession", () => {
     })
     const body = await jsonFromResponse(res as Response)
     expect(body.message).toBe("Existing opener")
+    expect(body.resumed).toBe(true)
     expect(body.ui).toEqual({
       intent: "probe",
       inputType: "singleSelect",

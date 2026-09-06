@@ -159,6 +159,7 @@ export async function startOnboardingSession(
       ...(currentStep ? { currentStep } : {}),
       stepHint: steps.find((s) => s.id === stepId)?.hint,
       bootstrapped: true,
+      resumed: true,
     })
   }
 
@@ -227,6 +228,7 @@ export async function startOnboardingSession(
         ...(currentStep ? { currentStep } : {}),
         stepHint: steps.find((s) => s.id === stepId)?.hint,
         bootstrapped: true,
+        resumed: true,
       })
     }
   }
@@ -271,5 +273,6 @@ export async function startOnboardingSession(
     ...(currentStep ? { currentStep } : {}),
     stepHint: firstStep.hint,
     bootstrapped: true,
+    resumed: false,
   })
 }

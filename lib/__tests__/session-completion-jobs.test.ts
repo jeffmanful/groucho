@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   jobUpdate: vi.fn(),
   recordVerdict: vi.fn(),
   recordCulturalSignals: vi.fn(),
+  projectSettings: {} as Record<string, unknown>,
 }))
 
 vi.mock("next/server", () => ({ after: vi.fn() }))
@@ -49,7 +50,7 @@ vi.mock("@/lib/supabase", () => ({
           })
         }
         if (table === "projects") {
-          return filteredSingle({ settings: { cultural_signals: { enabled: true } } })
+          return filteredSingle({ settings: mocks.projectSettings })
         }
         if (table === "personas") {
           return filteredSingle({
@@ -122,6 +123,7 @@ describe("session completion jobs", () => {
     mocks.jobUpdate.mockResolvedValue({ error: null })
     mocks.recordVerdict.mockResolvedValue({ profile: null })
     mocks.recordCulturalSignals.mockResolvedValue(undefined)
+    mocks.projectSettings = { cultural_signals: { enabled: true } }
   })
 
   it("enqueues one idempotent job per terminal session", async () => {
@@ -181,6 +183,51 @@ describe("session completion jobs", () => {
     expect(mocks.jobUpdate).toHaveBeenCalledWith(
       "session_completion_jobs",
       expect.objectContaining({ status: "completed" }),
+    )
+  })
+
+  it("builds the onboarding profile schema in the background", async () => {
+    mocks.projectSettings = {
+      project_type: "onboarding",
+      flow_config: {
+        version: "1",
+        steps: [
+          {
+            id: "intent",
+            title: "Intent",
+            question: "What brings you here?",
+            profile_key: "intent",
+            required: true,
+          },
+        ],
+      },
+    }
+    mocks.rpc.mockResolvedValue({
+      data: [
+        {
+          id: "job_2",
+          organisation_id: "org_1",
+          project_id: "project_1",
+          session_id: "session_internal",
+          likely_bot: false,
+          attempt_count: 1,
+          max_attempts: 8,
+        },
+      ],
+      error: null,
+    })
+
+    await expect(processPendingSessionCompletionJobs(1)).resolves.toBe(1)
+    expect(mocks.recordVerdict).toHaveBeenCalledWith(
+      expect.objectContaining({
+        persona: expect.objectContaining({
+          profile_schema: expect.objectContaining({
+            properties: expect.objectContaining({
+              intent: expect.objectContaining({ type: "string" }),
+            }),
+          }),
+        }),
+      }),
     )
   })
 })

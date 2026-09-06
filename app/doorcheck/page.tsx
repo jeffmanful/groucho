@@ -7,6 +7,7 @@ import {
   useLayoutEffect,
   useMemo,
   useCallback,
+  useId,
 } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
@@ -86,12 +87,31 @@ type GrouchoInteractionUi = {
 
 type DecisionPhase = "none" | "evaluating" | "decision" | "revealed"
 
+type ColorsInteractionPhase = "ready" | "reading" | "revealing"
+
+type ColorsHandoff = {
+  message: Message
+  interactionUi: GrouchoInteractionUi
+  decisionPhase: DecisionPhase
+  concluded: boolean
+}
+
+type DoorcheckStartResponse = {
+  message: string
+  currentStep?: OnboardingCurrentStep
+  ui?: unknown
+  stepHint?: string
+  resumed?: boolean
+}
+
 type OpeningInputType = "text" | "singleSelect" | "multiSelect"
 
 type OpeningInteraction = {
   inputType: OpeningInputType
   options?: string[]
 }
+
+const SLOW_RESPONSE_DELAY_MS = 6000
 
 type ReviewerReport = {
   applicant_bio: string
@@ -122,14 +142,6 @@ function doorcheckOpeningQuestion(project?: ProjectOption): string {
   }
   return FORUM_APPLICATION_OPENING_QUESTION
 }
-
-const INITIAL_MESSAGES: Message[] = [
-  {
-    id: "initial-question",
-    role: "bot",
-    content: FORUM_APPLICATION_OPENING_QUESTION,
-  },
-]
 
 const EMAIL_CAPTURE_MESSAGES: Message[] = [
   {
@@ -221,7 +233,6 @@ type DoorcheckScene = {
 type ColorsVisual = {
   id: "latin-mafia" | "fireboy-dml" | "violin-portrait" | "ho99o9"
   src: string
-  layout: "full" | "right" | "corner"
   position: string
 }
 
@@ -229,25 +240,21 @@ const COLORS_VISUALS: ColorsVisual[] = [
   {
     id: "latin-mafia",
     src: "/doorcheck/colors/latin-mafia.jpg",
-    layout: "corner",
     position: "50% 32%",
   },
   {
     id: "fireboy-dml",
     src: "/doorcheck/colors/fireboy-dml.jpg",
-    layout: "full",
     position: "50% 36%",
   },
   {
     id: "violin-portrait",
     src: "/doorcheck/colors/violin-portrait.jpg",
-    layout: "right",
     position: "50% 50%",
   },
   {
     id: "ho99o9",
     src: "/doorcheck/colors/ho99o9.jpg",
-    layout: "right",
     position: "50% 44%",
   },
 ]
@@ -291,15 +298,34 @@ function sceneForQuestion(
   return { id: "threshold", eyebrow: "At the door", caption: "Come as you are" }
 }
 
-function TypewriterQuestion({ text }: { text: string }) {
+function TypewriterQuestion({
+  messageId,
+  text,
+  alreadyRevealed = false,
+  onComplete,
+}: {
+  messageId: string
+  text: string
+  alreadyRevealed?: boolean
+  onComplete: (messageId: string) => void
+}) {
   const reduceMotion =
     typeof window !== "undefined" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  const [visibleText, setVisibleText] = useState(reduceMotion ? text : "")
-  const [complete, setComplete] = useState(reduceMotion)
+  const skipAnimation = reduceMotion || alreadyRevealed
+  const [visibleText, setVisibleText] = useState(skipAnimation ? text : "")
+  const [complete, setComplete] = useState(skipAnimation)
+  const onCompleteRef = useRef(onComplete)
 
   useEffect(() => {
-    if (reduceMotion) return
+    onCompleteRef.current = onComplete
+  }, [onComplete])
+
+  useEffect(() => {
+    if (skipAnimation) {
+      const timer = window.setTimeout(() => onCompleteRef.current(messageId), 0)
+      return () => window.clearTimeout(timer)
+    }
 
     let index = 0
     let timer = 0
@@ -310,6 +336,7 @@ function TypewriterQuestion({ text }: { text: string }) {
       setVisibleText(text.slice(0, index))
       if (index >= text.length) {
         setComplete(true)
+        onCompleteRef.current(messageId)
         return
       }
       const character = text[index - 1]
@@ -323,7 +350,7 @@ function TypewriterQuestion({ text }: { text: string }) {
       timer = window.setTimeout(typeNextCharacter, 120)
     }, 0)
     return () => window.clearTimeout(timer)
-  }, [reduceMotion, text])
+  }, [messageId, skipAnimation, text])
 
   return (
     <p className="doorcheck-question-text" aria-label={text}>
@@ -581,16 +608,92 @@ export default function DoorCheck() {
   const openingInputType: OpeningInputType = "text"
   const openingOptionsText = ""
   const [selectedOptions, setSelectedOptions] = useState<string[]>([])
+  const [revealedQuestionId, setRevealedQuestionId] = useState<string | null>(null)
+  const [colorsInteractionPhase, setColorsInteractionPhase] =
+    useState<ColorsInteractionPhase>("ready")
+  const [requestError, setRequestError] = useState<string | null>(null)
+  const [failedAnswer, setFailedAnswer] = useState<string | null>(null)
+  const [showSlowResponse, setShowSlowResponse] = useState(false)
+  const [questionDismissed, setQuestionDismissed] = useState(false)
+  const [pendingResume, setPendingResume] =
+    useState<DoorcheckStartResponse | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const settingsRef = useRef<HTMLDivElement>(null)
+  const settingsTriggerRef = useRef<HTMLButtonElement>(null)
+  const resumeTitleRef = useRef<HTMLHeadingElement>(null)
+  const settingsPanelId = useId()
   const typingChannelRef = useRef<ReturnType<SupabaseClient["channel"]> | null>(
     null,
   )
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const slowResponseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   /** Bot reply is committed after the thinking row exits so layout doesn’t stack two tails */
   const assistantHandoffRef = useRef<Message | null>(null)
+  const colorsHandoffRef = useRef<ColorsHandoff | null>(null)
   const bootstrapInFlightRef = useRef(false)
   const router = useRouter()
+
+  const commitColorsHandoff = useCallback(() => {
+    const next = colorsHandoffRef.current
+    if (!next) return
+    colorsHandoffRef.current = null
+    setRevealedQuestionId(null)
+    setMessages([next.message])
+    setQuestionDismissed(false)
+    setInteractionUi(next.interactionUi)
+    setDecisionPhase(next.decisionPhase)
+    setConcluded(next.concluded)
+  }, [])
+
+  const commitBootstrapResponse = useCallback((data: DoorcheckStartResponse) => {
+    setQuestionDismissed(false)
+    setRevealedQuestionId(null)
+    setMessages([
+      {
+        id: crypto.randomUUID(),
+        role: "bot",
+        content: data.message,
+      },
+    ])
+    const step = data.currentStep ?? null
+    setInteractionUi(step ? interactionUiForStep(step) : parseInteractionUi(data.ui))
+    setDecisionPhase("none")
+    setSelectedOptions([])
+    setCurrentStep(step)
+    setStepHint(typeof data.stepHint === "string" ? data.stepHint : null)
+  }, [])
+
+  useEffect(() => {
+    if (!pendingResume) return
+    window.requestAnimationFrame(() => resumeTitleRef.current?.focus())
+  }, [pendingResume])
+
+  const closeSettings = useCallback((restoreFocus = false) => {
+    setSettingsOpen(false)
+    if (restoreFocus) {
+      window.requestAnimationFrame(() => settingsTriggerRef.current?.focus())
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!settingsOpen) return
+    function handlePointerDown(event: PointerEvent) {
+      if (!settingsRef.current?.contains(event.target as Node)) {
+        closeSettings()
+      }
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") closeSettings(true)
+    }
+    document.addEventListener("pointerdown", handlePointerDown)
+    document.addEventListener("keydown", handleKeyDown)
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown)
+      document.removeEventListener("keydown", handleKeyDown)
+    }
+  }, [closeSettings, settingsOpen])
 
   const resizeTextarea = useCallback(() => {
     const textarea = textareaRef.current
@@ -607,6 +710,15 @@ export default function DoorCheck() {
     window.addEventListener("resize", resizeTextarea)
     return () => window.removeEventListener("resize", resizeTextarea)
   }, [resizeTextarea])
+
+  useEffect(
+    () => () => {
+      if (slowResponseTimerRef.current) {
+        clearTimeout(slowResponseTimerRef.current)
+      }
+    },
+    [],
+  )
 
   /**
    * If thinking unmounts without firing onExitComplete (very fast response),
@@ -697,37 +809,43 @@ export default function DoorCheck() {
               : {}),
           }),
         })
-        const data = (await res.json().catch(() => ({}))) as Record<
+        const rawData = (await res.json().catch(() => ({}))) as Record<
           string,
           unknown
         >
         if (!res.ok) {
           const err =
-            typeof data.error === "string"
-              ? data.error
+            typeof rawData.error === "string"
+              ? rawData.error
               : `Request failed (${res.status})`
           const detail =
-            typeof data.detail === "string" ? ` — ${data.detail}` : ""
+            typeof rawData.detail === "string" ? ` — ${rawData.detail}` : ""
           throw new Error(`${err}${detail}`)
         }
-        if (typeof data.message !== "string") {
+        if (typeof rawData.message !== "string") {
           throw new Error("Invalid start response")
         }
-        setMessages([
-          {
-            id: crypto.randomUUID(),
-            role: "bot",
-            content: data.message,
-          },
-        ])
-        const step = (data.currentStep as OnboardingCurrentStep) ?? null
-        setInteractionUi(step ? interactionUiForStep(step) : parseInteractionUi(data.ui))
-        setDecisionPhase("none")
-        setSelectedOptions([])
-        setCurrentStep(step)
-        setStepHint(
-          typeof data.stepHint === "string" ? data.stepHint : null,
-        )
+        const data: DoorcheckStartResponse = {
+          message: rawData.message,
+          ...(rawData.currentStep
+            ? { currentStep: rawData.currentStep as OnboardingCurrentStep }
+            : {}),
+          ...(rawData.ui !== undefined ? { ui: rawData.ui } : {}),
+          ...(typeof rawData.stepHint === "string"
+            ? { stepHint: rawData.stepHint }
+            : {}),
+          ...(typeof rawData.resumed === "boolean"
+            ? { resumed: rawData.resumed }
+            : {}),
+        }
+        if (data.resumed === true) {
+          setPendingResume(data)
+          setMessages([])
+          setCurrentStep(null)
+          setStepHint(null)
+          return
+        }
+        commitBootstrapResponse(data)
       } catch (e) {
         const msg =
           e instanceof Error ? e.message : "Something went wrong starting session."
@@ -749,7 +867,7 @@ export default function DoorCheck() {
         setBootstrapping(false)
       }
     },
-    [],
+    [commitBootstrapResponse],
   )
 
   function applyProjectSelection(projectId: string) {
@@ -759,7 +877,14 @@ export default function DoorCheck() {
     const newId = resetSession()
     setSessionId(newId)
     assistantHandoffRef.current = null
+    colorsHandoffRef.current = null
     setInput("")
+    setColorsInteractionPhase("ready")
+    setRequestError(null)
+    setFailedAnswer(null)
+    setShowSlowResponse(false)
+    setQuestionDismissed(false)
+    setPendingResume(null)
     setConcluded(false)
     setDecisionPhase("none")
     setInteractionUi(DEFAULT_GATEKEEPER_UI)
@@ -784,8 +909,14 @@ export default function DoorCheck() {
   }
 
   useEffect(() => {
-    if (!sessionId || !selectedProjectId || !applicantEmail || bootstrapping) return
-    if (messages.length !== 0 && messages[0]?.id !== "initial-question") return
+    if (
+      !sessionId ||
+      !selectedProjectId ||
+      !applicantEmail ||
+      bootstrapping ||
+      pendingResume
+    ) return
+    if (messages.length !== 0) return
     void bootstrapSession(
       sessionId,
       selectedProjectId,
@@ -806,6 +937,7 @@ export default function DoorCheck() {
     openingOptionsText,
     messages,
     bootstrapping,
+    pendingResume,
   ])
 
   useEffect(() => {
@@ -842,7 +974,7 @@ export default function DoorCheck() {
     }
   }
 
-  async function submit(messageOverride?: string) {
+  async function submit(messageOverride?: string, isRetry = false) {
     const text = (messageOverride ?? input).trim()
     if (!text || !applicantEmail || loading || concluded || !sessionId) return
 
@@ -850,13 +982,31 @@ export default function DoorCheck() {
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
 
     const isGatekeeperPreview = selectedProject?.projectType === "gatekeeper"
-    if (!isGatekeeperPreview) {
+    const isColorsSubmission = Boolean(
+      isGatekeeperPreview &&
+        selectedProject?.organisationName.trim().toLowerCase() === "colors",
+    )
+    if (!isGatekeeperPreview && !isRetry) {
       const userId = crypto.randomUUID()
       setMessages((prev) => [...prev, { id: userId, role: "user", content: text }])
     }
-    setSelectedOptions([])
-    setInput("")
+    setRequestError(null)
+    setFailedAnswer(null)
+    setShowSlowResponse(false)
+    setQuestionDismissed(isGatekeeperPreview)
+    if (isColorsSubmission) {
+      if (interactionUi.inputType === "singleSelect") {
+        setSelectedOptions([text])
+      }
+      setColorsInteractionPhase("reading")
+    } else {
+      setInput("")
+    }
     setLoading(true)
+    slowResponseTimerRef.current = setTimeout(
+      () => setShowSlowResponse(true),
+      SLOW_RESPONSE_DELAY_MS,
+    )
 
     try {
       const personaId = selectedPersonaId || undefined
@@ -914,12 +1064,14 @@ export default function DoorCheck() {
         ? interactionUiForStep(nextStep)
         : parseInteractionUi(data.ui)
 
+      if (!isColorsSubmission) setQuestionDismissed(false)
+
       if (data.currentStep) {
         setCurrentStep(nextStep)
       } else if (data.status === "passed") {
         setCurrentStep(null)
       }
-      setSelectedOptions([])
+      if (!isColorsSubmission) setSelectedOptions([])
       setStepHint(
         typeof data.stepHint === "string" ? data.stepHint : null,
       )
@@ -936,7 +1088,6 @@ export default function DoorCheck() {
       }
 
       if (data.status === "passed") {
-        setConcluded(true)
         if (data.profile) {
           try {
             localStorage.setItem(PROFILE_KEY, JSON.stringify(data.profile))
@@ -947,22 +1098,49 @@ export default function DoorCheck() {
         const isOnboarding =
           selectedProject?.projectType === "onboarding" ||
           data.projectType === "onboarding"
-        if (!isOnboarding) {
+        if (isColorsSubmission) {
+          colorsHandoffRef.current = {
+            message: nextMessage,
+            interactionUi: nextUi,
+            decisionPhase: "revealed",
+            concluded: true,
+          }
+          setColorsInteractionPhase("revealing")
+        } else if (!isOnboarding) {
+          setConcluded(true)
           setMessages([nextMessage])
           setInteractionUi(nextUi)
           setDecisionPhase("revealed")
         } else {
+          setConcluded(true)
           assistantHandoffRef.current = nextMessage
         }
       } else if (data.status === "redirected" || data.status === "rejected") {
-        setConcluded(true)
-        if (isGatekeeperPreview) {
+        if (isColorsSubmission) {
+          colorsHandoffRef.current = {
+            message: nextMessage,
+            interactionUi: nextUi,
+            decisionPhase: "revealed",
+            concluded: true,
+          }
+          setColorsInteractionPhase("revealing")
+        } else if (isGatekeeperPreview) {
+          setConcluded(true)
           setMessages([nextMessage])
           setInteractionUi(nextUi)
           setDecisionPhase("revealed")
         } else {
+          setConcluded(true)
           assistantHandoffRef.current = nextMessage
         }
+      } else if (isColorsSubmission) {
+        colorsHandoffRef.current = {
+          message: nextMessage,
+          interactionUi: nextUi,
+          decisionPhase: "none",
+          concluded: false,
+        }
+        setColorsInteractionPhase("revealing")
       } else if (isGatekeeperPreview) {
         setInteractionUi(nextUi)
         setDecisionPhase("none")
@@ -972,22 +1150,28 @@ export default function DoorCheck() {
       }
     } catch (err) {
       const detail = err instanceof Error ? err.message : "Something went wrong."
-      const errorMessage: Message = {
-        id: crypto.randomUUID(),
-        role: "bot",
-        content:
-          detail === "AI service unavailable"
-            ? "AI service unavailable. Turn on local test mode or check the model provider credits."
-            : detail,
+      const errorMessage =
+        detail === "AI service unavailable"
+          ? "AI service unavailable. Turn on local test mode or check the model provider credits."
+          : detail
+      setFailedAnswer(text)
+      setRequestError(errorMessage)
+      setQuestionDismissed(false)
+      if (
+        interactionUi.inputType === "text" ||
+        interactionUi.inputType === "voice"
+      ) {
+        setInput(text)
       }
-      if (isGatekeeperPreview) {
-        setMessages([errorMessage])
-        setInteractionUi(DEFAULT_GATEKEEPER_UI)
-        setDecisionPhase("none")
-      } else {
-        assistantHandoffRef.current = errorMessage
+      if (isColorsSubmission) {
+        setColorsInteractionPhase("ready")
       }
     } finally {
+      if (slowResponseTimerRef.current) {
+        clearTimeout(slowResponseTimerRef.current)
+        slowResponseTimerRef.current = null
+      }
+      setShowSlowResponse(false)
       setLoading(false)
     }
   }
@@ -1015,8 +1199,13 @@ export default function DoorCheck() {
     setApplicantEmail(email)
     setApplicantEmailError(null)
     setReviewerReport(null)
+    setRevealedQuestionId(null)
+    setColorsInteractionPhase("ready")
+    setRequestError(null)
+    setFailedAnswer(null)
+    setQuestionDismissed(false)
     setInput("")
-    setMessages(INITIAL_MESSAGES)
+    setMessages([])
   }
 
   function restart() {
@@ -1025,10 +1214,19 @@ export default function DoorCheck() {
     localStorage.removeItem(PROFILE_KEY)
     localStorage.removeItem(REVIEWER_REPORT_KEY)
     assistantHandoffRef.current = null
+    colorsHandoffRef.current = null
     setSessionId(newId)
     setInput("")
     setApplicantEmail("")
     setApplicantEmailError(null)
+    setRevealedQuestionId(null)
+    setColorsInteractionPhase("ready")
+    setRequestError(null)
+    setFailedAnswer(null)
+    setShowSlowResponse(false)
+    setQuestionDismissed(false)
+    setPendingResume(null)
+    setSettingsOpen(false)
     setMessages(EMAIL_CAPTURE_MESSAGES)
     setConcluded(false)
     setDecisionPhase("none")
@@ -1040,6 +1238,32 @@ export default function DoorCheck() {
     const def = personas.find((p) => p.is_default)
     if (def) setSelectedPersonaId(def.id)
     if (selectedProjectId) localStorage.setItem(PROJECT_KEY, selectedProjectId)
+  }
+
+  function startOverFromResume() {
+    const newId = resetSession()
+    localStorage.removeItem(SECRET_KEY)
+    localStorage.removeItem(PROFILE_KEY)
+    localStorage.removeItem(REVIEWER_REPORT_KEY)
+    assistantHandoffRef.current = null
+    colorsHandoffRef.current = null
+    setSessionId(newId)
+    setPendingResume(null)
+    setMessages([])
+    setInput("")
+    setSelectedOptions([])
+    setRevealedQuestionId(null)
+    setColorsInteractionPhase("ready")
+    setRequestError(null)
+    setFailedAnswer(null)
+    setShowSlowResponse(false)
+    setQuestionDismissed(false)
+    setConcluded(false)
+    setDecisionPhase("none")
+    setInteractionUi(DEFAULT_GATEKEEPER_UI)
+    setCurrentStep(null)
+    setStepHint(null)
+    setReviewerReport(null)
   }
 
   async function signOut() {
@@ -1070,7 +1294,14 @@ export default function DoorCheck() {
     concluded && (!isGatekeeperPreview || decisionPhase === "revealed")
   const showReviewerReport = Boolean(showConclusionActions && reviewerReport)
   const currentBotMessage = [...messages].reverse().find((msg) => msg.role === "bot")
-  const presenceState: GrouchoVisualState = loading || bootstrapping
+  const awaitingResumeChoice = pendingResume !== null
+  const questionReady = Boolean(
+    currentBotMessage && revealedQuestionId === currentBotMessage.id,
+  )
+  const colorsInteractionBusy =
+    isColorsProject && colorsInteractionPhase !== "ready"
+  const interactionBusy = loading || colorsInteractionBusy
+  const presenceState: GrouchoVisualState = interactionBusy || bootstrapping
     ? "thinking"
     : decisionPhase === "evaluating"
       ? "evaluating"
@@ -1080,17 +1311,28 @@ export default function DoorCheck() {
   const showStructuredOptions = Boolean(
     applicantEmail &&
     !concluded &&
-    !loading &&
+    (!loading || colorsInteractionPhase === "reading") &&
     !bootstrapping &&
     decisionPhase === "none" &&
+    (!isGatekeeperPreview || questionReady) &&
+    (!isColorsProject || colorsInteractionPhase !== "revealing") &&
     (interactionUi.inputType === "singleSelect" ||
       interactionUi.inputType === "multiSelect") &&
     interactionUi.options?.length,
   )
   const showAnswerArea =
     !concluded &&
+    !awaitingResumeChoice &&
     !bootstrapping &&
+    Boolean(currentBotMessage) &&
+    (!isGatekeeperPreview || questionReady) &&
+    (!isColorsProject || colorsInteractionPhase !== "revealing") &&
     (!isGatekeeperPreview || decisionPhase === "none")
+  const renderAnswerArea =
+    showAnswerArea ||
+    (isGatekeeperPreview &&
+      !concluded &&
+      !awaitingResumeChoice)
   const doorcheckScene = sceneForQuestion(
     currentBotMessage?.content ?? "",
     presenceState,
@@ -1099,6 +1341,16 @@ export default function DoorCheck() {
   const colorsVisual = colorsVisualForQuestion(currentBotMessage?.content ?? "")
   const speechSupported =
     typeof window !== "undefined" && "speechSynthesis" in window
+
+  const handleQuestionComplete = useCallback((messageId: string) => {
+    setRevealedQuestionId(messageId)
+    if (isColorsProject && colorsInteractionPhase === "revealing") {
+      setColorsInteractionPhase("ready")
+      setInput("")
+      setSelectedOptions([])
+      window.requestAnimationFrame(() => textareaRef.current?.focus())
+    }
+  }, [colorsInteractionPhase, isColorsProject])
 
   useEffect(() => {
     window.speechSynthesis?.cancel()
@@ -1158,21 +1410,19 @@ export default function DoorCheck() {
               <div
                 className="colors-doorcheck-media"
                 data-media-slot="conversation-scene"
-                data-layout={colorsVisual.layout}
               >
                 {COLORS_VISUALS.map((visual) => (
                   <div
                     key={visual.id}
                     className="colors-doorcheck-media__visual"
                     data-active={visual.id === colorsVisual.id}
-                    data-layout={visual.layout}
                   >
                     <Image
                       src={visual.src}
                       alt=""
                       fill
                       unoptimized
-                      sizes={visual.layout === "full" ? "100vw" : "60vw"}
+                      sizes="100vw"
                       priority={visual.id === colorsVisual.id}
                       style={{ objectPosition: visual.position }}
                     />
@@ -1215,11 +1465,6 @@ export default function DoorCheck() {
             </div>
           ) : null}
           <div className="flex items-center gap-2">
-            {isColorsProject ? (
-              <span className="colors-doorcheck-project-label">
-                {selectedProject?.name ?? "Forum application"}
-              </span>
-            ) : null}
             {isGatekeeperPreview ? (
               <button
                 type="button"
@@ -1242,6 +1487,89 @@ export default function DoorCheck() {
                 <span className="hidden sm:inline">{isSpeaking ? "Stop" : "Listen"}</span>
               </button>
             ) : null}
+            {isColorsProject ? (
+              <div ref={settingsRef} className="pointer-events-auto relative">
+                <button
+                  ref={settingsTriggerRef}
+                  type="button"
+                  onClick={() => setSettingsOpen((open) => !open)}
+                  aria-label="Settings"
+                  aria-expanded={settingsOpen}
+                  aria-haspopup="dialog"
+                  aria-controls={settingsPanelId}
+                  className="doorcheck-utility-button"
+                >
+                  <svg viewBox="0 0 24 24" className="size-4" fill="none" aria-hidden="true">
+                    <path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 5v4M6 15v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
+                  <span className="hidden sm:inline">Settings</span>
+                </button>
+                <AnimatePresence initial={false}>
+                  {settingsOpen ? (
+                    <motion.div
+                      id={settingsPanelId}
+                      role="dialog"
+                      aria-label="Experience settings"
+                      variants={{
+                        closed: {
+                          opacity: 0,
+                          y: -2,
+                          scale: 0.99,
+                          transition: { duration: 0.15, ease: [0.22, 1, 0.36, 1] },
+                        },
+                        open: {
+                          opacity: 1,
+                          y: 0,
+                          scale: 1,
+                          transition: { duration: 0.25, ease: [0.22, 1, 0.36, 1] },
+                        },
+                      }}
+                      initial={{ opacity: 0, y: -4, scale: 0.97 }}
+                      animate="open"
+                      exit="closed"
+                      className="colors-settings-panel"
+                    >
+                      <label className="colors-settings-field">
+                        <span>Project</span>
+                        <select
+                          value={selectedProjectId}
+                          onChange={(event) => {
+                            applyProjectSelection(event.target.value)
+                            closeSettings(true)
+                          }}
+                        >
+                          {projects.map((project) => (
+                            <option key={project.id} value={project.id}>
+                              {projectLabel(project)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="colors-settings-field">
+                        <span>Persona</span>
+                        <select
+                          value={selectedPersonaId}
+                          onChange={(event) => {
+                            setSelectedPersonaId(event.target.value)
+                            closeSettings(true)
+                          }}
+                        >
+                          {personas.map((persona) => (
+                            <option key={persona.id} value={persona.id}>
+                              {persona.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <dl className="colors-settings-meta">
+                        <div><dt>Environment</dt><dd>{selectedProject?.environment ?? "Not set"}</dd></div>
+                        <div><dt>Session</dt><dd>{selectedProject?.sessionMode ?? "Not set"}</dd></div>
+                      </dl>
+                    </motion.div>
+                  ) : null}
+                </AnimatePresence>
+              </div>
+            ) : null}
           <button
             type="button"
             onClick={() => void signOut()}
@@ -1263,7 +1591,7 @@ export default function DoorCheck() {
         >
           <MessageScroller.Root
             className="relative min-h-0 flex-1"
-            aria-busy={loading || bootstrapping}
+            aria-busy={interactionBusy || bootstrapping}
           >
             <MessageScroller.Viewport
               className={cn(
@@ -1295,16 +1623,54 @@ export default function DoorCheck() {
                     </p>
                   </MessageScroller.Item>
                 )}
-            {isGatekeeperPreview ? (
-              <MessageScroller.Item messageId="gatekeeper-preview">
-                <motion.div
-                  key={`doorcheck-question-${currentBotMessage?.id ?? "loading"}`}
-                  layout
-                  initial={{ opacity: 0, y: 14, filter: "blur(5px)" }}
+            {pendingResume ? (
+              <MessageScroller.Item messageId="resume-session">
+                <motion.section
+                  initial={{ opacity: 0, y: 8, filter: "blur(4px)" }}
                   animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                  transition={{ duration: 0.46, ease: EASE_OUT }}
-                  className="doorcheck-question-stage mx-auto w-full"
+                  transition={{ duration: 0.28, ease: EASE_OUT }}
+                  className="mx-auto w-full max-w-lg rounded-2xl border border-white/12 bg-black/45 p-5 shadow-[0_18px_55px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-md sm:p-6"
+                  aria-labelledby="doorcheck-resume-title"
                 >
+                  <p className="text-[0.66rem] uppercase tracking-[0.16em] text-white/45">
+                    Welcome back
+                  </p>
+                  <h1
+                    ref={resumeTitleRef}
+                    id="doorcheck-resume-title"
+                    tabIndex={-1}
+                    className="mt-2 text-balance text-2xl font-normal text-white outline-none sm:text-3xl"
+                  >
+                    Continue your conversation?
+                  </h1>
+                  <p className="mt-3 max-w-md text-pretty text-sm leading-relaxed text-white/58 sm:text-base">
+                    We found an unfinished conversation. Pick up from the last
+                    question, or begin again with a fresh conversation.
+                  </p>
+                  <div className="mt-6 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        commitBootstrapResponse(pendingResume)
+                        setPendingResume(null)
+                      }}
+                      className="min-h-11 rounded-lg bg-white px-5 py-2.5 text-sm text-black transition-[opacity,transform] duration-150 ease-out hover:opacity-90 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                    >
+                      Continue
+                    </button>
+                    <button
+                      type="button"
+                      onClick={startOverFromResume}
+                      className="min-h-11 rounded-lg border border-white/15 bg-transparent px-5 py-2.5 text-sm text-white/78 transition-[border-color,color,transform] duration-150 ease-out hover:border-white/30 hover:text-white active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                    >
+                      Start over
+                    </button>
+                  </div>
+                </motion.section>
+              </MessageScroller.Item>
+            ) : isGatekeeperPreview ? (
+              <MessageScroller.Item messageId="gatekeeper-preview">
+                <div className="doorcheck-question-stage mx-auto w-full">
                   <div
                     className={cn(
                       "mb-5 flex items-center gap-3 text-[0.68rem] uppercase tracking-[0.17em] text-white/48",
@@ -1316,30 +1682,96 @@ export default function DoorCheck() {
                     <span>{doorcheckScene.eyebrow}</span>
                   </div>
 
-                  {decisionPhase === "evaluating" ? (
-                    <p className="doorcheck-question-text">Let me sit with that for a moment.</p>
-                  ) : currentBotMessage && decisionPhase !== "decision" ? (
-                    <TypewriterQuestion text={currentBotMessage.content} />
-                  ) : bootstrapping ? (
-                    <p className="doorcheck-question-text">Opening the door…</p>
-                  ) : null}
+                  <div className="doorcheck-question-slot">
+                    <AnimatePresence mode="wait" initial={false}>
+                      {decisionPhase === "evaluating" ? (
+                        <motion.div
+                          key="question-evaluating"
+                          className="doorcheck-question-copy"
+                          initial={{ opacity: 0, y: 4, filter: "blur(2px)" }}
+                          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                          exit={{ opacity: 0, y: -4, filter: "blur(2px)" }}
+                          transition={{ duration: 0.2, ease: "easeInOut" }}
+                        >
+                          <p className="doorcheck-question-text">Let me sit with that for a moment.</p>
+                        </motion.div>
+                      ) : currentBotMessage &&
+                        decisionPhase !== "decision" &&
+                        !questionDismissed ? (
+                        <motion.div
+                          key={currentBotMessage.id}
+                          className="doorcheck-question-copy"
+                          initial={{ opacity: 0, y: 4, filter: "blur(2px)" }}
+                          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                          exit={{ opacity: 0, y: -4, filter: "blur(2px)" }}
+                          transition={{ duration: 0.2, ease: "easeInOut" }}
+                        >
+                          <TypewriterQuestion
+                            messageId={currentBotMessage.id}
+                            text={currentBotMessage.content}
+                            alreadyRevealed={
+                              revealedQuestionId === currentBotMessage.id
+                            }
+                            onComplete={handleQuestionComplete}
+                          />
+                        </motion.div>
+                      ) : bootstrapping ? (
+                        <motion.div
+                          key="question-opening"
+                          className="doorcheck-question-copy"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.15, ease: "easeInOut" }}
+                        >
+                          <p className="doorcheck-question-text">Opening the door…</p>
+                        </motion.div>
+                      ) : null}
+                    </AnimatePresence>
+                  </div>
 
-                  <AnimatePresence initial={false}>
-                    {loading ? (
-                      <motion.div
-                        key="doorcheck-reading"
-                        initial={{ opacity: 0, y: 4 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -3 }}
-                        className="mt-6 flex items-center gap-3 text-sm text-white/48"
-                        role="status"
-                      >
-                        <span className="doorcheck-reading-mark" aria-hidden="true" />
-                        Reading your answer…
-                      </motion.div>
-                    ) : null}
-                  </AnimatePresence>
-                </motion.div>
+                  <div className="doorcheck-status-slot">
+                    <AnimatePresence
+                      initial={false}
+                      onExitComplete={isColorsProject ? commitColorsHandoff : undefined}
+                    >
+                      {(isColorsProject
+                        ? colorsInteractionPhase === "reading"
+                        : loading) ? (
+                        <motion.div
+                          key="doorcheck-reading"
+                          initial={{ opacity: 0, y: 4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -3 }}
+                          transition={{ duration: 0.15, ease: "easeInOut" }}
+                          className={cn(
+                            "flex items-center gap-3 text-sm text-white/48",
+                            isColorsProject && "colors-reading-status",
+                          )}
+                          role="status"
+                          aria-live="polite"
+                        >
+                          <span className="doorcheck-reading-mark" aria-hidden="true" />
+                          <AnimatePresence mode="wait" initial={false}>
+                            <motion.span
+                              key={showSlowResponse ? "slow" : "reading"}
+                              initial={{ opacity: 0, y: 4, filter: "blur(2px)" }}
+                              animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                              exit={{ opacity: 0, y: -4, filter: "blur(2px)" }}
+                              transition={{ duration: 0.15, ease: "easeInOut" }}
+                            >
+                              {showSlowResponse
+                                ? "Still with you — thoughtful answers can take a little longer."
+                                : isColorsProject
+                                  ? "Groucho is reading…"
+                                  : "Reading your answer…"}
+                            </motion.span>
+                          </AnimatePresence>
+                        </motion.div>
+                      ) : null}
+                    </AnimatePresence>
+                  </div>
+                </div>
               </MessageScroller.Item>
             ) : (
               messages.map((msg) => (
@@ -1418,7 +1850,22 @@ export default function DoorCheck() {
                         variants={thinkingLineVariants}
                         className="font-sans text-lg md:text-xl"
                       >
-                        <TextShimmer className="italic">Reading you.</TextShimmer>
+                        <AnimatePresence mode="wait" initial={false}>
+                          <motion.span
+                            key={showSlowResponse ? "slow" : "reading"}
+                            initial={{ opacity: 0, y: 4, filter: "blur(2px)" }}
+                            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                            exit={{ opacity: 0, y: -4, filter: "blur(2px)" }}
+                            transition={{ duration: 0.15, ease: "easeInOut" }}
+                            aria-live="polite"
+                          >
+                            {showSlowResponse ? (
+                              "Still with you — thoughtful answers can take a little longer."
+                            ) : (
+                              <TextShimmer className="italic">Reading you.</TextShimmer>
+                            )}
+                          </motion.span>
+                        </AnimatePresence>
                       </motion.div>
                     </motion.div>
                   ) : null}
@@ -1497,18 +1944,21 @@ export default function DoorCheck() {
           </motion.div>
         )}
 
-        {showAnswerArea && (
+        {renderAnswerArea && (
           <motion.div
-            layout
+            aria-hidden={!showAnswerArea}
+            inert={showAnswerArea ? undefined : true}
             className={cn(
               "mx-auto w-full max-w-[900px] shrink-0 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6",
               isGatekeeperPreview &&
                 (isColorsProject
                   ? "doorcheck-answer-shell colors-doorcheck-answer-shell"
                   : "doorcheck-answer-shell lg:ml-[44vw] lg:max-w-none lg:pr-8 lg:pl-8"),
+              !showAnswerArea && "pointer-events-none",
             )}
-            animate={{ opacity: 1 }}
-            transition={{ layout: LAYOUT_SPRING, opacity: { duration: 0.22 } }}
+            initial={false}
+            animate={{ opacity: showAnswerArea ? 1 : 0 }}
+            transition={{ opacity: { duration: 0.18 } }}
           >
             {showStructuredOptions ? (
               <motion.div
@@ -1531,10 +1981,11 @@ export default function DoorCheck() {
                       <button
                         key={option}
                         type="button"
-                        disabled={loading}
+                        disabled={interactionBusy}
                         aria-pressed={active}
                         onClick={() => {
                           if (interactionUi.inputType === "singleSelect") {
+                            if (isColorsProject) setSelectedOptions([option])
                             void submit(option)
                             return
                           }
@@ -1563,7 +2014,7 @@ export default function DoorCheck() {
                 {interactionUi.inputType === "multiSelect" ? (
                   <button
                     type="button"
-                    disabled={loading || selectedOptions.length === 0}
+                    disabled={interactionBusy || selectedOptions.length === 0}
                     onClick={() =>
                       void submit(
                         serialiseInteractionSelection(
@@ -1603,9 +2054,9 @@ export default function DoorCheck() {
                     onChange={handleInputChange}
                     onKeyDown={handleKeyDown}
                     autoFocus
-                    disabled={loading}
+                    disabled={interactionBusy}
                     placeholder={
-                      loading
+                      loading && !isColorsProject
                         ? `${personaName} is replying…`
                         : stepHint?.trim() ||
                           (selectedProject?.projectType === "onboarding"
@@ -1613,7 +2064,7 @@ export default function DoorCheck() {
                             : "Type your message")
                     }
                     aria-label="Message"
-                    aria-disabled={loading}
+                    aria-disabled={interactionBusy}
                     className="field-sizing-content max-h-40 min-h-10 flex-1 resize-none overflow-y-auto bg-transparent py-2 pr-1 font-inherit text-base leading-6 font-normal text-white/95 outline-none placeholder:text-white/38 selection:bg-white/20 selection:text-white disabled:cursor-wait disabled:opacity-55 sm:text-lg"
                   />
                 ) : (
@@ -1634,25 +2085,45 @@ export default function DoorCheck() {
                 )}
                 <button
                   type="submit"
-                  disabled={loading || !input.trim()}
-                  aria-label={applicantEmail ? "Send message" : "Continue"}
+                  disabled={interactionBusy || !input.trim()}
+                  aria-label={
+                    colorsInteractionPhase === "reading"
+                      ? "Groucho is reading your answer"
+                      : applicantEmail
+                        ? "Send message"
+                        : "Continue"
+                  }
                   className={cn(
                     "grid size-11 shrink-0 place-items-center rounded-xl bg-white text-black transition-[opacity,scale,background-color] duration-150 hover:bg-white/90 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-25",
                     isGatekeeperPreview && "doorcheck-send rounded-full",
+                    isColorsProject &&
+                      colorsInteractionPhase === "reading" &&
+                      "doorcheck-send--reading",
                   )}
                 >
-                  <svg viewBox="0 0 24 24" className="size-4" fill="none" aria-hidden>
-                    <path
-                      d="m12 19V5m0 0-5 5m5-5 5 5"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
+                  <span
+                    className="t-icon-swap"
+                    data-state={colorsInteractionPhase === "reading" ? "b" : "a"}
+                    aria-hidden="true"
+                  >
+                    <span className="t-icon" data-icon="a">
+                      <svg viewBox="0 0 24 24" className="size-4" fill="none">
+                        <path
+                          d="m12 19V5m0 0-5 5m5-5 5 5"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </span>
+                    <span className="t-icon" data-icon="b">
+                      <span className="doorcheck-reading-mark" />
+                    </span>
+                  </span>
                 </button>
                 <AnimatePresence initial={false}>
-                {loading && (
+                {loading && !isColorsProject && (
                   <motion.div
                     key="input-bar"
                     initial={{ opacity: 0 }}
@@ -1681,7 +2152,27 @@ export default function DoorCheck() {
                 {applicantEmailError}
               </p>
             ) : null}
-            {messages.length === 1 && projects.length >= 1 && (
+            {requestError ? (
+              <div
+                className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-300/15 bg-red-300/[0.04] px-3 py-2.5"
+                role="alert"
+              >
+                <p className="text-pretty text-sm text-red-200/85">
+                  {requestError}
+                </p>
+                {failedAnswer ? (
+                  <button
+                    type="button"
+                    onClick={() => void submit(failedAnswer, true)}
+                    disabled={loading}
+                    className="min-h-11 rounded-lg border border-red-200/20 px-4 py-2 text-sm text-red-100 transition-[border-color,color,transform,opacity] duration-150 ease-out hover:border-red-100/40 hover:text-white active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-100 disabled:cursor-wait disabled:opacity-40"
+                  >
+                    Retry answer
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+            {!isColorsProject && messages.length === 1 && projects.length >= 1 && (
               <select
                 value={selectedProjectId}
                 onChange={(e) => applyProjectSelection(e.target.value)}
@@ -1695,7 +2186,7 @@ export default function DoorCheck() {
                 ))}
               </select>
             )}
-            {messages.length === 1 && personas.length >= 1 && (
+            {!isColorsProject && messages.length === 1 && personas.length >= 1 && (
               <select
                 value={selectedPersonaId}
                 onChange={(e) => setSelectedPersonaId(e.target.value)}
@@ -1709,7 +2200,7 @@ export default function DoorCheck() {
                 ))}
               </select>
             )}
-            {messages.length === 1 && selectedProject && (
+            {!isColorsProject && messages.length === 1 && selectedProject && (
               <p
                 style={{
                   marginTop: "0.5rem",
@@ -1780,6 +2271,7 @@ export default function DoorCheck() {
         }
         .colors-doorcheck {
           --scene-light: #f4f1ea;
+          --groucho-active: #e4a16f;
           background: #1d1d1d;
         }
         .colors-doorcheck .doorcheck-backdrop {
@@ -1793,6 +2285,7 @@ export default function DoorCheck() {
         }
         .colors-doorcheck-media__visual {
           position: absolute;
+          inset: 0;
           overflow: hidden;
           opacity: 0;
           transform: scale(1.015);
@@ -1800,20 +2293,6 @@ export default function DoorCheck() {
             opacity 650ms cubic-bezier(0.22, 1, 0.36, 1),
             transform 1100ms cubic-bezier(0.22, 1, 0.36, 1);
           will-change: opacity, transform;
-        }
-        .colors-doorcheck-media__visual[data-layout="full"] {
-          inset: 0;
-        }
-        .colors-doorcheck-media__visual[data-layout="right"] {
-          inset-block: 0;
-          right: 0;
-          left: 40.8%;
-        }
-        .colors-doorcheck-media__visual[data-layout="corner"] {
-          right: 58%;
-          bottom: 0;
-          left: 0;
-          height: 31%;
         }
         .colors-doorcheck-media__visual img {
           object-fit: cover;
@@ -1833,18 +2312,10 @@ export default function DoorCheck() {
           pointer-events: none;
           transition: background 500ms cubic-bezier(0.22, 1, 0.36, 1);
         }
-        .colors-doorcheck-media[data-layout="full"] .colors-doorcheck-media__veil {
+        .colors-doorcheck-media__veil {
           background:
             radial-gradient(circle at 48% 54%, rgb(0 0 0 / 0.32), rgb(0 0 0 / 0.7) 72%),
             rgb(0 0 0 / 0.22);
-        }
-        .colors-doorcheck-media[data-layout="right"] .colors-doorcheck-media__veil {
-          background:
-            linear-gradient(90deg, #171717 0 39%, rgb(23 23 23 / 0.66) 50%, rgb(0 0 0 / 0.15) 76%),
-            linear-gradient(180deg, rgb(0 0 0 / 0.12), rgb(0 0 0 / 0.24));
-        }
-        .colors-doorcheck-media[data-layout="corner"] .colors-doorcheck-media__veil {
-          background: linear-gradient(180deg, transparent 55%, rgb(0 0 0 / 0.1));
         }
         .colors-doorcheck-wordmark {
           font-size: 1rem;
@@ -1852,15 +2323,69 @@ export default function DoorCheck() {
           letter-spacing: 0.2em;
           color: white;
         }
-        .colors-doorcheck-project-label {
-          max-width: 18rem;
+        .colors-settings-panel {
+          position: absolute;
+          top: calc(100% + 0.6rem);
+          right: 0;
+          width: min(22rem, calc(100vw - 2rem));
+          transform-origin: top right;
+          border: 1px solid rgb(255 255 255 / 0.14);
+          border-radius: 1rem;
+          background: rgb(18 18 18 / 0.96);
+          padding: 1rem;
+          color: white;
+          box-shadow: 0 18px 55px rgb(0 0 0 / 0.42);
+          backdrop-filter: blur(18px);
+        }
+        .colors-settings-field {
+          display: grid;
+          gap: 0.4rem;
+          margin-bottom: 0.85rem;
+          font-size: 0.62rem;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          color: rgb(255 255 255 / 0.48);
+        }
+        .colors-settings-field select {
+          width: 100%;
+          min-height: 2.75rem;
+          border: 1px solid rgb(255 255 255 / 0.14);
+          border-radius: 0.65rem;
+          background: rgb(255 255 255 / 0.05);
+          padding: 0 0.75rem;
+          font-size: 0.82rem;
+          letter-spacing: 0;
+          text-transform: none;
+          color: white;
+          outline: none;
+        }
+        .colors-settings-field select:focus-visible {
+          border-color: rgb(255 255 255 / 0.5);
+          box-shadow: 0 0 0 3px rgb(255 255 255 / 0.1);
+        }
+        .colors-settings-meta {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 0.75rem;
+          margin-top: 1rem;
+          padding-top: 0.85rem;
+          border-top: 1px solid rgb(255 255 255 / 0.1);
+        }
+        .colors-settings-meta div { min-width: 0; }
+        .colors-settings-meta dt {
+          margin-bottom: 0.2rem;
+          font-size: 0.58rem;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          color: rgb(255 255 255 / 0.34);
+        }
+        .colors-settings-meta dd {
           overflow: hidden;
+          margin: 0;
+          font-size: 0.78rem;
+          color: rgb(255 255 255 / 0.72);
           text-overflow: ellipsis;
           white-space: nowrap;
-          font-size: 0.67rem;
-          letter-spacing: 0.03em;
-          text-transform: uppercase;
-          color: rgb(255 255 255 / 0.62);
         }
         .colors-doorcheck-content {
           width: min(34rem, 48vw);
@@ -1874,7 +2399,7 @@ export default function DoorCheck() {
           width: 100%;
           height: clamp(16rem, 45vh, 24rem);
           max-width: none;
-          grid-template-rows: minmax(0, 1fr) 2.5rem;
+          grid-template-rows: auto minmax(0, 1fr) 2.5rem;
           align-items: center;
         }
         .colors-doorcheck .doorcheck-question-text {
@@ -1888,12 +2413,19 @@ export default function DoorCheck() {
           color: rgb(255 255 255 / 0.96);
           text-wrap: pretty;
         }
+        .doorcheck-question-copy {
+          min-width: 0;
+          align-self: center;
+        }
         .colors-doorcheck .doorcheck-type-cursor {
           width: 0.055em;
           background: rgb(255 255 255 / 0.82);
         }
         .colors-doorcheck .doorcheck-reading-mark {
-          background: white;
+          background: var(--groucho-active);
+        }
+        .colors-reading-status {
+          color: color-mix(in srgb, var(--groucho-active) 78%, white);
         }
         .colors-doorcheck-answer-shell {
           width: min(34rem, 48vw);
@@ -1922,6 +2454,17 @@ export default function DoorCheck() {
         .colors-doorcheck .doorcheck-choice {
           background: #f4f1ea;
           color: #151515;
+        }
+        .colors-doorcheck .doorcheck-send--reading,
+        .colors-doorcheck .doorcheck-send--reading:disabled {
+          background: color-mix(in srgb, var(--groucho-active) 74%, transparent);
+          color: #27170e;
+          opacity: 1;
+        }
+        .doorcheck-send .t-icon,
+        .doorcheck-send .t-icon-swap {
+          display: grid;
+          place-items: center;
         }
         .colors-doorcheck-credit {
           position: absolute;
@@ -2039,7 +2582,30 @@ export default function DoorCheck() {
         .doorcheck-utility-button:active { transform: scale(0.97); }
         .doorcheck-utility-button:disabled { cursor: not-allowed; opacity: 0.35; }
         .doorcheck-content { padding-block: clamp(5rem, 12vh, 8rem) 1.25rem; }
-        .doorcheck-question-stage { max-width: 42rem; text-wrap: balance; }
+        .doorcheck-question-stage {
+          display: grid;
+          height: clamp(18rem, 46vh, 28rem);
+          max-width: 42rem;
+          grid-template-rows: auto minmax(0, 1fr) 2.5rem;
+          align-items: center;
+          text-wrap: balance;
+        }
+        .doorcheck-question-slot {
+          display: grid;
+          min-width: 0;
+          min-height: 0;
+          align-items: center;
+          overflow-y: auto;
+          scrollbar-gutter: stable;
+          scrollbar-width: none;
+        }
+        .doorcheck-question-slot::-webkit-scrollbar { display: none; }
+        .doorcheck-status-slot {
+          display: flex;
+          min-width: 0;
+          min-height: 2.5rem;
+          align-items: center;
+        }
         .doorcheck-question-text {
           max-width: 18ch;
           white-space: pre-wrap;
@@ -2068,7 +2634,15 @@ export default function DoorCheck() {
           background: var(--scene-light);
           animation: doorcheck-reading 1.1s ease-in-out infinite;
         }
-        .doorcheck-answer-shell { position: relative; z-index: 2; }
+        .doorcheck-answer-shell {
+          position: relative;
+          z-index: 2;
+          height: clamp(8.5rem, 18vh, 10.5rem);
+          overflow-y: auto;
+          scrollbar-gutter: stable;
+          scrollbar-width: none;
+        }
+        .doorcheck-answer-shell::-webkit-scrollbar { display: none; }
         .doorcheck-options { animation: doorcheck-options-in 380ms cubic-bezier(0.22, 1, 0.36, 1) both; }
         .doorcheck-choice {
           border-color: color-mix(in srgb, var(--scene-light) 75%, white 10%);
@@ -2105,21 +2679,22 @@ export default function DoorCheck() {
             margin-right: auto;
             margin-left: auto;
           }
-          .colors-doorcheck-media__visual[data-layout="right"] {
-            left: 26%;
-          }
-          .colors-doorcheck-media__visual[data-layout="corner"] {
-            right: 42%;
-            height: 38%;
-          }
-          .colors-doorcheck-media[data-layout="right"] .colors-doorcheck-media__veil {
-            background: linear-gradient(90deg, rgb(20 20 20 / 0.82), rgb(0 0 0 / 0.38));
-          }
         }
         @media (max-width: 639px) {
+          .colors-settings-panel {
+            position: fixed;
+            top: 4.5rem;
+            right: 1rem;
+            left: 1rem;
+            width: auto;
+          }
           .doorcheck-question-text { font-size: clamp(2rem, 10vw, 3.25rem); line-height: 1.06; }
           .doorcheck-content { padding-top: 5.25rem; padding-bottom: 0.5rem; }
-          .doorcheck-question-stage { text-wrap: pretty; }
+          .doorcheck-question-stage {
+            height: clamp(17rem, 45vh, 23rem);
+            text-wrap: pretty;
+          }
+          .doorcheck-answer-shell { height: 9.25rem; }
           .colors-doorcheck-content {
             width: calc(100vw - 2rem);
             padding-top: 4.25rem;
@@ -2137,17 +2712,9 @@ export default function DoorCheck() {
             font-size: clamp(1.35rem, 6.4vw, 1.75rem);
             line-height: 1.3;
           }
-          .colors-doorcheck-media__visual[data-layout="right"],
-          .colors-doorcheck-media__visual[data-layout="corner"] {
-            inset: 0;
-            height: auto;
-          }
-          .colors-doorcheck-media__veil,
-          .colors-doorcheck-media[data-layout="right"] .colors-doorcheck-media__veil,
-          .colors-doorcheck-media[data-layout="corner"] .colors-doorcheck-media__veil {
+          .colors-doorcheck-media__veil {
             background: rgb(0 0 0 / 0.58);
           }
-          .colors-doorcheck-project-label { display: none; }
           .colors-doorcheck-wordmark { font-size: 0.76rem; }
           .colors-doorcheck-credit { right: 1rem; bottom: 0.65rem; }
         }

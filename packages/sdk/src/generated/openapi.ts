@@ -39,7 +39,9 @@ export interface paths {
         /**
          * Bootstrap a session (Groucho speaks first)
          * @description Idempotent: creates the session and assistant opener when missing, or returns
-         *     the latest assistant message for an active session.
+         *     the latest assistant message for an active session. The response sets
+         *     `resumed: true` when it restored an existing active session so clients can
+         *     ask whether to continue or start over before revealing the saved question.
          *
          *     - **gatekeeper** — persists the application opening message (project config, or optional `openingMessage` in the request body).
          *     - **onboarding** — persists welcome + first question and returns `currentStep`.
@@ -201,6 +203,8 @@ export interface components {
             /** @description Host UI placeholder for the active step */
             stepHint?: string;
             bootstrapped?: boolean;
+            /** @description True when this start call restored an existing active session. */
+            resumed?: boolean;
         };
         SessionMessage: {
             /** @enum {string} */
@@ -221,7 +225,7 @@ export interface components {
              * @description Legacy onboarding-only field. Gatekeeper completion never issues an access secret.
              */
             secret?: string;
-            /** @description Optional compatibility field. Gatekeeper terminal profile extraction now runs asynchronously; read the completed session to retrieve the persisted profile. */
+            /** @description Optional compatibility field. Terminal profile extraction runs asynchronously; read the completed session to retrieve the persisted profile. */
             profile?: components["schemas"]["Profile"];
             /** @description Private reviewer-facing report produced on terminal gatekeeper turns when available. */
             reviewerReport?: components["schemas"]["ReviewerReport"];

@@ -1,6 +1,11 @@
 import { recordCompletedSessionCulturalSignals } from "@/lib/cultural-signals"
 import { log } from "@/lib/logger"
 import { normaliseReviewerReport } from "@/lib/reviewer-report"
+import {
+  buildOnboardingProfileSchema,
+  normalizeProjectSettings,
+  resolveRuntimeFlowConfig,
+} from "@/lib/project-settings"
 import type { Score } from "@/lib/scoring"
 import { supabase } from "@/lib/supabase"
 import { after } from "next/server"
@@ -152,6 +157,24 @@ async function completeJob(job: CompletionJob): Promise<void> {
     metadataObject.reviewer_report,
   )
   const scores = scoresFromMetadata(latestUser?.metadata)
+  const projectSettings = normalizeProjectSettings(project.settings)
+  const onboardingFlow = resolveRuntimeFlowConfig(projectSettings)
+  const completionPersona =
+    projectSettings.projectType === "onboarding" && onboardingFlow
+      ? {
+          profile_schema:
+            persona?.profile_schema ??
+            buildOnboardingProfileSchema(onboardingFlow.steps),
+          profile_extractor_hint:
+            persona?.profile_extractor_hint ??
+            "Map each onboarding step answer to the matching custom profile_key from the transcript.",
+        }
+      : persona
+        ? {
+            profile_schema: persona.profile_schema ?? null,
+            profile_extractor_hint: persona.profile_extractor_hint ?? null,
+          }
+        : null
 
   await Promise.all([
     recordVerdictAndEnqueueWebhooks({
@@ -162,12 +185,7 @@ async function completeJob(job: CompletionJob): Promise<void> {
       terminalStatus: session.status as TerminalSessionStatus,
       scores,
       reviewerReport,
-      persona: persona
-        ? {
-            profile_schema: persona.profile_schema ?? null,
-            profile_extractor_hint: persona.profile_extractor_hint ?? null,
-          }
-        : null,
+      persona: completionPersona,
       transcript: rows.map((message) => ({
         role: message.role as "user" | "assistant",
         content: message.content,

@@ -178,6 +178,7 @@ describe("createClient — headers and body", () => {
         status: "active",
         projectType: "gatekeeper",
         bootstrapped: true,
+        resumed: true,
       }),
     )
     const client = createClient({ baseUrl: "/api/groucho", fetch: fetchStart })
@@ -192,6 +193,7 @@ describe("createClient — headers and body", () => {
     })
     expect(res.message).toBe("Hi.")
     expect(res.projectType).toBe("gatekeeper")
+    expect(res.resumed).toBe(true)
   })
 
   it("sends openingMessage when provided", async () => {
