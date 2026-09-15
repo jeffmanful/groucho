@@ -128,13 +128,14 @@ export async function POST(
       project_id: projectId,
       session_id: sessionId,
       decision,
+      decision_source: "human",
       advisory_recommendation: advisoryRecommendation,
       ...applicationDecisionActor(actor),
       reason: reason || null,
       access_secret: accessSecret,
     })
     .select(
-      "id, decision, advisory_recommendation, reviewer_kind, reason, created_at",
+      "id, decision, decision_source, advisory_recommendation, reviewer_kind, reason, created_at",
     )
     .single()
 

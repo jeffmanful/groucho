@@ -134,7 +134,7 @@ shape. Existing verdict rows are not migrated.
 
 - Each field's value is clamped at ~1KB by the extractor's JSON budget.
 - `core.summary` ≤ 280 chars; `core.intent_tags` ≤ 5; `core.interests` ≤ 10.
-- The extractor defaults to `claude-haiku-4-5-20251001` with `max_tokens: 1024` to
+- The extractor defaults to `claude-haiku-4-5-20251001` with `max_tokens: 2048` to
   keep terminal-session costs low. Set `GROUCHO_PROFILE_EXTRACTION_MODEL` only
   when evals show a larger model materially improves extraction quality.
 - Aim for ≤ 10 custom fields; more is allowed but extraction quality degrades.
@@ -149,6 +149,23 @@ Per project: set `projects.settings.profile_extract_on` to either:
 - An array of statuses to run on, e.g. `["passed"]`.
 
 Default (when unset): `["passed", "redirected", "rejected"]`.
+
+The admin dashboard shows profile extraction separately from suitability: the
+score determines the applicant's configured decision band, while the profile
+provides the human-readable summary and supporting context. Project admins can
+see the recent settings history beneath Project Settings, including changes to
+`profile_extract_on`.
+
+To restore missing historical profiles safely, first preview and then run the
+idempotent backfill:
+
+```bash
+pnpm run backfill:session-profiles -- --project=<project-slug-or-uuid> --since=<ISO-date> --dry-run
+pnpm run backfill:session-profiles -- --project=<project-slug-or-uuid> --since=<ISO-date>
+```
+
+The backfill copies profiles already preserved in verdict payloads before making
+new extraction calls. It does not overwrite an existing session profile.
 
 ## Consuming the profile
 

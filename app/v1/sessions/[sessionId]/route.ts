@@ -9,6 +9,7 @@ import { outcomeLabelFromDbStatus } from "@/lib/session-outcome"
 import { supabase } from "@/lib/supabase"
 import { isConcludedSessionStatus } from "@/lib/session-status"
 import { tracedJson } from "@/lib/with-request-trace"
+import { parseClientDecisionPolicy, suitabilityBand } from "@/lib/decision-policy"
 
 export async function GET(
   req: NextRequest,
@@ -60,7 +61,7 @@ export async function GET(
   const { data: applicationDecision } = concluded
     ? await supabase
         .from("application_decisions")
-        .select("decision")
+        .select("decision, decision_source, access_secret, suitability_score")
         .eq("session_id", row.id)
         .maybeSingle()
     : { data: null }
@@ -71,6 +72,10 @@ export async function GET(
 
   let profile: unknown = row.profile ?? null
   let reviewerReport: unknown = null
+  let suitabilityScore: number | null =
+    typeof applicationDecision?.suitability_score === "number"
+      ? applicationDecision.suitability_score
+      : null
   if (concluded) {
     const { data: v } = await supabase
       .from("verdicts")
@@ -85,6 +90,13 @@ export async function GET(
     }
     if (payload && typeof payload === "object" && payload.reviewer_report) {
       reviewerReport = payload.reviewer_report
+    }
+    const payloadScores =
+      payload && typeof payload.scores === "object" && payload.scores !== null
+        ? (payload.scores as Record<string, unknown>)
+        : null
+    if (typeof payloadScores?.overall === "number") {
+      suitabilityScore = payloadScores.overall
     }
   }
 
@@ -139,6 +151,20 @@ export async function GET(
     status: row.status,
     outcome,
     reviewStatus,
+    ...(suitabilityScore !== null
+      ? {
+          suitabilityScore,
+          suitabilityBand: suitabilityBand(
+            suitabilityScore,
+            settings.decisionPolicy ?? parseClientDecisionPolicy(settings.raw),
+          ),
+        }
+      : {}),
+    ...(applicationDecision?.decision === "approved" &&
+    applicationDecision.decision_source === "policy" &&
+    typeof applicationDecision.access_secret === "string"
+      ? { secret: applicationDecision.access_secret }
+      : {}),
     turnsUsed: turnCount ?? 0,
     startedAt: row.created_at,
     completedAt: concluded ? row.updated_at : null,

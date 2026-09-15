@@ -1,16 +1,19 @@
 # Client Integration Guide
 
-Groucho is the decision layer. Your client application owns accounts, permissions,
-invitations, fulfilment, and any product-specific follow-up.
+Groucho is the assessment and client-policy layer. Your client application owns
+accounts, permissions, invitations, fulfilment, and any product-specific follow-up.
 
 Use Groucho to run a conversational application, capture applicant identity, record
-the transcript, and emit a decision:
+the transcript, and emit an advisory conversation outcome:
 
 - `passed`
 - `redirected`
 - `rejected`
 
-Then let the host product decide what to do with that outcome.
+Groucho also stores a final suitability score and applies the project's deterministic
+client policy. Final approval or decline comes from that explicitly configured policy
+or a reviewer action—never from the model outcome alone. See
+[Client-owned decision policy](./client-decision-policy.md).
 
 ## Recommended Model
 
@@ -27,6 +30,7 @@ Each project gets its own:
 - API key
 - persona and tone
 - thresholds
+- independent automatic acceptance and decline settings
 - sessions and transcripts
 - webhook configuration
 - admin session list
@@ -206,7 +210,8 @@ collects identity elsewhere, pass `applicant` explicitly.
 Use `onOutcome` for immediate UI feedback only.
 
 For durable application state, configure a Groucho webhook per project and process
-`session.completed` on your server.
+`session.completed` on your server. Read the session after terminal completion when
+you need its latest `reviewStatus`, `suitabilityScore`, or `suitabilityBand`.
 
 Recommended host-side tables:
 
@@ -220,14 +225,18 @@ On webhook receipt:
 2. Read `payload.project_type`, `payload.session`, `payload.applicant`, `payload.outcome`,
    `payload.scores`, and `payload.profile`.
 3. Upsert the host application record by Groucho session key.
-4. Treat `outcome === "PASS"` only as an advisory signal that the application is
-   ready for admin review. Never mark it approved from the Groucho outcome alone.
-5. Record a separate human decision, then let the community admin dashboard send
-   invites only to applicants explicitly approved by that decision.
+4. Treat `outcome === "PASS"` only as an advisory model signal. Never infer approval
+   from the outcome, recommendation, or score alone.
+5. Use `reviewStatus` as the decision state. When it is `pending`, let a reviewer
+   approve or decline. When it is `approved` or `declined`, retain the human/policy
+   decision source for audit.
+6. Send invitations or grant host access only for `approved` decisions. If using
+   Groucho's access endpoint, submit the matching approval secret.
 
-Groucho should not directly grant forum access or competition entry unless the host
-product explicitly builds that automation. The host app should remain the source of
-truth for users, invites, roles, and permissions.
+An enabled automatic-acceptance policy can record approval and issue an access
+secret, but the host app remains the source of truth for users, invites, roles, and
+permissions. Automatic decline is a separate opt-in and does not have to be enabled
+when automatic acceptance is enabled.
 
 ## Admin Dashboard Pattern
 
@@ -239,6 +248,8 @@ A useful dashboard row usually combines:
 - applicant email and name
 - application type (`forum` or `competition`)
 - Groucho outcome
+- suitability score and band
+- decision source (`human` or `policy`)
 - profile summary
 - transcript link or Groucho session key
 - admin status (`pending_review`, `invited`, `declined`, `accepted`)
@@ -253,4 +264,6 @@ conversation and decision record.
 - Use separate proxy routes or server clients for separate Groucho API keys.
 - Pass `applicant` when the host already knows the user.
 - Treat webhooks as the durable integration path.
+- Treat `reviewStatus`, not the advisory outcome, as the application decision.
+- Keep both automatic actions off until the client has deliberately calibrated its thresholds.
 - Keep access grants, invite emails, roles, and competition entry state in the host app.

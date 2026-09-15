@@ -2,6 +2,17 @@ import { describe, expect, it, vi, beforeEach } from "vitest"
 
 type FakeRow = Record<string, unknown>
 
+type FakeSupabaseState = {
+  sessions: FakeRow[]
+  messages: FakeRow[]
+  personas: FakeRow[]
+  updates: Array<{
+    table: string
+    filters: Array<{ col: string; val: unknown; op: "eq" | "is" }>
+    payload: Record<string, unknown>
+  }>
+}
+
 function jsonFromResponse(res: Response) {
   return res.json() as Promise<Record<string, unknown>>
 }
@@ -92,16 +103,7 @@ vi.mock("@anthropic-ai/sdk", () => {
   }
 })
 
-function makeSupabaseMock(state: {
-  sessions: FakeRow[]
-  messages: FakeRow[]
-  personas: FakeRow[]
-  updates: Array<{
-    table: string
-    filters: Array<{ col: string; val: unknown; op: "eq" | "is" }>
-    payload: Record<string, unknown>
-  }>
-}) {
+function makeSupabaseMock(state: FakeSupabaseState) {
   const chain = {
     _table: "" as string,
     _filters: [] as { col: string; val: unknown; op: "eq" | "is" }[],
@@ -124,6 +126,9 @@ function makeSupabaseMock(state: {
       return this
     },
     order(_col: string, _opts?: unknown) {
+      return this
+    },
+    limit() {
       return this
     },
     range() {
@@ -258,7 +263,11 @@ describe("contract: postSessionMessage", () => {
     const { invalidatePersonaCache } = await import("@/lib/persona-resolution")
     invalidatePersonaCache()
     const supa = await import("@/lib/supabase")
-    const state = (supa as any).__state
+    const state = (
+      supa as unknown as {
+        __state: FakeSupabaseState
+      }
+    ).__state
     state.sessions = []
     state.messages = []
     state.updates = []
@@ -274,6 +283,151 @@ describe("contract: postSessionMessage", () => {
         is_default: true,
       },
     ]
+  })
+
+  it("validates, canonicalises, and persists structured media choice answers", async () => {
+    const supa = await import("@/lib/supabase")
+    const state = (
+      supa as unknown as {
+        __state: FakeSupabaseState
+      }
+    ).__state
+    const mediaChoice = {
+      id: "programme-room",
+      options: ["a", "b", "c"].map((id) => ({
+        id,
+        label: `Performance ${id.toUpperCase()}`,
+        media: {
+          type: "video",
+          provider: "youtube",
+          videoId: `${id}bcdef12345`,
+          title: `Performance ${id.toUpperCase()}`,
+          alt: `Artist ${id.toUpperCase()} performing`,
+        },
+      })),
+      selection: { mode: "rank", minSelections: 2, maxSelections: 2 },
+      rationale: {
+        required: true,
+        prompt: "What should the room feel?",
+        minLength: 12,
+        maxLength: 500,
+      },
+    }
+    state.sessions.push({
+      id: "s_media",
+      session_id: "sess_media_answer",
+      project_id: "proj1",
+      applicant_email: testApplicant.email,
+      status: "active",
+    })
+    state.messages.push({
+      id: "m_media_question",
+      session_id: "s_media",
+      project_id: "proj1",
+      role: "assistant",
+      content: "Choose and order two performances.",
+      metadata: {
+        ui: {
+          intent: "probe",
+          inputType: "mediaChoice",
+          emotionalState: "curious",
+          visualState: "curious",
+          mediaChoice,
+        },
+      },
+    })
+
+    const { postSessionMessage } = await import("@/lib/post-session-message")
+    const res = await postSessionMessage({
+      authorization: "Bearer gk_test_x",
+      sessionId: "sess_media_answer",
+      message: "Untrusted client summary",
+      applicantIdentity: testApplicant,
+      interactionAnswer: {
+        type: "mediaChoice",
+        questionId: "programme-room",
+        mode: "rank",
+        optionIds: ["c", "a"],
+        rationale: "The contrast creates a clear emotional arc.",
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const userMessage = state.messages.find(
+      (message: FakeRow) => message.role === "user",
+    )
+    expect(userMessage).toMatchObject({
+      content:
+        "Ranked: 1. Performance C; 2. Performance A\nReason: The contrast creates a clear emotional arc.",
+      metadata: {
+        interaction_answer: {
+          type: "mediaChoice",
+          questionId: "programme-room",
+          mode: "rank",
+          optionIds: ["c", "a"],
+          rationale: "The contrast creates a clear emotional arc.",
+        },
+      },
+    })
+  })
+
+  it("rejects a structured media answer that breaks the active limits", async () => {
+    const supa = await import("@/lib/supabase")
+    const state = (supa as any).__state
+    state.sessions.push({
+      id: "s_media_invalid",
+      session_id: "sess_media_invalid",
+      project_id: "proj1",
+      applicant_email: testApplicant.email,
+      status: "active",
+    })
+    state.messages.push({
+      id: "m_media_invalid_question",
+      session_id: "s_media_invalid",
+      role: "assistant",
+      content: "Remove one.",
+      metadata: {
+        ui: {
+          inputType: "mediaChoice",
+          mediaChoice: {
+            id: "remove-one",
+            options: ["a", "b"].map((id) => ({
+              id,
+              label: id.toUpperCase(),
+              media: {
+                type: "video",
+                provider: "youtube",
+                videoId: `${id}bcdef12345`,
+                title: id.toUpperCase(),
+                alt: `${id.toUpperCase()} performing`,
+              },
+            })),
+            selection: { mode: "remove", minSelections: 1, maxSelections: 1 },
+            rationale: { required: true, prompt: "Why?", maxLength: 500 },
+          },
+        },
+      },
+    })
+
+    const { postSessionMessage } = await import("@/lib/post-session-message")
+    const res = await postSessionMessage({
+      authorization: "Bearer gk_test_x",
+      sessionId: "sess_media_invalid",
+      message: "Remove both",
+      applicantIdentity: testApplicant,
+      interactionAnswer: {
+        type: "mediaChoice",
+        questionId: "remove-one",
+        mode: "remove",
+        optionIds: ["a", "b"],
+        rationale: "They do not fit the intended arc.",
+      },
+    })
+    expect(res.status).toBe(400)
+    expect(await jsonFromResponse(res)).toMatchObject({
+      error: "Choose between 1 and 1 options",
+    })
+    expect(state.messages.filter((message: FakeRow) => message.role === "user")).toHaveLength(0)
   })
 
   it("continues an active session with its stored persona", async () => {

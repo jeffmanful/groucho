@@ -84,7 +84,8 @@ Reviewer reports use the evidence actually gathered and the descriptive orientat
 - do not require a curator to make their own work;
 - do evaluate whether the relevant goals, actions, or likely participation are concrete enough for a useful human review.
 
-The final decision remains advisory and human-owned by COLORS.
+The recommendation remains advisory. The final decision is client-owned by COLORS
+and comes from either a reviewer or its explicitly enabled deterministic policy.
 
 ## Verification scenarios
 

@@ -2,7 +2,9 @@
 
 Copy titles into issues; **Epic** labels: `phase-0` … `phase-6`. **Depends on** links use GitHub “blocked by” or Linear relations.
 
-Reference docs: [PRD.md](./PRD.md), [schema-migration.md](./schema-migration.md), [api/openapi.yaml](./api/openapi.yaml), [sdk-surface.md](./sdk-surface.md).
+Reference docs: [PRD.md](./PRD.md), [schema-migration.md](./schema-migration.md),
+[client-decision-policy.md](./client-decision-policy.md),
+[api/openapi.yaml](./api/openapi.yaml), [sdk-surface.md](./sdk-surface.md).
 
 ---
 
@@ -27,6 +29,7 @@ Reference docs: [PRD.md](./PRD.md), [schema-migration.md](./schema-migration.md)
 | RLS policies: org isolation | feature | done | `api_keys` RLS (no policies — blocks anon); `sessions`/`messages` SELECT for anon/authenticated scoped to `projects.expose_to_anon_read`; org/member/invitation tables RLS for authenticated; second-org fixture `fixture_b` / `isolated`. |
 | Service-role chat path: resolve project from API key | feature | done | `lib/project-resolution.ts` + `/api/chat` + `/api/access` default project scope; optional `GROUPCHO_REQUIRE_API_KEY` / `GROUPCHO_DEFAULT_PROJECT_ID`. |
 | Rename `conversations` → `sessions` (optional) | chore | done | Migration `20260410140000_rename_conversations_to_sessions.sql`; `messages.session_id`; app + admin realtime updated. |
+| Client-owned decision policy | feature | done | `sessions.suitability_score`; immutable human/policy decisions; configurable acceptance/review bands; independent automatic acceptance and decline; score-first admin sorting. |
 
 **Depends on:** Phase 0 doc complete (soft).  
 **Blocks:** Phase 2.
@@ -55,7 +58,7 @@ Reference docs: [PRD.md](./PRD.md), [schema-migration.md](./schema-migration.md)
 | Mount OpenAPI contract under `/v1` | feature | done | **`POST /v1/sessions/{sessionId}/messages`**, **`GET /v1/sessions/{sessionId}`**, **`POST /v1/sessions/{sessionId}/access`** ([docs/api/openapi.yaml](./api/openapi.yaml)). Shared handler [`lib/post-session-message.ts`](../lib/post-session-message.ts); `POST /api/chat` unchanged. Middleware allows `/v1/`. |
 | Contract tests: PostMessage 200/409/503 | test | done | `vitest` module-mocked contract tests: `lib/__tests__/contract-post-message.test.ts` (200/409/503 + 429). |
 | Rate limit: per API key + per session | feature | done | Lightweight in-memory limiter in `lib/rate-limit.ts` enforced by `lib/post-session-message.ts` (per api key + per project/session) and `/v1/.../access` (429 + `Retry-After`). Env: `GROUCHO_RL_API_KEY_PER_MINUTE`, `GROUCHO_RL_SESSION_PER_MINUTE`. |
-| Normalise outcome enum PASS/REDIRECT/REJECT | chore | done | [`lib/session-outcome.ts`](../lib/session-outcome.ts) + thresholds in chat path. |
+| Normalise outcome enum PASS/REDIRECT/REJECT | chore | done | [`lib/session-outcome.ts`](../lib/session-outcome.ts); these are advisory compatibility outcomes, separate from the client decision policy. |
 
 **Depends on:** Phase 1 key resolution.  
 **Blocks:** Phase 5 (SDK against stable API).

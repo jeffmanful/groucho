@@ -2,12 +2,12 @@
 
 ## Purpose
 
-Groucho should understand enough about an applicant to prepare a useful human
-review without making the interaction feel like a disguised form. The system
+Groucho should understand enough about an applicant to prepare a useful client
+decision record without making the interaction feel like a disguised form. The system
 therefore uses **firm evidence intents and flexible conversation**.
 
-The application owns state, provenance, safety, human review, and access. Groucho
-has freedom over wording, order, continuity, and which relevant thread to deepen.
+The application owns state, provenance, safety, decision policy, review, and access.
+Groucho has freedom over wording, order, continuity, and which relevant thread to deepen.
 
 ## Fixed opening
 

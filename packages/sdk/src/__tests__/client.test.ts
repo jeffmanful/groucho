@@ -154,6 +154,28 @@ describe("createClient — headers and body", () => {
     expect(body.personaId).toBe("p1")
   })
 
+  it("sends a structured media choice answer", async () => {
+    const client = createClient({ baseUrl: "/api/groucho", fetch: fakeFetch })
+    await client.sendMessage("abc", {
+      message: "Ranked: 1. Performance C; 2. Performance A",
+      interactionAnswer: {
+        type: "mediaChoice",
+        questionId: "programme-room",
+        mode: "rank",
+        optionIds: ["performance-c", "performance-a"],
+        rationale: "The contrast creates an arc.",
+      },
+    })
+    const body = JSON.parse(calls[0]!.init?.body as string)
+    expect(body.interactionAnswer).toEqual({
+      type: "mediaChoice",
+      questionId: "programme-room",
+      mode: "rank",
+      optionIds: ["performance-c", "performance-a"],
+      rationale: "The contrast creates an arc.",
+    })
+  })
+
   it("omits secret from access body when not provided", async () => {
     const fetchVoid = mockFetch(async () => emptyResponse())
     const client = createClient({ baseUrl: "/api/groucho", fetch: fetchVoid })

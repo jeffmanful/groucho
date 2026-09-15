@@ -102,7 +102,9 @@ export async function startGatekeeperSession(
     input.openingInteraction,
     projectSettings.applicationExperience.opening_interaction,
   )
-  const openingInteraction = isColorsForumSignalSet(openingSignals)
+  const openingInteraction =
+    isColorsForumSignalSet(openingSignals) &&
+    configuredOpeningInteraction.inputType !== "mediaChoice"
     ? {
         ...DEFAULT_INTERACTION_SPEC,
         inputType: "text" as const,

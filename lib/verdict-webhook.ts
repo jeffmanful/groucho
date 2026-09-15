@@ -10,6 +10,7 @@ import {
 } from "@/lib/profile-extraction"
 import { log } from "@/lib/logger"
 import type { ReviewerReport } from "@/lib/reviewer-report"
+import type { MediaChoiceAnswer } from "@/lib/gatekeeper-interaction-spec"
 
 export type TerminalSessionStatus = "passed" | "redirected" | "rejected"
 
@@ -44,6 +45,13 @@ export type VerdictPayload = {
   scores?: Score
   profile?: Profile
   reviewer_report?: ReviewerReport
+  interaction_answers?: Array<{
+    type: "media_choice"
+    question_id: string
+    mode: MediaChoiceAnswer["mode"]
+    option_ids: string[]
+    rationale?: string
+  }>
 }
 
 const DEFAULT_PROFILE_EXTRACT_STATUSES: TerminalSessionStatus[] = [
@@ -88,6 +96,7 @@ export async function recordVerdictAndEnqueueWebhooks(opts: {
   /** Full conversation transcript to feed the extractor. */
   transcript?: ConversationMessage[]
   applicant?: ApplicantIdentity | null
+  interactionAnswers?: MediaChoiceAnswer[]
 }): Promise<{ profile: Profile | null }> {
   const { data: project } = await supabase
     .from("projects")
@@ -205,6 +214,17 @@ export async function recordVerdictAndEnqueueWebhooks(opts: {
     scores: opts.scores,
     ...(profile ? { profile } : {}),
     ...(opts.reviewerReport ? { reviewer_report: opts.reviewerReport } : {}),
+    ...(opts.interactionAnswers?.length
+      ? {
+          interaction_answers: opts.interactionAnswers.map((answer) => ({
+            type: "media_choice" as const,
+            question_id: answer.questionId,
+            mode: answer.mode,
+            option_ids: answer.optionIds,
+            ...(answer.rationale ? { rationale: answer.rationale } : {}),
+          })),
+        }
+      : {}),
   }
 
   const { data: verdict, error: vErr } = await supabase

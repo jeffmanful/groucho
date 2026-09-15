@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   applicationDecisionActor,
   applicationReviewStatus,
-  humanDecisionGrantsAccess,
+  applicationDecisionGrantsAccess,
   parseHumanApplicationDecision,
 } from "@/lib/application-decision"
 
@@ -53,15 +53,15 @@ describe("application decision boundary", () => {
   })
 
   it("never grants access from an advisory result alone", () => {
-    expect(humanDecisionGrantsAccess(null, "legacy-pass-secret")).toBe(false)
+    expect(applicationDecisionGrantsAccess(null, "legacy-pass-secret")).toBe(false)
     expect(
-      humanDecisionGrantsAccess(
+      applicationDecisionGrantsAccess(
         { decision: "recommend", access_secret: "secret" },
         "secret",
       ),
     ).toBe(false)
     expect(
-      humanDecisionGrantsAccess(
+      applicationDecisionGrantsAccess(
         { decision: "declined", access_secret: "secret" },
         "secret",
       ),
@@ -70,8 +70,8 @@ describe("application decision boundary", () => {
 
   it("grants access only for an approved decision with the exact secret", () => {
     const approved = { decision: "approved", access_secret: "secret" }
-    expect(humanDecisionGrantsAccess(approved, undefined)).toBe(false)
-    expect(humanDecisionGrantsAccess(approved, "wrong")).toBe(false)
-    expect(humanDecisionGrantsAccess(approved, "secret")).toBe(true)
+    expect(applicationDecisionGrantsAccess(approved, undefined)).toBe(false)
+    expect(applicationDecisionGrantsAccess(approved, "wrong")).toBe(false)
+    expect(applicationDecisionGrantsAccess(approved, "secret")).toBe(true)
   })
 })

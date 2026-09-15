@@ -8,6 +8,47 @@ import {
 } from "@/lib/project-settings"
 
 describe("validateProjectSettings", () => {
+  const mediaChoice = {
+    id: "programme-room",
+    options: ["a", "b"].map((id) => ({
+      id,
+      label: `Performance ${id.toUpperCase()}`,
+      media: {
+        type: "video",
+        provider: "youtube",
+        videoId: `${id}bcdef12345`,
+        title: `Performance ${id.toUpperCase()}`,
+        alt: `Artist ${id.toUpperCase()} performing`,
+      },
+    })),
+    selection: { mode: "select", minSelections: 1, maxSelections: 2 },
+    rationale: { required: true, prompt: "Why?", maxLength: 500 },
+  }
+  it("normalizes the client decision policy with automatic actions off by default", () => {
+    const r = validateProjectSettings({ project_type: "gatekeeper" })
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.settings.decision_policy).toEqual({
+        automatic_acceptance_enabled: false,
+        automatic_decline_enabled: false,
+        acceptance_threshold: 0.8,
+        review_threshold: 0.55,
+      })
+    }
+  })
+
+  it("rejects a review threshold that overlaps acceptance", () => {
+    const r = validateProjectSettings({
+      project_type: "gatekeeper",
+      decision_policy: {
+        acceptance_threshold: 0.6,
+        review_threshold: 0.6,
+      },
+    })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toMatch(/review threshold/i)
+  })
+
   it("accepts gatekeeper settings without flow_config", () => {
     const r = validateProjectSettings({
       project_type: "gatekeeper",
@@ -64,6 +105,43 @@ describe("validateProjectSettings", () => {
         max_turns: 4,
       })
     }
+  })
+
+  it("preserves a valid media choice opening interaction", () => {
+    const r = validateProjectSettings({
+      project_type: "gatekeeper",
+      application_experience: {
+        opening_message: "Choose the programme.",
+        opening_interaction: { inputType: "mediaChoice", mediaChoice },
+        preferred_input_types: ["mediaChoice", "text"],
+      },
+    })
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.settings.application_experience).toMatchObject({
+        opening_interaction: {
+          inputType: "mediaChoice",
+          mediaChoice: {
+            id: "programme-room",
+            selection: { mode: "select", minSelections: 1, maxSelections: 2 },
+          },
+        },
+        preferred_input_types: ["mediaChoice", "text"],
+      })
+    }
+  })
+
+  it("rejects an invalid media choice opening interaction", () => {
+    const r = validateProjectSettings({
+      project_type: "gatekeeper",
+      application_experience: {
+        opening_interaction: {
+          inputType: "mediaChoice",
+          mediaChoice: { id: "missing-options" },
+        },
+      },
+    })
+    expect(r.ok).toBe(false)
   })
 
   it("preserves full application questions used as ordered signals", () => {

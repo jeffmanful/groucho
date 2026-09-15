@@ -6,6 +6,8 @@ import {
   MAX_SIGNAL_LENGTH,
   MIN_APPLICATION_MAX_TURNS,
 } from "@/lib/project-settings"
+import { validateClientDecisionPolicy } from "@/lib/decision-policy"
+import { normaliseMediaChoiceInteraction } from "@/lib/gatekeeper-interaction-spec"
 
 export function validateWizardStep1(name: string, slug: string): string | null {
   const n = name.trim()
@@ -22,6 +24,13 @@ export function validateWizardStep2(form: ProjectSetupFormState): string | null 
   if (!form.personaId) {
     return "Select a persona before continuing."
   }
+  const policyError = validateClientDecisionPolicy({
+    automaticAcceptanceEnabled: form.automaticAcceptanceEnabled,
+    automaticDeclineEnabled: form.automaticDeclineEnabled,
+    acceptanceThreshold: form.acceptanceThreshold,
+    reviewThreshold: form.reviewThreshold,
+  })
+  if (policyError) return policyError
   if (form.projectType === "gatekeeper") {
     if (form.applicationOpeningMessage.trim().length > 500) {
       return "Application opening message must be 500 characters or fewer."
@@ -35,6 +44,17 @@ export function validateWizardStep2(form: ProjectSetupFormState): string | null 
         .filter(Boolean).length
     ) {
       return "Opening interaction options are required for single or multi select."
+    }
+    if (form.applicationOpeningInputType === "mediaChoice") {
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(form.applicationOpeningOptions)
+      } catch {
+        return "Media choice configuration must be valid JSON."
+      }
+      if (!normaliseMediaChoiceInteraction(parsed)) {
+        return "Media choice configuration is incomplete or invalid."
+      }
     }
     const signals = form.applicationRequiredSignals
       .split("\n")

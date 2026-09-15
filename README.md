@@ -33,7 +33,8 @@ pnpm run example:groucho
 
 ## Docs and releases
 
-- Current COLORS state of play: [`docs/groucho-state-of-play-2026-08-20.md`](./docs/groucho-state-of-play-2026-08-20.md)
+- Client-owned suitability thresholds and automatic actions: [`docs/client-decision-policy.md`](./docs/client-decision-policy.md)
+- Historical COLORS state snapshot: [`docs/groucho-state-of-play-2026-08-20.md`](./docs/groucho-state-of-play-2026-08-20.md)
 - Response-time implementation: [`docs/groucho-latency-improvements-2026-08-21.md`](./docs/groucho-latency-improvements-2026-08-21.md)
 - Documentation index: [`docs/README.md`](./docs/README.md)
 - Publishing `@groucho/sdk`: [Changesets](https://github.com/changesets/changesets) — merge version PRs from `.github/workflows/release.yml`; configure the `NPM_TOKEN` repository secret for npm publishes. 

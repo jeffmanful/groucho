@@ -19,9 +19,15 @@ import {
   MotionConfig,
 } from "motion/react"
 import { TextShimmer } from "@/components/doorcheck/TextShimmer"
+import { MediaChoiceInput } from "@/components/doorcheck/MediaChoiceInput"
 import { cn } from "@/lib/utils"
 import { DEFAULT_APPLICATION_OPENING_MESSAGE } from "@/lib/project-settings"
 import { useBrowserDictation } from "@/lib/use-browser-dictation"
+import {
+  normaliseMediaChoiceInteraction,
+  type MediaChoiceAnswer,
+  type MediaChoiceInteraction,
+} from "@/lib/gatekeeper-interaction-spec"
 
 function createDoorcheckSupabase(): SupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
@@ -64,10 +70,17 @@ type OnboardingCurrentStep = {
   interaction?: {
     inputType: OpeningInputType
     options?: string[]
+    mediaChoice?: MediaChoiceInteraction
   }
 }
 
-type GrouchoInputType = "text" | "voice" | "singleSelect" | "multiSelect" | "ranking"
+type GrouchoInputType =
+  | "text"
+  | "voice"
+  | "singleSelect"
+  | "multiSelect"
+  | "ranking"
+  | "mediaChoice"
 
 type GrouchoVisualState =
   | "idle"
@@ -84,6 +97,7 @@ type GrouchoInteractionUi = {
   emotionalState?: string
   visualState: GrouchoVisualState
   options?: string[]
+  mediaChoice?: MediaChoiceInteraction
 }
 
 type DecisionPhase = "none" | "evaluating" | "decision" | "revealed"
@@ -105,11 +119,12 @@ type DoorcheckStartResponse = {
   resumed?: boolean
 }
 
-type OpeningInputType = "text" | "singleSelect" | "multiSelect"
+type OpeningInputType = "text" | "singleSelect" | "multiSelect" | "mediaChoice"
 
 type OpeningInteraction = {
   inputType: OpeningInputType
   options?: string[]
+  mediaChoice?: MediaChoiceInteraction
 }
 
 const SLOW_RESPONSE_DELAY_MS = 6000
@@ -373,6 +388,7 @@ function parseInteractionUi(raw: unknown): GrouchoInteractionUi {
     data.inputType === "singleSelect" ||
     data.inputType === "multiSelect" ||
     data.inputType === "ranking" ||
+    data.inputType === "mediaChoice" ||
     data.inputType === "voice"
       ? data.inputType
       : "text"
@@ -388,6 +404,7 @@ function parseInteractionUi(raw: unknown): GrouchoInteractionUi {
   const options = Array.isArray(data.options)
     ? data.options.filter((item): item is string => typeof item === "string")
     : undefined
+  const mediaChoice = normaliseMediaChoiceInteraction(data.mediaChoice)
   return {
     intent: typeof data.intent === "string" ? data.intent : undefined,
     inputType,
@@ -395,6 +412,7 @@ function parseInteractionUi(raw: unknown): GrouchoInteractionUi {
       typeof data.emotionalState === "string" ? data.emotionalState : undefined,
     visualState,
     ...(options && options.length > 0 ? { options } : {}),
+    ...(mediaChoice ? { mediaChoice } : {}),
   }
 }
 
@@ -431,6 +449,7 @@ function buildOpeningInteraction(
   optionsText: string,
 ): OpeningInteraction {
   if (inputType === "text") return { inputType: "text" }
+  if (inputType === "mediaChoice") return { inputType: "text" }
   return {
     inputType,
     options: parseOptionLines(optionsText),
@@ -575,6 +594,126 @@ function ReviewerReportPanel({ report }: { report: ReviewerReport }) {
   )
 }
 
+function ColorsTranscript({
+  applicantEmail,
+  colorsInteractionPhase,
+  commitHandoff,
+  messages,
+  showSlowResponse,
+}: {
+  applicantEmail: string
+  colorsInteractionPhase: ColorsInteractionPhase
+  commitHandoff: () => void
+  messages: Message[]
+  showSlowResponse: boolean
+}) {
+  const firstApplicationMessageId = applicantEmail
+    ? messages.find((message) => message.role === "bot")?.id
+    : null
+
+  return (
+    <>
+      {messages.map((message) => {
+        const isUser = message.role === "user"
+        const isIntroduction = message.id === firstApplicationMessageId
+
+        return (
+          <MessageScroller.Item
+            key={message.id}
+            messageId={message.id}
+            scrollAnchor={isUser}
+            className={cn(
+              "colors-chat-turn flex w-full scroll-mt-4",
+              isUser ? "justify-end" : "justify-start",
+            )}
+          >
+            <motion.div
+              layout
+              initial={{ opacity: 0, y: 8, filter: "blur(3px)" }}
+              animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+              transition={{
+                layout: LAYOUT_SPRING,
+                opacity: { duration: 0.25, ease: EASE_OUT },
+                y: { duration: 0.25, ease: EASE_OUT },
+                filter: { duration: 0.25, ease: EASE_OUT },
+              }}
+              className={cn(
+                "min-w-0 text-pretty",
+                isUser ? "colors-chat-user-message" : "colors-chat-agent-message",
+              )}
+            >
+              {isIntroduction ? (
+                <div className="colors-chat-intro-media">
+                  <Image
+                    src="/doorcheck/colors/latin-mafia.jpg"
+                    alt="Members of the COLORS community"
+                    fill
+                    unoptimized
+                    sizes="(max-width: 640px) calc(100vw - 3rem), 26rem"
+                    style={{ objectFit: "cover", objectPosition: "50% 35%" }}
+                  />
+                </div>
+              ) : null}
+              {isIntroduction ? (
+                <div className="colors-chat-intro-copy">
+                  <p>
+                    The COLORS Forum is a place for our community to discuss,
+                    discover and share. We are a network of musicians, curators
+                    and music enthusiasts.
+                  </p>
+                  <p>
+                    We are building a collective community that brings people
+                    together to guide, understand and shape the culture.
+                  </p>
+                </div>
+              ) : null}
+              <p
+                className={cn(
+                  "colors-chat-message-copy",
+                  isIntroduction && "colors-chat-opening-question",
+                )}
+              >
+                {message.content}
+              </p>
+            </motion.div>
+          </MessageScroller.Item>
+        )
+      })}
+
+      <MessageScroller.Item
+        messageId="colors-assistant-status"
+        className="colors-chat-status-row"
+      >
+        <AnimatePresence
+          initial={false}
+          mode="wait"
+          onExitComplete={commitHandoff}
+        >
+          {colorsInteractionPhase === "reading" ? (
+            <motion.div
+              key={showSlowResponse ? "slow" : "considering"}
+              className="colors-chat-status"
+              initial={{ opacity: 0, y: 4, filter: "blur(2px)" }}
+              animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+              exit={{ opacity: 0, y: -3, filter: "blur(2px)" }}
+              transition={{ duration: 0.16, ease: EASE_OUT }}
+              role="status"
+              aria-live="polite"
+            >
+              <span className="colors-chat-status-mark" aria-hidden="true" />
+              <span>
+                {showSlowResponse
+                  ? "Still considering — thoughtful answers can take a little longer."
+                  : "Considering your answer…"}
+              </span>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      </MessageScroller.Item>
+    </>
+  )
+}
+
 export default function DoorCheck() {
   const supabase = useMemo(() => createDoorcheckSupabase(), [])
   const [messages, setMessages] = useState<Message[]>(EMAIL_CAPTURE_MESSAGES)
@@ -614,6 +753,8 @@ export default function DoorCheck() {
     useState<ColorsInteractionPhase>("ready")
   const [requestError, setRequestError] = useState<string | null>(null)
   const [failedAnswer, setFailedAnswer] = useState<string | null>(null)
+  const [failedInteractionAnswer, setFailedInteractionAnswer] =
+    useState<MediaChoiceAnswer | null>(null)
   const [showSlowResponse, setShowSlowResponse] = useState(false)
   const [questionDismissed, setQuestionDismissed] = useState(false)
   const [pendingResume, setPendingResume] =
@@ -642,11 +783,16 @@ export default function DoorCheck() {
     if (!next) return
     colorsHandoffRef.current = null
     setRevealedQuestionId(null)
-    setMessages([next.message])
+    setMessages((previous) => [...previous, next.message])
     setQuestionDismissed(false)
     setInteractionUi(next.interactionUi)
     setDecisionPhase(next.decisionPhase)
     setConcluded(next.concluded)
+    setColorsInteractionPhase("ready")
+    setInput("")
+    if (!next.concluded) {
+      window.requestAnimationFrame(() => textareaRef.current?.focus())
+    }
   }, [])
 
   const commitBootstrapResponse = useCallback((data: DoorcheckStartResponse) => {
@@ -739,7 +885,10 @@ export default function DoorCheck() {
   }, [loading])
 
   useEffect(() => {
-    setSessionId(getOrCreateSession())
+    const frame = window.requestAnimationFrame(() => {
+      setSessionId(getOrCreateSession())
+    })
+    return () => window.cancelAnimationFrame(frame)
   }, [])
 
   useEffect(() => {
@@ -884,6 +1033,7 @@ export default function DoorCheck() {
     setColorsInteractionPhase("ready")
     setRequestError(null)
     setFailedAnswer(null)
+    setFailedInteractionAnswer(null)
     setShowSlowResponse(false)
     setQuestionDismissed(false)
     setPendingResume(null)
@@ -919,14 +1069,17 @@ export default function DoorCheck() {
       pendingResume
     ) return
     if (messages.length !== 0) return
-    void bootstrapSession(
-      sessionId,
-      selectedProjectId,
-      applicantEmail,
-      selectedPersonaId || undefined,
-      openingMessage,
-      buildOpeningInteraction(openingInputType, openingOptionsText),
-    )
+    const frame = window.requestAnimationFrame(() => {
+      void bootstrapSession(
+        sessionId,
+        selectedProjectId,
+        applicantEmail,
+        selectedPersonaId || undefined,
+        openingMessage,
+        buildOpeningInteraction(openingInputType, openingOptionsText),
+      )
+    })
+    return () => window.cancelAnimationFrame(frame)
   }, [
     sessionId,
     selectedProjectId,
@@ -976,7 +1129,11 @@ export default function DoorCheck() {
     }
   }
 
-  async function submit(messageOverride?: string, isRetry = false) {
+  async function submit(
+    messageOverride?: string,
+    isRetry = false,
+    interactionAnswer?: MediaChoiceAnswer,
+  ) {
     const text = (messageOverride ?? input).trim()
     if (!text || !applicantEmail || loading || concluded || !sessionId) return
 
@@ -989,12 +1146,13 @@ export default function DoorCheck() {
       isGatekeeperPreview &&
         selectedProject?.organisationName.trim().toLowerCase() === "colors",
     )
-    if (!isGatekeeperPreview && !isRetry) {
+    if ((!isGatekeeperPreview || isColorsSubmission) && !isRetry) {
       const userId = crypto.randomUUID()
       setMessages((prev) => [...prev, { id: userId, role: "user", content: text }])
     }
     setRequestError(null)
     setFailedAnswer(null)
+    setFailedInteractionAnswer(null)
     setShowSlowResponse(false)
     setQuestionDismissed(isGatekeeperPreview)
     if (isColorsSubmission) {
@@ -1002,9 +1160,8 @@ export default function DoorCheck() {
         setSelectedOptions([text])
       }
       setColorsInteractionPhase("reading")
-    } else {
-      setInput("")
     }
+    setInput("")
     setLoading(true)
     slowResponseTimerRef.current = setTimeout(
       () => setShowSlowResponse(true),
@@ -1024,10 +1181,11 @@ export default function DoorCheck() {
           personaId,
           projectId,
           applicant: { email: applicantEmail },
+          ...(interactionAnswer ? { interactionAnswer } : {}),
         }),
       })
 
-      if (res.status === 409) {
+      if (res.status === 409 && !interactionAnswer) {
         const freshId = resetSession()
         setSessionId(freshId)
         res = await fetch("/api/chat", {
@@ -1040,6 +1198,7 @@ export default function DoorCheck() {
             personaId,
             projectId,
             applicant: { email: applicantEmail },
+            ...(interactionAnswer ? { interactionAnswer } : {}),
           }),
         })
       }
@@ -1158,6 +1317,7 @@ export default function DoorCheck() {
           ? "AI service unavailable. Turn on local test mode or check the model provider credits."
           : detail
       setFailedAnswer(text)
+      setFailedInteractionAnswer(interactionAnswer ?? null)
       setRequestError(errorMessage)
       setQuestionDismissed(false)
       if (
@@ -1297,9 +1457,14 @@ export default function DoorCheck() {
     concluded && (!isGatekeeperPreview || decisionPhase === "revealed")
   const showReviewerReport = Boolean(showConclusionActions && reviewerReport)
   const currentBotMessage = [...messages].reverse().find((msg) => msg.role === "bot")
+  const questionNeedsRationale = Boolean(
+    currentBotMessage &&
+      /\b(why|reason|explain)\b/i.test(currentBotMessage.content),
+  )
   const awaitingResumeChoice = pendingResume !== null
   const questionReady = Boolean(
-    currentBotMessage && revealedQuestionId === currentBotMessage.id,
+    currentBotMessage &&
+      (isColorsProject || revealedQuestionId === currentBotMessage.id),
   )
   const colorsInteractionBusy =
     isColorsProject && colorsInteractionPhase !== "ready"
@@ -1314,7 +1479,7 @@ export default function DoorCheck() {
   const showStructuredOptions = Boolean(
     applicantEmail &&
     !concluded &&
-    (!loading || colorsInteractionPhase === "reading") &&
+    !loading &&
     !bootstrapping &&
     decisionPhase === "none" &&
     (!isGatekeeperPreview || questionReady) &&
@@ -1322,6 +1487,17 @@ export default function DoorCheck() {
     (interactionUi.inputType === "singleSelect" ||
       interactionUi.inputType === "multiSelect") &&
     interactionUi.options?.length,
+  )
+  const showMediaChoice = Boolean(
+    applicantEmail &&
+    !concluded &&
+    !loading &&
+    !bootstrapping &&
+    decisionPhase === "none" &&
+    (!isGatekeeperPreview || questionReady) &&
+    (!isColorsProject || colorsInteractionPhase !== "revealing") &&
+    interactionUi.inputType === "mediaChoice" &&
+    interactionUi.mediaChoice,
   )
   const showAnswerArea =
     !concluded &&
@@ -1477,7 +1653,7 @@ export default function DoorCheck() {
           {isGatekeeperPreview ? (
             <div className="pointer-events-auto flex items-center gap-3 text-[0.66rem] uppercase tracking-[0.18em] text-white/72">
               {isColorsProject ? (
-                <span className="colors-doorcheck-wordmark">COLORS*STUDIOS</span>
+                <span className="colors-doorcheck-wordmark">COLORS + STUDIOS</span>
               ) : (
                 <>
                   <span className="doorcheck-brand-mark" aria-hidden="true" />
@@ -1487,7 +1663,10 @@ export default function DoorCheck() {
             </div>
           ) : null}
           <div className="flex items-center gap-2">
-            {isGatekeeperPreview ? (
+            {isColorsProject ? (
+              <span className="colors-doorcheck-context">Forum application</span>
+            ) : null}
+            {isGatekeeperPreview && !isColorsProject ? (
               <button
                 type="button"
                 onClick={toggleQuestionAudio}
@@ -1605,14 +1784,29 @@ export default function DoorCheck() {
           </button>
           </div>
         </header>
-        <MessageScroller.Provider
-          autoScroll
-          defaultScrollPosition="end"
-          scrollPreviousItemPeek={64}
-          scrollMargin={16}
+        <main
+          className={cn(
+            "contents",
+            isColorsProject && "colors-conversation-shell",
+          )}
+          aria-label={isColorsProject ? "COLORS Forum application" : undefined}
         >
+          {isColorsProject ? (
+            <div className="colors-chat-panel-label" aria-hidden="true">
+              COLORS Forum application
+            </div>
+          ) : null}
+          <MessageScroller.Provider
+            autoScroll
+            defaultScrollPosition={isColorsProject ? "last-anchor" : "end"}
+            scrollPreviousItemPeek={64}
+            scrollMargin={16}
+          >
           <MessageScroller.Root
-            className="relative min-h-0 flex-1"
+            className={cn(
+              "relative min-h-0 flex-1",
+              isColorsProject && "colors-chat-scroller",
+            )}
             aria-busy={interactionBusy || bootstrapping}
           >
             <MessageScroller.Viewport
@@ -1620,7 +1814,7 @@ export default function DoorCheck() {
                 "scrollbar-hidden h-full overflow-y-auto overscroll-contain px-4 pt-14 pb-4 sm:px-6",
                 isGatekeeperPreview &&
                   (isColorsProject
-                    ? "doorcheck-viewport colors-doorcheck-viewport"
+                    ? "doorcheck-viewport colors-doorcheck-viewport colors-chat-viewport"
                     : "doorcheck-viewport lg:pl-[44vw]"),
               )}
             >
@@ -1629,7 +1823,7 @@ export default function DoorCheck() {
                   "mx-auto flex min-h-full w-full max-w-[900px] flex-col gap-5",
                   isGatekeeperPreview &&
                     (isColorsProject
-                      ? "doorcheck-content colors-doorcheck-content justify-center"
+                      ? "doorcheck-content colors-doorcheck-content colors-chat-content"
                       : "doorcheck-content max-w-[780px] justify-center"),
                 )}
                 spacerClassName="shrink-0"
@@ -1690,6 +1884,14 @@ export default function DoorCheck() {
                   </div>
                 </motion.section>
               </MessageScroller.Item>
+            ) : isColorsProject ? (
+              <ColorsTranscript
+                applicantEmail={applicantEmail}
+                colorsInteractionPhase={colorsInteractionPhase}
+                commitHandoff={commitColorsHandoff}
+                messages={messages}
+                showSlowResponse={showSlowResponse}
+              />
             ) : isGatekeeperPreview ? (
               <MessageScroller.Item messageId="gatekeeper-preview">
                 <div className="doorcheck-question-stage mx-auto w-full">
@@ -1835,7 +2037,7 @@ export default function DoorCheck() {
               ))
             )}
 
-            {!isGatekeeperPreview && (
+            {!isGatekeeperPreview && !isColorsProject && (
               <MessageScroller.Item
                 messageId="assistant-status"
                 className="min-h-16 w-full sm:min-h-20"
@@ -1930,7 +2132,7 @@ export default function DoorCheck() {
               </svg>
             </MessageScroller.Button>
           </MessageScroller.Root>
-        </MessageScroller.Provider>
+          </MessageScroller.Provider>
 
         {showConclusionActions && (
           <motion.div
@@ -1941,7 +2143,7 @@ export default function DoorCheck() {
               "mx-auto w-full max-w-[900px] shrink-0 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6",
               isGatekeeperPreview &&
                 (isColorsProject
-                  ? "doorcheck-answer-shell colors-doorcheck-answer-shell"
+                  ? "doorcheck-answer-shell colors-doorcheck-answer-shell colors-chat-conclusion"
                   : "doorcheck-answer-shell lg:ml-[44vw] lg:max-w-none lg:pr-8 lg:pl-8"),
             )}
           >
@@ -1974,7 +2176,7 @@ export default function DoorCheck() {
               "mx-auto w-full max-w-[900px] shrink-0 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6",
               isGatekeeperPreview &&
                 (isColorsProject
-                  ? "doorcheck-answer-shell colors-doorcheck-answer-shell"
+                  ? "doorcheck-answer-shell colors-doorcheck-answer-shell colors-chat-composer-shell"
                   : "doorcheck-answer-shell lg:ml-[44vw] lg:max-w-none lg:pr-8 lg:pl-8"),
               !showAnswerArea && "pointer-events-none",
             )}
@@ -1982,23 +2184,43 @@ export default function DoorCheck() {
             animate={{ opacity: showAnswerArea ? 1 : 0 }}
             transition={{ opacity: { duration: 0.18 } }}
           >
-            {showStructuredOptions ? (
+            {showMediaChoice && interactionUi.mediaChoice ? (
               <motion.div
                 layout
-                className={
+                className={cn(
+                  "relative w-full rounded-2xl border border-white/10 bg-zinc-950/70 px-4 py-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] backdrop-blur-md sm:px-5",
+                  isColorsProject && "colors-chat-options",
+                )}
+              >
+                <MediaChoiceInput
+                  key={interactionUi.mediaChoice.id}
+                  interaction={interactionUi.mediaChoice}
+                  disabled={interactionBusy}
+                  onSubmit={(message, answer) =>
+                    void submit(message, false, answer)
+                  }
+                />
+              </motion.div>
+            ) : showStructuredOptions ? (
+              <motion.div
+                layout
+                className={cn(
                   isGatekeeperPreview
                     ? "doorcheck-options relative w-full px-0 py-3"
-                    : "relative w-full rounded-2xl border border-white/10 bg-zinc-950/70 px-4 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] backdrop-blur-md"
-                }
+                    : "relative w-full rounded-2xl border border-white/10 bg-zinc-950/70 px-4 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] backdrop-blur-md",
+                  isColorsProject && "colors-chat-options",
+                )}
               >
                 <div
                   className={cn(
                     "flex flex-wrap items-center gap-2",
                     isGatekeeperPreview ? "justify-start gap-2.5" : "justify-center",
+                    isColorsProject && "colors-chat-option-grid",
                   )}
                 >
-                  {interactionUi.options?.map((option) => {
+                  {interactionUi.options?.map((option, optionIndex) => {
                     const active = selectedOptions.includes(option)
+                    const visual = COLORS_VISUALS[optionIndex % COLORS_VISUALS.length]
                     return (
                       <button
                         key={option}
@@ -2007,7 +2229,10 @@ export default function DoorCheck() {
                         aria-pressed={active}
                         onClick={() => {
                           if (interactionUi.inputType === "singleSelect") {
-                            if (isColorsProject) setSelectedOptions([option])
+                            if (isColorsProject) {
+                              setSelectedOptions([option])
+                              return
+                            }
                             void submit(option)
                             return
                           }
@@ -2019,6 +2244,7 @@ export default function DoorCheck() {
                         }}
                         className={cn(
                           "min-h-11 rounded-full border px-4 py-2 text-sm transition-[border-color,background-color,color,scale] active:scale-[0.96]",
+                          isColorsProject && "colors-chat-option-card",
                           isGatekeeperPreview
                             ? active
                               ? "doorcheck-choice doorcheck-choice--active"
@@ -2028,12 +2254,101 @@ export default function DoorCheck() {
                               : "border-white/12 bg-zinc-950/70 text-white/55 hover:border-white/25 hover:text-white/80",
                         )}
                       >
-                        {option}
+                        {isColorsProject ? (
+                          <>
+                            <Image
+                              src={visual.src}
+                              alt=""
+                              fill
+                              unoptimized
+                              sizes="(max-width: 640px) 50vw, 13rem"
+                              style={{
+                                objectFit: "cover",
+                                objectPosition: visual.position,
+                              }}
+                            />
+                            <span
+                              className="colors-chat-option-shade"
+                              aria-hidden="true"
+                            />
+                            <span className="colors-chat-option-label">
+                              {option}
+                            </span>
+                            <span
+                              className="colors-chat-option-check"
+                              aria-hidden="true"
+                            >
+                              <svg viewBox="0 0 20 20" fill="none">
+                                <path
+                                  d="m5 10 3 3 7-7"
+                                  stroke="currentColor"
+                                  strokeWidth="1.5"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </span>
+                          </>
+                        ) : option}
                       </button>
                     )
                   })}
                 </div>
-                {interactionUi.inputType === "multiSelect" ? (
+                {isColorsProject &&
+                interactionUi.inputType === "singleSelect" ? (
+                  <div className="colors-chat-choice-followup">
+                    {questionNeedsRationale ? (
+                      <textarea
+                        value={input}
+                        rows={1}
+                        onChange={handleInputChange}
+                        onKeyDown={(event) => {
+                          if (
+                            event.key === "Enter" &&
+                            !event.shiftKey &&
+                            !event.nativeEvent.isComposing &&
+                            selectedOptions[0] &&
+                            input.trim()
+                          ) {
+                            event.preventDefault()
+                            void submit(`${selectedOptions[0]} — ${input.trim()}`)
+                          }
+                        }}
+                        disabled={interactionBusy}
+                        placeholder="Tell us why…"
+                        aria-label="Explain your choice"
+                        className="colors-chat-choice-input"
+                      />
+                    ) : null}
+                    <button
+                      type="button"
+                      disabled={
+                        interactionBusy ||
+                        !selectedOptions[0] ||
+                        (questionNeedsRationale && !input.trim())
+                      }
+                      onClick={() =>
+                        void submit(
+                          questionNeedsRationale
+                            ? `${selectedOptions[0]} — ${input.trim()}`
+                            : selectedOptions[0],
+                        )
+                      }
+                      className="colors-chat-choice-submit"
+                    >
+                      <span>{questionNeedsRationale ? "Send answer" : "Continue"}</span>
+                      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path
+                          d="m12 19V5m0 0-5 5m5-5 5 5"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                ) : interactionUi.inputType === "multiSelect" ? (
                   <button
                     type="button"
                     disabled={interactionBusy || selectedOptions.length === 0}
@@ -2062,11 +2377,12 @@ export default function DoorCheck() {
                   if (applicantEmail) void submit()
                   else submitApplicantEmail()
                 }}
-                className={
+                className={cn(
                   isGatekeeperPreview
                     ? "doorcheck-input relative flex min-h-14 items-end gap-2 border-b p-0 pb-2"
-                    : "relative flex min-h-14 items-end gap-2 rounded-2xl border border-white/10 bg-zinc-950/70 p-2 pl-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] backdrop-blur-md transition-[border-color,box-shadow,background-color,opacity] duration-200 focus-within:border-white/18 focus-within:bg-zinc-950/85 focus-within:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_0_0_1px_rgba(255,255,255,0.06),0_0_0_3px_rgba(255,255,255,0.05)]"
-                }
+                    : "relative flex min-h-14 items-end gap-2 rounded-2xl border border-white/10 bg-zinc-950/70 p-2 pl-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] backdrop-blur-md transition-[border-color,box-shadow,background-color,opacity] duration-200 focus-within:border-white/18 focus-within:bg-zinc-950/85 focus-within:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_0_0_1px_rgba(255,255,255,0.06),0_0_0_3px_rgba(255,255,255,0.05)]",
+                  isColorsProject && "colors-chat-composer",
+                )}
               >
                 {applicantEmail ? (
                   <textarea
@@ -2083,7 +2399,7 @@ export default function DoorCheck() {
                         ? "Listening…"
                         : loading && !isColorsProject
                           ? `${personaName} is replying…`
-                          : stepHint?.trim() ||
+                          : (isColorsProject ? "Write something…" : stepHint?.trim()) ||
                             (selectedProject?.projectType === "onboarding"
                               ? "Your answer"
                               : "Type your message")
@@ -2249,7 +2565,13 @@ export default function DoorCheck() {
                 {failedAnswer ? (
                   <button
                     type="button"
-                    onClick={() => void submit(failedAnswer, true)}
+                    onClick={() =>
+                      void submit(
+                        failedAnswer,
+                        true,
+                        failedInteractionAnswer ?? undefined,
+                      )
+                    }
                     disabled={loading}
                     className="min-h-11 rounded-lg border border-red-200/20 px-4 py-2 text-sm text-red-100 transition-[border-color,color,transform,opacity] duration-150 ease-out hover:border-red-100/40 hover:text-white active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-100 disabled:cursor-wait disabled:opacity-40"
                   >
@@ -2303,6 +2625,7 @@ export default function DoorCheck() {
             )}
           </motion.div>
         )}
+        </main>
         {isColorsProject ? (
           <p className="colors-doorcheck-credit">Powered by Groucho</p>
         ) : null}
@@ -2564,6 +2887,349 @@ export default function DoorCheck() {
           color: rgb(255 255 255 / 0.7);
           pointer-events: none;
         }
+        .colors-doorcheck-context,
+        .colors-chat-panel-label,
+        .colors-chat-status {
+          font-family: var(--font-geist-pixel), monospace;
+        }
+        .colors-doorcheck-context {
+          margin-right: 0.25rem;
+          font-size: 0.7rem;
+          letter-spacing: 0.02em;
+          text-transform: uppercase;
+          color: rgb(255 255 255 / 0.62);
+        }
+        .colors-doorcheck {
+          font-family: var(--font-geist), sans-serif;
+        }
+        .colors-doorcheck-media__visual img {
+          filter: grayscale(1) saturate(0) contrast(1.14) brightness(0.72);
+        }
+        .colors-doorcheck-media__veil {
+          background:
+            radial-gradient(circle at 50% 46%, rgb(0 0 0 / 0.24), rgb(0 0 0 / 0.78) 76%),
+            linear-gradient(90deg, rgb(0 0 0 / 0.4), rgb(0 0 0 / 0.12) 50%, rgb(0 0 0 / 0.45));
+        }
+        .colors-doorcheck .doorcheck-utility-button {
+          min-width: 2.75rem;
+          justify-content: center;
+          border-color: transparent;
+          background: transparent;
+          padding-inline: 0.65rem;
+          color: rgb(255 255 255 / 0.42);
+          backdrop-filter: none;
+        }
+        .colors-doorcheck .doorcheck-utility-button:hover {
+          border-color: rgb(255 255 255 / 0.12);
+          background: rgb(0 0 0 / 0.25);
+          color: white;
+        }
+        .colors-conversation-shell {
+          position: relative;
+          z-index: 5;
+          display: flex;
+          width: min(28.25rem, calc(100vw - 2rem));
+          height: min(41rem, calc(100dvh - 10rem));
+          min-height: 31rem;
+          flex: none;
+          flex-direction: column;
+          align-self: center;
+          margin: auto;
+          overflow: hidden;
+          border: 1px solid rgb(255 255 255 / 0.24);
+          border-radius: 0.55rem;
+          background: rgb(10 10 10 / 0.76);
+          box-shadow:
+            0 32px 90px rgb(0 0 0 / 0.38),
+            inset 0 1px 0 rgb(255 255 255 / 0.035);
+          backdrop-filter: blur(18px) saturate(0.7);
+        }
+        .colors-chat-panel-label {
+          display: flex;
+          min-height: 2.75rem;
+          flex: 0 0 auto;
+          align-items: center;
+          padding: 0 1.6rem;
+          font-size: 0.62rem;
+          letter-spacing: 0.025em;
+          text-transform: uppercase;
+          color: rgb(255 255 255 / 0.43);
+        }
+        .colors-chat-scroller {
+          flex: 1 1 auto;
+        }
+        .colors-chat-viewport {
+          padding: 0 1.6rem 0.5rem;
+          scroll-padding-block: 1rem;
+        }
+        .colors-chat-content {
+          width: 100%;
+          min-height: 100%;
+          margin: 0;
+          padding: 0.25rem 0 0.75rem;
+          gap: 1.35rem;
+          justify-content: flex-start;
+        }
+        .colors-chat-turn {
+          flex: 0 0 auto;
+        }
+        .colors-chat-agent-message {
+          width: 100%;
+          color: rgb(255 255 255 / 0.91);
+        }
+        .colors-chat-user-message {
+          width: min(18rem, 82%);
+          border-radius: 0.55rem;
+          background: rgb(255 255 255 / 0.105);
+          padding: 0.8rem 0.9rem;
+          color: rgb(255 255 255 / 0.9);
+          box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.035);
+        }
+        .colors-chat-message-copy {
+          margin: 0;
+          white-space: pre-wrap;
+          overflow-wrap: anywhere;
+          font-size: 0.9rem;
+          line-height: 1.42;
+          text-wrap: pretty;
+        }
+        .colors-chat-intro-media {
+          position: relative;
+          width: 100%;
+          aspect-ratio: 1.62;
+          margin-bottom: 1.1rem;
+          overflow: hidden;
+          border-radius: 0.55rem;
+          outline: 1px solid oklch(1 0 0 / 0.1);
+          outline-offset: -1px;
+        }
+        .colors-chat-intro-copy {
+          display: grid;
+          gap: 1rem;
+          margin-bottom: 1.4rem;
+          color: rgb(255 255 255 / 0.78);
+        }
+        .colors-chat-intro-copy p {
+          margin: 0;
+          font-size: 0.85rem;
+          line-height: 1.46;
+          text-wrap: pretty;
+        }
+        .colors-chat-opening-question {
+          font-weight: 520;
+          color: rgb(255 255 255 / 0.96);
+        }
+        .colors-chat-status-row {
+          min-height: 2rem;
+          flex: 0 0 auto;
+        }
+        .colors-chat-status {
+          display: flex;
+          align-items: center;
+          gap: 0.6rem;
+          font-size: 0.66rem;
+          line-height: 1.35;
+          color: rgb(255 255 255 / 0.56);
+        }
+        .colors-chat-status-mark {
+          width: 0.34rem;
+          height: 0.34rem;
+          flex: 0 0 auto;
+          border-radius: 999px;
+          background: currentColor;
+          animation: doorcheck-reading 1.1s ease-in-out infinite;
+        }
+        .colors-chat-composer-shell,
+        .colors-chat-conclusion {
+          width: auto;
+          height: auto;
+          max-height: 46%;
+          flex: 0 0 auto;
+          margin: 0;
+          overflow-y: auto;
+          padding: 0.55rem 1.6rem 1.25rem;
+        }
+        .colors-chat-composer-shell::before {
+          content: "";
+          position: sticky;
+          z-index: 1;
+          top: -0.55rem;
+          display: block;
+          height: 1px;
+          margin-bottom: 0.8rem;
+          background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.09) 12%, rgb(255 255 255 / 0.09) 88%, transparent);
+        }
+        .colors-chat-composer {
+          min-height: 6.25rem;
+          align-items: flex-end;
+          border: 1px solid rgb(255 255 255 / 0.08);
+          border-radius: 0.55rem;
+          background: rgb(255 255 255 / 0.07);
+          padding: 0.65rem 0.65rem 0.6rem 0.95rem;
+          transition-property: border-color, background-color, box-shadow;
+          transition-duration: 160ms;
+          transition-timing-function: ease-out;
+        }
+        .colors-chat-composer:focus-within {
+          border-color: rgb(255 255 255 / 0.2);
+          background: rgb(255 255 255 / 0.09);
+          box-shadow: 0 0 0 3px rgb(255 255 255 / 0.045);
+        }
+        .colors-doorcheck .colors-chat-composer textarea,
+        .colors-doorcheck .colors-chat-composer input {
+          min-height: 4.1rem;
+          padding-top: 0.35rem;
+          font-size: 0.86rem;
+          line-height: 1.45;
+        }
+        .colors-chat-composer .doorcheck-dictation,
+        .colors-chat-composer .doorcheck-send {
+          width: 2.75rem;
+          height: 2.75rem;
+        }
+        .colors-chat-options {
+          padding: 0;
+          animation: none;
+        }
+        .colors-chat-option-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.5rem;
+        }
+        .colors-doorcheck .colors-chat-option-card {
+          position: relative;
+          display: block;
+          min-height: 7rem;
+          overflow: hidden;
+          border: 1px solid transparent;
+          border-radius: 0.55rem;
+          background: #181818;
+          padding: 0;
+          color: white;
+          box-shadow: none;
+          isolation: isolate;
+          text-align: left;
+          transition-property: border-color, opacity, scale;
+          transition-duration: 150ms;
+          transition-timing-function: ease-out;
+        }
+        .colors-doorcheck .colors-chat-option-card:hover {
+          border-color: rgb(255 255 255 / 0.55);
+          background: #181818;
+          color: white;
+        }
+        .colors-doorcheck .colors-chat-option-card:focus-visible {
+          outline: 2px solid white;
+          outline-offset: 2px;
+        }
+        .colors-doorcheck .colors-chat-option-card[aria-pressed="true"] {
+          border-color: white;
+          box-shadow: inset 0 0 0 1px white;
+        }
+        .colors-chat-option-shade {
+          position: absolute;
+          inset: 0;
+          z-index: 1;
+          background: linear-gradient(180deg, transparent 35%, rgb(0 0 0 / 0.82));
+        }
+        .colors-chat-option-label {
+          position: absolute;
+          z-index: 2;
+          right: 0.6rem;
+          bottom: 0.55rem;
+          left: 0.6rem;
+          overflow: hidden;
+          font-size: 0.65rem;
+          line-height: 1.25;
+          letter-spacing: 0.035em;
+          text-overflow: ellipsis;
+          text-transform: uppercase;
+          white-space: nowrap;
+        }
+        .colors-chat-option-check {
+          position: absolute;
+          z-index: 2;
+          top: 0.55rem;
+          right: 0.55rem;
+          display: grid;
+          width: 1.5rem;
+          height: 1.5rem;
+          place-items: center;
+          border: 1px solid rgb(255 255 255 / 0.42);
+          border-radius: 999px;
+          background: rgb(0 0 0 / 0.36);
+          opacity: 0;
+          scale: 0.25;
+          filter: blur(4px);
+          transition-property: opacity, scale, filter;
+          transition-duration: 180ms;
+          transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+        }
+        .colors-chat-option-check svg {
+          width: 0.95rem;
+          height: 0.95rem;
+        }
+        .colors-chat-option-card[aria-pressed="true"] .colors-chat-option-check {
+          opacity: 1;
+          scale: 1;
+          filter: blur(0);
+        }
+        .colors-chat-choice-followup {
+          display: flex;
+          align-items: flex-end;
+          gap: 0.55rem;
+          margin-top: 0.75rem;
+          border: 1px solid rgb(255 255 255 / 0.09);
+          border-radius: 0.55rem;
+          background: rgb(255 255 255 / 0.07);
+          padding: 0.55rem;
+        }
+        .colors-chat-choice-input {
+          min-height: 2.75rem;
+          max-height: 6rem;
+          flex: 1;
+          resize: vertical;
+          border: 0;
+          background: transparent;
+          padding: 0.6rem;
+          color: white;
+          font: inherit;
+          font-size: 0.82rem;
+          line-height: 1.4;
+          outline: 0;
+        }
+        .colors-chat-choice-input::placeholder {
+          color: rgb(255 255 255 / 0.36);
+        }
+        .colors-chat-choice-submit {
+          display: inline-flex;
+          min-height: 2.75rem;
+          flex: 0 0 auto;
+          align-items: center;
+          gap: 0.45rem;
+          border: 0;
+          border-radius: 0.45rem;
+          background: white;
+          padding: 0 0.8rem;
+          color: #111;
+          font: inherit;
+          font-size: 0.7rem;
+          cursor: pointer;
+          transition-property: opacity, scale;
+          transition-duration: 150ms;
+          transition-timing-function: ease-out;
+        }
+        .colors-chat-choice-submit svg {
+          width: 0.9rem;
+          height: 0.9rem;
+        }
+        .colors-chat-choice-submit:active {
+          scale: 0.96;
+        }
+        .colors-chat-choice-submit:disabled {
+          cursor: not-allowed;
+          opacity: 0.28;
+        }
         .doorcheck-media,
         .doorcheck-colour-field {
           position: absolute;
@@ -2809,6 +3475,15 @@ export default function DoorCheck() {
             margin-right: auto;
             margin-left: auto;
           }
+          .colors-conversation-shell {
+            width: min(28.25rem, calc(100vw - 2rem));
+          }
+          .colors-chat-content,
+          .colors-chat-composer-shell,
+          .colors-chat-conclusion {
+            width: 100%;
+            margin: 0;
+          }
         }
         @media (max-width: 639px) {
           .colors-settings-panel {
@@ -2847,6 +3522,46 @@ export default function DoorCheck() {
           }
           .colors-doorcheck-wordmark { font-size: 0.76rem; }
           .colors-doorcheck-credit { right: 1rem; bottom: 0.65rem; }
+          .colors-doorcheck-context {
+            display: none;
+          }
+          .colors-conversation-shell {
+            width: calc(100vw - 1rem);
+            height: calc(100dvh - 7.25rem);
+            min-height: 0;
+            margin-top: 4.5rem;
+            margin-bottom: 2.25rem;
+            border-radius: 0.65rem;
+          }
+          .colors-chat-panel-label {
+            min-height: 2.5rem;
+            padding-inline: 1rem;
+          }
+          .colors-chat-viewport {
+            padding-inline: 1rem;
+          }
+          .colors-chat-content {
+            width: 100%;
+            padding-top: 0.1rem;
+          }
+          .colors-chat-composer-shell,
+          .colors-chat-conclusion {
+            width: 100%;
+            height: auto;
+            margin: 0;
+            padding: 0.45rem 1rem max(0.8rem, env(safe-area-inset-bottom));
+          }
+          .colors-chat-option-card {
+            min-height: 6.25rem;
+          }
+          .colors-chat-choice-submit span {
+            display: none;
+          }
+          .colors-chat-choice-submit {
+            width: 2.75rem;
+            padding: 0;
+            justify-content: center;
+          }
         }
         @media (prefers-reduced-motion: reduce) {
           .doorcheck-media__shape,
@@ -2855,6 +3570,7 @@ export default function DoorCheck() {
           .doorcheck-dictation-dot,
           .doorcheck-options { animation: none; }
           .colors-doorcheck-media__visual { transition: none; }
+          .colors-chat-status-mark { animation: none; }
         }
       `}</style>
     </MotionConfig>

@@ -46,7 +46,7 @@ They:
 - Let the persona decide what to ask.
 - End with `passed`, `redirected`, or `rejected`.
 - Return a private accumulated assessment in the same structured response as each conversational turn.
-- Can return a `secret` when passed for downstream access capture.
+- Can return a `secret` when the client policy records an automatic approval for downstream access capture.
 
 ### Onboarding Projects
 
@@ -73,8 +73,12 @@ These settings are used by both project types:
   "environment": "test",
   "session_mode": "dry-run",
   "persona_id": "00000000-0000-0000-0000-000000000000",
-  "pass_threshold": 0.65,
-  "reject_threshold": 0.25,
+  "decision_policy": {
+    "automatic_acceptance_enabled": false,
+    "automatic_decline_enabled": false,
+    "acceptance_threshold": 0.8,
+    "review_threshold": 0.55
+  },
   "profile_extract_on": ["passed", "redirected", "rejected"]
 }
 ```
@@ -86,8 +90,7 @@ Fields:
 - `environment` - `test` or `live`.
 - `session_mode` - `dry-run` or `live`.
 - `persona_id` - Preferred persona for the project.
-- `pass_threshold` - Used only to normalize legacy plain-text pass tokens.
-- `reject_threshold` - Used only to normalize legacy plain-text reject tokens.
+- `decision_policy` - Client-owned suitability bands and independent automatic acceptance/decline switches. Both automatic actions default to `false`. See [Client-owned decision policy](./client-decision-policy.md).
 - `profile_extract_on` - Optional profile extraction control. Gatekeeper projects default to all terminal statuses. Onboarding projects default to no extraction so static intake does not call an LLM unless this is explicitly set. Use `["passed"]` to extract only on passes, or `false` / `null` to disable extraction.
 
 ## Gatekeeper Configuration
@@ -113,15 +116,25 @@ Gatekeeper projects can configure the application experience:
     "preferred_input_types": ["text", "singleSelect"],
     "max_turns": 4
   },
-  "pass_threshold": 0.65,
-  "reject_threshold": 0.25
+  "decision_policy": {
+    "automatic_acceptance_enabled": false,
+    "automatic_decline_enabled": false,
+    "acceptance_threshold": 0.8,
+    "review_threshold": 0.55
+  }
 }
 ```
+
+The final overall suitability score is stored independently from the decision. At or above `acceptance_threshold`, the applicant is recommended for acceptance; from `review_threshold` up to the acceptance threshold they need review; below `review_threshold` they are below threshold. A band becomes an automatic approval or decline only when its separate switch is enabled.
+
+`review_threshold` must be lower than `acceptance_threshold`. The middle band never
+performs an automatic action. The first recorded human or policy decision is
+immutable, and a policy retry cannot overwrite it.
 
 `application_experience` fields:
 
 - `opening_message` - First assistant message before the applicant replies. Defaults to a first application question when missing.
-- `closing_message` - Final applicant-facing application message. Defaults to a neutral thank-you/follow-up message. Groucho still records the internal `passed`, `redirected`, or `rejected` outcome for webhooks and admin review, but the applicant should not see a definitive judgment. Project-specific reviewer labels, such as COLORS' `recommend`, `human_review`, and `decline`, must also remain private. For COLORS, these labels are advisory report fields only; the final community decision remains human-owned by the client.
+- `closing_message` - Final applicant-facing application message. Defaults to a neutral thank-you/follow-up message. Groucho still records the internal `passed`, `redirected`, or `rejected` outcome for webhooks and admin review, but the applicant should not see a definitive judgment. Project-specific reviewer labels, such as COLORS' `recommend`, `human_review`, and `decline`, must also remain private. These labels stay advisory; the client-owned `decision_policy` determines whether a score is automatically accepted, sent to review, or—when separately enabled—automatically declined.
 - `opening_interaction` - Optional first-turn input control (`text`, `singleSelect`, or `multiSelect`). Clients can override per session via `startSession({ openingInteraction })`.
 - `required_signals` - Private evidence intents Groucho may need to understand. Existing question-shaped strings are illustrative examples, not an ordered script or required wording. Groucho stores evidence against stable derived keys and sends compact signal state rather than the full transcript.
 - `preferred_input_types` - Hints for when to use open text vs structured inputs.
@@ -302,21 +315,26 @@ Rules:
     "preferred_input_types": ["text", "singleSelect"],
     "max_turns": 9
   },
-  "pass_threshold": 0.65,
-  "reject_threshold": 0.25,
+  "decision_policy": {
+    "automatic_acceptance_enabled": false,
+    "automatic_decline_enabled": false,
+    "acceptance_threshold": 0.8,
+    "review_threshold": 0.55
+  },
   "profile_extract_on": ["passed", "redirected", "rejected"]
 }
 ```
 
-Use this when the user is applying for access and Groucho should make a decision.
+Use this when the user is applying for access and Groucho should assess suitability
+under a client-owned decision policy.
 
 For the current COLORS application, the reviewer-facing product recommendation maps to Groucho's raw terminal outcome like this:
 
 | COLORS recommendation | Groucho terminal outcome | Review meaning |
 | --- | --- | --- |
-| `recommend` | `passed` | Evidence supports approval, but the client still makes the final decision. |
+| `recommend` | `passed` | Evidence supports approval; the client policy or a reviewer still makes the final decision. |
 | `human_review` | `redirected` | Evidence is incomplete, contradictory, borderline, or uncertain. |
-| `decline` | `rejected` | Evidence suggests poor fit, but the client still makes the final decision. |
+| `decline` | `rejected` | Evidence suggests poor fit; the client policy or a reviewer still makes the final decision. |
 
 The COLORS flow may finish early once it has enough evidence. It may ask no more than nine applicant-facing questions total, including follow-ups, and no more than two follow-ups for any one core question. Each completed application should produce a reviewer-facing report or bio with a confidence score. These follow-up and reviewer-report rules are product rules; add dedicated settings before relying on platform-level enforcement.
 

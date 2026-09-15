@@ -4,6 +4,9 @@
 > found while the flow was being developed. For the reconciled end-of-day status,
 > including superseded P0 findings, see
 > [Groucho state of play — 20 August 2026](./groucho-state-of-play-2026-08-20.md).
+> Its legacy threshold and success-secret observations predate the current
+> client-owned decision policy; see
+> [client-decision-policy.md](./client-decision-policy.md) for live semantics.
 
 ## Purpose
 

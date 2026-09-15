@@ -3,6 +3,11 @@
 import Link from "next/link"
 import { Suspense, useCallback, useEffect, useState } from "react"
 import { useParams, useSearchParams } from "next/navigation"
+import { DecisionPolicyFields } from "@/components/admin/DecisionPolicyFields"
+import {
+  parseClientDecisionPolicy,
+  serializeClientDecisionPolicy,
+} from "@/lib/decision-policy"
 
 type Project = {
   id: string
@@ -58,6 +63,10 @@ type SessionRow = {
   persona_id?: string | null
   applicant_email?: string | null
   applicant_name?: string | null
+  suitability_score?: number | null
+  suitability_band?: "recommended_acceptance" | "review" | "below_threshold" | null
+  review_status?: "not_ready" | "pending" | "approved" | "declined"
+  decision_source?: "human" | "policy" | null
 }
 
 type InvitationRow = {
@@ -100,6 +109,15 @@ type SessionProfileListRow = {
   profile: ProfilePayload
   personaSchema: unknown
   verdictCreatedAt: string
+}
+
+type SettingsAuditRow = {
+  id: string
+  actor_kind: "platform" | "member" | "system"
+  actor_email: string | null
+  source: string
+  changed_keys: string[]
+  created_at: string
 }
 
 function isProfilePayload(raw: unknown): raw is ProfilePayload {
@@ -186,12 +204,14 @@ function Chip({ children }: { children: React.ReactNode }) {
 
 function ProfilePanel({
   profile,
+  session,
   personaSchema,
   canReveal,
   revealedKeys,
   onToggleReveal,
 }: {
   profile: ProfilePayload
+  session?: SessionRow | null
   personaSchema: unknown
   canReveal: boolean
   revealedKeys: Set<string>
@@ -208,22 +228,43 @@ function ProfilePanel({
         border: "1px solid rgba(255,255,255,0.08)",
       }}
     >
-      <div style={{ ...label, marginBottom: "0.75rem" }}>
-        PROFILE (v{profile.schema_version}){" "}
-        <span
-          style={{
-            marginLeft: "0.5rem",
-            opacity: 0.5,
-            fontFamily: "monospace",
-            textTransform: "none",
-            letterSpacing: 0,
-          }}
-        >
-          {profile.extraction.status}
-          {profile.extraction.status === "failed" && profile.extraction.reason
-            ? ` · ${profile.extraction.reason}`
-            : ""}
-        </span>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "0.75rem",
+          flexWrap: "wrap",
+          marginBottom: "0.75rem",
+        }}
+      >
+        <div style={{ ...label, marginBottom: 0 }}>
+          APPLICANT PROFILE (v{profile.schema_version}){" "}
+          <span
+            style={{
+              marginLeft: "0.5rem",
+              opacity: 0.5,
+              fontFamily: "monospace",
+              textTransform: "none",
+              letterSpacing: 0,
+            }}
+          >
+            {profile.extraction.status}
+            {profile.extraction.status === "failed" && profile.extraction.reason
+              ? ` · ${profile.extraction.reason}`
+              : ""}
+          </span>
+        </div>
+        {session?.suitability_score != null && (
+          <div aria-label="Suitability assessment">
+            <Chip>suitability: {Math.round(session.suitability_score * 100)}%</Chip>
+            {session.suitability_band && (
+              <Chip>{session.suitability_band.replaceAll("_", " ")}</Chip>
+            )}
+            {session.review_status === "approved" && <Chip>accepted</Chip>}
+            {session.review_status === "declined" && <Chip>declined</Chip>}
+          </div>
+        )}
       </div>
 
       {core ? (
@@ -399,12 +440,14 @@ function OrganisationDetailPageInner() {
   const [profilesExpandedSessionId, setProfilesExpandedSessionId] = useState<string | null>(null)
   const [profilesRevealedKeys, setProfilesRevealedKeys] = useState<Set<string>>(new Set())
   const [projSettingsSessionMode, setProjSettingsSessionMode] = useState<"live" | "dry-run">("live")
-  const [projSettingsPassThreshold, setProjSettingsPassThreshold] = useState(0.65)
-  const [projSettingsRejectThreshold, setProjSettingsRejectThreshold] = useState(0.25)
+  const [projDecisionPolicy, setProjDecisionPolicy] = useState(() =>
+    parseClientDecisionPolicy({}),
+  )
   const [projSettingsExtract, setProjSettingsExtract] = useState<
     "default" | "off" | "passed_only"
   >("default")
   const [savingProjectSettings, setSavingProjectSettings] = useState(false)
+  const [settingsAudit, setSettingsAudit] = useState<SettingsAuditRow[]>([])
   const [quickAddOpen, setQuickAddOpen] = useState(false)
   /** `platform` = allowlisted operator; otherwise org membership role. */
   const [accessRole, setAccessRole] = useState<"platform" | "owner" | "admin" | "member" | null>(
@@ -578,6 +621,22 @@ function OrganisationDetailPageInner() {
     setLoadingSessionProfiles(false)
   }, [orgId, selectedProjectId])
 
+  const loadSettingsAudit = useCallback(async () => {
+    if (!selectedProjectId || !canOrgAdmin) {
+      setSettingsAudit([])
+      return
+    }
+    const res = await fetch(
+      `/api/admin/organisations/${orgId}/projects/${selectedProjectId}/settings-audit`,
+    )
+    if (!res.ok) {
+      setSettingsAudit([])
+      return
+    }
+    const body: { changes?: SettingsAuditRow[] } = await res.json()
+    setSettingsAudit(body.changes ?? [])
+  }, [canOrgAdmin, orgId, selectedProjectId])
+
   useEffect(() => {
     setLoading(true)
     void loadAccess()
@@ -591,7 +650,14 @@ function OrganisationDetailPageInner() {
     void loadWebhooks()
     void loadSessions()
     void loadSessionProfiles()
-  }, [loadKeys, loadWebhooks, loadSessions, loadSessionProfiles])
+    void loadSettingsAudit()
+  }, [
+    loadKeys,
+    loadWebhooks,
+    loadSessions,
+    loadSessionProfiles,
+    loadSettingsAudit,
+  ])
 
   useEffect(() => {
     setSelectedSessionId(null)
@@ -610,14 +676,7 @@ function OrganisationDetailPageInner() {
     if (!p) return
     const s = (p.settings ?? {}) as Record<string, unknown>
     setProjSettingsSessionMode(s.session_mode === "dry-run" ? "dry-run" : "live")
-    const pt = s.pass_threshold
-    const rt = s.reject_threshold
-    setProjSettingsPassThreshold(
-      typeof pt === "number" && Number.isFinite(pt) ? Math.min(1, Math.max(0, pt)) : 0.65,
-    )
-    setProjSettingsRejectThreshold(
-      typeof rt === "number" && Number.isFinite(rt) ? Math.min(1, Math.max(0, rt)) : 0.25,
-    )
+    setProjDecisionPolicy(parseClientDecisionPolicy(s))
     const pe = s.profile_extract_on
     if (pe === false || pe === null) setProjSettingsExtract("off")
     else if (Array.isArray(pe) && pe.length === 1 && pe[0] === "passed")
@@ -784,11 +843,12 @@ function OrganisationDetailPageInner() {
       ...((p.settings ?? {}) as Record<string, unknown>),
     }
     merged.session_mode = projSettingsSessionMode
-    merged.pass_threshold = projSettingsPassThreshold
-    merged.reject_threshold = projSettingsRejectThreshold
+    merged.decision_policy = serializeClientDecisionPolicy(projDecisionPolicy)
+    delete merged.pass_threshold
+    delete merged.reject_threshold
     if (projSettingsExtract === "off") merged.profile_extract_on = false
     else if (projSettingsExtract === "passed_only") merged.profile_extract_on = ["passed"]
-    else delete merged.profile_extract_on
+    else merged.profile_extract_on = ["passed", "redirected", "rejected"]
 
     const res = await fetch(
       `/api/admin/organisations/${orgId}/projects/${selectedProjectId}`,
@@ -805,7 +865,7 @@ function OrganisationDetailPageInner() {
       return
     }
     setMsg("Project settings saved.")
-    await loadOrg()
+    await Promise.all([loadOrg(), loadSettingsAudit()])
   }
 
   async function deleteProject(p: Project) {
@@ -1413,12 +1473,16 @@ function OrganisationDetailPageInner() {
                 {String((selected.settings as Record<string, unknown> | undefined)?.session_mode ?? "live")}
               </li>
               <li>
-                pass_threshold:{" "}
-                {String((selected.settings as Record<string, unknown> | undefined)?.pass_threshold ?? "—")}
+                acceptance: {Math.round(parseClientDecisionPolicy(selected.settings).acceptanceThreshold * 100)}%
               </li>
               <li>
-                reject_threshold:{" "}
-                {String((selected.settings as Record<string, unknown> | undefined)?.reject_threshold ?? "—")}
+                review: {Math.round(parseClientDecisionPolicy(selected.settings).reviewThreshold * 100)}%
+              </li>
+              <li>
+                automatic acceptance: {parseClientDecisionPolicy(selected.settings).automaticAcceptanceEnabled ? "on" : "off"}
+              </li>
+              <li>
+                automatic decline: {parseClientDecisionPolicy(selected.settings).automaticDeclineEnabled ? "on" : "off"}
               </li>
               <li>
                 profile_extract_on:{" "}
@@ -1448,41 +1512,12 @@ function OrganisationDetailPageInner() {
                   Dry-run — no verdict / extraction (testing)
                 </label>
               </div>
-              <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", marginBottom: "1rem" }}>
-                <div>
-                  <label style={label}>PASS THRESHOLD (0–1)</label>
-                  <input
-                    style={{ ...input, maxWidth: "8rem" }}
-                    type="number"
-                    min={0}
-                    max={1}
-                    step={0.05}
-                    value={projSettingsPassThreshold}
-                    onChange={(e) => {
-                      const v = Number(e.target.value)
-                      setProjSettingsPassThreshold(
-                        Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0.65,
-                      )
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={label}>REJECT THRESHOLD (0–1)</label>
-                  <input
-                    style={{ ...input, maxWidth: "8rem" }}
-                    type="number"
-                    min={0}
-                    max={1}
-                    step={0.05}
-                    value={projSettingsRejectThreshold}
-                    onChange={(e) => {
-                      const v = Number(e.target.value)
-                      setProjSettingsRejectThreshold(
-                        Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0.25,
-                      )
-                    }}
-                  />
-                </div>
+              <div style={{ marginBottom: "1rem" }}>
+                <span style={{ ...label, display: "block" }}>CLIENT DECISION POLICY</span>
+                <DecisionPolicyFields
+                  value={projDecisionPolicy}
+                  onChange={setProjDecisionPolicy}
+                />
               </div>
               <div style={{ marginBottom: "1rem" }}>
                 <span style={{ ...label, display: "block" }}>PROFILE EXTRACTION</span>
@@ -1493,7 +1528,7 @@ function OrganisationDetailPageInner() {
                     checked={projSettingsExtract === "default"}
                     onChange={() => setProjSettingsExtract("default")}
                   />
-                  Default — passed, redirected, rejected
+                  All completed sessions — passed, redirected, rejected
                 </label>
                 <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.78rem", opacity: 0.75, marginBottom: "0.35rem" }}>
                   <input
@@ -1514,10 +1549,57 @@ function OrganisationDetailPageInner() {
                   Off
                 </label>
               </div>
-              <button type="submit" style={btn(true)} disabled={savingProjectSettings}>
+              <button
+                type="submit"
+                style={{
+                  ...btn(true),
+                  minHeight: "2.75rem",
+                  opacity:
+                    savingProjectSettings ||
+                    projDecisionPolicy.reviewThreshold >=
+                      projDecisionPolicy.acceptanceThreshold
+                      ? 0.4
+                      : 1,
+                }}
+                disabled={
+                  savingProjectSettings ||
+                  projDecisionPolicy.reviewThreshold >=
+                    projDecisionPolicy.acceptanceThreshold
+                }
+              >
                 {savingProjectSettings ? "Saving…" : "Save project settings"}
               </button>
             </form>
+          )}
+          {canOrgAdmin && settingsAudit.length > 0 && (
+            <details style={{ marginTop: "1rem" }}>
+              <summary style={{ cursor: "pointer", fontSize: "0.72rem", opacity: 0.55 }}>
+                Settings history ({settingsAudit.length} recent changes)
+              </summary>
+              <ul style={{ listStyle: "none", padding: "0.5rem 0 0", margin: 0 }}>
+                {settingsAudit.map((change) => (
+                  <li
+                    key={change.id}
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: "0.5rem",
+                      padding: "0.35rem 0",
+                      borderBottom: "1px solid rgba(255,255,255,0.05)",
+                      fontSize: "0.7rem",
+                    }}
+                  >
+                    <span style={{ opacity: 0.7 }}>{change.changed_keys.join(", ")}</span>
+                    <span style={{ opacity: 0.35 }}>
+                      by {change.actor_email ?? change.actor_kind}
+                    </span>
+                    <span style={{ opacity: 0.3, marginLeft: "auto" }}>
+                      {new Date(change.created_at).toLocaleString()}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </details>
           )}
         </section>
       )}
@@ -1765,6 +1847,45 @@ function OrganisationDetailPageInner() {
                 >
                   <span style={{ opacity: 0.45 }}>{s.session_id.slice(0, 12)}…</span>
                   <span style={{ opacity: 0.35 }}>{s.status}</span>
+                  <span
+                    style={{
+                      opacity: s.suitability_score == null ? 0.25 : 0.75,
+                      fontVariantNumeric: "tabular-nums",
+                      minWidth: "3.25rem",
+                    }}
+                  >
+                    {s.suitability_score == null
+                      ? "—"
+                      : `${Math.round(s.suitability_score * 100)}%`}
+                  </span>
+                  <span style={{ opacity: 0.42 }}>
+                    {s.review_status === "approved"
+                      ? s.decision_source === "policy"
+                        ? "auto accepted"
+                        : "accepted"
+                      : s.review_status === "declined"
+                        ? s.decision_source === "policy"
+                          ? "auto declined"
+                          : "declined"
+                        : s.suitability_band === "recommended_acceptance"
+                          ? "recommended"
+                          : s.suitability_band === "below_threshold"
+                            ? "below threshold"
+                            : s.review_status === "pending"
+                              ? "needs review"
+                              : "in progress"}
+                  </span>
+                  <span
+                    style={{
+                      opacity: sessionProfileRows.some((row) => row.session.id === s.id)
+                        ? 0.65
+                        : 0.25,
+                    }}
+                  >
+                    {sessionProfileRows.some((row) => row.session.id === s.id)
+                      ? "profile ready"
+                      : "profile missing"}
+                  </span>
                   <span style={{ opacity: 0.35 }}>
                     {s.applicant_name || s.applicant_email || "anonymous"}
                   </span>
@@ -1898,6 +2019,7 @@ function OrganisationDetailPageInner() {
               {profile && (
                 <ProfilePanel
                   profile={profile}
+                  session={selectedSession}
                   personaSchema={personaSchema}
                   canReveal={canOrgAdmin}
                   revealedKeys={revealedCustomKeys}
@@ -2029,6 +2151,7 @@ function OrganisationDetailPageInner() {
                       <div style={{ marginTop: "0.75rem" }}>
                         <ProfilePanel
                           profile={row.profile}
+                          session={row.session}
                           personaSchema={row.personaSchema}
                           canReveal={canOrgAdmin}
                           revealedKeys={profilesRevealedKeys}

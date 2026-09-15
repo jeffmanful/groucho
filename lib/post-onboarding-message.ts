@@ -34,6 +34,7 @@ import {
   verbatimNextMessage,
 } from "@/lib/onboarding-turn-intelligence"
 import { applyNaturalLanguageStyle } from "@/lib/natural-language-style"
+import { validateMediaChoiceAnswer } from "@/lib/gatekeeper-interaction-spec"
 
 const NEUTRAL_SCORES = {
   specificity: 0.5,
@@ -256,7 +257,26 @@ export async function postOnboardingMessage(
   let onboardingFlags: { followup?: boolean; boundary?: boolean } | undefined
   let stepHint: string | undefined
 
-  const userTrimmed = message.trim()
+  let userTrimmed = message.trim()
+  if (input.interactionAnswer) {
+    const activeStep = currentStepId
+      ? steps[stepIndex(steps, currentStepId)]
+      : null
+    const mediaChoice = activeStep?.interaction?.mediaChoice
+    if (!mediaChoice) {
+      return traceJson(
+        input,
+        { error: "The active step does not accept a media choice answer" },
+        { status: 400 },
+      )
+    }
+    const validated = validateMediaChoiceAnswer(input.interactionAnswer, mediaChoice)
+    if (!validated.ok) {
+      return traceJson(input, { error: validated.error }, { status: 400 })
+    }
+    userTrimmed = validated.message
+    input.interactionAnswer = validated.answer
+  }
 
   if (currentStepId === null) {
     const { error: userMsgError } = await supabase.from("messages").insert({
@@ -265,7 +285,9 @@ export async function postOnboardingMessage(
       project_id: projectId,
       role: "user",
       content: userTrimmed,
-      metadata: {},
+      metadata: input.interactionAnswer
+        ? { interaction_answer: input.interactionAnswer }
+        : {},
     })
     if (userMsgError) {
       return traceJson(input, { error: "Database error" }, { status: 500 })
@@ -292,6 +314,9 @@ export async function postOnboardingMessage(
       content: userTrimmed,
       metadata: {
         onboarding_step_id: currentStepId,
+        ...(input.interactionAnswer
+          ? { interaction_answer: input.interactionAnswer }
+          : {}),
         ...(inFollowup ? { onboarding_followup: true } : {}),
       },
     })

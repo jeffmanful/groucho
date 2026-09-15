@@ -12,6 +12,7 @@ type SessionSummary = {
   created_at: string
   updated_at: string
   persona_id: string | null
+  suitability_score: number | null
 }
 
 function hasExtractedProfile(payload: unknown): boolean {
@@ -32,6 +33,8 @@ function normaliseEmbeddedSession(raw: unknown): SessionSummary | null {
     created_at: typeof s.created_at === "string" ? s.created_at : "",
     updated_at: typeof s.updated_at === "string" ? s.updated_at : "",
     persona_id: typeof s.persona_id === "string" ? s.persona_id : null,
+    suitability_score:
+      typeof s.suitability_score === "number" ? s.suitability_score : null,
   }
 }
 
@@ -62,7 +65,7 @@ export async function GET(
   const { data: sessionRows, error: sessionsError } = await supabase
     .from("sessions")
     .select(
-      "id, session_id, status, created_at, updated_at, persona_id, profile, profile_extracted_at",
+      "id, session_id, status, created_at, updated_at, persona_id, profile, profile_extracted_at, suitability_score",
     )
     .eq("project_id", projectId)
     .eq("organisation_id", orgId)
@@ -94,6 +97,7 @@ export async function GET(
         created_at: row.created_at,
         updated_at: row.updated_at,
         persona_id: row.persona_id,
+        suitability_score: row.suitability_score ?? null,
       },
       profile: row.profile,
       verdictCreatedAt: row.profile_extracted_at ?? row.updated_at,
@@ -114,7 +118,8 @@ export async function GET(
         status,
         created_at,
         updated_at,
-        persona_id
+        persona_id,
+        suitability_score
       )
     `,
     )

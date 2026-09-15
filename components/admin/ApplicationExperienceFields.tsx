@@ -18,6 +18,7 @@ const INPUT_TYPE_OPTIONS: Array<{
   { value: "text", label: "Text" },
   { value: "singleSelect", label: "Single select" },
   { value: "multiSelect", label: "Multi select" },
+  { value: "mediaChoice", label: "Media choice with rationale" },
 ]
 
 const PREFERRED_INPUT_OPTIONS: Array<{
@@ -27,6 +28,7 @@ const PREFERRED_INPUT_OPTIONS: Array<{
   { value: "text", label: "Text" },
   { value: "singleSelect", label: "Single select" },
   { value: "multiSelect", label: "Multi select" },
+  { value: "mediaChoice", label: "Media choice" },
 ]
 
 export type ApplicationExperienceFieldValues = {
@@ -70,7 +72,9 @@ export function ApplicationExperienceFields({
   inputStyle,
 }: ApplicationExperienceFieldsProps) {
   const showOpeningOptions =
-    openingInputType === "singleSelect" || openingInputType === "multiSelect"
+    openingInputType === "singleSelect" ||
+    openingInputType === "multiSelect" ||
+    openingInputType === "mediaChoice"
 
   return (
     <>
@@ -133,14 +137,33 @@ export function ApplicationExperienceFields({
 
       {showOpeningOptions && (
         <div style={{ marginBottom: "1rem" }}>
-          <label style={labelStyle}>Opening options (one per line)</label>
+          <label style={labelStyle}>
+            {openingInputType === "mediaChoice"
+              ? "Media choice configuration (JSON)"
+              : "Opening options (one per line)"}
+          </label>
           <textarea
             value={openingOptions}
             onChange={(e) => onChange({ openingOptions: e.target.value })}
             rows={4}
-            placeholder={"Artist\nCurator\nOrganiser"}
-            style={textareaStyle(inputStyle)}
+            placeholder={
+              openingInputType === "mediaChoice"
+                ? '{\n  "id": "programme-room",\n  "options": [],\n  "selection": { "mode": "rank", "minSelections": 3, "maxSelections": 3 },\n  "rationale": { "required": true, "prompt": "Tell us why…", "minLength": 24, "maxLength": 1200 }\n}'
+                : "Artist\nCurator\nOrganiser"
+            }
+            style={{
+              ...textareaStyle(inputStyle),
+              ...(openingInputType === "mediaChoice"
+                ? { minHeight: "12rem", fontFamily: "monospace", fontSize: "0.75rem" }
+                : {}),
+            }}
           />
+          {openingInputType === "mediaChoice" ? (
+            <p style={{ fontSize: "0.72rem", opacity: 0.35, lineHeight: 1.45 }}>
+              Use stable option IDs and YouTube video IDs. Selection limits and
+              rationale rules are validated when the project is saved.
+            </p>
+          ) : null}
         </div>
       )}
 

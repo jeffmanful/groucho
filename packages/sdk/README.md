@@ -2,11 +2,12 @@
 
 Headless TypeScript client, server helper, and React UI for the [Groucho](https://github.com/thompson-mcdonald/groucho) gatekeeper API.
 
-Groucho is a conversational doorman: it qualifies a user across 3–5 short turns and emits one of three terminal outcomes (`passed`, `redirected`, `rejected`) plus a structured `profile` payload extracted from the conversation. Use this SDK to drop the conversation UI into a React app, or to call the JSON API directly from any TypeScript runtime.
+Groucho is a conversational doorman: it qualifies a user across 3–5 short turns and emits one of three advisory terminal outcomes (`passed`, `redirected`, `rejected`), a suitability score, and a structured `profile` payload extracted from the conversation. The client configures which score bands need review and whether the top or bottom bands create automatic decisions. Use this SDK to drop the conversation UI into a React app, or to call the JSON API directly from any TypeScript runtime.
 
 - API contract: [`docs/api/openapi.yaml`](https://github.com/thompson-mcdonald/groucho/blob/main/docs/api/openapi.yaml)
 - Deeper surface notes: [`docs/sdk-surface.md`](https://github.com/thompson-mcdonald/groucho/blob/main/docs/sdk-surface.md)
 - Client integration guide: [`docs/client-integration-guide.md`](https://github.com/thompson-mcdonald/groucho/blob/main/docs/client-integration-guide.md)
+- Decision policy: [`docs/client-decision-policy.md`](https://github.com/thompson-mcdonald/groucho/blob/main/docs/client-decision-policy.md)
 - Profile contract: [`docs/profile-payload.schema.json`](https://github.com/thompson-mcdonald/groucho/blob/main/docs/profile-payload.schema.json)
 - Reference example: [`examples/next-groucho`](https://github.com/thompson-mcdonald/groucho/tree/main/examples/next-groucho)
 
@@ -126,7 +127,7 @@ import {
 | `personaId` | `string \| null` | `null` | Optional persona override; must belong to the project and be active. |
 | `applicant` | `{ email: string; name?: string }` | — | First-class applicant identity. When omitted, the default UI asks for email before chat. Hosts may still provide a known name. |
 | `collectApplicant` | `boolean` | `true` | Set `false` only when the host app has already collected identity elsewhere. |
-| `onOutcome` | `(outcome, { scores, secret?, profile?, applicant? }) => void` | — | Fires once when the session reaches a terminal state. |
+| `onOutcome` | `(outcome, { scores, secret?, profile?, applicant? }) => void` | — | Fires once when the session reaches a terminal state. `secret` is present only when that response carries a client-policy automatic approval. |
 | `renderHeader` / `renderFooter` | `() => ReactNode` | — | Slots for host branding. |
 | `className` | `string` | — | Appended to the root `groucho-root groucho-gatekeeper` class list. |
 | `transcriptLabel` | `string` | — | aria-label for the transcript region. |
@@ -145,6 +146,13 @@ question away as soon as the answer is submitted.
 `onOutcome` receives the response body of the terminal turn. Profile extraction runs after
 the response so terminal screens are not held up by profile and webhook work. Use
 `getSession(sessionId)` to retrieve the persisted profile once completion finishes.
+
+The terminal `outcome` remains advisory. Headless message and session responses also
+expose `reviewStatus`, `suitabilityScore`, and `suitabilityBand`. Treat
+`reviewStatus` as the application decision state. A score or `passed` outcome alone
+does not grant access; approval requires a recorded human or enabled client-policy
+decision. Automatic acceptance and automatic decline are separate project settings
+and both default off.
 
 See [`profile-schema-guide.md`](https://github.com/thompson-mcdonald/groucho/blob/main/docs/profile-schema-guide.md) for the schema authoring contract.
 
@@ -186,6 +194,7 @@ All response types are generated from the live OpenAPI spec. Useful exports:
 - `PostMessageResponse` — `sendMessage` return
 - `Session` — `getSession` return
 - `SessionOutcome` — `"active" | "passed" | "redirected" | "rejected"`
+- `ApplicationReviewStatus` — `"not_ready" | "pending" | "approved" | "declined"`
 - `ScoreBreakdown` — `specificity` / `authenticity` / `cultural_depth` / `overall`
 - `Profile`, `ProfileCore`, `ProfileExtraction` — extracted profile shape
 - `GrouchoApiError` — thrown on non-2xx; has `.status`, `.body`
@@ -226,6 +235,7 @@ Skip the import and write your own CSS if you want full control — every primit
 - ✅ Use `proxyBasePath` in the browser; use `apiKey` only in `createServerClient`.
 - ✅ Rotate the key when a developer leaves — admin UI has a one-click rotate.
 - ✅ Verify webhook signatures with the HMAC secret if you also process `session.completed`.
+- ✅ Grant access only from `reviewStatus === "approved"` and the matching approval secret; never infer it from an outcome or score.
 
 ## Versioning
 

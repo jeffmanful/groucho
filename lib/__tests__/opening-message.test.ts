@@ -7,6 +7,23 @@ import {
 } from "@/lib/opening-message"
 import { DEFAULT_APPLICATION_OPENING_MESSAGE } from "@/lib/project-settings"
 
+const mediaChoice = {
+  id: "remove-one",
+  options: ["a", "b"].map((id) => ({
+    id,
+    label: `Performance ${id.toUpperCase()}`,
+    media: {
+      type: "video",
+      provider: "youtube",
+      videoId: `${id}bcdef12345`,
+      title: `Performance ${id.toUpperCase()}`,
+      alt: `Artist ${id.toUpperCase()} performing`,
+    },
+  })),
+  selection: { mode: "remove", minSelections: 1, maxSelections: 1 },
+  rationale: { required: true, prompt: "Why?", maxLength: 500 },
+}
+
 describe("parseOpeningMessage", () => {
   it("accepts undefined", () => {
     expect(parseOpeningMessage(undefined)).toEqual({ ok: true, value: undefined })
@@ -108,5 +125,23 @@ describe("parseOpeningInteraction", () => {
 
   it("rejects structured input without options", () => {
     expect(parseOpeningInteraction({ inputType: "multiSelect" }).ok).toBe(false)
+  })
+
+  it("accepts a media choice opening interaction", () => {
+    const result = parseOpeningInteraction({
+      inputType: "mediaChoice",
+      mediaChoice,
+    })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.value?.inputType).toBe("mediaChoice")
+      expect(result.value?.mediaChoice?.selection.mode).toBe("remove")
+    }
+  })
+
+  it("rejects a media choice without a valid contract", () => {
+    expect(
+      parseOpeningInteraction({ inputType: "mediaChoice", mediaChoice: {} }).ok,
+    ).toBe(false)
   })
 })

@@ -2,7 +2,9 @@
 
 Short guide for getting **Postgres + Supabase** aligned with this repo’s migrations so you can run the app and iterate locally.
 
-**Related:** [schema-migration.md](./schema-migration.md) (Phase 0 → v1 model) and [supabase/config.toml](../supabase/config.toml)
+**Related:** [schema-migration.md](./schema-migration.md) (Phase 0 → v1 model),
+[client-decision-policy.md](./client-decision-policy.md), and
+[supabase/config.toml](../supabase/config.toml)
 
 ---
 
@@ -72,7 +74,13 @@ From the **repository root**:
 
 ## What you get today (Phase 0 + Phase 1 data plane)
 
-Migrations define the demo schema plus **multi-tenant core** (from `20260410120000_phase1_multitenant_core.sql` onward): `organisations`, `projects`, `organisation_members`, `invitations`, `api_keys`, and `organisation_id` / `project_id` on **`sessions`** and `messages` (`messages.session_id` references `sessions.id`). A clean `supabase db reset` seeds a **Development** org, **Default gate** project, and one test API key.
+Migrations define the demo schema plus **multi-tenant core** (from `20260410120000_phase1_multitenant_core.sql` onward): `organisations`, `projects`, `organisation_members`, `invitations`, `api_keys`, `application_decisions`, and `organisation_id` / `project_id` on **`sessions`** and `messages` (`messages.session_id` references `sessions.id`). The latest migrations add `sessions.suitability_score`, automatic-decision audit fields, and the server-only `project_settings_audit` history. A clean `supabase db reset` seeds a **Development** org, **Default gate** project, and one test API key.
+
+For hosted projects, Supabase may require explicit Data API grants for newly
+created tables depending on project settings. Grants determine whether a role can
+reach a table; RLS still determines which rows it can access. Keep
+`application_decisions` and `project_settings_audit` server-controlled and do not
+grant applicant-facing access.
 
 **Local test API key (seed only — rotate in production):** `gk_test_local_dev_secret_key`. Send it as `Authorization: Bearer gk_test_local_dev_secret_key` on `POST /api/chat` to resolve that project. Without a Bearer token, the server uses the first project by `created_at` (the seed default), unless you set `GROUPCHO_REQUIRE_API_KEY=true` or `GROUPCHO_DEFAULT_PROJECT_ID=<uuid>` in `.env.local`.
 
@@ -116,3 +124,4 @@ Further control-plane UI is tracked in [roadmap-github-issues.md](./roadmap-gith
 | 2026-04-07 | Phase 1 seed key, env vars, access gate default project |
 | 2026-04-07 | Phase 1 RLS: `expose_to_anon_read`, fixture org `fixture_b` |
 | 2026-04-07 | Phase 2: dual auth, invite URLs, invite troubleshooting |
+| 2026-09-07 | Client decision-policy migration, suitability storage, and hosted Data API grant note |

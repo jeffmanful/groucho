@@ -9,6 +9,7 @@ export { OutcomeBanner, type OutcomeBannerProps } from "./OutcomeBanner.js"
 export { ThinkingIndicator, type ThinkingIndicatorProps } from "./ThinkingIndicator.js"
 export { DotMatrixPresence, type DotMatrixPresenceProps } from "./DotMatrixPresence.js"
 export { InteractionInput, type InteractionInputProps } from "./InteractionInput.js"
+export { MediaChoiceInput, type MediaChoiceInputProps } from "./MediaChoiceInput.js"
 export { serializeInteractionInput } from "./serialize-interaction-input.js"
 export {
   DEFAULT_DECISION_DURATION_MS,

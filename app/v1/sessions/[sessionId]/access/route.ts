@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server"
-import { humanDecisionGrantsAccess } from "@/lib/application-decision"
+import { applicationDecisionGrantsAccess } from "@/lib/application-decision"
 import { log } from "@/lib/logger"
 import { getOrCreateRequestId } from "@/lib/request-trace"
 import { resolveProjectContext } from "@/lib/project-resolution"
@@ -8,7 +8,7 @@ import { supabase } from "@/lib/supabase"
 import { tracedJson } from "@/lib/with-request-trace"
 
 /**
- * POST /v1/sessions/{sessionId}/access — register email after human approval.
+ * POST /v1/sessions/{sessionId}/access — register email after client approval.
  * Unknown sessions return the same accepted shape to avoid account enumeration;
  * known sessions still require explicit approval and the matching access secret.
  */
@@ -97,7 +97,7 @@ export async function POST(
     return tracedJson(req, { error: "Session not eligible" }, { status: 403 })
   }
 
-  if (!humanDecisionGrantsAccess(decision, body.secret?.trim())) {
+  if (!applicationDecisionGrantsAccess(decision, body.secret?.trim())) {
     return tracedJson(req, { error: "Invalid or missing secret" }, { status: 400 })
   }
 

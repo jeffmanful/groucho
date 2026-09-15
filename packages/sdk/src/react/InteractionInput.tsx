@@ -1,14 +1,15 @@
 "use client"
 
 import { useCallback, useState } from "react"
-import type { GrouchoInteractionUi } from "../client.js"
+import type { GrouchoInteractionUi, InteractionAnswer } from "../client.js"
 import { Composer } from "./Composer.js"
+import { MediaChoiceInput } from "./MediaChoiceInput.js"
 import { serializeInteractionInput } from "./serialize-interaction-input.js"
 
 export type InteractionInputProps = {
   ui: GrouchoInteractionUi
   disabled?: boolean
-  onSubmit: (message: string) => void
+  onSubmit: (message: string, answer?: InteractionAnswer) => void
   className?: string
 }
 
@@ -31,6 +32,18 @@ export function InteractionInput({
     },
     [onSubmit, ui.inputType],
   )
+
+  if (ui.inputType === "mediaChoice" && ui.mediaChoice) {
+    return (
+      <MediaChoiceInput
+        key={ui.mediaChoice.id}
+        interaction={ui.mediaChoice}
+        disabled={disabled}
+        className={className}
+        onSubmit={onSubmit}
+      />
+    )
+  }
 
   if (ui.inputType === "singleSelect" && ui.options?.length) {
     return (

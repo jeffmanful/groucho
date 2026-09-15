@@ -4,9 +4,17 @@ All notable product and platform changes are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and released versions
 will follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2026-07-20
+## [Unreleased]
 
 ### Added
+
+- Added client-owned decision policies with configurable acceptance and review
+  thresholds, independent automatic acceptance and automatic decline switches,
+  and safe defaults with both automatic actions disabled.
+- Added append-only project-settings history with actor attribution in the admin
+  dashboard, plus an idempotent completed-session profile backfill command.
+- Added final suitability storage, score-first applicant sorting, visible score
+  bands and decision sources, and immutable policy audit snapshots.
 
 - Added reviewer-attributed human application decisions and explicit review status
   so conversation completion is distinct from final access authority.
@@ -34,8 +42,14 @@ will follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- Gatekeeper terminal outcomes are now advisory compatibility values: they no
-  longer issue access secrets, and access requires a recorded human approval.
+- Expanded final application authority from human-only decisions to either an
+  explicit human action or an explicitly enabled deterministic client policy.
+- Access now accepts an approval secret created by either decision source; model
+  outcomes and scores remain insufficient by themselves.
+
+- Gatekeeper terminal outcomes are now advisory compatibility values: they do not
+  issue access secrets by themselves, and access requires a separately recorded
+  human or enabled client-policy approval.
 
 - Reframed Groucho V1 around gatekeeper applications. Onboarding remains a
   mostly static intake flow and does not use an LLM unless an intelligent
@@ -62,6 +76,12 @@ will follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   still provide a known applicant name programmatically.
 
 ### Fixed
+
+- Restored applicant profile visibility alongside suitability and decision
+  context, and made missing versus generated profiles explicit in session rows.
+- Fixed the admin's all-completed-sessions profile option so it explicitly
+  replaces a previously disabled setting instead of preserving `false` during
+  the server-side settings merge.
 
 - Prevented gatekeeper application flows from ending with definitive copy such
   as acceptance, rejection, or immediate access language.

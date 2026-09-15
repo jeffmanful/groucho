@@ -1,5 +1,10 @@
 # Groucho state of play — 20 August 2026
 
+> **Historical snapshot:** the human-only access boundary recorded here was
+> superseded on 7 September 2026 by the client-owned deterministic decision policy.
+> Both automatic actions default off. See
+> [client-decision-policy.md](./client-decision-policy.md) for current behavior.
+
 ## End-of-day position
 
 The COLORS experience is ready for continued **controlled testing in `/doorcheck`**.

@@ -54,6 +54,13 @@ interface GrouchoClient {
 
 **Types:** Generated from [openapi.yaml](./api/openapi.yaml) via `openapi-typescript` (devDependency); published as part of package.
 
+Terminal message and session responses expose `reviewStatus`, `suitabilityScore`,
+and `suitabilityBand`. The conversation `status` remains advisory. A response
+`secret` is an approval secret only when the client's enabled deterministic policy
+has recorded an automatic approval; human approvals return their secret through the
+authenticated admin decision endpoint. See
+[client-decision-policy.md](./client-decision-policy.md).
+
 **Errors:** Throw `GrouchoApiError` with `{ status, code?, body }` for non-2xx.
 
 ---
@@ -115,6 +122,9 @@ type GatekeeperProps = {
 - Manages `loading` / error states per turn.
 - Disables input when session `status` is terminal (matches 409 handling: reset session on host policy).
 - Uses design tokens (below) for default **dark** theme.
+- Surfaces the terminal callback immediately; hosts that need the durable decision
+  state should call `getSession()` and use `reviewStatus`, not infer a decision from
+  the terminal outcome.
 
 **Accessibility:**
 

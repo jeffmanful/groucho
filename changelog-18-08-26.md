@@ -1,5 +1,10 @@
 # Changelog — 18 August 2026
 
+> **Historical record:** entries describing human-only approval and legacy score
+> thresholds reflect the system at that time. They were superseded on 7 September
+> 2026 by the client-owned decision policy documented in
+> [docs/client-decision-policy.md](./docs/client-decision-policy.md).
+
 ## End-of-day documentation reconciliation — 20 August 2026
 
 - Added an authoritative Groucho state-of-play document covering controlled

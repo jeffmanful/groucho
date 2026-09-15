@@ -2,6 +2,17 @@
  * Project settings helpers: `project_type`, application/onboarding experience, validation.
  */
 
+import {
+  parseClientDecisionPolicy,
+  serializeClientDecisionPolicy,
+  validateClientDecisionPolicy,
+  type ClientDecisionPolicy,
+} from "@/lib/decision-policy"
+import {
+  normaliseMediaChoiceInteraction,
+  type MediaChoiceInteraction,
+} from "@/lib/gatekeeper-interaction-spec"
+
 export type ProjectType = "gatekeeper" | "onboarding"
 
 export const DEFAULT_APPLICATION_OPENING_MESSAGE =
@@ -9,11 +20,16 @@ export const DEFAULT_APPLICATION_OPENING_MESSAGE =
 export const DEFAULT_APPLICATION_CLOSING_MESSAGE =
   "It was good getting to understand you better."
 
-export type ApplicationOpeningInputType = "text" | "singleSelect" | "multiSelect"
+export type ApplicationOpeningInputType =
+  | "text"
+  | "singleSelect"
+  | "multiSelect"
+  | "mediaChoice"
 
 export type ApplicationOpeningInteraction = {
   inputType: ApplicationOpeningInputType
   options?: string[]
+  mediaChoice?: MediaChoiceInteraction
 }
 
 export type ApplicationExperience = {
@@ -34,6 +50,7 @@ const APPLICATION_INPUT_TYPES = new Set<ApplicationOpeningInputType>([
   "text",
   "singleSelect",
   "multiSelect",
+  "mediaChoice",
 ])
 
 export type OnboardingFlowStep = {
@@ -64,6 +81,8 @@ export type OnboardingExperience = {
 
 export type NormalizedProjectSettings = {
   projectType: ProjectType
+  /** Always present after normalization; optional for older typed host fixtures. */
+  decisionPolicy?: ClientDecisionPolicy
   applicationExperience: ApplicationExperience
   flowConfig: OnboardingFlowConfig | null
   onboardingExperience: OnboardingExperience
@@ -95,6 +114,11 @@ function parseApplicationOpeningInteraction(
 
   if (inputType === "text") {
     return { inputType: "text" }
+  }
+
+  if (inputType === "mediaChoice") {
+    const mediaChoice = normaliseMediaChoiceInteraction(o.mediaChoice)
+    return mediaChoice ? { inputType, mediaChoice } : undefined
   }
 
   const optionsRaw = o.options
@@ -195,6 +219,9 @@ export function serializeApplicationExperienceForStorage(
       ...(app.opening_interaction.options?.length
         ? { options: app.opening_interaction.options }
         : {}),
+      ...(app.opening_interaction.mediaChoice
+        ? { mediaChoice: app.opening_interaction.mediaChoice }
+        : {}),
     }
   }
   if (app.required_signals?.length) {
@@ -244,6 +271,16 @@ export function buildApplicationExperienceFromForm(
         inputType: input.openingInputType,
         options,
       }
+    }
+  } else if (input.openingInputType === "mediaChoice") {
+    try {
+      const parsed = JSON.parse(input.openingOptions) as unknown
+      const mediaChoice = normaliseMediaChoiceInteraction(parsed)
+      if (mediaChoice) {
+        opening_interaction = { inputType: "mediaChoice", mediaChoice }
+      }
+    } catch {
+      // Project validation reports the missing/invalid interaction to the admin.
     }
   }
 
@@ -345,6 +382,9 @@ function parseStep(raw: unknown, index: number): OnboardingFlowStep | string {
   const hint = parseOptionalString(o, "hint", 120)
   const followup_prompt = parseOptionalString(o, "followup_prompt", 300)
   const interaction = parseApplicationOpeningInteraction(o.interaction)
+  if (o.interaction !== undefined && !interaction) {
+    return `Step ${index + 1}: interaction is invalid`
+  }
 
   let min_answer_chars: number | undefined
   if (typeof o.min_answer_chars === "number" && Number.isFinite(o.min_answer_chars)) {
@@ -419,6 +459,7 @@ export function normalizeProjectSettings(
   const onboardingExperience = parseOnboardingExperience(raw)
   return {
     projectType,
+    decisionPolicy: parseClientDecisionPolicy(raw),
     applicationExperience,
     flowConfig,
     onboardingExperience,
@@ -492,6 +533,9 @@ function serializeStep(s: OnboardingFlowStep): Record<string, unknown> {
     out.interaction = {
       inputType: s.interaction.inputType,
       ...(s.interaction.options?.length ? { options: s.interaction.options } : {}),
+      ...(s.interaction.mediaChoice
+        ? { mediaChoice: s.interaction.mediaChoice }
+        : {}),
     }
   }
   if (s.followup_prompt) out.followup_prompt = s.followup_prompt
@@ -510,10 +554,34 @@ export function validateProjectSettings(
     projectTypeRaw === "onboarding" ? "onboarding" : "gatekeeper"
 
   const out: Record<string, unknown> = { ...settings, project_type: projectType }
+  const decisionPolicy = parseClientDecisionPolicy(settings)
+  const decisionPolicyError = validateClientDecisionPolicy(decisionPolicy)
+  if (decisionPolicyError) return { ok: false, error: decisionPolicyError }
+  out.decision_policy = serializeClientDecisionPolicy(decisionPolicy)
 
   if (projectType === "gatekeeper") {
     delete out.flow_config
     delete out.onboarding_experience
+    const rawExperience = settings.application_experience
+    if (
+      rawExperience &&
+      typeof rawExperience === "object" &&
+      !Array.isArray(rawExperience)
+    ) {
+      const rawOpening = (rawExperience as Record<string, unknown>)
+        .opening_interaction
+      if (
+        rawOpening &&
+        typeof rawOpening === "object" &&
+        !Array.isArray(rawOpening) &&
+        (rawOpening as Record<string, unknown>).inputType === "mediaChoice" &&
+        !normaliseMediaChoiceInteraction(
+          (rawOpening as Record<string, unknown>).mediaChoice,
+        )
+      ) {
+        return { ok: false, error: "Media choice opening interaction is invalid." }
+      }
+    }
     const app = parseApplicationExperience(settings)
     const serialized = serializeApplicationExperienceForStorage(app)
     if (serialized) {

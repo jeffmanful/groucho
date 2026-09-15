@@ -9,6 +9,11 @@ This document captures what is still needed from COLORS before Groucho can evalu
 > are retained as the remaining calibration agenda, not as a claim that no client
 > direction exists. See [the calibration cases](./colors-calibration-cases-2026-08-20.md)
 > and [current state of play](./groucho-state-of-play-2026-08-20.md).
+>
+> **Decision-policy update — 7 September 2026:** the human-only boundary below has
+> been superseded. COLORS now owns configurable suitability bands and may enable
+> automatic acceptance and automatic decline independently. Both remain off by
+> default. See [client-decision-policy.md](./client-decision-policy.md).
 
 The persona brief gives strong tone and values guidance. The missing product work is turning those values into evidence rules: what counts as enough signal, what counts against an applicant, what should stay neutral, and when Groucho should stop asking.
 
@@ -17,8 +22,8 @@ The persona brief gives strong tone and values guidance. The missing product wor
 - Groucho should produce one private advisory COLORS recommendation: `recommend`, `human_review`, or `decline`.
 - `decline` is an internal recommendation only. It must not be shown to the applicant as a rejection.
 - Applicants never see `recommend`, `human_review`, `decline`, `passed`, `redirected`, `rejected`, scores, confidence, or reviewer notes.
-- Every completed application should receive human review. Groucho never makes the final community decision.
-- The final decision always belongs to COLORS/the client.
+- Every pending completed application should be available for human review.
+- The final decision always belongs to COLORS/the client, through a reviewer or its deterministic policy.
 - Every applicant should produce a reviewer-facing report or bio with a confidence score.
 - Groucho may finish early once it has enough evidence to make a private recommendation.
 - Nine applicant answers is a soft pacing target, not a hard cap. The runtime uses a separate emergency stop three answers later, capped at fourteen.
@@ -36,9 +41,9 @@ Until the platform exposes project-specific terminal enums, the COLORS product r
 
 | COLORS recommendation | Groucho terminal | Meaning |
 | --- | --- | --- |
-| `recommend` | `passed` | Evidence supports approval, but the client still makes the final decision. |
+| `recommend` | `passed` | Evidence supports approval, but a reviewer or client policy still makes the final decision. |
 | `human_review` | `redirected` | Evidence is incomplete, contradictory, borderline, or uncertain. |
-| `decline` | `rejected` | Evidence suggests poor fit, but the client still makes the final decision. |
+| `decline` | `rejected` | Evidence suggests poor fit, but a reviewer or client policy still makes the final decision. |
 
 ## Remaining Client Questions
 
@@ -83,7 +88,9 @@ Until the platform exposes project-specific terminal enums, the COLORS product r
 
 ## Reviewer Packet Direction
 
-Groucho should act like an analyst preparing the file for a human reviewer, not like an automated admissions system.
+Groucho's model should act like an analyst preparing the evidence and score, not
+like an autonomous admissions system. Any automatic action is a transparent,
+deterministic client policy outside the model.
 
 Each completed application should produce:
 

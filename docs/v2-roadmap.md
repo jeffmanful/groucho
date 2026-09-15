@@ -3,9 +3,10 @@
 > **Decision-architecture note — 20 August 2026:** this document remains the
 > reference for the gatekeeper interaction model, UI renderer, and visual presence.
 > Its score-controlled `pass` / `redirect` / `reject` examples are superseded by
-> [the stronger V1 implementation plan](./groucho-stronger-v1-implementation-plan.md),
-> which separates advisory conversation completion from recorded human decisions
-> and access authority.
+> the current decision architecture: conversation completion remains advisory,
+> while final decisions may be recorded by a human or by the client's independently
+> enabled deterministic policy. The model output remains advisory. See
+> [client-decision-policy.md](./client-decision-policy.md).
 
 Groucho V2 recenters the product around the gatekeeper experience.
 

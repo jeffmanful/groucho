@@ -3,6 +3,10 @@ import { resolveAdminActor } from "@/lib/admin-actor"
 import { normalizeAdminSlug } from "@/lib/admin-slug"
 import { requireOrgAdmin, requireOrgMember, unauthorized } from "@/lib/org-access"
 import { validateProjectSettings } from "@/lib/project-settings"
+import {
+  changedProjectSettingKeys,
+  projectSettingsAuditActor,
+} from "@/lib/project-settings-audit"
 import { invalidateProjectSettingsCache } from "@/lib/project-resolution"
 import { supabase } from "@/lib/supabase"
 
@@ -148,6 +152,33 @@ export async function PATCH(
     }
     console.error("project patch:", error)
     return NextResponse.json({ error: "Database error" }, { status: 500 })
+  }
+
+  if (updates.settings) {
+    const changedKeys = changedProjectSettingKeys(existingSettings, updates.settings)
+    if (changedKeys.length > 0) {
+      const { error: auditError } = await supabase
+        .from("project_settings_audit")
+        .insert({
+          organisation_id: orgId,
+          project_id: projectId,
+          ...projectSettingsAuditActor(actor),
+          source: "admin_api",
+          changed_keys: changedKeys,
+          previous_settings: existingSettings,
+          new_settings: updates.settings,
+        })
+      if (auditError) {
+        console.error("project settings audit:", auditError)
+        return NextResponse.json(
+          {
+            error:
+              "Project settings were saved, but the audit record could not be written. Refresh before retrying.",
+          },
+          { status: 500 },
+        )
+      }
+    }
   }
 
   return NextResponse.json(data)

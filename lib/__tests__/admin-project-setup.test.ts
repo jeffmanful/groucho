@@ -29,8 +29,12 @@ describe("formStateFromProject", () => {
         },
         webhook_url: "https://example.com/hook",
         webhook_events: ["session.completed"],
-        pass_threshold: 0.7,
-        reject_threshold: 0.2,
+        decision_policy: {
+          automatic_acceptance_enabled: true,
+          automatic_decline_enabled: false,
+          acceptance_threshold: 0.7,
+          review_threshold: 0.4,
+        },
       },
     })
     expect(state.projectType).toBe("onboarding")
@@ -39,7 +43,9 @@ describe("formStateFromProject", () => {
     expect(state.flowSteps[0].question).toBe("Why join?")
     expect(state.webhookUrl).toBe("https://example.com/hook")
     expect(state.webhookEvents).toEqual(["session.completed"])
-    expect(state.passThreshold).toBe(0.7)
+    expect(state.acceptanceThreshold).toBe(0.7)
+    expect(state.reviewThreshold).toBe(0.4)
+    expect(state.automaticAcceptanceEnabled).toBe(true)
   })
 
   it("defaults gatekeeper fields", () => {
@@ -220,5 +226,26 @@ describe("buildProjectSettingsPayload", () => {
     })
     expect(out.webhook_url).toBeUndefined()
     expect(out.webhook_events).toBeUndefined()
+  })
+
+  it("replaces legacy thresholds with the explicit client decision policy", () => {
+    const form = formStateFromProject({ name: "P", slug: "p", settings: {} })
+    const out = buildProjectSettingsPayload(
+      { pass_threshold: 0.7, reject_threshold: 0.2 },
+      {
+        ...form,
+        automaticAcceptanceEnabled: true,
+        acceptanceThreshold: 0.82,
+        reviewThreshold: 0.56,
+      },
+    )
+    expect(out.pass_threshold).toBeUndefined()
+    expect(out.reject_threshold).toBeUndefined()
+    expect(out.decision_policy).toEqual({
+      automatic_acceptance_enabled: true,
+      automatic_decline_enabled: false,
+      acceptance_threshold: 0.82,
+      review_threshold: 0.56,
+    })
   })
 })

@@ -18,3 +18,9 @@ This app includes its own `middleware.ts` (pass-through) so it does **not** pick
 4. From the repo root: `pnpm run example:groucho` (or `cd examples/next-groucho && pnpm dev`) — the example listens on **3001** so it does not collide with the platform dev server on 3000.
 
 Open [http://localhost:3001](http://localhost:3001) and use the embedded Gatekeeper.
+
+The example displays the conversation experience; a terminal `passed`, `redirected`,
+or `rejected` value is advisory. Production hosts should read `reviewStatus` and
+only continue an approved flow with its matching access secret. Project suitability
+thresholds and automatic actions are configured in Groucho, and both automatic
+actions default off.

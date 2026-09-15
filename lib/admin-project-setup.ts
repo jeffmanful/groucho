@@ -12,6 +12,10 @@ import {
   type OnboardingFlowStep,
   type ProjectType,
 } from "@/lib/project-settings"
+import {
+  parseClientDecisionPolicy,
+  serializeClientDecisionPolicy,
+} from "@/lib/decision-policy"
 
 /** Best-effort step parse for admin forms (keeps partial/legacy rows). */
 function parseFlowStepsForForm(settings: Record<string, unknown>): OnboardingFlowStep[] {
@@ -102,8 +106,10 @@ export type ProjectSetupFormState = {
   onboardingExperience: OnboardingExperience
   webhookUrl: string
   webhookEvents: string[]
-  passThreshold: number
-  rejectThreshold: number
+  automaticAcceptanceEnabled: boolean
+  automaticDeclineEnabled: boolean
+  acceptanceThreshold: number
+  reviewThreshold: number
 }
 
 const USE_CASE_IDS = new Set(PROJECT_USE_CASES.map((u) => u.id))
@@ -125,17 +131,6 @@ function parseSessionMode(
   settings: Record<string, unknown>,
 ): "live" | "dry-run" {
   return settings.session_mode === "live" ? "live" : "dry-run"
-}
-
-function parseThreshold(
-  settings: Record<string, unknown>,
-  key: "pass_threshold" | "reject_threshold",
-  fallback: number,
-): number {
-  const v = settings[key]
-  return typeof v === "number" && Number.isFinite(v)
-    ? Math.min(1, Math.max(0, v))
-    : fallback
 }
 
 /** Hydrate wizard/edit form fields from a project row. */
@@ -164,6 +159,7 @@ export function formStateFromProject(row: {
   }
 
   const applicationExperience = parseApplicationExperience(settings)
+  const decisionPolicy = parseClientDecisionPolicy(settings)
 
   return {
     name: row.name ?? "",
@@ -179,7 +175,13 @@ export function formStateFromProject(row: {
     applicationOpeningInputType:
       applicationExperience.opening_interaction?.inputType ?? "",
     applicationOpeningOptions:
-      applicationExperience.opening_interaction?.options?.join("\n") ?? "",
+      applicationExperience.opening_interaction?.mediaChoice
+        ? JSON.stringify(
+            applicationExperience.opening_interaction.mediaChoice,
+            null,
+            2,
+          )
+        : applicationExperience.opening_interaction?.options?.join("\n") ?? "",
     applicationRequiredSignals:
       applicationExperience.required_signals?.join("\n") ?? "",
     applicationPreferredInputTypes:
@@ -195,8 +197,10 @@ export function formStateFromProject(row: {
     onboardingExperience: parseOnboardingExperience(settings),
     webhookUrl,
     webhookEvents,
-    passThreshold: parseThreshold(settings, "pass_threshold", 0.65),
-    rejectThreshold: parseThreshold(settings, "reject_threshold", 0.25),
+    automaticAcceptanceEnabled: decisionPolicy.automaticAcceptanceEnabled,
+    automaticDeclineEnabled: decisionPolicy.automaticDeclineEnabled,
+    acceptanceThreshold: decisionPolicy.acceptanceThreshold,
+    reviewThreshold: decisionPolicy.reviewThreshold,
   }
 }
 
@@ -214,6 +218,9 @@ function serializeStepForPayload(s: OnboardingFlowStep): Record<string, unknown>
     out.interaction = {
       inputType: s.interaction.inputType,
       ...(s.interaction.options?.length ? { options: s.interaction.options } : {}),
+      ...(s.interaction.mediaChoice
+        ? { mediaChoice: s.interaction.mediaChoice }
+        : {}),
     }
   }
   if (s.followup_prompt?.trim()) out.followup_prompt = s.followup_prompt.trim()
@@ -235,9 +242,15 @@ export function buildProjectSettingsPayload(
     environment: form.environment,
     session_mode: form.sessionMode,
     persona_id: form.personaId,
-    pass_threshold: form.passThreshold,
-    reject_threshold: form.rejectThreshold,
+    decision_policy: serializeClientDecisionPolicy({
+      automaticAcceptanceEnabled: form.automaticAcceptanceEnabled,
+      automaticDeclineEnabled: form.automaticDeclineEnabled,
+      acceptanceThreshold: form.acceptanceThreshold,
+      reviewThreshold: form.reviewThreshold,
+    }),
   }
+  delete settings.pass_threshold
+  delete settings.reject_threshold
 
   if (form.projectType === "onboarding") {
     const flowOut: Record<string, unknown> = {

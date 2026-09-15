@@ -5,6 +5,11 @@
 > reviewer anchors and four integrity boundaries are encoded. The remaining P0 is a
 > broader client-labelled calibration packet and its repeatable evaluation gate. See
 > [the current state of play](./groucho-state-of-play-2026-08-20.md).
+>
+> **Superseded decision boundary — 7 September 2026:** this plan's human-only
+> approval model is retained as implementation history. Current projects may use
+> explicit human decisions or independently enabled deterministic automatic
+> acceptance/decline. See [client-decision-policy.md](./client-decision-policy.md).
 
 ## Purpose
 

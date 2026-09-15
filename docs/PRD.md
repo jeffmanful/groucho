@@ -1,6 +1,6 @@
 # Groucho — Product Requirements Document (v1)
 
-**Version:** 1.1-draft  
+**Version:** 1.2-draft
 **Status:** Living document — aligned to repo prompts and phased roadmap  
 **References:** [prompts/01-scoring-system.md](../prompts/01-scoring-system.md), [02](../prompts/02-chat-integration.md), [03](../prompts/03-admin-dashboard.md), [04](../prompts/04-email-flow.md), [05](../prompts/05-conversation-logic.md)
 
@@ -10,7 +10,7 @@
 
 **Groucho** is a configurable **conversational runtime** for two complementary **project modes** (see §2.2), delivered as a hosted **platform** + **npm package**:
 
-1. **Gatekeeper** — Short, values-oriented qualification (typically 3–4 exchanges) ending in **pass / redirect / reject**, with **per-message scoring**, durable **sessions**, optional **post-pass email**, and **webhooks**.
+1. **Gatekeeper** — Short, values-oriented qualification (typically 3–4 exchanges) ending in an advisory **pass / redirect / reject** outcome, with **per-message scoring**, a final **suitability score**, client-owned decision settings, durable **sessions**, optional **post-approval email**, and **webhooks**.
 2. **Onboarding flow** — **Multistep** guided dialogue (e.g. community member intake): collect **intent**, **interests**, and **values** over several phases, then emit a **structured profile** (JSON) for the host to preload a user record, drive **initial role assignment**, and feed **recommendations**—without losing transcript auditability.
 
 Both modes share the same **session / message / verdict** spine, **project-scoped API keys**, and integration hooks; behaviour is selected per **project** (type + flow configuration).
@@ -52,14 +52,15 @@ Hosted control plane + drop-in client for builders; host remains responsible for
 |----|------|
 | G1 | **Gatekeeper conversation engine** — Terse assistant persona; **~3–4 exchanges**; deterministic pass/redirect/reject strings mapped to stored outcomes (**project mode = gatekeeper**; see §6.1). |
 | G2 | **Scoring** — Three dimensions (specificity, authenticity, cultural depth) + overall; weighted; stored per user turn where scoring applies; graceful degradation on scorer failure (**primarily gatekeeper**; onboarding may omit or use lighter scoring per project policy). |
-| G3 | **Persistence** — Sessions and messages with metadata; terminal state; optional success secret for post-pass flows; **onboarding sessions** store **structured `profile`** on completion (see §6.7–6.8). |
-| G4 | **Operator UX** — Real-time or near-real-time visibility into sessions, messages, scores, **and extracted profile (read-only)** for onboarding projects, filters. |
-| G5 | **Post-pass email** — Verify eligible session before persisting email; no enumeration; rate limits. |
+| G3 | **Persistence** — Sessions and messages with metadata; terminal state; final suitability score; immutable human or client-policy decision; approval-only access secret; **onboarding sessions** store **structured `profile`** on completion (see §6.7–6.8). |
+| G4 | **Operator UX** — Real-time or near-real-time visibility into sessions, messages, suitability, decision source, review state, **and extracted profile (read-only)** for onboarding projects, filters. |
+| G5 | **Post-approval email** — Verify an approved decision and matching access secret before persisting email; no enumeration; rate limits. |
 | G6 | **Platform** — Orgs, members, invitations, projects (**type + flow config**), API keys (`gk_test_` / `gk_live_`), webhooks configuration; multi-step project creation with intentional friction. |
 | G7 | **Public API + SDK** — Documented session lifecycle; TypeScript client + **Gatekeeper + onboarding session UI** + primitives (see [sdk-surface.md](./sdk-surface.md)). |
 | G8 | **Onboarding flows** — Projects can define **multistep** flows (ordered steps, goals, optional fixed questions); step transitions, abandon/timeout, resume by `sessionId` documented. |
 | G9 | **Structured profile output** — On completion, API and webhooks expose **`profile` JSON** (+ `flow_version`) validated against a **project JSON Schema**; host maps fields to its community profile / CRM. |
 | G10 | **Downstream hooks** — Webhook (and/or `GET session`) payloads sufficient for host to implement **initial roles** and **recommendations** using `profile` + transcript (**host-side rules in v1 default**; see §3.3). |
+| G11 | **Client-owned decision policy** — Gatekeeper projects define acceptance/review suitability bands and independently opt into automatic acceptance or automatic decline; both actions default off. |
 
 ### 3.2 Non-goals (v1)
 
@@ -114,7 +115,9 @@ Multi-step wizard (see [platform-project-wizard.md](./platform-project-wizard.md
 
 1. Opens embedded or linked experience → supplies **applicant identity** (`email`, optional `name`) before or at **session** start (live or dry-run).  
 2. Exchanges messages → the main structured response returns an accumulated assessment, persisted on user messages.
-3. Terminal assistant message → **verdict** + session outcome; webhook fired if configured; pass → optional **email** on access page.
+3. Terminal assistant message → advisory **verdict** + session outcome and final suitability score.
+4. The client policy classifies the score. The application remains pending unless a reviewer acts or the relevant automatic action is enabled.
+5. An approved decision → optional **email** on the access page using the approval's secret; webhook work runs if configured.
 
 ### 5.5 Applicant (onboarding flow)
 
@@ -135,11 +138,11 @@ Multi-step wizard (see [platform-project-wizard.md](./platform-project-wizard.md
 |-----|-------------|---------------------|
 | FR-CONV-0 | Gatekeeper/application sessions persist first-class **applicant identity** (`applicant_email`, optional `applicant_name`) separately from configurable flow/profile answers. | Public API accepts `applicant` on session start/first message; admin/session/webhook payloads expose the normalized envelope. |
 | FR-CONV-1 | Assistant follows brevity and structure in [05-conversation-logic.md](../prompts/05-conversation-logic.md). | Prompt versioned per project/persona; max 2 lines per turn enforced in tests or post-check (**gatekeeper**). |
-| FR-CONV-2 | Pass phrase exactly `Yeah. Here.` (or project-configured equivalent stored server-side). | Integration test: exact string → pass path when scores meet threshold. |
+| FR-CONV-2 | Pass phrase exactly `Yeah. Here.` (or project-configured equivalent stored server-side). | Integration test: exact string → advisory pass path; access still requires a recorded approval. |
 | FR-CONV-3 | Redirect phrase `REDIRECT`; reject phrase `REJECTED` (align DB enum `REJECT` vs string in migration note). | Mapping table in code + OpenAPI enum documented. |
 | FR-CONV-4 | ~3–4 exchanges before decision unless model ends early per policy. | `turns_used` / message count enforced or soft-guided in prompt + optional server cap (**gatekeeper**). |
 
-**Current implementation note:** structured `terminal` decisions are authoritative. Persona thresholds remain only for legacy plain-text decision tokens.
+**Current implementation note:** structured `terminal` values are authoritative for the advisory conversation outcome. Persona thresholds remain only for legacy plain-text decision tokens. The separate client decision policy is authoritative for automatic actions.
 
 ### 6.2 Scoring (FR-SCORE)
 
@@ -148,6 +151,20 @@ Multi-step wizard (see [platform-project-wizard.md](./platform-project-wizard.md
 | FR-SCORE-1 | Dimensions 0–1: specificity, authenticity, cultural_depth, and overall. | Main response tool schema defines and validates all dimensions. |
 | FR-SCORE-2 | The conversational model returns an accumulated assessment in `groucho_respond`. | Invalid or missing values normalize to neutral scores without another model request. |
 | FR-SCORE-3 | Scores attached to **user** message record. | `messages.metadata.scores` populated before assistant reply persisted. |
+| FR-SCORE-4 | Final `overall` is stored as `sessions.suitability_score`, independently from the application decision. | Admin and session APIs can sort and display suitability without inferring approval. |
+
+### 6.2.1 Client decision policy (FR-DECISION)
+
+The complete behavior and field mapping are defined in
+[client-decision-policy.md](./client-decision-policy.md).
+
+| Req | Description | Acceptance criteria |
+|-----|-------------|---------------------|
+| FR-DECISION-1 | Project settings define `acceptance_threshold` and `review_threshold`, with the review threshold strictly lower. | Invalid or out-of-range policy settings are rejected by admin validation. |
+| FR-DECISION-2 | Automatic acceptance and automatic decline are independent opt-ins and both default to off. | With both switches off, all completed applications have `reviewStatus = pending`. |
+| FR-DECISION-3 | A score at or above the acceptance threshold is `recommended_acceptance`; a score in the middle is `review`; a lower score is `below_threshold`. | Boundary tests cover equality and values on each side of both thresholds. |
+| FR-DECISION-4 | Only a human action or an explicitly enabled deterministic project policy can create an immutable approval/decline. | Model outcome alone never inserts an application decision; first recorded decision wins. |
+| FR-DECISION-5 | Automatic decisions store decision source, score, policy snapshot, and approval-only secret. | Audit record can reproduce which settings caused the automatic action. |
 
 ### 6.3 Chat pipeline (FR-CHAT)
 
@@ -168,12 +185,13 @@ Multi-step wizard (see [platform-project-wizard.md](./platform-project-wizard.md
 | FR-ADMIN-3 | Filter by status. | Query param or client filter documented. |
 | FR-ADMIN-4 | (Stretch) Stats header + CSV export. | Separate milestone. |
 | FR-ADMIN-5 | For **onboarding** projects, show **extracted `profile`** (read-only JSON + pretty view) alongside transcript. | Operator can verify extraction without raw SQL. |
+| FR-ADMIN-6 | For gatekeeper projects, sort applicants by suitability and show score band, review state, and human/policy decision source. | Highest scores appear first; sessions without a score appear last. |
 
-### 6.5 Email access (FR-EMAIL)
+### 6.5 Approved access (FR-EMAIL)
 
 | Req | Description | Acceptance criteria |
 |-----|-------------|---------------------|
-| FR-EMAIL-1 | Only **passed** session may submit email. | Server verifies session + secret or server-issued token. |
+| FR-EMAIL-1 | Only an **approved application decision** may submit email. | Server verifies the decision and its matching access secret; advisory session outcome is insufficient. |
 | FR-EMAIL-2 | Upsert profile; link `profile_eligibility` to session/conversation. | No error text revealing duplicate email. |
 | FR-EMAIL-3 | Rate limit submissions. | Per-IP + per-session limits. |
 
@@ -258,7 +276,8 @@ Canonical tables (detail in [schema-migration.md](./schema-migration.md)):
 
 - `organisations`, `organisation_members`, `invitations`
 - `projects` (includes **`project_type`**, **`flow_config`** jsonb and/or **`project_flows`** version table), `api_keys`
-- `sessions` (optional **`profile` jsonb**, **`current_step_id`**, **`flow_version`**), `messages`, `verdicts`, `webhooks`
+- `sessions` (including **`suitability_score`**, optional **`profile` jsonb**, **`current_step_id`**, **`flow_version`**), `messages`, `verdicts`, `webhooks`
+- `application_decisions` (one immutable human or client-policy approval/decline per gatekeeper session)
 - Optional: **`session_profile_snapshots`** for audit / re-extraction (defer if `verdicts.profile` sufficient)
 - Extensions: `profiles`, `profile_eligibility`, `personas` / `project_agents` (see migration doc)
 
@@ -272,7 +291,7 @@ Normative HTTP contract: [api/openapi.yaml](./api/openapi.yaml).
 |--------|------|------|---------|
 | `POST` | `/v1/sessions/{sessionId}/messages` | Bearer `gk_*` | User turn → assistant reply + scores + status (**both modes** unless step-specific route added) |
 | `GET` | `/v1/sessions/{sessionId}` | Bearer `gk_*` | **Required for onboarding UX:** returns `status`, `outcome`, **`current_step`**, **`flow_version`**, partial or final **`profile`** when completed |
-| `POST` | `/v1/sessions/{sessionId}/access` | Bearer `gk_*` or public + secret | Post-pass email capture |
+| `POST` | `/v1/sessions/{sessionId}/access` | Bearer `gk_*` or public + secret | Post-approval email capture |
 | `POST` | `/internal/orgs/{orgId}/projects` | Platform user session | Create project (wizard); see wizard doc |
 
 Platform **internal** routes are out of scope for the public OpenAPI file; document in a separate `internal-openapi.yaml` when implemented.
@@ -298,6 +317,7 @@ Platform **internal** routes are out of scope for the public OpenAPI file; docum
 | **Flow vs host schema drift** | Host community profile fields change independently of Groucho `flow_config` | Version `flow_config`; document host migration; webhook includes `flow_version`. |
 | **Extraction quality** | LLM returns invalid or hallucinated structure | Enforce JSON Schema validation; bounded retries; fallback messages to user. |
 | **Longer sessions** | Onboarding = more tokens and abuse surface | Stricter rate limits per project type; optional max session duration. |
+| **Threshold automation** | A mistaken policy can approve or decline applicants at scale | Both actions default off; configure independently; preserve score, policy snapshot, decision source, and immutable decision audit. |
 | **Dual product modes** | Single codebase conflates gatekeeper and onboarding | Feature flag + project_type routing in API; separate integration tests per mode. |
 
 ---

@@ -35,9 +35,14 @@ vi.mock("@/lib/supabase", () => ({
     rpc: (...args: unknown[]) => mocks.rpc(...args),
     from: (table: string) => ({
       upsert: (...args: unknown[]) => mocks.upsert(table, ...args),
-      update: (payload: unknown) => ({
-        eq: async () => mocks.jobUpdate(table, payload),
-      }),
+      update: (payload: unknown) => {
+        const promise = Promise.resolve(mocks.jobUpdate(table, payload))
+        const chain = {
+          eq: () => chain,
+          then: promise.then.bind(promise),
+        }
+        return chain
+      },
       select: () => {
         if (table === "sessions") {
           return filteredSingle({
@@ -68,6 +73,13 @@ vi.mock("@/lib/supabase", () => ({
                   role: "user",
                   content: "I run a listening night.",
                   metadata: {
+                    interaction_answer: {
+                      type: "mediaChoice",
+                      questionId: "programme-room",
+                      mode: "select",
+                      optionIds: ["performance-a"],
+                      rationale: "It opens the room with warmth.",
+                    },
                     scores: {
                       specificity: 0.8,
                       authenticity: 0.8,
@@ -177,6 +189,15 @@ describe("session completion jobs", () => {
         reviewerReport: expect.objectContaining({
           advisory_recommendation: "recommend",
         }),
+        interactionAnswers: [
+          {
+            type: "mediaChoice",
+            questionId: "programme-room",
+            mode: "select",
+            optionIds: ["performance-a"],
+            rationale: "It opens the room with warmth.",
+          },
+        ],
       }),
     )
     expect(mocks.recordCulturalSignals).toHaveBeenCalled()

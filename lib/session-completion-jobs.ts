@@ -13,6 +13,8 @@ import {
   recordVerdictAndEnqueueWebhooks,
   type TerminalSessionStatus,
 } from "@/lib/verdict-webhook"
+import { recordAutomaticApplicationDecision } from "@/lib/automatic-application-decision"
+import { normaliseMediaChoiceAnswer } from "@/lib/gatekeeper-interaction-spec"
 
 type CompletionJob = {
   id: string
@@ -140,6 +142,20 @@ async function completeJob(job: CompletionJob): Promise<void> {
   if (personaError) throw personaError
 
   const rows = messages ?? []
+  const interactionAnswers = rows.flatMap((message) => {
+    if (
+      message.role !== "user" ||
+      !message.metadata ||
+      typeof message.metadata !== "object" ||
+      Array.isArray(message.metadata)
+    ) {
+      return []
+    }
+    const answer = normaliseMediaChoiceAnswer(
+      (message.metadata as Record<string, unknown>).interaction_answer,
+    )
+    return answer ? [answer] : []
+  })
   const terminalAssistant = [...rows]
     .reverse()
     .find((message) => message.role === "assistant")
@@ -158,6 +174,13 @@ async function completeJob(job: CompletionJob): Promise<void> {
   )
   const scores = scoresFromMetadata(latestUser?.metadata)
   const projectSettings = normalizeProjectSettings(project.settings)
+  const { error: scoreWriteError } = await supabase
+    .from("sessions")
+    .update({ suitability_score: scores.overall })
+    .eq("id", job.session_id)
+    .eq("project_id", job.project_id)
+    .eq("organisation_id", job.organisation_id)
+  if (scoreWriteError) throw scoreWriteError
   const onboardingFlow = resolveRuntimeFlowConfig(projectSettings)
   const completionPersona =
     projectSettings.projectType === "onboarding" && onboardingFlow
@@ -175,6 +198,15 @@ async function completeJob(job: CompletionJob): Promise<void> {
             profile_extractor_hint: persona.profile_extractor_hint ?? null,
           }
         : null
+
+  await recordAutomaticApplicationDecision({
+    organisationId: job.organisation_id,
+    projectId: job.project_id,
+    sessionId: job.session_id,
+    suitabilityScore: scores.overall,
+    projectSettings: project.settings,
+    advisoryRecommendation: reviewerReport?.advisory_recommendation ?? null,
+  })
 
   await Promise.all([
     recordVerdictAndEnqueueWebhooks({
@@ -196,6 +228,7 @@ async function completeJob(job: CompletionJob): Promise<void> {
             ...(session.applicant_name ? { name: session.applicant_name } : {}),
           }
         : null,
+      interactionAnswers,
     }),
     recordCompletedSessionCulturalSignals({
       organisationId: job.organisation_id,

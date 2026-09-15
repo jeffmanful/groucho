@@ -30,6 +30,7 @@ import { OnboardingExperienceToggles } from "@/components/admin/OnboardingExperi
 import { OnboardingFlowEditor } from "@/components/admin/OnboardingFlowEditor"
 import { PersonaSetupNote } from "@/components/admin/PersonaSetupNote"
 import { ApplicationExperienceFields } from "@/components/admin/ApplicationExperienceFields"
+import { DecisionPolicyFields } from "@/components/admin/DecisionPolicyFields"
 import {
   COLORS_PROFILE_EXTRACTOR_HINT,
   COLORS_PROFILE_SCHEMA,
@@ -83,7 +84,6 @@ export default function EditProjectPage() {
   const formTopRef = useRef<HTMLDivElement>(null)
   const [slugManual, setSlugManual] = useState(true)
   const [existingSettings, setExistingSettings] = useState<Record<string, unknown>>({})
-  const [advOpen, setAdvOpen] = useState(false)
   const [flowEditorKey, setFlowEditorKey] = useState("")
   const flowFlushRef = useRef<(() => OnboardingFlowStep[]) | null>(null)
 
@@ -107,8 +107,10 @@ export default function EditProjectPage() {
     onboardingExperience: { ...DEFAULT_ONBOARDING_EXPERIENCE },
     webhookUrl: "",
     webhookEvents: [],
-    passThreshold: 0.65,
-    rejectThreshold: 0.25,
+    automaticAcceptanceEnabled: false,
+    automaticDeclineEnabled: false,
+    acceptanceThreshold: 0.8,
+    reviewThreshold: 0.55,
   })
   const [applyingTemplate, setApplyingTemplate] = useState(false)
 
@@ -213,6 +215,7 @@ export default function EditProjectPage() {
 
   const step2Valid = useMemo(() => {
     if (!form.personaId) return false
+    if (form.reviewThreshold >= form.acceptanceThreshold) return false
     if (form.projectType === "gatekeeper") return true
     return form.flowSteps.every(
       (s) =>
@@ -221,7 +224,13 @@ export default function EditProjectPage() {
         s.question.trim() &&
         s.profile_key.trim(),
     )
-  }, [form.personaId, form.projectType, form.flowSteps])
+  }, [
+    form.personaId,
+    form.projectType,
+    form.flowSteps,
+    form.reviewThreshold,
+    form.acceptanceThreshold,
+  ])
 
   const eventToggle = (id: string) => {
     patchForm({
@@ -643,45 +652,22 @@ export default function EditProjectPage() {
           </>
         )}
 
-        <div style={{ marginTop: "1rem" }}>
-          <button
-            type="button"
-            onClick={() => setAdvOpen((o) => !o)}
-            style={{ ...setupBtn(false), fontSize: "0.65rem", opacity: 0.5 }}
-          >
-            {advOpen ? "▼" : "▶"} Advanced thresholds
-          </button>
-          {advOpen && (
-            <div style={{ marginTop: "1rem", opacity: 0.85 }}>
-              <label style={setupLabel}>Pass threshold (0–1)</label>
-              <input
-                type="number"
-                step="0.01"
-                min={0}
-                max={1}
-                value={form.passThreshold}
-                onChange={(e) =>
-                  patchForm({ passThreshold: Number(e.target.value) })
-                }
-                style={{ ...setupInput, maxWidth: "8rem" }}
-              />
-              <label style={{ ...setupLabel, marginTop: "0.75rem" }}>
-                Reject threshold (0–1)
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                min={0}
-                max={1}
-                value={form.rejectThreshold}
-                onChange={(e) =>
-                  patchForm({ rejectThreshold: Number(e.target.value) })
-                }
-                style={{ ...setupInput, maxWidth: "8rem" }}
-              />
-            </div>
-          )}
-        </div>
+        {form.projectType === "gatekeeper" && (
+          <div style={{ marginTop: "2rem" }}>
+            <h3 style={{ ...setupLabel, fontSize: "0.75rem", opacity: 0.7 }}>
+              CLIENT DECISION POLICY
+            </h3>
+            <DecisionPolicyFields
+              value={{
+                automaticAcceptanceEnabled: form.automaticAcceptanceEnabled,
+                automaticDeclineEnabled: form.automaticDeclineEnabled,
+                acceptanceThreshold: form.acceptanceThreshold,
+                reviewThreshold: form.reviewThreshold,
+              }}
+              onChange={(decisionPolicy) => patchForm(decisionPolicy)}
+            />
+          </div>
+        )}
       </section>
 
       <section>

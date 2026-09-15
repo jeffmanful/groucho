@@ -45,13 +45,22 @@
 | Environment | radio | `test` \| `live` (default test) |
 | Default mode for sessions | radio | `live` \| `dry-run` (default dry-run in test env) |
 | Persona | select from `project_personas` templates OR “Start from Lou template” | required |
+| Acceptance threshold | numeric slider, `0–1` | Must be greater than review threshold; default `0.80` |
+| Review threshold | numeric slider, `0–1` | Must be lower than acceptance threshold; default `0.55` |
+| Automatically accept top band | switch | Default off |
+| Automatically decline below threshold | switch | Default off; independent from automatic acceptance |
 
 **Optional advanced (collapsed accordion):**
 
-- Pass / reject score thresholds (numeric sliders mirroring current `pass_threshold` / `reject_threshold`).  
 - Max turns (default 4).
 
-**Friction:** Accordion label “Advanced — misconfiguration can block real users” (warning tone, not blocking).
+The decision controls must explain that Groucho supplies a suitability score while
+the client owns the thresholds and automatic actions. Enabling either switch shows
+a warning that the corresponding score band will create immutable decisions for
+real applicants. The two switches must never be visually or logically coupled.
+
+**Friction:** Accordion label “Advanced conversation settings” for max turns. Decision
+automation remains visible rather than hidden because it changes applicant access.
 
 **Mock:** Two-column layout: left summary card of Step 1; right form. Sticky footer with Back / Continue.
 
@@ -77,7 +86,8 @@
 
 **Screen title:** “Review and create”
 
-Read-only summary: name, slug, environment, persona, webhook host (masked), mode defaults.
+Read-only summary: name, slug, environment, persona, suitability thresholds,
+automatic-action state, webhook host (masked), and mode defaults.
 
 | Control | Behaviour |
 |---------|-----------|
@@ -120,6 +130,9 @@ Read-only summary: name, slug, environment, persona, webhook host (masked), mode
 - [ ] Refresh mid-wizard restores draft (if draft persistence implemented).  
 - [ ] Closing key modal without checkbox shows browser `beforeunload` warning if trying to leave (optional).  
 - [ ] Analytics event: `project_wizard_started`, `project_wizard_step_N`, `project_created`.
+- [ ] Both automatic actions are off unless the operator explicitly enables them.
+- [ ] Review threshold cannot equal or exceed the acceptance threshold.
+- [ ] Review screen states which score bands remain pending and which create automatic decisions.
 
 ---
 

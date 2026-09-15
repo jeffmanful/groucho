@@ -1,6 +1,22 @@
 @import "tailwindcss";
 
 @font-face {
+  font-family: "Geist";
+  src: url("/fonts/geist/Geist-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Geist Pixel";
+  src: url("/fonts/geist/GeistPixel-Square.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
   font-family: "Overused Grotesk";
   src: url("/fonts/OverusedGrotesk-Book.woff");
   font-weight: 400;
@@ -41,6 +57,8 @@
 
 :root {
   --font-sans: "Overused Grotesk", sans-serif;
+  --font-geist: "Geist", sans-serif;
+  --font-geist-pixel: "Geist Pixel", monospace;
   --icon-swap-dur: 200ms;
   --icon-swap-blur: 2px;
   --icon-swap-start-scale: 0.25;

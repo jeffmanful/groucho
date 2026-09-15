@@ -31,6 +31,9 @@ import {
 import {
   DEFAULT_INTERACTION_SPEC,
   interactionSpecForApplicationMove,
+  normaliseMediaChoiceInteraction,
+  validateMediaChoiceAnswer,
+  type MediaChoiceAnswer,
 } from "@/lib/gatekeeper-interaction-spec"
 import {
   computeTerminalStatusFromGatekeeperTurn,
@@ -129,6 +132,10 @@ import {
   shouldExposeServerTimings,
 } from "@/lib/request-timings"
 import { resolveActiveGatekeeperPersona } from "@/lib/persona-resolution"
+import {
+  recordAutomaticApplicationDecision,
+  type AutomaticDecisionResult,
+} from "@/lib/automatic-application-decision"
 
 function traceJson(
   input: PostSessionMessageInput,
@@ -302,6 +309,7 @@ export type PostSessionMessageInput = {
   authorization: string | null
   sessionId: string
   message: string
+  interactionAnswer?: MediaChoiceAnswer
   personaId?: string | null
   applicantIdentity?: ApplicantIdentity | null
   /** Playground (`/doorcheck`): explicit project when caller is authenticated. */
@@ -324,7 +332,8 @@ export async function postSessionMessage(
 ): Promise<NextResponse> {
   input.timings ??= new RequestTimings()
   const timings = input.timings
-  const { message, sessionId, personaId, applicantIdentity } = input
+  const { sessionId, personaId, applicantIdentity } = input
+  let message = input.message
   if (!message?.trim() || !sessionId?.trim()) {
     return traceJson(
       input,
@@ -478,6 +487,50 @@ export async function postSessionMessage(
     }
   }
 
+  if (input.interactionAnswer) {
+    if (!existing) {
+      return traceJson(
+        input,
+        { error: "A media choice answer requires an active question" },
+        { status: 400 },
+      )
+    }
+    const { data: lastAssistant } = await supabase
+      .from("messages")
+      .select("metadata")
+      .eq("session_id", existing.id)
+      .eq("role", "assistant")
+      .order("sent_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    const metadata =
+      lastAssistant?.metadata &&
+      typeof lastAssistant.metadata === "object" &&
+      !Array.isArray(lastAssistant.metadata)
+        ? (lastAssistant.metadata as Record<string, unknown>)
+        : null
+    const rawUi =
+      metadata?.ui &&
+      typeof metadata.ui === "object" &&
+      !Array.isArray(metadata.ui)
+        ? (metadata.ui as Record<string, unknown>)
+        : null
+    const mediaChoice = normaliseMediaChoiceInteraction(rawUi?.mediaChoice)
+    if (!mediaChoice) {
+      return traceJson(
+        input,
+        { error: "The active question does not accept a media choice answer" },
+        { status: 400 },
+      )
+    }
+    const validated = validateMediaChoiceAnswer(input.interactionAnswer, mediaChoice)
+    if (!validated.ok) {
+      return traceJson(input, { error: validated.error }, { status: 400 })
+    }
+    message = validated.message
+    input.interactionAnswer = validated.answer
+  }
+
   const projectPersonaId =
     typeof settings.raw.persona_id === "string"
       ? settings.raw.persona_id.trim()
@@ -548,6 +601,9 @@ export async function postSessionMessage(
       project_id: projectId,
       role: "user",
       content: message.trim(),
+      ...(input.interactionAnswer
+        ? { metadata: { interaction_answer: input.interactionAnswer } }
+        : {}),
     })
     .select("id")
     .single())
@@ -897,6 +953,9 @@ export async function postSessionMessage(
     .from("messages")
     .update({
       metadata: {
+        ...(input.interactionAnswer
+          ? { interaction_answer: input.interactionAnswer }
+          : {}),
         scores,
         ...(answerAssessment
           ? { answer_assessment: answerAssessment }
@@ -1516,8 +1575,35 @@ export async function postSessionMessage(
 
   if (status !== null) {
     await timings.measure("terminal_state_persistence", () =>
-      supabase.from("sessions").update({ status }).eq("id", sessionRowId),
+      supabase
+        .from("sessions")
+        .update({ status, suitability_score: scores.overall })
+        .eq("id", sessionRowId),
     )
+  }
+
+  let automaticDecision: AutomaticDecisionResult | null = null
+  if (status !== null) {
+    try {
+      automaticDecision = await timings.measure("client_decision_policy", () =>
+        recordAutomaticApplicationDecision({
+          organisationId,
+          projectId,
+          sessionId: sessionRowId,
+          suitabilityScore: scores.overall,
+          projectSettings: settings.raw,
+          advisoryRecommendation:
+            reviewerReport?.advisory_recommendation ?? null,
+        }),
+      )
+    } catch (error) {
+      log.error("automatic_application_decision_failed", {
+        requestId: input.requestId,
+        projectId,
+        sessionId,
+        detail: error instanceof Error ? error.message : String(error),
+      })
+    }
   }
 
   if (status !== null) {
@@ -1560,8 +1646,16 @@ export async function postSessionMessage(
   return traceJson(input, {
     message: userVisibleAssistantContent,
     status: status ?? "active",
-    reviewStatus: status === null ? "not_ready" : "pending",
+    reviewStatus:
+      status === null ? "not_ready" : automaticDecision?.reviewStatus ?? "pending",
     scores,
+    suitabilityScore: scores.overall,
+    ...(automaticDecision
+      ? { suitabilityBand: automaticDecision.suitabilityBand }
+      : {}),
+    ...(automaticDecision?.accessSecret
+      ? { secret: automaticDecision.accessSecret }
+      : {}),
     ...(structuredToolSeen ? { ui: interactionSpec } : {}),
     ...(reviewerReport ? { reviewerReport } : {}),
   })

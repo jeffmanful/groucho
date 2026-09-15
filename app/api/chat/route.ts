@@ -4,6 +4,10 @@ import { resolveAdminActor } from "@/lib/admin-actor"
 import { postSessionMessage } from "@/lib/post-session-message"
 import { getOrCreateRequestId } from "@/lib/request-trace"
 import { tracedJson } from "@/lib/with-request-trace"
+import {
+  normaliseMediaChoiceAnswer,
+  type MediaChoiceAnswer,
+} from "@/lib/gatekeeper-interaction-spec"
 
 export async function POST(req: NextRequest) {
   const requestId = getOrCreateRequestId(req)
@@ -13,6 +17,7 @@ export async function POST(req: NextRequest) {
     personaId?: string
     projectId?: string
     applicant?: unknown
+    interactionAnswer?: unknown
   }
   try {
     body = await req.json()
@@ -34,6 +39,14 @@ export async function POST(req: NextRequest) {
     return tracedJson(req, { error: applicant.error }, { status: 400 })
   }
 
+  let interactionAnswer: MediaChoiceAnswer | undefined
+  if (body.interactionAnswer !== undefined) {
+    interactionAnswer = normaliseMediaChoiceAnswer(body.interactionAnswer)
+    if (!interactionAnswer) {
+      return tracedJson(req, { error: "Invalid interactionAnswer" }, { status: 400 })
+    }
+  }
+
   const projectIdTrimmed = projectId?.trim() || undefined
   const playgroundActor = projectIdTrimmed
     ? await resolveAdminActor()
@@ -45,6 +58,7 @@ export async function POST(req: NextRequest) {
     message: message.trim(),
     personaId: personaId?.trim() || undefined,
     applicantIdentity: applicant.value,
+    interactionAnswer,
     projectId: projectIdTrimmed,
     playgroundActor,
     requestId,

@@ -80,10 +80,11 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Submit email after recorded human approval
+         * Submit email after recorded client approval
          * @description Aligns with [app/api/access/route.ts](../../app/api/access/route.ts):
-         *     server verifies an explicit human approval and its access secret before
-         *     upserting profile. Advisory model outcomes and scores cannot grant access.
+         *     server verifies either an explicit human approval or a client-enabled
+         *     automatic approval and its access secret before upserting profile.
+         *     Groucho's model output alone cannot grant access.
          *     **Must not** leak whether email already exists.
          */
         post: operations["postSessionAccess"];
@@ -112,6 +113,7 @@ export interface components {
              */
             personaId?: string | null;
             applicant?: components["schemas"]["ApplicantIdentity"];
+            interactionAnswer?: components["schemas"]["InteractionAnswer"];
         };
         ScoreBreakdown: {
             specificity: number;
@@ -119,7 +121,7 @@ export interface components {
             cultural_depth: number;
             overall: number;
         };
-        /** @description Private reviewer-facing applicant report. Advisory only; final decisions remain human-owned by the host/client. */
+        /** @description Private reviewer-facing applicant report. Advisory only; the host/client owns the decision policy. */
         ReviewerReport: {
             /** @description Neutral applicant bio/report summary based on conversation evidence. */
             applicant_bio: string;
@@ -147,12 +149,12 @@ export interface components {
             reviewer_focus: string;
         };
         /**
-         * @description Normalised outcome after thresholds (see chat route)
+         * @description Advisory conversation outcome. It does not approve or decline the application by itself.
          * @enum {string}
          */
         SessionOutcome: "active" | "passed" | "redirected" | "rejected";
         /**
-         * @description Human-review lifecycle. This—not the advisory session outcome—controls access.
+         * @description Client decision lifecycle. Approved or declined is created by a human action or an explicitly enabled deterministic client policy; this—not Groucho's advisory session outcome—controls access.
          * @enum {string}
          */
         ApplicationReviewStatus: "not_ready" | "pending" | "approved" | "declined";
@@ -161,7 +163,56 @@ export interface components {
         /** @enum {string} */
         GrouchoIntent: "probe" | "clarify" | "challenge" | "acknowledge" | "decide" | "redirect" | "reject";
         /** @enum {string} */
-        GrouchoInputType: "text" | "voice" | "singleSelect" | "multiSelect" | "ranking";
+        GrouchoInputType: "text" | "voice" | "singleSelect" | "multiSelect" | "ranking" | "mediaChoice";
+        /** @enum {string} */
+        MediaChoiceMode: "select" | "remove" | "rank";
+        MediaChoiceVideo: {
+            /** @constant */
+            type: "video";
+            /** @constant */
+            provider: "youtube";
+            videoId: string;
+            title: string;
+            artist?: string;
+            /** @description HTTPS or application-relative poster image. */
+            thumbnailUrl?: string;
+            durationSeconds?: number;
+            startSeconds?: number;
+            /** @description Optional HTTPS or application-relative captions resource. */
+            captionsUrl?: string;
+            transcript?: string;
+            alt: string;
+        };
+        MediaChoiceOption: {
+            id: string;
+            label: string;
+            description?: string;
+            media: components["schemas"]["MediaChoiceVideo"];
+        };
+        MediaChoiceInteraction: {
+            id: string;
+            options: components["schemas"]["MediaChoiceOption"][];
+            selection: {
+                mode: components["schemas"]["MediaChoiceMode"];
+                minSelections: number;
+                maxSelections: number;
+            };
+            rationale: {
+                required: boolean;
+                prompt: string;
+                minLength?: number;
+                maxLength: number;
+            };
+        };
+        MediaChoiceAnswer: {
+            /** @constant */
+            type: "mediaChoice";
+            questionId: string;
+            mode: components["schemas"]["MediaChoiceMode"];
+            optionIds: string[];
+            rationale?: string;
+        };
+        InteractionAnswer: components["schemas"]["MediaChoiceAnswer"];
         /** @enum {string} */
         GrouchoEmotionalState: "neutral" | "curious" | "interested" | "skeptical" | "evaluating" | "decisive";
         /** @enum {string} */
@@ -172,12 +223,15 @@ export interface components {
             emotionalState: components["schemas"]["GrouchoEmotionalState"];
             visualState: components["schemas"]["GrouchoVisualState"];
             options?: string[];
+            mediaChoice?: components["schemas"]["MediaChoiceInteraction"];
         };
         OpeningInteraction: {
             /** @enum {string} */
-            inputType: "text" | "singleSelect" | "multiSelect";
+            inputType: "text" | "singleSelect" | "multiSelect" | "mediaChoice";
             /** @description Required when `inputType` is `singleSelect` or `multiSelect` */
             options?: string[];
+            /** @description Required when `inputType` is `mediaChoice`. */
+            mediaChoice?: components["schemas"]["MediaChoiceInteraction"];
         };
         OnboardingCurrentStep: {
             id: string;
@@ -217,12 +271,18 @@ export interface components {
             status: components["schemas"]["SessionOutcome"];
             reviewStatus?: components["schemas"]["ApplicationReviewStatus"];
             scores: components["schemas"]["ScoreBreakdown"];
+            /** @description Groucho's overall suitability score, before the client decision policy is applied. */
+            suitabilityScore?: number;
+            /**
+             * @description Score band produced by the client's configured thresholds.
+             * @enum {string}
+             */
+            suitabilityBand?: "recommended_acceptance" | "review" | "below_threshold";
             /** @description V2 interaction spec for client rendering (gatekeeper turns) */
             ui?: components["schemas"]["GrouchoInteractionUi"];
             /**
              * Format: uuid
-             * @deprecated
-             * @description Legacy onboarding-only field. Gatekeeper completion never issues an access secret.
+             * @description Issued when the client policy automatically approves the application. Human-review approvals issue this through the admin decision endpoint.
              */
             secret?: string;
             /** @description Optional compatibility field. Terminal profile extraction runs asynchronously; read the completed session to retrieve the persisted profile. */
@@ -252,6 +312,15 @@ export interface components {
              */
             outcome?: "PASS" | "REDIRECT" | "REJECT" | null;
             reviewStatus?: components["schemas"]["ApplicationReviewStatus"];
+            /** @description Final Groucho suitability score, before client policy. */
+            suitabilityScore?: number;
+            /** @enum {string} */
+            suitabilityBand?: "recommended_acceptance" | "review" | "below_threshold";
+            /**
+             * Format: uuid
+             * @description Returned for a client-policy approval so the applicant flow can continue.
+             */
+            secret?: string;
             turnsUsed?: number;
             /** Format: date-time */
             startedAt?: string;
@@ -482,7 +551,7 @@ export interface operations {
                     email: string;
                     /**
                      * Format: uuid
-                     * @description Required for gatekeeper access; issued by the human approval action. Optional in the compatibility schema for non-gatekeeper integrations.
+                     * @description Required for gatekeeper access; issued by the human or client-policy approval action. Optional in the compatibility schema for non-gatekeeper integrations.
                      */
                     secret?: string;
                 };

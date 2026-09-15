@@ -18,7 +18,9 @@ adapt the framework-specific files.
 - Private advisory COLORS recommendation: `recommend` | `human_review` | `decline`
 - Reviewer packet: applicant report/bio, confidence score, evidence summary, weak signals, and flags
 - Durable decision source: verified `session.completed` webhook
-- Forum account creation, final decisions, and invitation sending: owned by the COLORS forum/client
+- Final decision: owned by COLORS through an explicit reviewer action or its
+  independently enabled deterministic acceptance/decline policy
+- Forum account creation and invitation sending: owned by the COLORS forum/client
 
 Until Groucho exposes project-specific terminal enums, map raw Groucho outcomes to
 COLORS reviewer recommendations as:
@@ -58,10 +60,11 @@ Important product constraints:
 
 - Applicants do not have forum accounts yet.
 - We need their email so approved applicants can receive an invitation later.
-- Groucho evaluates the application, but the COLORS forum owns review status,
-  final decisions, account invitations, roles, and permissions.
-- Groucho recommendations are advisory report fields. Do not automate final
-  community decisions from them.
+- Groucho evaluates the application, but the COLORS forum owns its thresholds,
+  automatic-action settings, account invitations, roles, and permissions.
+- Groucho recommendations are advisory report fields. Do not infer a final
+  community decision from a recommendation, terminal outcome, or score alone;
+  use the recorded `reviewStatus`.
 - Never render raw pass/redirect/reject outcomes or private
   recommend/human_review/decline recommendations to an applicant.
 - Every terminal path must show only Groucho's configured neutral thank-you
@@ -359,36 +362,43 @@ Derive `colors_recommendation` from `outcome` using the current mapping:
 `passed` -> `recommend`, `redirected` -> `human_review`, and `rejected` ->
 `decline`. `decline` is private reviewer guidance only; do not send an
 applicant-facing rejection from the webhook request. The host must still require
-an explicit human reviewer decision for every application.
+either an explicit human reviewer decision or a client-policy decision. Both
+automatic policy actions default off, so pending applications still require review.
 
 Configure the webhook URL and signing secret in the Groucho Forum Applications
 project. Add tests for valid signatures, invalid signatures, malformed payloads,
 duplicate delivery, and persistence failure.
 ```
 
-## Prompt 5: Add Reviewer Approval And Invitation Sending
+## Prompt 5: Add Decision Handling And Invitation Sending
 
 ```text
-Connect completed Groucho applications to the existing COLORS reviewer and
+Connect completed Groucho applications to the existing COLORS decision and
 invitation workflow.
 
 Requirements:
 
 - Only authorized forum reviewers can see private Groucho outcomes, scores,
   profile data, or transcript references.
-- Add a review queue for completed applications with applicant email,
+- Add an application list for completed applications with applicant email,
   submission date, private outcome, advisory COLORS recommendation, confidence
   score, applicant bio/report, evidence summary, weak signals, flags, and review
-  status.
+  status. Only `pending` applications belong in the human review queue.
 - Keep the forum database as the source of truth for review and invitation state.
-- Do not automatically create an account from a Groucho outcome.
-- Require an explicit reviewer action to approve, decline, or send an invitation.
-  Do not automate final community decisions from Groucho's advisory
-  recommendation or confidence score.
+- After a verified completion webhook, read the Groucho session server-side and
+  persist `reviewStatus`, `suitabilityScore`, and `suitabilityBand`. Do not infer
+  these fields from the webhook outcome.
+- Do not automatically create an account from a Groucho outcome or score.
+- Require an explicit reviewer action for pending applications. An already
+  approved client-policy decision may enter the idempotent invitation flow; an
+  already declined policy decision must not.
+- Never automate final community decisions from Groucho's advisory recommendation,
+  terminal outcome, or confidence score. Only trust the recorded human/policy
+  `reviewStatus`.
 - The invitation must use the `applicant_email` received in the verified webhook.
 - Make invitation sending idempotent and prevent duplicate active invites.
-- Record reviewer, review timestamp, invitation timestamp, and provider message
-  ID where available.
+- Record decision source, reviewer when present, decision timestamp, invitation
+  timestamp, and provider message ID where available.
 - Use the existing invitation/email service and templates.
 - Invitation acceptance may create or link the forum account; the application
   flow itself must not require an account.
@@ -429,9 +439,12 @@ Verify the real browser flow against the configured Forum Applications project:
 17. A valid completed-session webhook creates one application record.
 18. Duplicate webhook delivery does not duplicate the application.
 19. Invalid webhook signatures are rejected.
-20. Every completed application appears in the human review queue with advisory
-    recommendation, confidence, report/bio, evidence, weak signals, and flags.
-21. Reviewer approval sends one invitation to the captured email.
+20. Every pending completed application appears in the human review queue with
+    advisory recommendation, confidence, report/bio, evidence, weak signals, and
+    flags. Automatically decided applications retain their decision source and
+    policy audit information.
+21. A recorded approval—human or enabled client policy—sends no more than one
+    invitation to the captured email.
 22. Application answers and applicant PII are absent from client analytics and
     server logs.
 23. Mobile and desktop layouts have no overlapping or clipped controls.

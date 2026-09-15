@@ -18,6 +18,7 @@
 | `redirect_reason` | TEXT | Optional |
 | `persona_id` | UUID FK → personas | Added later |
 | `success_secret` | TEXT | Legacy compatibility column; gatekeeper completion no longer writes it |
+| `suitability_score` | NUMERIC 0–1 | Final Groucho overall score, stored independently from the client decision |
 | `created_at`, `updated_at` | TIMESTAMPTZ | |
 
 **v1 mapping:** Table is now **`sessions`** (renamed from `conversations`). Further v1 work: add `mode` (live/dry-run), align `status` with v1 vocabulary (`in-progress` / `completed` / `abandoned`), map outcome to `outcome` enum (`PASS` / `REDIRECT` / `REJECT`). Keep `session_id` as opaque **client reference** alongside internal `id`.
@@ -28,7 +29,7 @@
 | `session_id` | `sessions.client_session_key` or keep name `session_id` |
 | `status` | `sessions.status` + derived `sessions.outcome` |
 | `persona_id` | FK to `project_personas` or `personas` scoped by `project_id` |
-| `success_secret` | Deprecated for gatekeeper flows; human approvals use `application_decisions.access_secret` |
+| `success_secret` | Deprecated for gatekeeper flows; approved client decisions use `application_decisions.access_secret` |
 
 ### 1.2 `messages`
 
@@ -77,23 +78,25 @@ Cross-reference with [docs/PRD.md](./PRD.md) §8.2.
 | `messages` | Transcript + metadata |
 | `verdicts` | Append-only outcome + reasoning + webhook state |
 | `webhooks` | Endpoint + signing + events |
-| `application_decisions` | Immutable human approval/decline, reviewer identity, reason, and approval-only access secret |
+| `application_decisions` | Immutable human or client-policy approval/decline, policy/reviewer audit data, reason, and approval-only access secret |
 
 ### 2.1 New / merged concepts
 
 | Concept | Implementation note |
 |---------|---------------------|
 | **Verdict vs session** | `sessions` holds latest `outcome` for queries; `verdicts` is immutable audit row when conversation completes (feeds webhooks). |
-| **Scores** | Latest aggregate optional on `sessions.score`; per-turn in `messages.metadata`. |
+| **Scores** | Final overall on `sessions.suitability_score`; per-turn dimensions in `messages.metadata`. |
+| **Client decision policy** | `projects.settings.decision_policy` stores the thresholds and independent automatic-action switches. See [client-decision-policy.md](./client-decision-policy.md). |
+| **Application decision** | `application_decisions` stores one immutable approval or decline per session. `decision_source` distinguishes human from deterministic policy actions; policy actions preserve `suitability_score` and `policy_snapshot`. |
 | **Profile** | `sessions.profile` jsonb (optional) vs normalised `profiles` table — use `profiles` for email; session may store anonymised traits only. |
 
 ### 2.2 Outcome vocabulary alignment
 
 | Model string (today) | API / DB enum |
 |----------------------|----------------|
-| Terminal pass (with thresholds) | `PASS` |
+| Terminal pass (advisory) | `PASS` |
 | `REDIRECT` | `REDIRECT` |
-| `REJECTED` (with thresholds) | `REJECT` (store `REJECT` in DB; map from string in one place) |
+| `REJECTED` (advisory) | `REJECT` (store `REJECT` in DB; map from string in one place) |
 | `failed` (legacy) | Map to `abandoned` or `REJECT` per product decision |
 
 ---
@@ -102,6 +105,7 @@ Cross-reference with [docs/PRD.md](./PRD.md) §8.2.
 
 ```text
 sessions (organisation_id, project_id, started_at DESC)
+sessions (project_id, suitability_score DESC NULLS LAST, created_at DESC)
 messages (session_id, sent_at ASC)
 messages (organisation_id, project_id, sent_at DESC)  -- if denormalised
 api_keys (project_id) WHERE revoked_at IS NULL
@@ -126,6 +130,7 @@ profiles (organisation_id, email)
 | `messages` | Same as session parent | Same | — | — | |
 | `verdicts` | Member | System only | Webhook worker updates `webhook_*` | — | |
 | `session_completion_jobs` | System only | System only | Completion worker | System only | Service-role queue; no applicant or member policies |
+| `application_decisions` | System/admin route only | System/admin route only | — | — | One immutable row per session; no applicant-facing policies |
 | `webhooks` | Admin | Admin | Admin | Admin | |
 | `profiles` | Admin / own email policy | Access API with service role | Upsert via controlled API | GDPR export only | |
 
@@ -152,6 +157,9 @@ RLS alone with anon key is insufficient for arbitrary browsers unless you use **
 8. Apply `20260821100000_add_session_completion_jobs.sql` before enabling
    asynchronous gatekeeper terminal completion. The runtime retains an inline
    fallback until the queue is available.
+9. Apply `20260906214659_add_client_decision_policy.sql` before configuring client
+   suitability thresholds or automatic actions. Existing completed sessions are
+   not backfilled with suitability scores by this migration.
 
 ---
 
@@ -167,3 +175,5 @@ Current: Supabase Realtime on `sessions` / `messages`. **Phase 1:** RLS on `sess
 - [ ] Backfill script for existing `session_id` rows → `sessions`.  
 - [ ] Feature flag: read from new tables while writing dual-write if zero-downtime required.  
 - [ ] Update [api/openapi.yaml](./api/openapi.yaml) when `session` resource shape stabilises.
+- [ ] Keep `application_decisions` server-controlled; verify RLS remains enabled and
+  confirm explicit Data API grants only for the server roles that require them.

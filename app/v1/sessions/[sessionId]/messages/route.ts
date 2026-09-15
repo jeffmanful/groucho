@@ -3,6 +3,10 @@ import { parseApplicantIdentity } from "@/lib/applicant-identity"
 import { postSessionMessage } from "@/lib/post-session-message"
 import { getOrCreateRequestId } from "@/lib/request-trace"
 import { tracedJson } from "@/lib/with-request-trace"
+import {
+  normaliseMediaChoiceAnswer,
+  type MediaChoiceAnswer,
+} from "@/lib/gatekeeper-interaction-spec"
 
 export async function POST(
   req: NextRequest,
@@ -15,7 +19,12 @@ export async function POST(
     return tracedJson(req, { error: "Invalid sessionId" }, { status: 400 })
   }
 
-  let body: { message?: string; personaId?: string | null; applicant?: unknown }
+  let body: {
+    message?: string
+    personaId?: string | null
+    applicant?: unknown
+    interactionAnswer?: unknown
+  }
   try {
     body = await req.json()
   } catch {
@@ -25,6 +34,14 @@ export async function POST(
   const message = body.message?.trim()
   if (!message) {
     return tracedJson(req, { error: "message is required" }, { status: 400 })
+  }
+
+  let interactionAnswer: MediaChoiceAnswer | undefined
+  if (body.interactionAnswer !== undefined) {
+    interactionAnswer = normaliseMediaChoiceAnswer(body.interactionAnswer)
+    if (!interactionAnswer) {
+      return tracedJson(req, { error: "Invalid interactionAnswer" }, { status: 400 })
+    }
   }
 
   const applicant = parseApplicantIdentity(body.applicant)
@@ -38,6 +55,7 @@ export async function POST(
     message,
     personaId: body.personaId ?? undefined,
     applicantIdentity: applicant.value,
+    interactionAnswer,
     requestId,
     incomingHeaders: req.headers,
   })

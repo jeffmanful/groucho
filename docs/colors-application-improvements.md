@@ -3,8 +3,10 @@
 > **Architecture note — 20 August 2026:** this tracker remains authoritative for
 > COLORS conversation content, adaptive branches, budgets, bridges, and current
 > runtime fixes. The planned replacement for universal scores, model-controlled
-> terminal outcomes, application state, and human decision authority is documented
-> in [the stronger V1 implementation plan](./groucho-stronger-v1-implementation-plan.md).
+> terminal outcomes, and application state is documented in
+> [the stronger V1 implementation plan](./groucho-stronger-v1-implementation-plan.md).
+> The later client-owned decision policy supersedes that plan's human-only decision
+> boundary; see [client-decision-policy.md](./client-decision-policy.md).
 
 This document tracks content and performance improvements for the first COLORS
 forum application flow. Groucho V1 remains focused on gatekeeper applications;
@@ -18,7 +20,8 @@ static onboarding is outside this work unless a later requirement depends on it.
 - Keep internal outcomes private and always finish with the configured neutral closing message.
 - Produce private advisory COLORS recommendations: `recommend`, `human_review`, or `decline`.
 - Produce a reviewer-facing applicant report or bio with a confidence score for every completed application.
-- Keep the final community decision human-owned by COLORS/the client.
+- Keep the final community decision client-owned by COLORS, through either a
+  reviewer action or its explicitly enabled deterministic policy.
 - Reduce active-turn and terminal-turn latency without weakening application quality.
 
 ## Core Signal Path
@@ -84,9 +87,9 @@ Reviewer-facing COLORS recommendations are advisory only:
 
 | COLORS recommendation | Current Groucho terminal | Review meaning |
 | --- | --- | --- |
-| `recommend` | `passed` | Evidence supports approval, but the client still makes the final decision. |
+| `recommend` | `passed` | Evidence supports approval, but a reviewer or client policy still makes the final decision. |
 | `human_review` | `redirected` | Evidence is incomplete, contradictory, borderline, or uncertain. |
-| `decline` | `rejected` | Evidence suggests poor fit, but the client still makes the final decision. |
+| `decline` | `rejected` | Evidence suggests poor fit, but a reviewer or client policy still makes the final decision. |
 
 The applicant must never see either the COLORS recommendation or the raw Groucho terminal status. The forum must not grant access, reject an applicant, send an invitation, or update final community status solely from Groucho's recommendation.
 
@@ -140,9 +143,10 @@ See [colors-adaptive-applicant-branches.md](./colors-adaptive-applicant-branches
 - [ ] Evaluate the application when enough evidence exists or the cap is reached, returning private COLORS recommendation, applicant bio/report, evidence by signal, confidence score, missing signals, reviewer focus, and safety flags as structured data.
 - [ ] Keep early safety termination available without running the full final evaluation.
 - [ ] Compare the final evaluator against representative accepted, uncertain, and unsuitable applications before changing production decisions.
-- [ ] Ensure every completed application is reviewable by a human regardless of advisory recommendation.
+- [ ] Ensure every pending completed application is reviewable by a human, and that
+  automatically decided applications retain an auditable policy snapshot.
 
-Runtime fallback reports are now evidence-backed: when the model omits a usable report, Groucho reconstructs covered evidence, additional transcript context, unresolved or insufficient attempted goals, confidence, and reviewer focus from persisted messages. Orientation is not used as the applicant biography or as an evidence denominator. This removes the previous empty generic report while keeping the final community decision human-owned.
+Runtime fallback reports are now evidence-backed: when the model omits a usable report, Groucho reconstructs covered evidence, additional transcript context, unresolved or insufficient attempted goals, confidence, and reviewer focus from persisted messages. Orientation is not used as the applicant biography or as an evidence denominator. This removes the previous empty generic report while keeping the final community decision client-owned and separate from the model recommendation.
 
 ### P1: Complete The COLORS Evaluation Rubric
 
@@ -244,4 +248,4 @@ See [colors-conversation-depth.md](./colors-conversation-depth.md).
 | 2026-07-30 | Cap the application at nine applicant-facing questions, including follow-ups. | This preserves brevity while allowing targeted clarification when a signal is weak. |
 | 2026-07-30 | Allow no more than two follow-ups per core question. | Repeated probing creates friction; after two failed attempts, the signal should become `insufficient_evidence`. |
 | 2026-07-30 | Allow early finish once enough evidence exists. | Groucho should not keep asking questions just because a default sequence exists. |
-| 2026-08-12 | Treat Groucho as an advisory reporting layer, not the final decision-maker. | The client wants a report/bio with confidence for every applicant, while final community decisions remain human-owned. |
+| 2026-08-12 | Treat Groucho as an advisory reporting layer, not the final decision-maker. | Historical decision: the client wanted a report/bio with confidence for every applicant and human-owned final decisions. Superseded on 2026-09-07 by the client-owned human-or-policy model. |

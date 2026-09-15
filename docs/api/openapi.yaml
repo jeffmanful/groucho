@@ -157,11 +157,12 @@ paths:
   /v1/sessions/{sessionId}/access:
     post:
       tags: [Access]
-      summary: Submit email after recorded human approval
+      summary: Submit email after recorded client approval
       description: |
         Aligns with [app/api/access/route.ts](../../app/api/access/route.ts):
-        server verifies an explicit human approval and its access secret before
-        upserting profile. Advisory model outcomes and scores cannot grant access.
+        server verifies either an explicit human approval or a client-enabled
+        automatic approval and its access secret before upserting profile.
+        Groucho's model output alone cannot grant access.
         **Must not** leak whether email already exists.
       operationId: postSessionAccess
       parameters:
@@ -180,7 +181,7 @@ paths:
                 secret:
                   type: string
                   format: uuid
-                  description: Required for gatekeeper access; issued by the human approval action. Optional in the compatibility schema for non-gatekeeper integrations.
+                  description: Required for gatekeeper access; issued by the human or client-policy approval action. Optional in the compatibility schema for non-gatekeeper integrations.
       responses:
         "200":
           description: Accepted
@@ -236,6 +237,8 @@ components:
           description: Optional persona override; must belong to the same project and be active.
         applicant:
           $ref: "#/components/schemas/ApplicantIdentity"
+        interactionAnswer:
+          $ref: "#/components/schemas/InteractionAnswer"
 
     ScoreBreakdown:
       type: object
@@ -268,7 +271,7 @@ components:
         - weak_or_missing_signals
         - safety_or_integrity_flags
         - reviewer_focus
-      description: Private reviewer-facing applicant report. Advisory only; final decisions remain human-owned by the host/client.
+      description: Private reviewer-facing applicant report. Advisory only; the host/client owns the decision policy.
       properties:
         applicant_bio:
           type: string
@@ -318,7 +321,7 @@ components:
 
     SessionOutcome:
       type: string
-      description: Normalised outcome after thresholds (see chat route)
+      description: Advisory conversation outcome. It does not approve or decline the application by itself.
       enum:
         - active
         - passed
@@ -327,7 +330,7 @@ components:
 
     ApplicationReviewStatus:
       type: string
-      description: Human-review lifecycle. This—not the advisory session outcome—controls access.
+      description: Client decision lifecycle. Approved or declined is created by a human action or an explicitly enabled deterministic client policy; this—not Groucho's advisory session outcome—controls access.
       enum:
         - not_ready
         - pending
@@ -344,7 +347,135 @@ components:
 
     GrouchoInputType:
       type: string
-      enum: [text, voice, singleSelect, multiSelect, ranking]
+      enum: [text, voice, singleSelect, multiSelect, ranking, mediaChoice]
+
+    MediaChoiceMode:
+      type: string
+      enum: [select, remove, rank]
+
+    MediaChoiceVideo:
+      type: object
+      required: [type, provider, videoId, title, alt]
+      properties:
+        type:
+          type: string
+          const: video
+        provider:
+          type: string
+          const: youtube
+        videoId:
+          type: string
+          pattern: "^[A-Za-z0-9_-]{6,20}$"
+        title:
+          type: string
+          maxLength: 160
+        artist:
+          type: string
+          maxLength: 120
+        thumbnailUrl:
+          type: string
+          description: HTTPS or application-relative poster image.
+        durationSeconds:
+          type: integer
+          minimum: 1
+        startSeconds:
+          type: integer
+          minimum: 0
+        captionsUrl:
+          type: string
+          description: Optional HTTPS or application-relative captions resource.
+        transcript:
+          type: string
+          maxLength: 4000
+        alt:
+          type: string
+          maxLength: 240
+
+    MediaChoiceOption:
+      type: object
+      required: [id, label, media]
+      properties:
+        id:
+          type: string
+          pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+        label:
+          type: string
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 240
+        media:
+          $ref: "#/components/schemas/MediaChoiceVideo"
+
+    MediaChoiceInteraction:
+      type: object
+      required: [id, options, selection, rationale]
+      properties:
+        id:
+          type: string
+          pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+        options:
+          type: array
+          minItems: 2
+          maxItems: 8
+          items:
+            $ref: "#/components/schemas/MediaChoiceOption"
+        selection:
+          type: object
+          required: [mode, minSelections, maxSelections]
+          properties:
+            mode:
+              $ref: "#/components/schemas/MediaChoiceMode"
+            minSelections:
+              type: integer
+              minimum: 1
+            maxSelections:
+              type: integer
+              minimum: 1
+        rationale:
+          type: object
+          required: [required, prompt, maxLength]
+          properties:
+            required:
+              type: boolean
+            prompt:
+              type: string
+              maxLength: 160
+            minLength:
+              type: integer
+              minimum: 0
+            maxLength:
+              type: integer
+              minimum: 1
+              maximum: 2000
+
+    MediaChoiceAnswer:
+      type: object
+      required: [type, questionId, mode, optionIds]
+      properties:
+        type:
+          type: string
+          const: mediaChoice
+        questionId:
+          type: string
+          pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+        mode:
+          $ref: "#/components/schemas/MediaChoiceMode"
+        optionIds:
+          type: array
+          minItems: 1
+          maxItems: 8
+          uniqueItems: true
+          items:
+            type: string
+            pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+        rationale:
+          type: string
+          maxLength: 2000
+
+    InteractionAnswer:
+      oneOf:
+        - $ref: "#/components/schemas/MediaChoiceAnswer"
 
     GrouchoEmotionalState:
       type: string
@@ -370,6 +501,8 @@ components:
           type: array
           items:
             type: string
+        mediaChoice:
+          $ref: "#/components/schemas/MediaChoiceInteraction"
 
     OpeningInteraction:
       type: object
@@ -377,12 +510,16 @@ components:
       properties:
         inputType:
           type: string
-          enum: [text, singleSelect, multiSelect]
+          enum: [text, singleSelect, multiSelect, mediaChoice]
         options:
           type: array
           items:
             type: string
           description: Required when `inputType` is `singleSelect` or `multiSelect`
+        mediaChoice:
+          allOf:
+            - $ref: "#/components/schemas/MediaChoiceInteraction"
+          description: Required when `inputType` is `mediaChoice`.
 
     OnboardingCurrentStep:
       type: object
@@ -461,14 +598,22 @@ components:
           $ref: "#/components/schemas/ApplicationReviewStatus"
         scores:
           $ref: "#/components/schemas/ScoreBreakdown"
+        suitabilityScore:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Groucho's overall suitability score, before the client decision policy is applied.
+        suitabilityBand:
+          type: string
+          enum: [recommended_acceptance, review, below_threshold]
+          description: Score band produced by the client's configured thresholds.
         ui:
           $ref: "#/components/schemas/GrouchoInteractionUi"
           description: V2 interaction spec for client rendering (gatekeeper turns)
         secret:
           type: string
           format: uuid
-          deprecated: true
-          description: Legacy onboarding-only field. Gatekeeper completion never issues an access secret.
+          description: Issued when the client policy automatically approves the application. Human-review approvals issue this through the admin decision endpoint.
         profile:
           allOf:
             - $ref: "#/components/schemas/Profile"
@@ -512,6 +657,18 @@ components:
           description: Set when session completes; may mirror normalised `status`
         reviewStatus:
           $ref: "#/components/schemas/ApplicationReviewStatus"
+        suitabilityScore:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Final Groucho suitability score, before client policy.
+        suitabilityBand:
+          type: string
+          enum: [recommended_acceptance, review, below_threshold]
+        secret:
+          type: string
+          format: uuid
+          description: Returned for a client-policy approval so the applicant flow can continue.
         turnsUsed:
           type: integer
         startedAt:

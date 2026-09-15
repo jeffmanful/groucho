@@ -112,6 +112,7 @@ describe("human application decision route", () => {
       project_id: "project-1",
       session_id: "session-1",
       decision: "approved",
+      decision_source: "human",
       advisory_recommendation: "recommend",
       reviewer_kind: "member",
       reviewer_user_id: "reviewer-1",

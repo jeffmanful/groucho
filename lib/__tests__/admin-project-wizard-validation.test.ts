@@ -42,8 +42,10 @@ describe("validateWizardStep2", () => {
         onboardingExperience: { ...DEFAULT_ONBOARDING_EXPERIENCE },
         webhookUrl: "",
         webhookEvents: [],
-        passThreshold: 0.65,
-        rejectThreshold: 0.25,
+        automaticAcceptanceEnabled: false,
+        automaticDeclineEnabled: false,
+        acceptanceThreshold: 0.8,
+        reviewThreshold: 0.55,
       }),
     ).toMatch(/persona/i)
   })

@@ -1,6 +1,6 @@
 # Personas
 
-Personas define how Groucho sounds, how gatekeeper decisions should be made, and what custom profile fields should be extracted from completed sessions.
+Personas define how Groucho sounds, how gatekeeper evidence should be assessed, and what custom profile fields should be extracted from completed sessions. Final application decisions belong to the project's client-owned decision policy, not the persona.
 
 In the current implementation, personas are global platform-managed records. Organisation members can read personas for project configuration, but only platform admins can create, edit, or delete them.
 
@@ -28,6 +28,10 @@ Gatekeeper projects:
 - The runtime appends Groucho's structured outcome instructions.
 - The model must call `groucho_respond` with `reply` and `terminal`.
 - The structured `terminal` value is authoritative. `pass_threshold` and `reject_threshold` only normalize legacy plain-text decision tokens.
+- The final `overall` score is evaluated separately using
+  `projects.settings.decision_policy`. Persona terminal output never enables
+  automatic acceptance or decline. See
+  [client-decision-policy.md](./client-decision-policy.md).
 
 Onboarding projects:
 

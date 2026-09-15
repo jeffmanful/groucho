@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import type {
   ApplicantIdentity,
   GrouchoInteractionUi,
+  InteractionAnswer,
   OpeningInteraction,
   Profile,
   ReviewerReport,
@@ -133,6 +134,8 @@ export function GatekeeperV2({
   const [bootstrapping, setBootstrapping] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [failedAnswer, setFailedAnswer] = useState<string | null>(null)
+  const [failedInteractionAnswer, setFailedInteractionAnswer] =
+    useState<InteractionAnswer | null>(null)
   const [showSlowResponse, setShowSlowResponse] = useState(false)
   const [outcome, setOutcome] = useState<SessionOutcome>("active")
   const [pendingResume, setPendingResume] =
@@ -195,6 +198,7 @@ export function GatekeeperV2({
     setDecisionPhase("none")
     setError(null)
     setFailedAnswer(null)
+    setFailedInteractionAnswer(null)
     setShowSlowResponse(false)
     setOutcome("active")
   }, [sessionIdProp])
@@ -296,13 +300,14 @@ export function GatekeeperV2({
   )
 
   const send = useCallback(
-    async (message: string) => {
+    async (message: string, interactionAnswer?: InteractionAnswer) => {
       const text = message.trim()
       if (!text || !sessionId || loading || terminal || needsApplicant) return
       if (decisionPhase === "evaluating" || decisionPhase === "decision") return
 
       setError(null)
       setFailedAnswer(null)
+      setFailedInteractionAnswer(null)
       setShowSlowResponse(false)
       setLoading(true)
       slowResponseTimerRef.current = setTimeout(
@@ -315,6 +320,7 @@ export function GatekeeperV2({
           message: text,
           personaId: personaId ?? null,
           applicant: activeApplicant,
+          ...(interactionAnswer ? { interactionAnswer } : {}),
         })
 
         const nextTurn: TurnState = {
@@ -359,6 +365,7 @@ export function GatekeeperV2({
         }
         setError(e instanceof Error ? e.message : "Something went wrong.")
         setFailedAnswer(text)
+        setFailedInteractionAnswer(interactionAnswer ?? null)
       } finally {
         if (slowResponseTimerRef.current) {
           clearTimeout(slowResponseTimerRef.current)
@@ -422,7 +429,9 @@ export function GatekeeperV2({
             <button
               type="button"
               className="groucho-retry"
-              onClick={() => void send(failedAnswer)}
+              onClick={() =>
+                void send(failedAnswer, failedInteractionAnswer ?? undefined)
+              }
               disabled={loading}
             >
               Retry answer
@@ -492,7 +501,7 @@ export function GatekeeperV2({
               <InteractionInput
                 ui={turn.ui}
                 disabled={loading}
-                onSubmit={(message) => void send(message)}
+                onSubmit={(message, answer) => void send(message, answer)}
               />
             ) : null}
           </div>

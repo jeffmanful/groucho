@@ -2,6 +2,11 @@
 
 Date: 20 August 2026
 
+> **Historical snapshot:** decision and access statements reflect the system on
+> this date. The current client-owned policy can record automatic approval or
+> decline when the corresponding independent switch is enabled. See
+> [client-decision-policy.md](./client-decision-policy.md).
+
 > **End-of-day note:** this audit remains the detailed runtime inventory. Its
 > reconciled product status and next-priority summary live in
 > [Groucho state of play — 20 August 2026](./groucho-state-of-play-2026-08-20.md).

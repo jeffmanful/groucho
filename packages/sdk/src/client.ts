@@ -14,6 +14,12 @@ export type ProfileCore = components["schemas"]["ProfileCore"]
 export type ProfileExtraction = components["schemas"]["ProfileExtraction"]
 export type ApplicantIdentity = components["schemas"]["ApplicantIdentity"]
 export type ReviewerReport = components["schemas"]["ReviewerReport"]
+export type MediaChoiceMode = components["schemas"]["MediaChoiceMode"]
+export type MediaChoiceVideo = components["schemas"]["MediaChoiceVideo"]
+export type MediaChoiceOption = components["schemas"]["MediaChoiceOption"]
+export type MediaChoiceInteraction = components["schemas"]["MediaChoiceInteraction"]
+export type MediaChoiceAnswer = components["schemas"]["MediaChoiceAnswer"]
+export type InteractionAnswer = components["schemas"]["InteractionAnswer"]
 
 export type GrouchoClientOptions = {
   /** API origin + optional path prefix, e.g. `https://api.example.com` or `https://app.example.com/api/groucho` */
@@ -33,6 +39,7 @@ export interface GrouchoClient {
       message: string
       personaId?: string | null
       applicant?: ApplicantIdentity | null
+      interactionAnswer?: InteractionAnswer
     },
   ): Promise<PostMessageResponse>
 
@@ -181,6 +188,9 @@ export function createClient(options: GrouchoClientOptions): GrouchoClient {
           message: input.message,
           personaId: input.personaId ?? null,
           ...(input.applicant ? { applicant: input.applicant } : {}),
+          ...(input.interactionAnswer
+            ? { interactionAnswer: input.interactionAnswer }
+            : {}),
         }),
       })
       assertPostMessageResponse(res, 200)

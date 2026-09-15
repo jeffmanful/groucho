@@ -71,7 +71,8 @@ describe("buildApplicationExperiencePromptAppendix", () => {
     })
 
     expect(appendix).toContain("COLORS advisory rubric")
-    expect(appendix).toContain("Every completed applicant still receives human review")
+    expect(appendix).toContain("final decision belongs to COLORS/the client")
+    expect(appendix).toContain("never discuss thresholds or automatic actions")
     expect(appendix).toContain("shared trunk with adaptive branches")
     expect(appendix).toContain("private, revisable description")
     expect(appendix).toContain("not a routing mechanism")
@@ -120,5 +121,20 @@ describe("buildApplicationExperiencePromptAppendix", () => {
     expect(appendix).toContain("one or two short sentences")
     expect(appendix).toContain("let me shift")
     expect(appendix).toContain("substitutions, not extra questions")
+    expect(appendix).toContain(
+      "made either by a reviewer or by an explicitly enabled deterministic policy",
+    )
+    expect(appendix).toContain(
+      "admitted fabrication, repeatedly extractive, dismissive, or avoidant",
+    )
+    expect(appendix).toContain(
+      "persists after Groucho states the consent boundary",
+    )
+    expect(appendix).toContain(
+      "Do not generalise this outcome to adjacent concerns",
+    )
+    expect(appendix).not.toContain(
+      "`decline` is advisory only and fits access/exposure/promotion-only intent",
+    )
   })
 })

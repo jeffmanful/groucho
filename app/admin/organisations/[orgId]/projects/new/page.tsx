@@ -26,6 +26,7 @@ import { OnboardingExperienceToggles } from "@/components/admin/OnboardingExperi
 import { OnboardingFlowEditor } from "@/components/admin/OnboardingFlowEditor"
 import { PersonaSetupNote } from "@/components/admin/PersonaSetupNote"
 import { ApplicationExperienceFields } from "@/components/admin/ApplicationExperienceFields"
+import { DecisionPolicyFields } from "@/components/admin/DecisionPolicyFields"
 
 type Persona = {
   id: string
@@ -143,9 +144,10 @@ export default function NewProjectWizardPage() {
 
   const [webhookUrl, setWebhookUrl] = useState("")
   const [webhookEvents, setWebhookEvents] = useState<string[]>([])
-  const [advOpen, setAdvOpen] = useState(false)
-  const [passThreshold, setPassThreshold] = useState(0.65)
-  const [rejectThreshold, setRejectThreshold] = useState(0.25)
+  const [automaticAcceptanceEnabled, setAutomaticAcceptanceEnabled] = useState(false)
+  const [automaticDeclineEnabled, setAutomaticDeclineEnabled] = useState(false)
+  const [acceptanceThreshold, setAcceptanceThreshold] = useState(0.8)
+  const [reviewThreshold, setReviewThreshold] = useState(0.55)
 
   const [ackTraffic, setAckTraffic] = useState(false)
   const [ackPermission, setAckPermission] = useState(false)
@@ -195,6 +197,7 @@ export default function NewProjectWizardPage() {
 
   const step2Valid = useMemo(() => {
     if (!personaId) return false
+    if (reviewThreshold >= acceptanceThreshold) return false
     if (projectType === "gatekeeper") return true
     return flowSteps.every(
       (s) =>
@@ -203,7 +206,7 @@ export default function NewProjectWizardPage() {
         s.question.trim() &&
         s.profile_key.trim(),
     )
-  }, [personaId, projectType, flowSteps])
+  }, [personaId, projectType, flowSteps, reviewThreshold, acceptanceThreshold])
 
   const eventToggle = (id: string) => {
     setWebhookEvents((prev) =>
@@ -256,8 +259,10 @@ export default function NewProjectWizardPage() {
         onboardingExperience,
         webhookUrl,
         webhookEvents,
-        passThreshold,
-        rejectThreshold,
+        automaticAcceptanceEnabled,
+        automaticDeclineEnabled,
+        acceptanceThreshold,
+        reviewThreshold,
       })
       if (problem) {
         showError(problem)
@@ -352,8 +357,10 @@ export default function NewProjectWizardPage() {
       onboardingExperience,
       webhookUrl,
       webhookEvents,
-      passThreshold,
-      rejectThreshold,
+      automaticAcceptanceEnabled,
+      automaticDeclineEnabled,
+      acceptanceThreshold,
+      reviewThreshold,
     }
     const settings = buildProjectSettingsPayload(undefined, formForSettings)
     if (webhookUrl.trim()) {
@@ -670,43 +677,27 @@ export default function NewProjectWizardPage() {
             Continue
           </button>
 
-          <div style={{ marginTop: "1.75rem" }}>
-            <button
-              type="button"
-              onClick={() => setAdvOpen((o) => !o)}
-              style={{
-                ...btn(false),
-                fontSize: "0.65rem",
-                opacity: 0.5,
-              }}
-            >
-              {advOpen ? "▼" : "▶"} Advanced — misconfiguration can block real users
-            </button>
-            {advOpen && projectType === "gatekeeper" && (
-              <div style={{ marginTop: "1rem", opacity: 0.85 }}>
-                <label style={label}>Pass threshold (0–1)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min={0}
-                  max={1}
-                  value={passThreshold}
-                  onChange={(e) => setPassThreshold(Number(e.target.value))}
-                  style={{ ...input, maxWidth: "8rem" }}
-                />
-                <label style={{ ...label, marginTop: "0.75rem" }}>Reject threshold (0–1)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min={0}
-                  max={1}
-                  value={rejectThreshold}
-                  onChange={(e) => setRejectThreshold(Number(e.target.value))}
-                  style={{ ...input, maxWidth: "8rem" }}
-                />
-              </div>
-            )}
-          </div>
+          {projectType === "gatekeeper" && (
+            <div style={{ marginTop: "2rem" }}>
+              <h3 style={{ ...label, fontSize: "0.75rem", opacity: 0.7 }}>
+                CLIENT DECISION POLICY
+              </h3>
+              <DecisionPolicyFields
+                value={{
+                  automaticAcceptanceEnabled,
+                  automaticDeclineEnabled,
+                  acceptanceThreshold,
+                  reviewThreshold,
+                }}
+                onChange={(policy) => {
+                  setAutomaticAcceptanceEnabled(policy.automaticAcceptanceEnabled)
+                  setAutomaticDeclineEnabled(policy.automaticDeclineEnabled)
+                  setAcceptanceThreshold(policy.acceptanceThreshold)
+                  setReviewThreshold(policy.reviewThreshold)
+                }}
+              />
+            </div>
+          )}
         </section>
       )}
 

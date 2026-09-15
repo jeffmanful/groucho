@@ -1,5 +1,6 @@
 import {
   DEFAULT_INTERACTION_SPEC,
+  normaliseMediaChoiceInteraction,
   type GrouchoInputType,
   type GrouchoInteractionSpec,
 } from "@/lib/gatekeeper-interaction-spec"
@@ -44,7 +45,12 @@ export function resolveGatekeeperOpeningMessage(
 }
 
 function parseOpeningInputType(raw: unknown): GrouchoInputType | null {
-  if (raw === "text" || raw === "singleSelect" || raw === "multiSelect") {
+  if (
+    raw === "text" ||
+    raw === "singleSelect" ||
+    raw === "multiSelect" ||
+    raw === "mediaChoice"
+  ) {
     return raw
   }
   return null
@@ -73,7 +79,8 @@ export function parseOpeningInteraction(raw: unknown): ParsedOpeningInteraction 
   if (!inputType) {
     return {
       ok: false,
-      error: "openingInteraction.inputType must be text, singleSelect, or multiSelect",
+      error:
+        "openingInteraction.inputType must be text, singleSelect, multiSelect, or mediaChoice",
     }
   }
 
@@ -89,6 +96,17 @@ export function parseOpeningInteraction(raw: unknown): ParsedOpeningInteraction 
     }
   }
 
+  const mediaChoice =
+    inputType === "mediaChoice"
+      ? normaliseMediaChoiceInteraction(data.mediaChoice)
+      : undefined
+  if (inputType === "mediaChoice" && !mediaChoice) {
+    return {
+      ok: false,
+      error: "openingInteraction.mediaChoice is invalid or missing",
+    }
+  }
+
   return {
     ok: true,
     value: {
@@ -96,6 +114,7 @@ export function parseOpeningInteraction(raw: unknown): ParsedOpeningInteraction 
       inputType,
       visualState: inputType === "text" ? "idle" : "curious",
       ...(options ? { options } : {}),
+      ...(mediaChoice ? { mediaChoice } : {}),
     },
   }
 }
@@ -109,6 +128,7 @@ export function applicationOpeningInteractionToSpec(
     inputType: interaction.inputType,
     visualState: interaction.inputType === "text" ? "idle" : "curious",
     ...(interaction.options?.length ? { options: interaction.options } : {}),
+    ...(interaction.mediaChoice ? { mediaChoice: interaction.mediaChoice } : {}),
   }
 }
 

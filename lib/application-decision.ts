@@ -49,7 +49,7 @@ export function applicationReviewStatus(input: {
   return input.concluded ? "pending" : "not_ready"
 }
 
-export function humanDecisionGrantsAccess(
+export function applicationDecisionGrantsAccess(
   decision: StoredApplicationDecision | null | undefined,
   suppliedSecret: string | null | undefined,
 ): boolean {

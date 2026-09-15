@@ -2,18 +2,21 @@
 
 A conversational **doorman**: a configurable, LLM-assisted gatekeeper that gathers
 useful evidence across a short exchange and produces an auditable advisory outcome,
-structured assessment, and extracted `profile`. Legacy `passed`, `redirected`, and
-`rejected` outcomes remain compatibility values; a separate recorded human decision
-owns approval, decline, and access.
+structured assessment, suitability score, and extracted `profile`. Legacy `passed`,
+`redirected`, and `rejected` outcomes remain compatibility values. Approval and
+decline belong to the client and are recorded separately through either an explicit
+reviewer action or an enabled deterministic client policy.
 
 It is shipped as a **monorepo** with two products:
 
 1. **Platform** — a Next.js 16 / React 19 multi-tenant control plane and HTTP API (this repo's `app/`, `lib/`, `middleware.ts`, `supabase/`).
 2. **`@groucho/sdk`** — a published npm package (`packages/sdk`) with a headless TypeScript client, a server-only helper, and a React component kit (`<Gatekeeper />` + primitives) that host apps drop into their UI.
 
-Source of truth for the broader vision lives in [`docs/PRD.md`](./docs/PRD.md). The
-current COLORS readiness and priority snapshot is
-[`docs/groucho-state-of-play-2026-08-20.md`](./docs/groucho-state-of-play-2026-08-20.md).
+Source of truth for the broader vision lives in [`docs/PRD.md`](./docs/PRD.md), and
+the current decision behavior is documented in
+[`docs/client-decision-policy.md`](./docs/client-decision-policy.md). The dated
+[`docs/groucho-state-of-play-2026-08-20.md`](./docs/groucho-state-of-play-2026-08-20.md)
+is retained as a historical readiness snapshot.
 
 ---
 
@@ -23,6 +26,8 @@ Teams need to qualify visitors for culture-, community-, or premium-access surfa
 
 - **Explainable recommendations** — every session has a transcript, accumulated
   assessments, source-linked reviewer evidence, and an advisory outcome.
+- **Client-owned decisions** — each project defines its suitability bands and can
+  independently enable automatic acceptance and automatic decline; both default off.
 - **A stable, versioned HTTP API** — embeddable behind a host proxy so the secret `gk_*` key never reaches the browser.
 - **Tenant isolation** — orgs, projects, members, invitations, API keys, webhooks, all scoped by Supabase RLS.
 - **Structured output** — a JSON `profile` extracted from the conversation against a persona-defined schema, ready to feed downstream systems.
@@ -48,7 +53,11 @@ Teams need to qualify visitors for culture-, community-, or premium-access surfa
 - Configured application signals are stored alongside answers in message metadata. Each model turn receives compact JSON signal state and the current answer; unconfigured projects and legacy sessions retain transcript fallback.
 - Structured recommendations map to the legacy `passed`, `redirected`, or `rejected`
   compatibility states; concluded sessions return `409` on further posts. These
-  states do not grant or deny access.
+  states do not grant or deny access by themselves. The final overall score is
+  stored on the session and evaluated by the client's deterministic policy.
+- Project settings define `acceptance_threshold` and `review_threshold`, plus
+  independent automatic-acceptance and automatic-decline switches. Both switches
+  default off, so completed applications remain pending until a reviewer acts.
 - Personas have legacy fallback thresholds and an optional `profile_schema` for structured extraction (Supabase migration [`20260511220000_personas_profile_schema.sql`](./supabase/migrations/20260511220000_personas_profile_schema.sql)).
 
 ### Public Project HTTP API (under `/v1`)
@@ -57,8 +66,8 @@ Authenticated with `Authorization: Bearer gk_*` project API keys:
 
 - `POST /v1/sessions/{sessionId}/messages` — user turn → assistant reply + scores + status.
 - `GET  /v1/sessions/{sessionId}` — current session row.
-- `POST /v1/sessions/{sessionId}/access` — post-review access capture, requiring a
-  recorded human approval and its matching decision secret.
+- `POST /v1/sessions/{sessionId}/access` — post-approval access capture, requiring a
+  recorded human or client-policy approval and its matching decision secret.
 
 Legacy routes `/api/chat` and `/api/access` exist for the in-repo `/doorcheck` experience and are also authenticated by API key. The public OpenAPI contract lives in [`docs/api/openapi.yaml`](./docs/api/openapi.yaml).
 
@@ -69,6 +78,8 @@ Legacy routes `/api/chat` and `/api/access` exist for the in-repo `/doorcheck` e
 - Org-scoped project list and a **multi-step project creation wizard** at [`app/admin/organisations/[orgId]/projects/new/page.tsx`](./app/admin/organisations/[orgId]/projects/new/page.tsx).
 - Persona authoring under `app/admin/personas` and `app/api/admin/personas`.
 - Live session feed (`components/admin/LiveConversations`) backed by Supabase Realtime, with score visibility and per-session detail at `app/api/admin/session`.
+- Applicant sorting by suitability, visible score bands and review state, manual
+  decisions for pending applications, and project-level automatic-action settings.
 - API keys with `gk_test_` / `gk_live_` prefixes, hashed at rest, plaintext shown once on creation, with `last_used_at` and revoke (`lib/api-keys.ts`).
 
 ### Webhooks
@@ -101,7 +112,7 @@ A reference consumer lives in [`examples/next-groucho`](./examples/next-groucho/
 ### Data layer
 
 - Supabase Postgres with migrations under [`supabase/migrations/`](./supabase/migrations/).
-- Multi-tenant core: `organisations`, `organisation_members`, `invitations`, `projects`, `api_keys`, `personas`, `sessions`, `messages`, `verdicts`, `webhooks`, plus `profiles` / `profile_eligibility` for post-pass email capture.
+- Multi-tenant core: `organisations`, `organisation_members`, `invitations`, `projects`, `api_keys`, `personas`, `sessions`, `messages`, `verdicts`, `webhooks`, immutable `application_decisions`, plus `profiles` / `profile_eligibility` for post-approval email capture.
 - Row-level security policies on every tenant table; an automated RLS test suite lives in [`lib/__tests__`](./lib/__tests__/).
 - `sessions` were renamed from `conversations` mid-development (migration `20260410140000_rename_conversations_to_sessions.sql`); some historical code paths still bridge that.
 
@@ -159,7 +170,7 @@ supabase/           Local Supabase config + SQL migrations
 
 ## Tech stack
 
-- **Next.js 16.1** (App Router) on **React 19.2**
+- **Next.js 16.3** (App Router) on **React 19.2**
 - **TypeScript 5**, **pnpm 11** workspaces (`packages/*`, `examples/*`), Node 22.13+
 - **Supabase** (Postgres + Auth + Realtime + RLS) via `@supabase/ssr` and `@supabase/supabase-js`
 - **Anthropic SDK** (`@anthropic-ai/sdk`) for the gatekeeper LLM and JSON-mode scorer

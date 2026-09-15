@@ -1,5 +1,14 @@
 # @groucho/sdk
 
+## Unreleased
+
+### Changed
+
+- Generated response types now include client decision state, final suitability
+  score, suitability band, and the automatic-approval secret where applicable.
+- Documented that terminal outcomes are advisory and `reviewStatus` is the
+  authoritative application-decision state.
+
 ## 0.1.1
 
 ### Patch Changes
