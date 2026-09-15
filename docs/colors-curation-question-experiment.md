@@ -1,7 +1,7 @@
 # COLORS curation question experiment
 
 Date: 2026-09-15  
-Status: Interaction foundation implemented; pilot content pending  
+Status: Remove-one pilot integrated in test and dry-run flows
 Scope: Testing richer, COLORS-specific interactions alongside the current Forum application
 
 ## Summary
@@ -154,6 +154,19 @@ sequence of tests:
 Use no more than one or two rich-media questions in one application. The rest of
 the conversation should remain adaptive, with Groucho following useful details
 instead of mechanically moving through a fixed questionnaire.
+
+### Implemented first pilot
+
+The current test variant inserts one media exercise after the applicant's
+second answer, provided a cultural-point-of-view evidence goal is still open.
+It shows the latest four full performances from the official COLORS playlist,
+asks the applicant to leave one out of a three-performance programme, and
+requires them to explain what that decision protects in the programme.
+
+This prompt runs once at most and occupies the next adaptive question slot; it
+does not add an extra compulsory question to the end of the application. If the
+feed cannot be loaded, the conversation continues with Groucho's normal prompt.
+The automatic variant is enabled for previews, test projects and dry runs only.
 
 ## Interaction requirements
 

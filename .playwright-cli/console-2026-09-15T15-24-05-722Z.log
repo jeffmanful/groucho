@@ -1,0 +1,3 @@
+[     176ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) %o @ http://127.0.0.1:3001/login:0
+[     204ms] [WARNING] Failed to decode downloaded font: http://127.0.0.1:3001/fonts/OverusedGrotesk-Book.woff @ http://127.0.0.1:3001/login:0
+[     204ms] [WARNING] OTS parsing error: invalid sfntVersion: 1008813135 @ http://127.0.0.1:3001/login:0

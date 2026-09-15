@@ -136,6 +136,10 @@ import {
   recordAutomaticApplicationDecision,
   type AutomaticDecisionResult,
 } from "@/lib/automatic-application-decision"
+import {
+  buildColorsMediaQuestion,
+  fetchLatestColorsShows,
+} from "@/lib/colors-youtube-feed"
 
 function traceJson(
   input: PostSessionMessageInput,
@@ -303,6 +307,36 @@ The applicant has already seen this opening message from you:
 ${openingMessage}
 
 Do not repeat the opening. Treat the user's next message as their response to it.`
+}
+
+function historyHasMediaChoice(history: ApplicationSignalMessage[]): boolean {
+  return history.some((entry) => {
+    if (
+      entry.role !== "assistant" ||
+      !entry.metadata ||
+      typeof entry.metadata !== "object" ||
+      Array.isArray(entry.metadata)
+    ) {
+      return false
+    }
+    const metadata = entry.metadata as Record<string, unknown>
+    if (!metadata.ui || typeof metadata.ui !== "object" || Array.isArray(metadata.ui)) {
+      return false
+    }
+    const ui = metadata.ui as Record<string, unknown>
+    return normaliseMediaChoiceInteraction(ui.mediaChoice) !== undefined
+  })
+}
+
+function colorsMediaPilotEnabled(
+  projectIdOverride: string | null,
+  settings: Record<string, unknown>,
+): boolean {
+  return (
+    Boolean(projectIdOverride) ||
+    settings.environment === "test" ||
+    settings.session_mode === "dry-run"
+  )
 }
 
 export type PostSessionMessageInput = {
@@ -1137,6 +1171,7 @@ export async function postSessionMessage(
   let communityIntentFollowup = false
   let conversationalThreadTurn = false
   let groundedReceiptPreserved = false
+  let colorsMediaQuestionInserted = false
   let activeReplyRepair: {
     issue: ActiveApplicationReplyIssue
     action: "next_signal" | "forced_close"
@@ -1408,6 +1443,57 @@ export async function postSessionMessage(
     conversationalThreadTurn = true
   }
 
+  const openCulturalPointOfViewSignal = activeSignalDefinitions.find(
+    (signal) =>
+      signal.cluster === "cultural_point_of_view" &&
+      !answersForRouting.some(
+        (answer) => answer.key === signal.key && answer.covered !== false,
+      ),
+  )
+  const shouldInsertColorsMediaQuestion =
+    status === null &&
+    colorsAdaptiveBranchesEnabled &&
+    colorsMediaPilotEnabled(projectIdOverride, settings.raw) &&
+    questionBudget.phase !== "emergency_stop" &&
+    answeredQuestionCount >= 2 &&
+    !input.interactionAnswer &&
+    currentIntegrityConcerns.length === 0 &&
+    !historyHasMediaChoice(priorHistory) &&
+    Boolean(openCulturalPointOfViewSignal)
+
+  if (shouldInsertColorsMediaQuestion && openCulturalPointOfViewSignal) {
+    try {
+      const shows = await timings.measure("colors_media_feed", () =>
+        fetchLatestColorsShows(4),
+      )
+      const mediaQuestion = buildColorsMediaQuestion(shows, "remove")
+      if (mediaQuestion) {
+        assistantContent = mediaQuestion.message
+        interactionSpec = {
+          intent: "challenge",
+          inputType: "mediaChoice",
+          emotionalState: "curious",
+          visualState: "interested",
+          mediaChoice: mediaQuestion.interaction,
+        }
+        nextSignal = openCulturalPointOfViewSignal
+        acceptedConversationMove = "challenge"
+        acceptedBridge = null
+        structuredTerminal = "none"
+        reviewerReport = null
+        conversationalThreadTurn = false
+        colorsMediaQuestionInserted = true
+      }
+    } catch (error) {
+      log.warn("colors_media_question_unavailable", {
+        requestId: input.requestId,
+        projectId,
+        sessionId,
+        detail: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
   const explicitPrompt = ensureExplicitStructuredInputPrompt({
     reply: assistantContent,
     interaction: interactionSpec,
@@ -1470,6 +1556,15 @@ export async function postSessionMessage(
             : {}),
           ...(communityIntentFollowup
             ? { application_community_intent_followup: true }
+            : {}),
+          ...(colorsMediaQuestionInserted
+            ? {
+                application_media_question: {
+                  source: "colors_official_playlist",
+                  mode: "remove",
+                  pilot: true,
+                },
+              }
             : {}),
           ...(conversationalThreadTurn
             ? { application_conversation_thread_turn: true }

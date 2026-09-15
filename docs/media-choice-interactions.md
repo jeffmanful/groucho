@@ -187,6 +187,38 @@ object as `openingInteraction` for a per-session override.
 For an onboarding project, use the same interaction object on a flow step. The
 runtime validates its answer against the active step before advancing.
 
+## Testing with the official COLORS playlist
+
+The authenticated COLORS doorcheck preview can create a temporary media
+question from the latest four full performances in the official `ALL COLORS
+SHOWS` YouTube playlist. Open **Settings**, choose **Remove one**, **Select top
+three**, or **Rank top three**, then choose **Start media test**.
+
+The server reads YouTube's no-key Atom feed for the fixed official playlist ID
+`PLWa4R2I19VH7Mtxo3VvqwnNlXgLpf4_d3`. It verifies the channel ID
+`UC2Qw1dzXDBAZPwS7zm37g8g`, rejects Shorts and non-show formats, keeps only
+titles ending in `A COLORS SHOW`, and caches the upstream result for 15 minutes.
+The browser receives only the normalised media-choice interaction; it does not
+fetch or parse the playlist itself.
+
+The same exercise is now integrated into the adaptive COLORS test flow. After
+the second applicant answer, Groucho may replace its next cultural-point-of-view
+prompt with a **remove one + rationale** exercise built from the latest four
+official full shows. It is inserted at most once per conversation and only when
+that evidence goal is still open. The selected option and rationale are stored
+as the structured answer described above, so the following adaptive turn can
+continue normally.
+
+Automatic placement is limited to project previews, projects whose environment
+is `test`, and `dry-run` sessions. Live projects are unchanged. If the official
+feed is unavailable or does not provide four valid full shows, Groucho keeps the
+normal text question instead of failing the conversation.
+
+This testing control creates a fresh dry-run conversation and does not modify
+the saved project configuration. Promote a tested question by saving explicit
+video IDs and editorial metadata in the project editor, so a live application
+does not change whenever the playlist changes.
+
 ## Completion payloads
 
 Validated media answers remain visible in the authenticated admin transcript

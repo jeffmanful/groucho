@@ -27,6 +27,7 @@ import {
   normaliseMediaChoiceInteraction,
   type MediaChoiceAnswer,
   type MediaChoiceInteraction,
+  type MediaChoiceMode,
 } from "@/lib/gatekeeper-interaction-spec"
 
 function createDoorcheckSupabase(): SupabaseClient | null {
@@ -125,6 +126,11 @@ type OpeningInteraction = {
   inputType: OpeningInputType
   options?: string[]
   mediaChoice?: MediaChoiceInteraction
+}
+
+type ColorsMediaTestResponse = {
+  message: string
+  interaction: MediaChoiceInteraction
 }
 
 const SLOW_RESPONSE_DELAY_MS = 6000
@@ -594,6 +600,90 @@ function ReviewerReportPanel({ report }: { report: ReviewerReport }) {
   )
 }
 
+function StructuredOptionGrid({
+  options,
+  selectedOptions,
+  isColorsProject,
+  isGatekeeperPreview,
+  disabled,
+  onChoose,
+}: {
+  options: string[]
+  selectedOptions: string[]
+  isColorsProject: boolean
+  isGatekeeperPreview: boolean
+  disabled: boolean
+  onChoose: (option: string) => void
+}) {
+  return (
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-2",
+        isGatekeeperPreview ? "justify-start gap-2.5" : "justify-center",
+        isColorsProject && "colors-chat-option-grid",
+      )}
+      role="group"
+      aria-label="Answer options"
+    >
+      {options.map((option, optionIndex) => {
+        const active = selectedOptions.includes(option)
+        const visual = COLORS_VISUALS[optionIndex % COLORS_VISUALS.length]
+        return (
+          <button
+            key={option}
+            type="button"
+            disabled={disabled}
+            aria-pressed={active}
+            onClick={() => onChoose(option)}
+            className={cn(
+              "min-h-11 rounded-full border px-4 py-2 text-sm transition-[border-color,background-color,color,scale] active:scale-[0.96]",
+              isColorsProject && "colors-chat-option-card",
+              isGatekeeperPreview
+                ? active
+                  ? "doorcheck-choice doorcheck-choice--active"
+                  : "doorcheck-choice"
+                : active
+                  ? "border-white/45 bg-white/10 text-white/85"
+                  : "border-white/12 bg-zinc-950/70 text-white/55 hover:border-white/25 hover:text-white/80",
+            )}
+          >
+            {isColorsProject ? (
+              <>
+                <Image
+                  src={visual.src}
+                  alt=""
+                  fill
+                  unoptimized
+                  sizes="(max-width: 640px) 50vw, 13rem"
+                  style={{
+                    objectFit: "cover",
+                    objectPosition: visual.position,
+                  }}
+                />
+                <span className="colors-chat-option-shade" aria-hidden="true" />
+                <span className="colors-chat-option-label">{option}</span>
+                <span className="colors-chat-option-check" aria-hidden="true">
+                  <svg viewBox="0 0 20 20" fill="none">
+                    <path
+                      d="m5 10 3 3 7-7"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </span>
+              </>
+            ) : (
+              option
+            )}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 function ColorsTranscript({
   applicantEmail,
   colorsInteractionPhase,
@@ -747,7 +837,12 @@ export default function DoorCheck() {
   )
   const openingInputType: OpeningInputType = "text"
   const openingOptionsText = ""
+  const [mediaTestMode, setMediaTestMode] =
+    useState<MediaChoiceMode>("remove")
+  const [mediaTestLoading, setMediaTestLoading] = useState(false)
   const [selectedOptions, setSelectedOptions] = useState<string[]>([])
+  const [mediaChoiceSelected, setMediaChoiceSelected] = useState<string[]>([])
+  const [mediaChoiceRationale, setMediaChoiceRationale] = useState("")
   const [revealedQuestionId, setRevealedQuestionId] = useState<string | null>(null)
   const [colorsInteractionPhase, setColorsInteractionPhase] =
     useState<ColorsInteractionPhase>("ready")
@@ -759,6 +854,7 @@ export default function DoorCheck() {
   const [questionDismissed, setQuestionDismissed] = useState(false)
   const [pendingResume, setPendingResume] =
     useState<DoorcheckStartResponse | null>(null)
+
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -785,6 +881,8 @@ export default function DoorCheck() {
     setRevealedQuestionId(null)
     setMessages((previous) => [...previous, next.message])
     setQuestionDismissed(false)
+    setMediaChoiceSelected([])
+    setMediaChoiceRationale("")
     setInteractionUi(next.interactionUi)
     setDecisionPhase(next.decisionPhase)
     setConcluded(next.concluded)
@@ -806,6 +904,8 @@ export default function DoorCheck() {
       },
     ])
     const step = data.currentStep ?? null
+    setMediaChoiceSelected([])
+    setMediaChoiceRationale("")
     setInteractionUi(step ? interactionUiForStep(step) : parseInteractionUi(data.ui))
     setDecisionPhase("none")
     setSelectedOptions([])
@@ -1009,6 +1109,8 @@ export default function DoorCheck() {
               : msg,
           },
         ])
+        setMediaChoiceSelected([])
+        setMediaChoiceRationale("")
         setInteractionUi(DEFAULT_GATEKEEPER_UI)
         setDecisionPhase("none")
         setCurrentStep(null)
@@ -1039,6 +1141,8 @@ export default function DoorCheck() {
     setPendingResume(null)
     setConcluded(false)
     setDecisionPhase("none")
+    setMediaChoiceSelected([])
+    setMediaChoiceRationale("")
     setInteractionUi(DEFAULT_GATEKEEPER_UI)
     setSelectedOptions([])
     setCurrentStep(null)
@@ -1057,6 +1161,78 @@ export default function DoorCheck() {
         opener,
         buildOpeningInteraction(openingInputType, openingOptionsText),
       )
+    }
+  }
+
+  async function startColorsMediaTest() {
+    if (!selectedProjectId || !applicantEmail || mediaTestLoading) return
+    setMediaTestLoading(true)
+    setRequestError(null)
+    try {
+      const response = await fetch(
+        `/api/doorcheck/colors-media?mode=${encodeURIComponent(mediaTestMode)}`,
+        { credentials: "same-origin" },
+      )
+      const raw = (await response.json().catch(() => ({}))) as Record<
+        string,
+        unknown
+      >
+      if (!response.ok) {
+        throw new Error(
+          typeof raw.error === "string"
+            ? raw.error
+            : "The COLORS media test could not be loaded.",
+        )
+      }
+      const mediaChoice = normaliseMediaChoiceInteraction(raw.interaction)
+      if (!mediaChoice || typeof raw.message !== "string") {
+        throw new Error("The COLORS media test returned an invalid question.")
+      }
+      const data: ColorsMediaTestResponse = {
+        message: raw.message,
+        interaction: mediaChoice,
+      }
+
+      const newId = resetSession()
+      setSessionId(newId)
+      assistantHandoffRef.current = null
+      colorsHandoffRef.current = null
+      setMessages([])
+      setInput("")
+      setColorsInteractionPhase("ready")
+      setFailedAnswer(null)
+      setFailedInteractionAnswer(null)
+      setShowSlowResponse(false)
+      setQuestionDismissed(false)
+      setPendingResume(null)
+      setConcluded(false)
+      setDecisionPhase("none")
+      setMediaChoiceSelected([])
+      setMediaChoiceRationale("")
+      setInteractionUi(DEFAULT_GATEKEEPER_UI)
+      setSelectedOptions([])
+      setCurrentStep(null)
+      setStepHint(null)
+      setReviewerReport(null)
+      setOpeningMessage(data.message)
+      closeSettings(true)
+
+      await bootstrapSession(
+        newId,
+        selectedProjectId,
+        applicantEmail,
+        selectedPersonaId || undefined,
+        data.message,
+        { inputType: "mediaChoice", mediaChoice: data.interaction },
+      )
+    } catch (error) {
+      setRequestError(
+        error instanceof Error
+          ? error.message
+          : "The COLORS media test could not be loaded.",
+      )
+    } finally {
+      setMediaTestLoading(false)
     }
   }
 
@@ -1271,6 +1447,8 @@ export default function DoorCheck() {
         } else if (!isOnboarding) {
           setConcluded(true)
           setMessages([nextMessage])
+          setMediaChoiceSelected([])
+          setMediaChoiceRationale("")
           setInteractionUi(nextUi)
           setDecisionPhase("revealed")
         } else {
@@ -1289,6 +1467,8 @@ export default function DoorCheck() {
         } else if (isGatekeeperPreview) {
           setConcluded(true)
           setMessages([nextMessage])
+          setMediaChoiceSelected([])
+          setMediaChoiceRationale("")
           setInteractionUi(nextUi)
           setDecisionPhase("revealed")
         } else {
@@ -1304,6 +1484,8 @@ export default function DoorCheck() {
         }
         setColorsInteractionPhase("revealing")
       } else if (isGatekeeperPreview) {
+        setMediaChoiceSelected([])
+        setMediaChoiceRationale("")
         setInteractionUi(nextUi)
         setDecisionPhase("none")
         setMessages([nextMessage])
@@ -1393,6 +1575,8 @@ export default function DoorCheck() {
     setMessages(EMAIL_CAPTURE_MESSAGES)
     setConcluded(false)
     setDecisionPhase("none")
+    setMediaChoiceSelected([])
+    setMediaChoiceRationale("")
     setInteractionUi(DEFAULT_GATEKEEPER_UI)
     setSelectedOptions([])
     setCurrentStep(null)
@@ -1423,6 +1607,8 @@ export default function DoorCheck() {
     setQuestionDismissed(false)
     setConcluded(false)
     setDecisionPhase("none")
+    setMediaChoiceSelected([])
+    setMediaChoiceRationale("")
     setInteractionUi(DEFAULT_GATEKEEPER_UI)
     setCurrentStep(null)
     setStepHint(null)
@@ -1507,8 +1693,16 @@ export default function DoorCheck() {
     (!isGatekeeperPreview || questionReady) &&
     (!isColorsProject || colorsInteractionPhase !== "revealing") &&
     (!isGatekeeperPreview || decisionPhase === "none")
+  const structuredOptionsNeedDock = Boolean(
+    showStructuredOptions &&
+      (interactionUi.inputType === "multiSelect" ||
+        (isColorsProject && interactionUi.inputType === "singleSelect")),
+  )
+  const showDockedAnswerArea = Boolean(
+    showAnswerArea && (!showStructuredOptions || structuredOptionsNeedDock),
+  )
   const renderAnswerArea =
-    showAnswerArea ||
+    showDockedAnswerArea ||
     (isGatekeeperPreview &&
       !concluded &&
       !awaitingResumeChoice)
@@ -1762,6 +1956,30 @@ export default function DoorCheck() {
                           ))}
                         </select>
                       </label>
+                      <div className="colors-settings-media-test">
+                        <label className="colors-settings-field">
+                          <span>Media question</span>
+                          <select
+                            value={mediaTestMode}
+                            onChange={(event) =>
+                              setMediaTestMode(event.target.value as MediaChoiceMode)
+                            }
+                          >
+                            <option value="remove">Remove one</option>
+                            <option value="select">Select top three</option>
+                            <option value="rank">Rank top three</option>
+                          </select>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => void startColorsMediaTest()}
+                          disabled={!applicantEmail || mediaTestLoading}
+                          className="colors-settings-action"
+                        >
+                          {mediaTestLoading ? "Loading shows…" : "Start media test"}
+                        </button>
+                        <p>Latest full shows from the official COLORS playlist.</p>
+                      </div>
                       <dl className="colors-settings-meta">
                         <div><dt>Environment</dt><dd>{selectedProject?.environment ?? "Not set"}</dd></div>
                         <div><dt>Session</dt><dd>{selectedProject?.sessionMode ?? "Not set"}</dd></div>
@@ -2037,6 +2255,76 @@ export default function DoorCheck() {
               ))
             )}
 
+            {showStructuredOptions && interactionUi.options?.length ? (
+              <MessageScroller.Item
+                messageId={`options-${currentBotMessage?.id ?? "current"}`}
+                scrollAnchor
+                className="w-full"
+              >
+                <motion.div
+                  layout
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.2, ease: EASE_OUT }}
+                  className={cn(
+                    "w-full py-2",
+                    !isGatekeeperPreview &&
+                      "rounded-2xl border border-white/10 bg-zinc-950/70 px-4 py-3",
+                  )}
+                >
+                  <StructuredOptionGrid
+                    options={interactionUi.options}
+                    selectedOptions={selectedOptions}
+                    isColorsProject={isColorsProject}
+                    isGatekeeperPreview={isGatekeeperPreview}
+                    disabled={interactionBusy}
+                    onChoose={(option) => {
+                      if (interactionUi.inputType === "singleSelect") {
+                        if (isColorsProject) {
+                          setSelectedOptions([option])
+                          return
+                        }
+                        void submit(option)
+                        return
+                      }
+                      setSelectedOptions((previous) =>
+                        previous.includes(option)
+                          ? previous.filter((item) => item !== option)
+                          : [...previous, option],
+                      )
+                    }}
+                  />
+                </motion.div>
+              </MessageScroller.Item>
+            ) : null}
+
+            {showMediaChoice && interactionUi.mediaChoice ? (
+              <MessageScroller.Item
+                messageId={`media-options-${interactionUi.mediaChoice.id}`}
+                scrollAnchor
+                className="w-full"
+              >
+                <motion.div
+                  layout
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.2, ease: EASE_OUT }}
+                  className="w-full py-2"
+                >
+                  <MediaChoiceInput
+                    key={`${interactionUi.mediaChoice.id}-options`}
+                    section="options"
+                    interaction={interactionUi.mediaChoice}
+                    selected={mediaChoiceSelected}
+                    rationale={mediaChoiceRationale}
+                    onSelectedChange={setMediaChoiceSelected}
+                    onRationaleChange={setMediaChoiceRationale}
+                    disabled={interactionBusy}
+                  />
+                </motion.div>
+              </MessageScroller.Item>
+            ) : null}
+
             {!isGatekeeperPreview && !isColorsProject && (
               <MessageScroller.Item
                 messageId="assistant-status"
@@ -2170,31 +2458,36 @@ export default function DoorCheck() {
 
         {renderAnswerArea && (
           <motion.div
-            aria-hidden={!showAnswerArea}
-            inert={showAnswerArea ? undefined : true}
+            aria-hidden={!showDockedAnswerArea}
+            inert={showDockedAnswerArea ? undefined : true}
             className={cn(
               "mx-auto w-full max-w-[900px] shrink-0 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6",
               isGatekeeperPreview &&
                 (isColorsProject
                   ? "doorcheck-answer-shell colors-doorcheck-answer-shell colors-chat-composer-shell"
                   : "doorcheck-answer-shell lg:ml-[44vw] lg:max-w-none lg:pr-8 lg:pl-8"),
-              !showAnswerArea && "pointer-events-none",
+              !showDockedAnswerArea && "pointer-events-none",
             )}
             initial={false}
-            animate={{ opacity: showAnswerArea ? 1 : 0 }}
+            animate={{ opacity: showDockedAnswerArea ? 1 : 0 }}
             transition={{ opacity: { duration: 0.18 } }}
           >
             {showMediaChoice && interactionUi.mediaChoice ? (
               <motion.div
                 layout
                 className={cn(
-                  "relative w-full rounded-2xl border border-white/10 bg-zinc-950/70 px-4 py-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] backdrop-blur-md sm:px-5",
-                  isColorsProject && "colors-chat-options",
+                  "relative w-full rounded-2xl border border-white/10 bg-zinc-950/85 px-4 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] backdrop-blur-md sm:px-5",
+                  isColorsProject && "colors-chat-composer",
                 )}
               >
                 <MediaChoiceInput
-                  key={interactionUi.mediaChoice.id}
+                  key={`${interactionUi.mediaChoice.id}-composer`}
+                  section="composer"
                   interaction={interactionUi.mediaChoice}
+                  selected={mediaChoiceSelected}
+                  rationale={mediaChoiceRationale}
+                  onSelectedChange={setMediaChoiceSelected}
+                  onRationaleChange={setMediaChoiceRationale}
                   disabled={interactionBusy}
                   onSubmit={(message, answer) =>
                     void submit(message, false, answer)
@@ -2205,98 +2498,13 @@ export default function DoorCheck() {
               <motion.div
                 layout
                 className={cn(
-                  isGatekeeperPreview
-                    ? "doorcheck-options relative w-full px-0 py-3"
-                    : "relative w-full rounded-2xl border border-white/10 bg-zinc-950/70 px-4 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] backdrop-blur-md",
-                  isColorsProject && "colors-chat-options",
+                  "relative w-full",
+                  isColorsProject && "colors-chat-choice-followup",
                 )}
               >
-                <div
-                  className={cn(
-                    "flex flex-wrap items-center gap-2",
-                    isGatekeeperPreview ? "justify-start gap-2.5" : "justify-center",
-                    isColorsProject && "colors-chat-option-grid",
-                  )}
-                >
-                  {interactionUi.options?.map((option, optionIndex) => {
-                    const active = selectedOptions.includes(option)
-                    const visual = COLORS_VISUALS[optionIndex % COLORS_VISUALS.length]
-                    return (
-                      <button
-                        key={option}
-                        type="button"
-                        disabled={interactionBusy}
-                        aria-pressed={active}
-                        onClick={() => {
-                          if (interactionUi.inputType === "singleSelect") {
-                            if (isColorsProject) {
-                              setSelectedOptions([option])
-                              return
-                            }
-                            void submit(option)
-                            return
-                          }
-                          setSelectedOptions((prev) =>
-                            prev.includes(option)
-                              ? prev.filter((item) => item !== option)
-                              : [...prev, option],
-                          )
-                        }}
-                        className={cn(
-                          "min-h-11 rounded-full border px-4 py-2 text-sm transition-[border-color,background-color,color,scale] active:scale-[0.96]",
-                          isColorsProject && "colors-chat-option-card",
-                          isGatekeeperPreview
-                            ? active
-                              ? "doorcheck-choice doorcheck-choice--active"
-                              : "doorcheck-choice"
-                            : active
-                              ? "border-white/45 bg-white/10 text-white/85"
-                              : "border-white/12 bg-zinc-950/70 text-white/55 hover:border-white/25 hover:text-white/80",
-                        )}
-                      >
-                        {isColorsProject ? (
-                          <>
-                            <Image
-                              src={visual.src}
-                              alt=""
-                              fill
-                              unoptimized
-                              sizes="(max-width: 640px) 50vw, 13rem"
-                              style={{
-                                objectFit: "cover",
-                                objectPosition: visual.position,
-                              }}
-                            />
-                            <span
-                              className="colors-chat-option-shade"
-                              aria-hidden="true"
-                            />
-                            <span className="colors-chat-option-label">
-                              {option}
-                            </span>
-                            <span
-                              className="colors-chat-option-check"
-                              aria-hidden="true"
-                            >
-                              <svg viewBox="0 0 20 20" fill="none">
-                                <path
-                                  d="m5 10 3 3 7-7"
-                                  stroke="currentColor"
-                                  strokeWidth="1.5"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                />
-                              </svg>
-                            </span>
-                          </>
-                        ) : option}
-                      </button>
-                    )
-                  })}
-                </div>
                 {isColorsProject &&
                 interactionUi.inputType === "singleSelect" ? (
-                  <div className="colors-chat-choice-followup">
+                  <div className="contents">
                     {questionNeedsRationale ? (
                       <textarea
                         value={input}
@@ -2772,6 +2980,39 @@ export default function DoorCheck() {
           border-color: rgb(255 255 255 / 0.5);
           box-shadow: 0 0 0 3px rgb(255 255 255 / 0.1);
         }
+        .colors-settings-media-test {
+          margin-top: 1rem;
+          padding-top: 1rem;
+          border-top: 1px solid rgb(255 255 255 / 0.1);
+        }
+        .colors-settings-action {
+          width: 100%;
+          min-height: 2.75rem;
+          border: 1px solid rgb(255 255 255 / 0.22);
+          border-radius: 0.65rem;
+          background: white;
+          color: #111;
+          font-size: 0.75rem;
+          letter-spacing: 0.04em;
+          cursor: pointer;
+          transition: opacity 150ms ease-out, transform 150ms ease-out;
+        }
+        .colors-settings-action:hover { opacity: 0.88; }
+        .colors-settings-action:active { transform: scale(0.98); }
+        .colors-settings-action:focus-visible {
+          outline: 2px solid white;
+          outline-offset: 3px;
+        }
+        .colors-settings-action:disabled {
+          cursor: not-allowed;
+          opacity: 0.38;
+        }
+        .colors-settings-media-test > p {
+          margin: 0.55rem 0 0;
+          font-size: 0.65rem;
+          line-height: 1.45;
+          color: rgb(255 255 255 / 0.38);
+        }
         .colors-settings-meta {
           display: grid;
           grid-template-columns: 1fr 1fr;
@@ -3039,7 +3280,21 @@ export default function DoorCheck() {
           background: currentColor;
           animation: doorcheck-reading 1.1s ease-in-out infinite;
         }
-        .colors-chat-composer-shell,
+        .colors-chat-composer-shell {
+          width: auto;
+          height: auto;
+          max-height: none;
+          flex: 0 0 auto;
+          margin: 0;
+          overflow: visible;
+          padding: 0.45rem 1.6rem 1rem;
+        }
+        .colors-doorcheck-answer-shell.colors-chat-composer-shell {
+          height: auto;
+          min-height: 0;
+          margin-top: auto;
+          padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+        }
         .colors-chat-conclusion {
           width: auto;
           height: auto;
@@ -3053,19 +3308,19 @@ export default function DoorCheck() {
           content: "";
           position: sticky;
           z-index: 1;
-          top: -0.55rem;
+          top: -0.45rem;
           display: block;
           height: 1px;
-          margin-bottom: 0.8rem;
+          margin-bottom: 0.6rem;
           background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.09) 12%, rgb(255 255 255 / 0.09) 88%, transparent);
         }
         .colors-chat-composer {
-          min-height: 6.25rem;
+          min-height: 3.5rem;
           align-items: flex-end;
           border: 1px solid rgb(255 255 255 / 0.08);
           border-radius: 0.55rem;
           background: rgb(255 255 255 / 0.07);
-          padding: 0.65rem 0.65rem 0.6rem 0.95rem;
+          padding: 0.4rem 0.4rem 0.35rem 0.75rem;
           transition-property: border-color, background-color, box-shadow;
           transition-duration: 160ms;
           transition-timing-function: ease-out;
@@ -3077,15 +3332,24 @@ export default function DoorCheck() {
         }
         .colors-doorcheck .colors-chat-composer textarea,
         .colors-doorcheck .colors-chat-composer input {
-          min-height: 4.1rem;
-          padding-top: 0.35rem;
+          min-height: 2.75rem;
+          padding-block: 0.25rem;
           font-size: 0.86rem;
           line-height: 1.45;
         }
-        .colors-chat-composer .doorcheck-dictation,
+        .colors-chat-composer .doorcheck-dictation {
+          width: 2.5rem;
+          height: 2.5rem;
+        }
         .colors-chat-composer .doorcheck-send {
-          width: 2.75rem;
-          height: 2.75rem;
+          position: relative;
+          width: 2.25rem;
+          height: 2.25rem;
+        }
+        .colors-chat-composer .doorcheck-send::after {
+          content: "";
+          position: absolute;
+          inset: -0.25rem;
         }
         .colors-chat-options {
           padding: 0;
@@ -3550,6 +3814,10 @@ export default function DoorCheck() {
             height: auto;
             margin: 0;
             padding: 0.45rem 1rem max(0.8rem, env(safe-area-inset-bottom));
+          }
+          .colors-chat-composer .doorcheck-dictation {
+            width: 2.75rem;
+            height: 2.75rem;
           }
           .colors-chat-option-card {
             min-height: 6.25rem;

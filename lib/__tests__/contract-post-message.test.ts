@@ -73,6 +73,21 @@ vi.mock("@/lib/session-completion-jobs", () => ({
   scheduleSessionCompletionDrain: () => scheduleCompletionDrainMock(),
 }))
 
+const { fetchLatestColorsShowsMock } = vi.hoisted(() => ({
+  fetchLatestColorsShowsMock: vi.fn(),
+}))
+
+vi.mock("@/lib/colors-youtube-feed", async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import("@/lib/colors-youtube-feed")
+  >()
+  return {
+    ...actual,
+    fetchLatestColorsShows: (...args: Parameters<typeof actual.fetchLatestColorsShows>) =>
+      fetchLatestColorsShowsMock(...args),
+  }
+})
+
 // Anthropic is used in two places; we mock the constructor + messages.create
 // and allow tests to override behaviour via a shared function.
 let anthropicCreateImpl: (args: unknown) => Promise<unknown> = async () => ({
@@ -260,6 +275,32 @@ describe("contract: postSessionMessage", () => {
     enqueueCompletionMock.mockReset().mockResolvedValue(undefined)
     completeImmediatelyMock.mockReset().mockResolvedValue(undefined)
     scheduleCompletionDrainMock.mockReset()
+    fetchLatestColorsShowsMock.mockReset().mockResolvedValue([
+      {
+        videoId: "a1b2c3d4e5F",
+        title: "Artist One - First Light | A COLORS SHOW",
+        artist: "Artist One",
+        publishedAt: "2026-09-14T12:00:00Z",
+      },
+      {
+        videoId: "f6g7h8i9j0K",
+        title: "Artist Two - Still Here | A COLORS SHOW",
+        artist: "Artist Two",
+        publishedAt: "2026-09-13T12:00:00Z",
+      },
+      {
+        videoId: "L1m2n3o4p5Q",
+        title: "Artist Three - Soft Power | A COLORS SHOW",
+        artist: "Artist Three",
+        publishedAt: "2026-09-12T12:00:00Z",
+      },
+      {
+        videoId: "r6s7t8u9v0W",
+        title: "Artist Four - Open Room | A COLORS SHOW",
+        artist: "Artist Four",
+        publishedAt: "2026-09-11T12:00:00Z",
+      },
+    ])
     const { invalidatePersonaCache } = await import("@/lib/persona-resolution")
     invalidatePersonaCache()
     const supa = await import("@/lib/supabase")
@@ -283,6 +324,196 @@ describe("contract: postSessionMessage", () => {
         is_default: true,
       },
     ]
+  })
+
+  it("inserts the COLORS media exercise after two test-flow answers", async () => {
+    const requiredSignals = [
+      "What brought you here?",
+      "Relationship to COLORS",
+      "Name an artist more people should know about.",
+      "Someone shares unfinished music that isn't for you. How would you respond?",
+      "Which sounds most like you?",
+      "What's one thing you could realistically contribute in your first month?",
+    ]
+    const { resolveProjectContext } = await import("@/lib/project-resolution")
+    vi.mocked(resolveProjectContext).mockResolvedValueOnce({
+      ok: true,
+      context: {
+        organisationId: "org1",
+        projectId: "proj1",
+        apiKeyId: "key1",
+        settings: {
+          projectType: "gatekeeper" as const,
+          applicationExperience: {
+            opening_message: "Why do you want to be an early applicant for the Forum?",
+            closing_message: "It was good getting to understand you better.",
+            required_signals: requiredSignals,
+            max_turns: 9,
+          },
+          flowConfig: null,
+          onboardingExperience: {
+            bridge_enabled: true,
+            followup_enabled: true,
+            boundary_enabled: true,
+            personalized_completion: true,
+          },
+          raw: { project_type: "gatekeeper", environment: "test" },
+        },
+      },
+    })
+
+    const { applicationSignalDefinitions } = await import(
+      "@/lib/application-signal-state"
+    )
+    const definitions = applicationSignalDefinitions(requiredSignals)
+    const colorsSignal = definitions.find(
+      (signal) => signal.cluster === "colors_relationship",
+    )
+    const participationSignal = definitions.find(
+      (signal) => signal.cluster === "participation_and_contribution",
+    )
+    const culturalSignal = definitions.find(
+      (signal) => signal.cluster === "cultural_point_of_view",
+    )
+    expect(colorsSignal).toBeDefined()
+    expect(participationSignal).toBeDefined()
+    expect(culturalSignal).toBeDefined()
+
+    const usableAssessment = {
+      quality: "usable",
+      reason: "Provides relevant personal evidence.",
+      evidence: {
+        personalPointOfView: true,
+        concreteDetail: true,
+        emotionalConnection: true,
+        independentJudgment: true,
+        careOrContext: false,
+      },
+    }
+    const supa = await import("@/lib/supabase")
+    const state = (supa as unknown as { __state: FakeSupabaseState }).__state
+    state.sessions.push({
+      id: "s_colors_media_pilot",
+      session_id: "sess_colors_media_pilot",
+      project_id: "proj1",
+      applicant_email: testApplicant.email,
+      status: "active",
+    })
+    state.messages.push(
+      {
+        id: "m_colors_q1",
+        session_id: "s_colors_media_pilot",
+        role: "assistant",
+        content: "Why does COLORS feel like the right community for you?",
+        metadata: {
+          application_next_signal: {
+            key: colorsSignal?.key,
+            label: colorsSignal?.label,
+          },
+        },
+      },
+      {
+        id: "m_colors_a1",
+        session_id: "s_colors_media_pilot",
+        role: "user",
+        content: "The stripped-back performances make me hear artists differently.",
+        metadata: {
+          application_signal: {
+            key: colorsSignal?.key,
+            label: colorsSignal?.label,
+          },
+          answer_assessment: usableAssessment,
+        },
+      },
+      {
+        id: "m_colors_q2",
+        session_id: "s_colors_media_pilot",
+        role: "assistant",
+        content: "How do you usually participate around music?",
+        metadata: {
+          application_next_signal: {
+            key: participationSignal?.key,
+            label: participationSignal?.label,
+          },
+        },
+      },
+    )
+
+    anthropicCreateImpl = async () => ({
+      content: [
+        {
+          type: "tool_use",
+          id: "toolu_colors_media_pilot",
+          name: "groucho_respond",
+          input: {
+            reply: "Who is making work you think deserves more attention?",
+            terminal: "none",
+            intent: "probe",
+            inputType: "text",
+            emotionalState: "curious",
+            visualState: "curious",
+            scores: {
+              specificity: 0.75,
+              authenticity: 0.8,
+              cultural_depth: 0.65,
+              overall: 0.72,
+            },
+            answerAssessment: usableAssessment,
+            conversationMove: "advance",
+            coveredSignalKeys: [participationSignal?.key],
+            nextSignalKey: culturalSignal?.key,
+          },
+        },
+      ],
+    })
+
+    const { postSessionMessage } = await import("@/lib/post-session-message")
+    const res = await postSessionMessage({
+      authorization: "Bearer gk_test_x",
+      sessionId: "sess_colors_media_pilot",
+      message:
+        "I send friends new music every week and host a small listening night.",
+      applicantIdentity: testApplicant,
+    })
+    const body = await jsonFromResponse(res)
+
+    expect(body.status).toBe("active")
+    expect(body.message).toContain("three-performance programme")
+    expect(body.ui).toMatchObject({
+      intent: "challenge",
+      inputType: "mediaChoice",
+      mediaChoice: {
+        selection: {
+          mode: "remove",
+          minSelections: 1,
+          maxSelections: 1,
+        },
+        rationale: { required: true },
+      },
+    })
+    expect(fetchLatestColorsShowsMock).toHaveBeenCalledOnce()
+    expect(fetchLatestColorsShowsMock).toHaveBeenCalledWith(4)
+    expect(state.messages.at(-1)?.metadata).toMatchObject({
+      application_next_signal: {
+        key: culturalSignal?.key,
+        label: culturalSignal?.label,
+      },
+      application_media_question: {
+        source: "colors_official_playlist",
+        mode: "remove",
+        pilot: true,
+      },
+      ui: {
+        inputType: "mediaChoice",
+      },
+    })
+    const assistantMetadata = state.messages.at(-1)?.metadata as {
+      ui?: { mediaChoice?: { options?: Array<{ media?: { provider?: string } }> } }
+    }
+    expect(assistantMetadata.ui?.mediaChoice?.options).toHaveLength(4)
+    expect(assistantMetadata.ui?.mediaChoice?.options?.[0]).toMatchObject({
+      media: { provider: "youtube" },
+    })
   })
 
   it("validates, canonicalises, and persists structured media choice answers", async () => {

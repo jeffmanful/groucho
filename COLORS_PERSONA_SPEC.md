@@ -387,7 +387,7 @@ Recommended project settings:
       "Which sounds most like you?",
       "What's one thing you could realistically contribute in your first month?"
     ],
-    "preferred_input_types": ["text", "singleSelect"],
+    "preferred_input_types": ["text", "singleSelect", "mediaChoice"],
     "max_turns": 9
   }
 }

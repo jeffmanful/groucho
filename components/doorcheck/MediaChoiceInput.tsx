@@ -11,14 +11,26 @@ export function MediaChoiceInput({
   interaction,
   disabled,
   onSubmit,
+  section = "all",
+  selected: controlledSelected,
+  rationale: controlledRationale,
+  onSelectedChange,
+  onRationaleChange,
 }: {
   interaction: MediaChoiceInteraction
   disabled?: boolean
-  onSubmit: (message: string, answer: MediaChoiceAnswer) => void
+  onSubmit?: (message: string, answer: MediaChoiceAnswer) => void
+  section?: "all" | "options" | "composer"
+  selected?: string[]
+  rationale?: string
+  onSelectedChange?: (selected: string[]) => void
+  onRationaleChange?: (rationale: string) => void
 }) {
-  const [selected, setSelected] = useState<string[]>([])
-  const [rationale, setRationale] = useState("")
+  const [internalSelected, setInternalSelected] = useState<string[]>([])
+  const [internalRationale, setInternalRationale] = useState("")
   const [playing, setPlaying] = useState<string | null>(null)
+  const selected = controlledSelected ?? internalSelected
+  const rationale = controlledRationale ?? internalRationale
   const { mode, minSelections, maxSelections } = interaction.selection
   const ranks = useMemo(
     () => new Map(selected.map((id, index) => [id, index + 1])),
@@ -47,26 +59,32 @@ export function MediaChoiceInput({
         : `Choose ${countLabel}`
 
   function toggle(id: string) {
-    setSelected((current) => {
+    const next = (() => {
+      const current = selected
       if (current.includes(id)) return current.filter((value) => value !== id)
       return current.length < maxSelections ? [...current, id] : current
-    })
+    })()
+    if (onSelectedChange) onSelectedChange(next)
+    else setInternalSelected(next)
   }
 
   function move(id: string, direction: -1 | 1) {
-    setSelected((current) => {
+    const next = (() => {
+      const current = selected
       const index = current.indexOf(id)
       const destination = index + direction
       if (index < 0 || destination < 0 || destination >= current.length) return current
       const next = [...current]
       ;[next[index], next[destination]] = [next[destination], next[index]]
       return next
-    })
+    })()
+    if (onSelectedChange) onSelectedChange(next)
+    else setInternalSelected(next)
   }
 
   return (
     <div className="flex w-full flex-col gap-4" aria-busy={disabled || undefined}>
-      <div className="flex items-baseline justify-between gap-4 text-[0.68rem] tracking-[0.07em] text-white/45">
+      {section !== "composer" ? <><div className="flex items-baseline justify-between gap-4 text-[0.68rem] tracking-[0.07em] text-white/45">
         <p>{instruction}</p>
         <p className="shrink-0 tabular-nums" aria-live="polite">
           {selected.length}/{maxSelections}
@@ -201,15 +219,17 @@ export function MediaChoiceInput({
             </article>
           )
         })}
-      </div>
+      </div></> : null}
 
-      <label className="flex flex-col gap-2 text-[0.7rem] tracking-[0.04em] text-white/50">
+      {section !== "options" ? <><label className="flex flex-col gap-2 text-[0.7rem] tracking-[0.04em] text-white/50">
         <span>{interaction.rationale.prompt}</span>
         <textarea
           value={rationale}
-          onChange={(event) =>
-            setRationale(event.target.value.slice(0, interaction.rationale.maxLength))
-          }
+          onChange={(event) => {
+            const next = event.target.value.slice(0, interaction.rationale.maxLength)
+            if (onRationaleChange) onRationaleChange(next)
+            else setInternalRationale(next)
+          }}
           rows={3}
           required={interaction.rationale.required}
           minLength={interaction.rationale.minLength}
@@ -236,7 +256,7 @@ export function MediaChoiceInput({
             mode === "rank"
               ? `Ranked: ${labels.map((label, index) => `${index + 1}. ${label}`).join("; ")}`
               : `${mode === "remove" ? "Removed" : "Selected"}: ${labels.join(", ")}`
-          onSubmit(trimmed ? `${choice}\nReason: ${trimmed}` : choice, {
+          onSubmit?.(trimmed ? `${choice}\nReason: ${trimmed}` : choice, {
             type: "mediaChoice",
             questionId: interaction.id,
             mode,
@@ -247,7 +267,7 @@ export function MediaChoiceInput({
         className="min-h-11 self-start rounded-lg border border-white/20 px-4 text-[0.68rem] tracking-[0.07em] text-white/75 transition-[scale,border-color,background-color,color,opacity] duration-150 ease-out hover:border-white/40 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-30"
       >
         Send answer
-      </button>
+      </button></> : null}
     </div>
   )
 }
