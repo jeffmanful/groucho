@@ -14,6 +14,7 @@ The protected entry point is `/demo/colors`. A signed-out visitor is sent to log
 2. Enter an applicant email and complete the existing COLORS Forum conversation.
 3. See the neutral applicant closing message.
 4. See a clearly separated **Sample reviewer report** containing:
+   - a concise, evidence-backed applicant snapshot with consistent tags;
    - Groucho's advisory recommendation;
    - a concise applicant bio and overall assessment;
    - the decisive reasons for the view;
@@ -55,6 +56,7 @@ Before sharing the link:
 - [ ] Tester-only settings are absent from the demo.
 - [ ] The existing COLORS conversation completes without regression.
 - [ ] The sample-report disclosure is visible before the opinion.
+- [ ] The compact snapshot gives a useful applicant summary, tags, primary strength, open question and suggested action before the full assessment is expanded.
 - [ ] Every assessment claim displays at least one exact source excerpt.
 - [ ] Recommendation and suggested human action do not contradict one another.
 - [ ] Starting a second test creates a fresh session.

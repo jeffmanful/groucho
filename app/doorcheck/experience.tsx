@@ -146,11 +146,30 @@ type ReviewerReport = {
     source_message_id: string
     excerpt: string
     preceding_question?: string
+    interaction?: {
+      type: "mediaChoice"
+      question_id: string
+      mode: "select" | "remove" | "rank"
+      selected_options: Array<{
+        id: string
+        label: string
+        position?: number
+      }>
+      rationale: string
+    }
   }>
   weak_or_missing_signals: string[]
   safety_or_integrity_flags: string[]
   reviewer_focus: string
   detailed_opinion?: {
+    snapshot?: {
+      applicant_summary: string
+      evidence_reference_ids: string[]
+      tags: Array<{
+        value: string
+        evidence_reference_ids: string[]
+      }>
+    }
     overall_assessment: string
     decisive_reasons: string[]
     claim_assessments: Array<{
@@ -162,6 +181,12 @@ type ReviewerReport = {
     likely_contribution: string
     reservations: string[]
     reviewer_questions: string[]
+    curatorial_approach?: {
+      present: boolean
+      summary: string
+      evidence_reference_ids: string[]
+      observed_dimensions: string[]
+    }
     suggested_human_action:
       | "approve"
       | "discuss"
@@ -508,6 +533,46 @@ function parseReviewerReport(raw: unknown): ReviewerReport | null {
     ? data.evidence_references.flatMap((item) => {
         if (!item || typeof item !== "object" || Array.isArray(item)) return []
         const value = item as Record<string, unknown>
+        const interactionValue =
+          value.interaction &&
+          typeof value.interaction === "object" &&
+          !Array.isArray(value.interaction)
+            ? value.interaction as Record<string, unknown>
+            : null
+        const mode = interactionValue?.mode
+        const interactionMode: "select" | "remove" | "rank" | null =
+          mode === "select" || mode === "remove" || mode === "rank"
+            ? mode
+            : null
+        const selectedOptions = interactionValue && Array.isArray(interactionValue.selected_options)
+          ? interactionValue.selected_options.flatMap((option) => {
+              if (!option || typeof option !== "object" || Array.isArray(option)) return []
+              const optionValue = option as Record<string, unknown>
+              return typeof optionValue.id === "string" && typeof optionValue.label === "string"
+                ? [{
+                    id: optionValue.id,
+                    label: optionValue.label,
+                    ...(typeof optionValue.position === "number"
+                      ? { position: optionValue.position }
+                      : {}),
+                  }]
+                : []
+            })
+          : []
+        const interaction =
+          interactionValue?.type === "mediaChoice" &&
+          typeof interactionValue.question_id === "string" &&
+          interactionMode &&
+          selectedOptions.length > 0 &&
+          typeof interactionValue.rationale === "string"
+            ? {
+                type: "mediaChoice" as const,
+                question_id: interactionValue.question_id,
+                mode: interactionMode,
+                selected_options: selectedOptions,
+                rationale: interactionValue.rationale,
+              }
+            : null
         return typeof value.signal_key === "string" &&
           typeof value.signal_label === "string" &&
           typeof value.source_message_id === "string" &&
@@ -520,6 +585,7 @@ function parseReviewerReport(raw: unknown): ReviewerReport | null {
               ...(typeof value.preceding_question === "string"
                 ? { preceding_question: value.preceding_question }
                 : {}),
+              ...(interaction ? { interaction } : {}),
             }]
           : []
       })
@@ -550,6 +616,47 @@ function parseReviewerReport(raw: unknown): ReviewerReport | null {
       })
     : []
   const humanAction = detailedData?.suggested_human_action
+  const snapshotData =
+    detailedData?.snapshot &&
+    typeof detailedData.snapshot === "object" &&
+    !Array.isArray(detailedData.snapshot)
+      ? detailedData.snapshot as Record<string, unknown>
+      : null
+  const snapshot = snapshotData && typeof snapshotData.applicant_summary === "string"
+    ? {
+        applicant_summary: snapshotData.applicant_summary,
+        evidence_reference_ids: textItems(snapshotData.evidence_reference_ids),
+        tags: Array.isArray(snapshotData.tags)
+          ? snapshotData.tags.flatMap((item) => {
+              if (!item || typeof item !== "object" || Array.isArray(item)) return []
+              const tag = item as Record<string, unknown>
+              return typeof tag.value === "string" &&
+                textItems(tag.evidence_reference_ids).length > 0
+                ? [{
+                    value: tag.value,
+                    evidence_reference_ids: textItems(tag.evidence_reference_ids),
+                  }]
+                : []
+            })
+          : [],
+      }
+    : null
+  const curatorialData =
+    detailedData?.curatorial_approach &&
+    typeof detailedData.curatorial_approach === "object" &&
+    !Array.isArray(detailedData.curatorial_approach)
+      ? detailedData.curatorial_approach as Record<string, unknown>
+      : null
+  const curatorialApproach = curatorialData
+    ? {
+        present: curatorialData.present === true,
+        summary: typeof curatorialData.summary === "string"
+          ? curatorialData.summary
+          : "",
+        evidence_reference_ids: textItems(curatorialData.evidence_reference_ids),
+        observed_dimensions: textItems(curatorialData.observed_dimensions),
+      }
+    : null
   const detailedOpinion =
     detailedData &&
     typeof detailedData.overall_assessment === "string" &&
@@ -560,12 +667,16 @@ function parseReviewerReport(raw: unknown): ReviewerReport | null {
       humanAction === "request_clarification" ||
       humanAction === "decline")
       ? {
+          ...(snapshot ? { snapshot } : {}),
           overall_assessment: detailedData.overall_assessment,
           decisive_reasons: textItems(detailedData.decisive_reasons),
           claim_assessments: claimAssessments,
           likely_contribution: detailedData.likely_contribution,
           reservations: textItems(detailedData.reservations),
           reviewer_questions: textItems(detailedData.reviewer_questions),
+          ...(curatorialApproach
+            ? { curatorial_approach: curatorialApproach }
+            : {}),
           suggested_human_action: humanAction as
             | "approve"
             | "discuss"
@@ -605,8 +716,15 @@ function ReviewerReportPanel({
   report: ReviewerReport
   sample: boolean
 }) {
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const detailsId = useId()
   const recommendation = report.advisory_recommendation.replace("_", " ")
   const detailed = report.detailed_opinion
+  const snapshot = detailed?.snapshot
+  const primaryStrength = detailed?.claim_assessments.find(
+    (claim) => claim.assessment === "strength",
+  )?.claim ?? detailed?.decisive_reasons[0]
+  const openQuestion = detailed?.reviewer_questions[0]
   const evidenceById = new Map(
     report.evidence_references.map((reference) => [
       reference.source_message_id,
@@ -657,12 +775,67 @@ function ReviewerReportPanel({
         </div>
         <div className="flex items-center gap-2 text-[0.68rem] uppercase tracking-[0.12em] text-white/42">
           <span>{recommendation}</span>
-          {!sample ? <span className="tabular-nums text-white/70">{`${Math.round(report.confidence_score * 100)}%`}</span> : null}
+          <span aria-hidden="true">·</span>
+          <span className="tabular-nums text-white/70">{`${Math.round(report.confidence_score * 100)}% confidence`}</span>
         </div>
       </div>
-      <p className="text-sm leading-relaxed text-white/68">{report.applicant_bio}</p>
+      <p className="text-sm leading-relaxed text-white/72">
+        {snapshot?.applicant_summary ?? report.applicant_bio}
+      </p>
+      {snapshot?.tags.length ? (
+        <div className="mt-3 flex flex-wrap gap-1.5" aria-label="Applicant evidence tags">
+          {snapshot.tags.map((tag) => (
+            <span
+              key={tag.value}
+              className="rounded-full border border-white/12 bg-white/[0.035] px-2.5 py-1 text-[0.62rem] uppercase tracking-[0.1em] text-white/48"
+            >
+              {tag.value.replaceAll("_", " ")}
+            </span>
+          ))}
+        </div>
+      ) : null}
       {detailed ? (
-        <div className="mt-5 space-y-5">
+        <div className="mt-4 grid gap-3 border-y border-white/8 py-4 sm:grid-cols-3">
+          {primaryStrength ? (
+            <div>
+              <p className="text-[0.6rem] uppercase tracking-[0.13em] text-white/30">
+                primary strength
+              </p>
+              <p className="mt-1 text-sm leading-relaxed text-white/62">{primaryStrength}</p>
+            </div>
+          ) : null}
+          {openQuestion ? (
+            <div>
+              <p className="text-[0.6rem] uppercase tracking-[0.13em] text-white/30">
+                open question
+              </p>
+              <p className="mt-1 text-sm leading-relaxed text-white/62">{openQuestion}</p>
+            </div>
+          ) : null}
+          <div>
+            <p className="text-[0.6rem] uppercase tracking-[0.13em] text-white/30">
+              suggested action
+            </p>
+            <p className="mt-1 text-sm capitalize leading-relaxed text-white/68">
+              {detailed.suggested_human_action.replace("_", " ")}
+            </p>
+          </div>
+        </div>
+      ) : null}
+      {detailed ? (
+        <button
+          type="button"
+          onClick={() => setDetailsOpen((open) => !open)}
+          aria-expanded={detailsOpen}
+          aria-controls={detailsId}
+          className="mt-4 flex w-full items-center justify-between rounded-lg border border-white/10 px-3 py-2 text-left text-[0.68rem] uppercase tracking-[0.12em] text-white/52 transition-colors hover:border-white/20 hover:text-white/72"
+        >
+          <span>{detailsOpen ? "Hide full assessment" : "View full assessment"}</span>
+          <span aria-hidden="true">{detailsOpen ? "−" : "+"}</span>
+        </button>
+      ) : null}
+      {detailed && detailsOpen ? (
+        <div id={detailsId} className="mt-5 space-y-5">
           <div>
             <p className="mb-1 text-[0.62rem] uppercase tracking-[0.14em] text-white/32">
               overall assessment
@@ -671,6 +844,73 @@ function ReviewerReportPanel({
               {detailed.overall_assessment}
             </p>
           </div>
+          {detailed.curatorial_approach?.present ? (
+            <div>
+              <p className="mb-2 text-[0.62rem] uppercase tracking-[0.14em] text-white/32">
+                curatorial approach
+              </p>
+              <p className="text-sm leading-relaxed text-white/68">
+                {detailed.curatorial_approach.summary}
+              </p>
+              {detailed.curatorial_approach.observed_dimensions.length > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {detailed.curatorial_approach.observed_dimensions.map((dimension) => (
+                    <span
+                      key={dimension}
+                      className="rounded-full border border-white/10 px-2 py-1 text-[0.62rem] uppercase tracking-[0.1em] text-white/42"
+                    >
+                      {dimension.replaceAll("_", " ")}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              <div className="mt-3 space-y-3">
+                {detailed.curatorial_approach.evidence_reference_ids.flatMap((id) => {
+                  const reference = evidenceById.get(id)
+                  if (!reference?.interaction) return []
+                  const choice = reference.interaction
+                  const choiceLabel = choice.mode === "remove"
+                    ? "Removed"
+                    : choice.mode === "rank"
+                      ? "Ranked"
+                      : "Selected"
+                  return [(
+                    <div
+                      key={`curatorial-${id}`}
+                      className="rounded-lg border border-white/8 bg-white/[0.025] p-3"
+                    >
+                      {reference.preceding_question ? (
+                        <p className="mb-2 text-xs leading-relaxed text-white/35">
+                          Asked: {reference.preceding_question}
+                        </p>
+                      ) : null}
+                      <p className="text-[0.62rem] uppercase tracking-[0.12em] text-white/35">
+                        {choiceLabel}
+                      </p>
+                      <ol className="mt-1 space-y-1 text-sm text-white/62">
+                        {choice.selected_options.map((option) => (
+                          <li key={option.id}>
+                            {choice.mode === "rank" && option.position
+                              ? `${option.position}. `
+                              : ""}
+                            {option.label}
+                          </li>
+                        ))}
+                      </ol>
+                      {choice.rationale ? (
+                        <blockquote className="mt-2 border-l border-white/15 pl-3 text-sm leading-relaxed text-white/48">
+                          “{choice.rationale}”
+                        </blockquote>
+                      ) : null}
+                      <p className="mt-2 text-xs leading-relaxed text-white/32">
+                        Hypothetical exercise; the reasoning is evidence, not the artist choice itself.
+                      </p>
+                    </div>
+                  )]
+                })}
+              </div>
+            </div>
+          ) : null}
           {listSection("decisive reasons", detailed.decisive_reasons)}
           <div>
             <p className="mb-2 text-[0.62rem] uppercase tracking-[0.14em] text-white/32">
@@ -751,19 +991,21 @@ function ReviewerReportPanel({
           </ul>
         </div>
       ) : null}
-      <div className="mt-4 grid gap-4 md:grid-cols-2">
-        {!detailed ? listSection("evidence", report.evidence_summary) : null}
-        {listSection("weak signals", report.weak_or_missing_signals)}
-        {listSection("flags", report.safety_or_integrity_flags)}
-        <div>
-          <p className="mb-1 text-[0.62rem] uppercase tracking-[0.14em] text-white/32">
-            reviewer focus
-          </p>
-          <p className="text-sm leading-relaxed text-white/58">
-            {report.reviewer_focus}
-          </p>
+      {!detailed || detailsOpen ? (
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          {!detailed ? listSection("evidence", report.evidence_summary) : null}
+          {listSection("weak signals", report.weak_or_missing_signals)}
+          {listSection("flags", report.safety_or_integrity_flags)}
+          <div>
+            <p className="mb-1 text-[0.62rem] uppercase tracking-[0.14em] text-white/32">
+              reviewer focus
+            </p>
+            <p className="text-sm leading-relaxed text-white/58">
+              {report.reviewer_focus}
+            </p>
+          </div>
         </div>
-      </div>
+      ) : null}
     </motion.section>
   )
 }

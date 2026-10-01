@@ -3,6 +3,11 @@ import type {
   ApplicationSignalDefinition,
   ApplicationSignalMessage,
 } from "@/lib/application-signal-state"
+import {
+  normaliseMediaChoiceAnswer,
+  normaliseMediaChoiceInteraction,
+  type MediaChoiceMode,
+} from "@/lib/gatekeeper-interaction-spec"
 
 export type AdvisoryRecommendation = "recommend" | "human_review" | "decline"
 
@@ -12,6 +17,65 @@ export type ReviewerEvidenceReference = {
   source_message_id: string
   excerpt: string
   preceding_question?: string
+  interaction?: ReviewerMediaChoiceEvidence
+}
+
+export type ReviewerMediaChoiceEvidence = {
+  type: "mediaChoice"
+  question_id: string
+  mode: MediaChoiceMode
+  selected_options: Array<{
+    id: string
+    label: string
+    position?: number
+  }>
+  rationale: string
+}
+
+export const REVIEWER_CURATION_DIMENSIONS = [
+  "sequencing",
+  "coherence",
+  "audience_awareness",
+  "context",
+  "tradeoffs",
+  "curiosity",
+  "reconsideration",
+] as const
+
+export type ReviewerCurationDimension =
+  (typeof REVIEWER_CURATION_DIMENSIONS)[number]
+
+export type ReviewerCuratorialApproach = {
+  present: boolean
+  summary: string
+  evidence_reference_ids: string[]
+  observed_dimensions: ReviewerCurationDimension[]
+}
+
+export const REVIEWER_SNAPSHOT_TAGS = [
+  "community_participation",
+  "active_listening",
+  "collaboration",
+  "connective_thinking",
+  "curatorial_sequencing",
+  "audience_awareness",
+  "context_awareness",
+  "curiosity",
+  "reflection",
+  "practical_contribution",
+  "creative_practice",
+] as const
+
+export type ReviewerSnapshotTag =
+  (typeof REVIEWER_SNAPSHOT_TAGS)[number]
+
+export type ReviewerReportSnapshot = {
+  applicant_summary: string
+  evidence_reference_ids: string[]
+  tags: Array<{
+    value: ReviewerSnapshotTag
+    evidence_reference_ids: string[]
+  }>
 }
 
 export type ReviewerClaimAssessment = {
@@ -22,12 +86,14 @@ export type ReviewerClaimAssessment = {
 }
 
 export type DetailedReviewerOpinion = {
+  snapshot?: ReviewerReportSnapshot
   overall_assessment: string
   decisive_reasons: string[]
   claim_assessments: ReviewerClaimAssessment[]
   likely_contribution: string
   reservations: string[]
   reviewer_questions: string[]
+  curatorial_approach?: ReviewerCuratorialApproach
   suggested_human_action:
     | "approve"
     | "discuss"
@@ -68,6 +134,8 @@ const HUMAN_ACTIONS = new Set([
   "request_clarification",
   "decline",
 ])
+const CURATION_DIMENSIONS = new Set<string>(REVIEWER_CURATION_DIMENSIONS)
+const SNAPSHOT_TAGS = new Set<string>(REVIEWER_SNAPSHOT_TAGS)
 
 function cleanText(raw: unknown): string {
   if (typeof raw !== "string") return ""
@@ -93,6 +161,7 @@ function cleanEvidenceReferences(raw: unknown): ReviewerEvidenceReference[] {
     const excerpt = typeof value.excerpt === "string"
       ? value.excerpt.trim().slice(0, MAX_EVIDENCE_LENGTH) : ""
     const precedingQuestion = cleanText(value.preceding_question)
+    const interaction = cleanMediaChoiceEvidence(value.interaction)
     return signalKey && signalLabel && sourceMessageId && excerpt
       ? [{
           signal_key: signalKey,
@@ -100,14 +169,69 @@ function cleanEvidenceReferences(raw: unknown): ReviewerEvidenceReference[] {
           source_message_id: sourceMessageId,
           excerpt,
           ...(precedingQuestion ? { preceding_question: precedingQuestion } : {}),
+          ...(interaction ? { interaction } : {}),
         }]
       : []
   }).slice(0, MAX_ITEMS * 2)
 }
 
+function cleanMediaChoiceEvidence(raw: unknown): ReviewerMediaChoiceEvidence | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
+  const value = raw as Record<string, unknown>
+  const questionId = cleanText(value.question_id)
+  const mode = value.mode
+  const rationale = cleanText(value.rationale)
+  if (
+    value.type !== "mediaChoice" ||
+    !questionId ||
+    (mode !== "select" && mode !== "remove" && mode !== "rank") ||
+    !Array.isArray(value.selected_options)
+  ) {
+    return null
+  }
+  const selectedOptions = value.selected_options.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return []
+    const option = item as Record<string, unknown>
+    const id = cleanText(option.id)
+    const label = cleanText(option.label)
+    const position = option.position
+    return id && label
+      ? [{
+          id,
+          label,
+          ...(typeof position === "number" && Number.isInteger(position) && position > 0
+            ? { position }
+            : {}),
+        }]
+      : []
+  }).slice(0, 8)
+  if (!selectedOptions.length) return null
+  return {
+    type: "mediaChoice",
+    question_id: questionId,
+    mode,
+    selected_options: selectedOptions,
+    rationale,
+  }
+}
+
 function cleanConfidence(raw: unknown): number | null {
   if (typeof raw !== "number" || !Number.isFinite(raw)) return null
   return Math.max(0, Math.min(1, raw))
+}
+
+function cleanEvidenceIds(
+  raw: unknown,
+  allowedEvidenceIds?: Set<string>,
+): string[] {
+  if (!Array.isArray(raw)) return []
+  return [...new Set(raw.flatMap((id) => {
+    const cleaned = cleanText(id)
+    if (!cleaned || (allowedEvidenceIds && !allowedEvidenceIds.has(cleaned))) {
+      return []
+    }
+    return [cleaned]
+  }))].slice(0, MAX_ITEMS)
 }
 
 export function normaliseDetailedReviewerOpinion(
@@ -119,6 +243,59 @@ export function normaliseDetailedReviewerOpinion(
   const overallAssessment = cleanText(data.overall_assessment)
   const likelyContribution = cleanText(data.likely_contribution)
   const suggestedHumanAction = data.suggested_human_action
+  const snapshotRaw = metadataRecord(data.snapshot)
+  const snapshotEvidenceIds = cleanEvidenceIds(
+    snapshotRaw?.evidence_reference_ids,
+    allowedEvidenceIds,
+  )
+  const snapshotTags = Array.isArray(snapshotRaw?.tags)
+    ? snapshotRaw.tags.flatMap((item) => {
+        const tag = metadataRecord(item)
+        const value = tag?.value
+        const evidenceReferenceIds = cleanEvidenceIds(
+          tag?.evidence_reference_ids,
+          allowedEvidenceIds,
+        )
+        return typeof value === "string" &&
+          SNAPSHOT_TAGS.has(value) &&
+          evidenceReferenceIds.length > 0
+          ? [{
+              value: value as ReviewerSnapshotTag,
+              evidence_reference_ids: evidenceReferenceIds,
+            }]
+          : []
+      }).filter((tag, index, tags) =>
+        tags.findIndex((candidate) => candidate.value === tag.value) === index,
+      ).slice(0, 5)
+    : []
+  const snapshot: ReviewerReportSnapshot | undefined = snapshotRaw &&
+    cleanText(snapshotRaw.applicant_summary) &&
+    snapshotEvidenceIds.length > 0
+    ? {
+        applicant_summary: cleanText(snapshotRaw.applicant_summary),
+        evidence_reference_ids: snapshotEvidenceIds,
+        tags: snapshotTags,
+      }
+    : undefined
+  const curatorialRaw = metadataRecord(data.curatorial_approach)
+  const curatorialPresent = curatorialRaw?.present === true
+  const curatorialEvidenceIds = cleanEvidenceIds(
+    curatorialRaw?.evidence_reference_ids,
+    allowedEvidenceIds,
+  )
+  const curatorialApproach: ReviewerCuratorialApproach | undefined = curatorialRaw
+    ? {
+        present: curatorialPresent,
+        summary: cleanText(curatorialRaw.summary),
+        evidence_reference_ids: curatorialEvidenceIds,
+        observed_dimensions: Array.isArray(curatorialRaw.observed_dimensions)
+          ? [...new Set(curatorialRaw.observed_dimensions.filter(
+              (dimension): dimension is ReviewerCurationDimension =>
+                typeof dimension === "string" && CURATION_DIMENSIONS.has(dimension),
+            ))].slice(0, REVIEWER_CURATION_DIMENSIONS.length)
+          : [],
+      }
+    : undefined
   const claimAssessments = Array.isArray(data.claim_assessments)
     ? data.claim_assessments.flatMap((item) => {
         if (!item || typeof item !== "object" || Array.isArray(item)) return []
@@ -126,15 +303,10 @@ export function normaliseDetailedReviewerOpinion(
         const claim = cleanText(value.claim)
         const interpretation = cleanText(value.interpretation)
         const assessment = value.assessment
-        const evidenceReferenceIds = Array.isArray(value.evidence_reference_ids)
-          ? [...new Set(value.evidence_reference_ids.flatMap((id) => {
-              const cleaned = cleanText(id)
-              if (!cleaned || (allowedEvidenceIds && !allowedEvidenceIds.has(cleaned))) {
-                return []
-              }
-              return [cleaned]
-            }))].slice(0, MAX_ITEMS)
-          : []
+        const evidenceReferenceIds = cleanEvidenceIds(
+          value.evidence_reference_ids,
+          allowedEvidenceIds,
+        )
         return claim &&
           interpretation &&
           evidenceReferenceIds.length > 0 &&
@@ -159,12 +331,14 @@ export function normaliseDetailedReviewerOpinion(
   }
 
   return {
+    ...(snapshot ? { snapshot } : {}),
     overall_assessment: overallAssessment,
     decisive_reasons: cleanTextArray(data.decisive_reasons).slice(0, 2),
     claim_assessments: claimAssessments,
     likely_contribution: likelyContribution,
     reservations: cleanTextArray(data.reservations).slice(0, 2),
     reviewer_questions: cleanTextArray(data.reviewer_questions).slice(0, 2),
+    ...(curatorialApproach ? { curatorial_approach: curatorialApproach } : {}),
     suggested_human_action:
       suggestedHumanAction as DetailedReviewerOpinion["suggested_human_action"],
   }
@@ -177,7 +351,11 @@ export function normaliseReviewerReport(raw: unknown): ReviewerReport | null {
   const recommendation = data.advisory_recommendation
   const confidenceScore = cleanConfidence(data.confidence_score)
   const reviewerFocus = cleanText(data.reviewer_focus)
-  const detailedOpinion = normaliseDetailedReviewerOpinion(data.detailed_opinion)
+  const evidenceReferences = cleanEvidenceReferences(data.evidence_references)
+  const detailedOpinion = normaliseDetailedReviewerOpinion(
+    data.detailed_opinion,
+    new Set(evidenceReferences.map((reference) => reference.source_message_id)),
+  )
 
   if (
     !applicantBio ||
@@ -193,7 +371,7 @@ export function normaliseReviewerReport(raw: unknown): ReviewerReport | null {
     advisory_recommendation: recommendation as AdvisoryRecommendation,
     confidence_score: confidenceScore,
     evidence_summary: cleanTextArray(data.evidence_summary),
-    evidence_references: cleanEvidenceReferences(data.evidence_references),
+    evidence_references: evidenceReferences,
     weak_or_missing_signals: cleanTextArray(data.weak_or_missing_signals),
     safety_or_integrity_flags: cleanTextArray(data.safety_or_integrity_flags),
     reviewer_focus: reviewerFocus,
@@ -280,6 +458,53 @@ function transcriptEvidence(
   })
 }
 
+function mediaChoiceEvidenceByMessageId(
+  messages: ApplicationSignalMessage[],
+): Map<string, ReviewerMediaChoiceEvidence> {
+  const result = new Map<string, ReviewerMediaChoiceEvidence>()
+  let activeInteraction: ReturnType<typeof normaliseMediaChoiceInteraction>
+  for (const message of messages) {
+    if (message.role === "assistant") {
+      const ui = metadataRecord(metadataRecord(message.metadata)?.ui)
+      activeInteraction = normaliseMediaChoiceInteraction(ui?.mediaChoice)
+      continue
+    }
+    if (!message.id || !activeInteraction) continue
+    const answer = normaliseMediaChoiceAnswer(
+      metadataRecord(message.metadata)?.interaction_answer,
+    )
+    if (
+      !answer ||
+      answer.questionId !== activeInteraction.id ||
+      answer.mode !== activeInteraction.selection.mode
+    ) {
+      continue
+    }
+    const optionsById = new Map(
+      activeInteraction.options.map((option) => [option.id, option]),
+    )
+    const selectedOptions = answer.optionIds.flatMap((id, index) => {
+      const option = optionsById.get(id)
+      return option
+        ? [{
+            id,
+            label: option.label,
+            ...(answer.mode === "rank" ? { position: index + 1 } : {}),
+          }]
+        : []
+    })
+    if (!selectedOptions.length) continue
+    result.set(message.id, {
+      type: "mediaChoice",
+      question_id: answer.questionId,
+      mode: answer.mode,
+      selected_options: selectedOptions,
+      rationale: answer.rationale ?? "",
+    })
+  }
+  return result
+}
+
 /**
  * Repairs missing or evidence-free model reports from the application state
  * already persisted in message metadata. It never invents applicant evidence.
@@ -335,6 +560,7 @@ export function ensureEvidenceBackedReviewerReport(input: {
   const messageById = new Map((input.messages ?? [])
     .filter((message) => message.role === "user" && message.id)
     .map((message) => [message.id as string, message]))
+  const mediaChoiceEvidence = mediaChoiceEvidenceByMessageId(input.messages ?? [])
   const precedingQuestionById = new Map<string, string>()
   let precedingQuestion = ""
   for (const message of input.messages ?? []) {
@@ -350,6 +576,9 @@ export function ensureEvidenceBackedReviewerReport(input: {
         ...reference,
         excerpt: answer?.content.trim().slice(0, MAX_EVIDENCE_LENGTH) ?? reference.excerpt,
         ...(question ? { preceding_question: question } : {}),
+        ...(mediaChoiceEvidence.get(messageId)
+          ? { interaction: mediaChoiceEvidence.get(messageId) }
+          : {}),
       }]
     })).values()].slice(0, MAX_ITEMS * 2)
   const askedKeys = new Set((input.messages ?? []).flatMap((message) => {

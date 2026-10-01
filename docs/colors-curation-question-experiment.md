@@ -1,7 +1,7 @@
 # COLORS curation question experiment
 
 Date: 2026-09-15  
-Status: Remove-one pilot integrated in test and dry-run flows
+Status: Remove-one pilot and source-linked reviewer synthesis integrated in test and dry-run flows
 Scope: Testing richer, COLORS-specific interactions alongside the current Forum application
 
 ## Summary
@@ -167,6 +167,27 @@ This prompt runs once at most and occupies the next adaptive question slot; it
 does not add an extra compulsory question to the end of the application. If the
 feed cannot be loaded, the conversation continues with Groucho's normal prompt.
 The automatic variant is enabled for previews, test projects and dry runs only.
+
+### Reviewer-report integration
+
+Structured media answers now remain typed through report generation. The report
+receives the question ID, selection mode, selected or excluded option labels,
+rank positions where applicable, and the applicant's rationale. A dedicated
+curatorial-approach section may describe supported evidence of sequencing,
+coherence, audience awareness, context, trade-offs, curiosity or reconsideration.
+
+The client report now opens with a concise snapshot: a one- or two-sentence
+applicant summary, controlled evidence-backed tags, the primary strength, an
+open reviewer question where present, and the suggested next action. The full
+assessment and source evidence are collapsed initially and can be expanded.
+The snapshot and detailed view come from the same verified report rather than
+separate model calls, preventing the two layers from drifting apart.
+
+The report and its semantic verifier treat the exercise as hypothetical evidence.
+They assess the rationale, not whether a particular artist was selected or
+excluded, and must not upgrade one exercise into an established curatorial
+practice. The client view displays the source question, selection, rationale and
+interpretation together with that caveat.
 
 ## Interaction requirements
 
