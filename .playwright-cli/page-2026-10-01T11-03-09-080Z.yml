@@ -1,0 +1,74 @@
+- generic [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e19] [cursor=pointer]
+  - alert [ref=e23]
+  - generic [ref=e24]:
+    - banner:
+      - generic [ref=e51]: COLORS + STUDIOS
+      - generic:
+        - generic: Forum demo
+        - button "Sign out" [ref=e25]
+    - main "COLORS Forum application" [ref=e53]:
+      - generic [aria-hidden] [ref=e54]: COLORS Forum application
+      - generic [ref=e27]:
+        - region "Messages" [ref=e28]:
+          - log [ref=e29]:
+            - generic [ref=e61]:
+              - img "Members of the COLORS community" [ref=e63]
+              - generic [ref=e64]:
+                - paragraph [ref=e65]: The COLORS Forum is a place for our community to discuss, discover and share. We are a network of musicians, curators and music enthusiasts.
+                - paragraph [ref=e66]: We are building a collective community that brings people together to guide, understand and shape the culture.
+              - paragraph [ref=e67]: Why do you want to be an early applicant for the Forum?
+            - paragraph [ref=e77]: I organise a free monthly listening circle in South London for about twenty independent musicians and curious listeners. I want to join early because I can bring what we learn from those sessions, meet people outside my immediate scene, and help shape a forum where people disagree thoughtfully rather than simply promote releases.
+            - paragraph [ref=e84]: That monthly circle sounds like real work. You're not just curating for listeners, you're holding space for musicians to hear their work in a thoughtful setting. I'm curious what drew you to COLORS specifically. There are listening communities everywhere. What does this platform make possible that your circle or other spaces don't?
+            - paragraph [ref=e88]: COLORS puts very different artists on equal visual footing, so the conversation can begin with the work rather than status or genre hierarchy. In our circle I have used several COLORS performances to compare how arrangement, restraint and performance choices travel across scenes. The Forum could turn that broad audience into sustained exchange instead of isolated comments.
+            - paragraph [ref=e95]: Four recent COLORS shows. You’re shaping a three-performance programme with a clear point of view. Which one do you leave out?
+            - generic [ref=e98]:
+              - generic [ref=e99]:
+                - paragraph [ref=e100]: Choose 1 to remove
+                - paragraph [ref=e101]: 1/1
+              - group "Choose 1 to remove" [ref=e102]:
+                - article [ref=e103]:
+                  - generic [ref=e104]:
+                    - img "Villano Antillano - XXL | A COLORS SHOW official COLORS performance thumbnail" [ref=e105]
+                    - button "Play Villano Antillano - XXL | A COLORS SHOW" [ref=e106]
+                  - generic [ref=e109]:
+                    - generic [ref=e110]:
+                      - heading "Villano Antillano - XXL" [level=3] [ref=e111]
+                      - paragraph [ref=e112]: Villano Antillano
+                    - button "Remove" [ref=e113]
+                - article [ref=e114]:
+                  - generic [ref=e115]:
+                    - img "JayaHadADream - Dive Not Dip | A COLORS SHOW official COLORS performance thumbnail" [ref=e116]
+                    - button "Play JayaHadADream - Dive Not Dip | A COLORS SHOW" [ref=e117]
+                  - generic [ref=e120]:
+                    - generic [ref=e121]:
+                      - heading "JayaHadADream - Dive Not Dip" [level=3] [ref=e122]
+                      - paragraph [ref=e123]: JayaHadADream
+                    - button "Remove" [ref=e124]
+                - article [ref=e125]:
+                  - generic [ref=e126]:
+                    - img "Maria Arnal - QUE ME QUITEN | A COLORS SHOW official COLORS performance thumbnail" [ref=e127]
+                    - button "Play Maria Arnal - QUE ME QUITEN | A COLORS SHOW" [ref=e128]
+                  - generic [ref=e131]:
+                    - generic [ref=e132]:
+                      - heading "Maria Arnal - QUE ME QUITEN" [level=3] [ref=e133]
+                      - paragraph [ref=e134]: Maria Arnal
+                    - button "Remove" [ref=e135]
+                - article [ref=e136]:
+                  - generic [ref=e137]:
+                    - img "Florence Road - No Better Woman | A COLORS SHOW official COLORS performance thumbnail" [ref=e138]
+                    - button "Play Florence Road - No Better Woman | A COLORS SHOW" [ref=e139]
+                    - generic "Rank 1" [ref=e157]: "1"
+                  - generic [ref=e142]:
+                    - generic [ref=e143]:
+                      - heading "Florence Road - No Better Woman" [level=3] [ref=e144]
+                      - paragraph [ref=e145]: Florence Road
+                    - button "Removing" [active] [pressed] [ref=e158]
+        - button "Jump to latest message"
+      - generic [ref=e151]:
+        - generic [ref=e152]:
+          - generic [ref=e153]: What does that decision protect in the programme?
+          - textbox "What does that decision protect in the programme? 24 more characters" [ref=e154]
+          - generic [ref=e155]: 24 more characters
+        - button "Send answer" [disabled] [ref=e156]
+    - paragraph: Powered by Groucho

@@ -3,6 +3,7 @@ import {
   ensureEvidenceBackedReviewerReport,
   fallbackReviewerReport,
   normaliseReviewerReport,
+  normaliseDetailedReviewerOpinion,
 } from "@/lib/reviewer-report"
 
 describe("reviewer report helpers", () => {
@@ -30,6 +31,39 @@ describe("reviewer report helpers", () => {
         reviewer_focus: "Read transcript.",
       }),
     ).toBeNull()
+  })
+
+  it("keeps only source-linked claims in a detailed opinion", () => {
+    const opinion = normaliseDetailedReviewerOpinion(
+      {
+        overall_assessment: "A credible community participant with one open question.",
+        decisive_reasons: ["Shows recurring participation."],
+        claim_assessments: [
+          {
+            claim: "Hosts a recurring listening night.",
+            evidence_reference_ids: ["message-1"],
+            interpretation: "This is demonstrated participation, not only intent.",
+            assessment: "strength",
+          },
+          {
+            claim: "Has a large professional network.",
+            evidence_reference_ids: ["invented-source"],
+            interpretation: "Unsupported.",
+            assessment: "strength",
+          },
+        ],
+        likely_contribution: "Could convene focused listening discussions.",
+        reservations: [],
+        reviewer_questions: ["How often could they participate?"],
+        suggested_human_action: "discuss",
+      },
+      new Set(["message-1"]),
+    )
+
+    expect(opinion?.claim_assessments).toHaveLength(1)
+    expect(opinion?.claim_assessments[0]?.evidence_reference_ids).toEqual([
+      "message-1",
+    ])
   })
 
   it("creates low-confidence fallback reports for terminal sessions", () => {
@@ -211,5 +245,41 @@ describe("reviewer report helpers", () => {
     expect(report.safety_or_integrity_flags).toContain(
       "Applicant described sharing private artist work without permission.",
     )
+  })
+
+  it("keeps one full applicant record when an answer supports multiple signals", () => {
+    const definitions = ["participation", "contribution", "unasked"].map((key) => ({
+      key,
+      label: key,
+      goal: key,
+      promptRoutes: [],
+      priority: "core" as const,
+      cluster: key,
+      audiences: ["shared" as const],
+    }))
+    const fullAnswer = "I host a listening circle every month. We send artists notes only when they ask for them, and I would bring that practice to the Forum."
+    const report = ensureEvidenceBackedReviewerReport({
+      report: null,
+      terminalStatus: "redirected",
+      scores: { overall: 0.6 },
+      definitions,
+      answers: definitions.slice(0, 2).map((definition) => ({
+        ...definition,
+        answer: fullAnswer,
+        covered: true,
+        sources: [{ messageId: "answer-1", excerpt: fullAnswer.slice(0, 25) }],
+      })),
+      messages: [
+        { id: "question-1", role: "assistant", content: "How have you participated with other listeners or artists?" },
+        { id: "answer-1", role: "user", content: fullAnswer },
+      ],
+    })
+    expect(report.evidence_references).toHaveLength(1)
+    expect(report.evidence_references[0]).toMatchObject({
+      source_message_id: "answer-1",
+      excerpt: fullAnswer,
+      preceding_question: "How have you participated with other listeners or artists?",
+    })
+    expect(report.weak_or_missing_signals).toContain("unasked: not explored in this conversation.")
   })
 })

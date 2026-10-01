@@ -1,0 +1,33 @@
+- generic [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e19] [cursor=pointer]
+  - alert [ref=e23]
+  - generic [ref=e24]:
+    - banner:
+      - generic [ref=e51]: COLORS + STUDIOS
+      - generic:
+        - generic: Forum demo
+        - button "Sign out" [ref=e25]
+    - main "COLORS Forum application" [ref=e53]:
+      - generic [aria-hidden] [ref=e54]: COLORS Forum application
+      - generic [ref=e27]:
+        - region "Messages" [ref=e28]:
+          - log [ref=e29]:
+            - generic [ref=e673]:
+              - img "Members of the COLORS community" [ref=e675]
+              - generic [ref=e676]:
+                - paragraph [ref=e677]: The COLORS Forum is a place for our community to discuss, discover and share. We are a network of musicians, curators and music enthusiasts.
+                - paragraph [ref=e678]: We are building a collective community that brings people together to guide, understand and shape the culture.
+              - paragraph [ref=e679]: Why do you want to be an early applicant for the Forum?
+            - paragraph [ref=e689]: I run marketing for an independent label with a roster of twelve artists, have worked with several major distributors, and reach more than 180,000 followers across our channels. Joining early would let me put our artists in front of a culturally influential audience and bring strong industry connections into the Forum.
+            - paragraph [ref=e692]: I appreciate the clarity. Before we go further, I'm curious what specifically drew you to COLORS, is there a performance or something about how the platform presents work that made you think, "this is where we belong"?
+            - paragraph [ref=e695]: The brand has excellent reach and a premium visual identity. A COLORS appearance can materially accelerate an artist campaign, and several people in our network already follow the channel. It is the kind of platform association that signals taste and helps a release travel internationally.
+            - paragraph [ref=e698]: Four recent COLORS shows. You’re shaping a three-performance programme with a clear point of view. Which one do you leave out?
+            - paragraph [ref=e761]: "Removed: THIZZY52 - Jeden Tag Reason: I would leave out THIZZY52 because that performance appears least useful for audience growth. The other artists seem easier to position across markets and are more likely to create campaign moments that sponsors and press can amplify."
+            - paragraph [ref=e764]: "That's a clear choice. But I want to ask it differently: if you were thinking about that THIZZY52 performance on its own terms, not the campaign math, what would you actually tell someone about it?"
+        - button "Jump to latest message" [ref=e147]
+      - generic [ref=e765]:
+        - textbox "Message" [active] [ref=e766]:
+          - /placeholder: Write something…
+        - button "Start voice input" [ref=e767]
+        - button "Send message" [disabled] [ref=e772]
+    - paragraph: Powered by Groucho

@@ -2464,13 +2464,13 @@ describe("contract: postSessionMessage", () => {
           excerpt: string
         }>
       }).evidence_references,
-    ).toContainEqual({
+    ).toEqual(expect.arrayContaining([expect.objectContaining({
       signal_key: motivationSignal.key,
       signal_label: motivationSignal.label,
       source_message_id: persistedUser?.id,
       excerpt:
         "I'd take part if a comment could be as simple as connecting a song to a feeling.",
-    })
+    })]))
   })
 
   it("adds a question when a single-select response only contains acknowledgement", async () => {

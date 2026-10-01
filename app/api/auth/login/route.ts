@@ -1,4 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
+import {
+  DEMO_AUTH_COOKIE,
+  COLORS_DEMO_TESTER_EMAIL,
+  demoPasswordMatches,
+  expectedTesterEmail,
+  issueDemoToken,
+} from "@/lib/colors-demo-token"
 
 async function signToken(payload: string, secret: string): Promise<string> {
   const key = await crypto.subtle.importKey(
@@ -30,6 +37,28 @@ export async function POST(req: NextRequest) {
     .map((e) => e.trim().toLowerCase())
 
   const emailLower = email.trim().toLowerCase()
+
+  if (demoPasswordMatches(emailLower, password)) {
+    const token = await issueDemoToken({
+      kind: "tester",
+      email: emailLower,
+      issuedAt: Date.now(),
+    })
+    if (!token) return NextResponse.json({ error: "Server misconfigured" }, { status: 500 })
+    const res = NextResponse.json({ ok: true, role: "colors_demo_tester" })
+    res.cookies.set(DEMO_AUTH_COOKIE, token, {
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7,
+      secure: process.env.NODE_ENV === "production",
+    })
+    return res
+  }
+
+  if (emailLower === expectedTesterEmail() || emailLower === COLORS_DEMO_TESTER_EMAIL) {
+    return NextResponse.json({ error: "Access denied" }, { status: 401 })
+  }
 
   if (!allowed.includes(emailLower) || password !== process.env.ADMIN_PASSWORD) {
     return NextResponse.json({ error: "Access denied" }, { status: 401 })

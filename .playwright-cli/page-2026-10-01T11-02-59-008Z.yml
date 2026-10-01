@@ -1,0 +1,32 @@
+- generic [active] [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e19] [cursor=pointer]
+  - alert [ref=e23]
+  - generic [ref=e24]:
+    - banner:
+      - generic [ref=e51]: COLORS + STUDIOS
+      - generic:
+        - generic: Forum demo
+        - button "Sign out" [ref=e25]
+    - main "COLORS Forum application" [ref=e53]:
+      - generic [aria-hidden] [ref=e54]: COLORS Forum application
+      - generic [ref=e27]:
+        - region "Messages" [ref=e28]:
+          - log [ref=e29]:
+            - generic [ref=e61]:
+              - img "Members of the COLORS community" [ref=e63]
+              - generic [ref=e64]:
+                - paragraph [ref=e65]: The COLORS Forum is a place for our community to discuss, discover and share. We are a network of musicians, curators and music enthusiasts.
+                - paragraph [ref=e66]: We are building a collective community that brings people together to guide, understand and shape the culture.
+              - paragraph [ref=e67]: Why do you want to be an early applicant for the Forum?
+            - paragraph [ref=e77]: I organise a free monthly listening circle in South London for about twenty independent musicians and curious listeners. I want to join early because I can bring what we learn from those sessions, meet people outside my immediate scene, and help shape a forum where people disagree thoughtfully rather than simply promote releases.
+            - paragraph [ref=e84]: That monthly circle sounds like real work. You're not just curating for listeners, you're holding space for musicians to hear their work in a thoughtful setting. I'm curious what drew you to COLORS specifically. There are listening communities everywhere. What does this platform make possible that your circle or other spaces don't?
+            - paragraph [ref=e88]: COLORS puts very different artists on equal visual footing, so the conversation can begin with the work rather than status or genre hierarchy. In our circle I have used several COLORS performances to compare how arrangement, restraint and performance choices travel across scenes. The Forum could turn that broad audience into sustained exchange instead of isolated comments.
+            - status [ref=e89]:
+              - generic [ref=e91]: Considering your answer…
+        - button "Jump to latest message"
+      - generic [ref=e37]:
+        - textbox "Message" [disabled] [ref=e68]:
+          - /placeholder: Write something…
+        - button "Start voice input" [disabled] [ref=e69]
+        - button "Groucho is reading your answer" [disabled] [ref=e92]
+    - paragraph: Powered by Groucho

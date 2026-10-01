@@ -36,8 +36,11 @@ export async function verifyPeAuthEmail(
 }
 
 export function isAllowedPlatformEmail(email: string): boolean {
+  const normalized = email.trim().toLowerCase()
+  if (normalized === COLORS_DEMO_TESTER_EMAIL || normalized === expectedTesterEmail()) return false
   const allowed = (process.env.ALLOWED_EMAILS || "")
     .split(",")
     .map((e) => e.trim().toLowerCase())
-  return allowed.includes(email.trim().toLowerCase())
+  return allowed.includes(normalized)
 }
+import { COLORS_DEMO_TESTER_EMAIL, expectedTesterEmail } from "@/lib/colors-demo-token"

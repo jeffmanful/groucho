@@ -1,0 +1,74 @@
+- generic [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e19] [cursor=pointer]
+  - alert [ref=e23]
+  - generic [ref=e24]:
+    - banner:
+      - generic [ref=e51]: COLORS + STUDIOS
+      - generic:
+        - generic: Forum demo
+        - button "Sign out" [ref=e25]
+    - main "COLORS Forum application" [ref=e53]:
+      - generic [aria-hidden] [ref=e54]: COLORS Forum application
+      - generic [ref=e27]:
+        - region "Messages" [ref=e28]:
+          - log [ref=e29]:
+            - generic [ref=e380]:
+              - img "Members of the COLORS community" [ref=e382]
+              - generic [ref=e383]:
+                - paragraph [ref=e384]: The COLORS Forum is a place for our community to discuss, discover and share. We are a network of musicians, curators and music enthusiasts.
+                - paragraph [ref=e385]: We are building a collective community that brings people together to guide, understand and shape the culture.
+              - paragraph [ref=e386]: Why do you want to be an early applicant for the Forum?
+            - paragraph [ref=e396]: I love discovering music and COLORS has always inspired me. I want to meet creative people, learn from the community, and hopefully contribute positive energy as the Forum grows.
+            - paragraph [ref=e399]: That makes sense. COLORS has shaped how you listen, and you're drawn to the community side. I'm curious what draws you to COLORS specifically rather than another music community, is there a performance or moment that stuck with you?
+            - paragraph [ref=e402]: There have been lots over the years and I cannot remember a particular one right now. I mainly like the stripped-back visual style and the way it introduces me to artists I would not otherwise find.
+            - paragraph [ref=e405]: Four recent COLORS shows. You’re shaping a three-performance programme with a clear point of view. Which one do you leave out?
+            - generic [ref=e408]:
+              - generic [ref=e409]:
+                - paragraph [ref=e410]: Choose 1 to remove
+                - paragraph [ref=e411]: 1/1
+              - group "Choose 1 to remove" [ref=e412]:
+                - article [ref=e413]:
+                  - generic [ref=e414]:
+                    - img "Ino Casablanca - PA' TOUCH | A COLORS SHOW official COLORS performance thumbnail" [ref=e415]
+                    - button "Play Ino Casablanca - PA' TOUCH | A COLORS SHOW" [ref=e416]
+                  - generic [ref=e419]:
+                    - generic [ref=e420]:
+                      - heading "Ino Casablanca - PA' TOUCH" [level=3] [ref=e421]
+                      - paragraph [ref=e422]: Ino Casablanca
+                    - button "Remove" [ref=e423]
+                - article [ref=e424]:
+                  - generic [ref=e425]:
+                    - img "Nsqk - tuffluv | A COLORS SHOW official COLORS performance thumbnail" [ref=e426]
+                    - button "Play Nsqk - tuffluv | A COLORS SHOW" [ref=e427]
+                  - generic [ref=e430]:
+                    - generic [ref=e431]:
+                      - heading "Nsqk - tuffluv" [level=3] [ref=e432]
+                      - paragraph [ref=e433]: Nsqk
+                    - button "Remove" [ref=e434]
+                - article [ref=e435]:
+                  - generic [ref=e436]:
+                    - img "La Fève - RIEN D’EXCEPTIONNEL | A COLORS SHOW official COLORS performance thumbnail" [ref=e437]
+                    - button "Play La Fève - RIEN D’EXCEPTIONNEL | A COLORS SHOW" [ref=e438]
+                  - generic [ref=e441]:
+                    - generic [ref=e442]:
+                      - heading "La Fève - RIEN D’EXCEPTIONNEL" [level=3] [ref=e443]
+                      - paragraph [ref=e444]: La Fève
+                    - button "Remove" [ref=e445]
+                - article [ref=e446]:
+                  - generic [ref=e447]:
+                    - img "THIZZY52 - Jeden Tag | A COLORS SHOW official COLORS performance thumbnail" [ref=e448]
+                    - button "Play THIZZY52 - Jeden Tag | A COLORS SHOW" [ref=e449]
+                    - generic "Rank 1" [ref=e464]: "1"
+                  - generic [ref=e452]:
+                    - generic [ref=e453]:
+                      - heading "THIZZY52 - Jeden Tag" [level=3] [ref=e454]
+                      - paragraph [ref=e455]: THIZZY52
+                    - button "Removing" [active] [pressed] [ref=e465]
+        - button "Jump to latest message"
+      - generic [ref=e458]:
+        - generic [ref=e459]:
+          - generic [ref=e460]: What does that decision protect in the programme?
+          - textbox "What does that decision protect in the programme? 24 more characters" [ref=e461]
+          - generic [ref=e462]: 24 more characters
+        - button "Send answer" [disabled] [ref=e463]
+    - paragraph: Powered by Groucho

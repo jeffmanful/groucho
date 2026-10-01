@@ -1,0 +1,27 @@
+- generic [active] [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e19] [cursor=pointer]
+  - alert [ref=e23]
+  - generic [ref=e24]:
+    - banner:
+      - generic [ref=e51]: COLORS + STUDIOS
+      - generic:
+        - generic: Forum demo
+        - button "Sign out" [ref=e25]
+    - main "COLORS Forum application" [ref=e53]:
+      - generic [aria-hidden] [ref=e54]: COLORS Forum application
+      - generic [ref=e27]:
+        - region "Messages" [ref=e28]:
+          - log [ref=e29]:
+            - generic [ref=e61]:
+              - img "Members of the COLORS community" [ref=e63]
+              - generic [ref=e64]:
+                - paragraph [ref=e65]: The COLORS Forum is a place for our community to discuss, discover and share. We are a network of musicians, curators and music enthusiasts.
+                - paragraph [ref=e66]: We are building a collective community that brings people together to guide, understand and shape the culture.
+              - paragraph [ref=e67]: Why do you want to be an early applicant for the Forum?
+        - button "Jump to latest message"
+      - generic [ref=e37]:
+        - textbox "Message" [ref=e68]:
+          - /placeholder: Write something…
+        - button "Start voice input" [ref=e69]
+        - button "Send message" [disabled] [ref=e74]
+    - paragraph: Powered by Groucho

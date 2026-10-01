@@ -24,7 +24,12 @@ export default function LoginPage() {
       })
 
       if (res.ok) {
-        router.push("/")
+        const requestedPath = new URLSearchParams(window.location.search).get("next")
+        const safePath =
+          requestedPath?.startsWith("/") && !requestedPath.startsWith("//")
+            ? requestedPath
+            : "/"
+        router.push(safePath)
         router.refresh()
       } else {
         setError("Access denied.")

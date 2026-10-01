@@ -1,0 +1,39 @@
+- generic [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e19] [cursor=pointer]
+  - alert [ref=e23]
+  - generic [ref=e24]:
+    - banner:
+      - generic [ref=e51]: COLORS + STUDIOS
+      - generic:
+        - generic: Forum demo
+        - button "Sign out" [ref=e25]
+    - main "COLORS Forum application" [ref=e53]:
+      - generic [aria-hidden] [ref=e54]: COLORS Forum application
+      - generic [ref=e27]:
+        - region "Messages" [ref=e28]:
+          - log [ref=e29]:
+            - generic [ref=e380]:
+              - img "Members of the COLORS community" [ref=e382]
+              - generic [ref=e383]:
+                - paragraph [ref=e384]: The COLORS Forum is a place for our community to discuss, discover and share. We are a network of musicians, curators and music enthusiasts.
+                - paragraph [ref=e385]: We are building a collective community that brings people together to guide, understand and shape the culture.
+              - paragraph [ref=e386]: Why do you want to be an early applicant for the Forum?
+            - paragraph [ref=e396]: I love discovering music and COLORS has always inspired me. I want to meet creative people, learn from the community, and hopefully contribute positive energy as the Forum grows.
+            - paragraph [ref=e399]: That makes sense. COLORS has shaped how you listen, and you're drawn to the community side. I'm curious what draws you to COLORS specifically rather than another music community, is there a performance or moment that stuck with you?
+            - paragraph [ref=e402]: There have been lots over the years and I cannot remember a particular one right now. I mainly like the stripped-back visual style and the way it introduces me to artists I would not otherwise find.
+            - paragraph [ref=e405]: Four recent COLORS shows. You’re shaping a three-performance programme with a clear point of view. Which one do you leave out?
+            - paragraph [ref=e468]: "Removed: THIZZY52 - Jeden Tag Reason: I would leave out THIZZY52 because the other three felt like they fit together better. I cannot explain the musical reason precisely, but the overall mood seemed more consistent to me."
+            - paragraph [ref=e471]: You're making a real judgment call there. Which three artists felt like they had that consistency you sensed?
+            - paragraph [ref=e488]: Ino Casablanca, Nsqk, and La Fève. I mainly felt that from the overall atmosphere rather than a specific musical detail.
+            - paragraph [ref=e491]: Those three hold together. Now you've named them, what's one of their songs you'd actually share with someone, or one you think they should hear?
+            - paragraph [ref=e494]: I would need to listen again before recommending one. I do not know their catalogues well enough yet and would rather not pretend that I do.
+            - paragraph [ref=e497]: Which of these sounds most like how you participate around music?
+            - paragraph [ref=e533]: I like discussing music
+            - paragraph [ref=e536]: Discussing music is where things get interesting. What does that usually look like for you, do you have people you return to for that, or communities where it already happens?
+        - button "Jump to latest message" [ref=e147]
+      - generic [ref=e537]:
+        - textbox "Message" [active] [ref=e538]:
+          - /placeholder: Write something…
+        - button "Start voice input" [ref=e539]
+        - button "Send message" [disabled] [ref=e544]
+    - paragraph: Powered by Groucho

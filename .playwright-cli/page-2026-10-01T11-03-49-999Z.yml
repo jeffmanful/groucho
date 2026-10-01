@@ -1,0 +1,37 @@
+- generic [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e19] [cursor=pointer]
+  - alert [ref=e23]
+  - generic [ref=e24]:
+    - banner:
+      - generic [ref=e51]: COLORS + STUDIOS
+      - generic:
+        - generic: Forum demo
+        - button "Sign out" [ref=e25]
+    - main "COLORS Forum application" [ref=e53]:
+      - generic [aria-hidden] [ref=e54]: COLORS Forum application
+      - generic [ref=e27]:
+        - region "Messages" [ref=e28]:
+          - log [ref=e29]:
+            - generic [ref=e61]:
+              - img "Members of the COLORS community" [ref=e63]
+              - generic [ref=e64]:
+                - paragraph [ref=e65]: The COLORS Forum is a place for our community to discuss, discover and share. We are a network of musicians, curators and music enthusiasts.
+                - paragraph [ref=e66]: We are building a collective community that brings people together to guide, understand and shape the culture.
+              - paragraph [ref=e67]: Why do you want to be an early applicant for the Forum?
+            - paragraph [ref=e77]: I organise a free monthly listening circle in South London for about twenty independent musicians and curious listeners. I want to join early because I can bring what we learn from those sessions, meet people outside my immediate scene, and help shape a forum where people disagree thoughtfully rather than simply promote releases.
+            - paragraph [ref=e84]: That monthly circle sounds like real work. You're not just curating for listeners, you're holding space for musicians to hear their work in a thoughtful setting. I'm curious what drew you to COLORS specifically. There are listening communities everywhere. What does this platform make possible that your circle or other spaces don't?
+            - paragraph [ref=e88]: COLORS puts very different artists on equal visual footing, so the conversation can begin with the work rather than status or genre hierarchy. In our circle I have used several COLORS performances to compare how arrangement, restraint and performance choices travel across scenes. The Forum could turn that broad audience into sustained exchange instead of isolated comments.
+            - paragraph [ref=e95]: Four recent COLORS shows. You’re shaping a three-performance programme with a clear point of view. Which one do you leave out?
+            - paragraph [ref=e161]: "Removed: Florence Road - No Better Woman Reason: I would leave out Florence Road. The other three create a sharper conversation about how rap, electronic experimentation and theatrical vocal performance use restraint and physical presence differently; that contrast gives the programme a clearer question than simply covering four styles."
+            - paragraph [ref=e167]: That's a sharp distinction. You're thinking about what the audience can actually see and discuss rather than ticking boxes. Have you named those three artists yet, or are you still deciding?
+            - paragraph [ref=e184]: "Yes: Villano Antillano, JayaHadADream and Maria Arnal. I would frame the discussion around how each performance uses controlled intensity differently, then ask participants to bring one example from their own scene that complicates the comparison."
+            - paragraph [ref=e187]: That's a strong framework, you're not just listing three artists, you're setting up a conversation about a method they share. When you bring that kind of comparison back to your circle, what usually happens?
+            - paragraph [ref=e190]: People first defend the music they already know, but the useful moment comes when someone changes their mind or names what they had missed. Last month a producer dismissed a sparse vocal performance as unfinished; after a singer explained the breath and timing choices, he replayed his own mix and removed layers that were hiding the vocal. I facilitate by asking for observations before judgments and making space for quieter members before regulars speak twice.
+            - paragraph [ref=e193]: That's the work. Someone actually changes something about their own practice because they heard a perspective they hadn't held before. When someone brings a song or a work to your circle, what makes you feel like you actually understood what they're reaching for?
+        - button "Jump to latest message" [ref=e147]
+      - generic [ref=e168]:
+        - textbox "Message" [active] [ref=e169]:
+          - /placeholder: Write something…
+        - button "Start voice input" [ref=e170]
+        - button "Send message" [disabled] [ref=e175]
+    - paragraph: Powered by Groucho

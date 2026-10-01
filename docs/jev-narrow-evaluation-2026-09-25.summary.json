@@ -1,0 +1,184 @@
+{
+  "generatedAt": "2026-09-25T15:28:23.169Z",
+  "contractSha256": "c6b5f6479bcb41fd32dd6a23a88b61df241fc16c5d47f29becb1eae90dcb97bd",
+  "syntheticOnly": true,
+  "productionWrites": 0,
+  "baseline": {
+    "completed": 50,
+    "expected": 50,
+    "tp": 32,
+    "fp": 10,
+    "fn": 0,
+    "precision": 0.7619047619047619,
+    "recall": 1,
+    "coverageExact": 40,
+    "riskExact": 50,
+    "repairExact": 50,
+    "multiExact": 3,
+    "multiExpected": 4,
+    "latencyMs": {
+      "p50": 386,
+      "p95": 518.1,
+      "first": 1086.8
+    },
+    "inputTokens": 92549,
+    "outputTokens": 18216,
+    "cost": 0.0038870579999999997,
+    "mismatches": [
+      {
+        "caseId": "attention-positive",
+        "matches": {
+          "coverage": false,
+          "risks": true,
+          "repair": true
+        }
+      },
+      {
+        "caseId": "permission-positive",
+        "matches": {
+          "coverage": false,
+          "risks": true,
+          "repair": true
+        }
+      },
+      {
+        "caseId": "intent-positive",
+        "matches": {
+          "coverage": false,
+          "risks": true,
+          "repair": true
+        }
+      },
+      {
+        "caseId": "honesty-positive",
+        "matches": {
+          "coverage": false,
+          "risks": true,
+          "repair": true
+        }
+      },
+      {
+        "caseId": "private-positive",
+        "matches": {
+          "coverage": false,
+          "risks": true,
+          "repair": true
+        }
+      },
+      {
+        "caseId": "repair-positive",
+        "matches": {
+          "coverage": false,
+          "risks": true,
+          "repair": true
+        }
+      },
+      {
+        "caseId": "multi-reference-care",
+        "matches": {
+          "coverage": false,
+          "risks": true,
+          "repair": true
+        }
+      },
+      {
+        "caseId": "consent-admission",
+        "matches": {
+          "coverage": false,
+          "risks": true,
+          "repair": true
+        }
+      },
+      {
+        "caseId": "consent-negation",
+        "matches": {
+          "coverage": false,
+          "risks": true,
+          "repair": true
+        }
+      },
+      {
+        "caseId": "extraction-explicit",
+        "matches": {
+          "coverage": false,
+          "risks": true,
+          "repair": true
+        }
+      }
+    ]
+  },
+  "baselineAt075": {
+    "completed": 50,
+    "expected": 50,
+    "tp": 32,
+    "fp": 0,
+    "fn": 0,
+    "precision": 1,
+    "recall": 1,
+    "coverageExact": 50,
+    "riskExact": 50,
+    "repairExact": 50,
+    "multiExact": 4,
+    "multiExpected": 4,
+    "latencyMs": {
+      "p50": 386,
+      "p95": 518.1,
+      "first": 1086.8
+    },
+    "inputTokens": 92549,
+    "outputTokens": 18216,
+    "cost": 0.0038870579999999997,
+    "mismatches": []
+  },
+  "narrow": {
+    "completed": 50,
+    "expected": 50,
+    "tp": 31,
+    "fp": 0,
+    "fn": 1,
+    "precision": 1,
+    "recall": 0.96875,
+    "coverageExact": 49,
+    "riskExact": 50,
+    "repairExact": 48,
+    "multiExact": 4,
+    "multiExpected": 4,
+    "latencyMs": {
+      "p50": 385,
+      "p95": 518.7,
+      "first": 670.8
+    },
+    "inputTokens": 73349,
+    "outputTokens": 8600,
+    "cost": 0.0030806579999999996,
+    "mismatches": [
+      {
+        "caseId": "discovery-contrast",
+        "matches": {
+          "coverage": true,
+          "risks": true,
+          "repair": false
+        }
+      },
+      {
+        "caseId": "negative-view-positive",
+        "matches": {
+          "coverage": false,
+          "risks": true,
+          "repair": true
+        }
+      },
+      {
+        "caseId": "injected-instructions",
+        "matches": {
+          "coverage": true,
+          "risks": true,
+          "repair": false
+        }
+      }
+    ]
+  },
+  "pairedLatencyDeltaMedianMs": 4.4,
+  "errors": [],
+  "captureNote": "Aggregate metrics and mismatch IDs preserved from the completed run. Terminal output truncated part of the detailed 100-response list; raw per-request responses are not archived in this summary. No second run was substituted."
+}

@@ -383,10 +383,18 @@ export function validateMediaChoiceAnswer(
     answer.mode === "rank"
       ? `Ranked: ${labels.map((label, index) => `${index + 1}. ${label}`).join("; ")}`
       : `${answer.mode === "remove" ? "Removed" : "Selected"}: ${labels.join(", ")}`
+  const retained = answer.mode === "remove"
+    ? interaction.options
+        .filter((option) => !answer.optionIds.includes(option.id))
+        .map((option) => option.label)
+    : []
+  const completeChoice = retained.length
+    ? `${choice}\nRetained: ${retained.join(", ")}`
+    : choice
   return {
     ok: true,
     answer,
-    message: answer.rationale ? `${choice}\nReason: ${answer.rationale}` : choice,
+    message: answer.rationale ? `${completeChoice}\nReason: ${answer.rationale}` : completeChoice,
   }
 }
 

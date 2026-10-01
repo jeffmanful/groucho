@@ -11,6 +11,28 @@ export type ReviewerEvidenceReference = {
   signal_label: string
   source_message_id: string
   excerpt: string
+  preceding_question?: string
+}
+
+export type ReviewerClaimAssessment = {
+  claim: string
+  evidence_reference_ids: string[]
+  interpretation: string
+  assessment: "strength" | "concern" | "context"
+}
+
+export type DetailedReviewerOpinion = {
+  overall_assessment: string
+  decisive_reasons: string[]
+  claim_assessments: ReviewerClaimAssessment[]
+  likely_contribution: string
+  reservations: string[]
+  reviewer_questions: string[]
+  suggested_human_action:
+    | "approve"
+    | "discuss"
+    | "request_clarification"
+    | "decline"
 }
 
 export type ReviewerReport = {
@@ -22,6 +44,7 @@ export type ReviewerReport = {
   weak_or_missing_signals: string[]
   safety_or_integrity_flags: string[]
   reviewer_focus: string
+  detailed_opinion?: DetailedReviewerOpinion
 }
 
 type ScoreLike = {
@@ -35,7 +58,16 @@ const RECOMMENDATIONS = new Set<AdvisoryRecommendation>([
 ])
 
 const MAX_TEXT_LENGTH = 800
+const MAX_EVIDENCE_LENGTH = 4000
 const MAX_ITEMS = 8
+
+const CLAIM_ASSESSMENTS = new Set(["strength", "concern", "context"])
+const HUMAN_ACTIONS = new Set([
+  "approve",
+  "discuss",
+  "request_clarification",
+  "decline",
+])
 
 function cleanText(raw: unknown): string {
   if (typeof raw !== "string") return ""
@@ -58,13 +90,16 @@ function cleanEvidenceReferences(raw: unknown): ReviewerEvidenceReference[] {
     const signalKey = cleanText(value.signal_key)
     const signalLabel = cleanText(value.signal_label)
     const sourceMessageId = cleanText(value.source_message_id)
-    const excerpt = cleanText(value.excerpt)
+    const excerpt = typeof value.excerpt === "string"
+      ? value.excerpt.trim().slice(0, MAX_EVIDENCE_LENGTH) : ""
+    const precedingQuestion = cleanText(value.preceding_question)
     return signalKey && signalLabel && sourceMessageId && excerpt
       ? [{
           signal_key: signalKey,
           signal_label: signalLabel,
           source_message_id: sourceMessageId,
           excerpt,
+          ...(precedingQuestion ? { preceding_question: precedingQuestion } : {}),
         }]
       : []
   }).slice(0, MAX_ITEMS * 2)
@@ -75,6 +110,66 @@ function cleanConfidence(raw: unknown): number | null {
   return Math.max(0, Math.min(1, raw))
 }
 
+export function normaliseDetailedReviewerOpinion(
+  raw: unknown,
+  allowedEvidenceIds?: Set<string>,
+): DetailedReviewerOpinion | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
+  const data = raw as Record<string, unknown>
+  const overallAssessment = cleanText(data.overall_assessment)
+  const likelyContribution = cleanText(data.likely_contribution)
+  const suggestedHumanAction = data.suggested_human_action
+  const claimAssessments = Array.isArray(data.claim_assessments)
+    ? data.claim_assessments.flatMap((item) => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) return []
+        const value = item as Record<string, unknown>
+        const claim = cleanText(value.claim)
+        const interpretation = cleanText(value.interpretation)
+        const assessment = value.assessment
+        const evidenceReferenceIds = Array.isArray(value.evidence_reference_ids)
+          ? [...new Set(value.evidence_reference_ids.flatMap((id) => {
+              const cleaned = cleanText(id)
+              if (!cleaned || (allowedEvidenceIds && !allowedEvidenceIds.has(cleaned))) {
+                return []
+              }
+              return [cleaned]
+            }))].slice(0, MAX_ITEMS)
+          : []
+        return claim &&
+          interpretation &&
+          evidenceReferenceIds.length > 0 &&
+          CLAIM_ASSESSMENTS.has(assessment as string)
+          ? [{
+              claim,
+              evidence_reference_ids: evidenceReferenceIds,
+              interpretation,
+              assessment: assessment as ReviewerClaimAssessment["assessment"],
+            }]
+          : []
+      }).slice(0, 3)
+    : []
+
+  if (
+    !overallAssessment ||
+    !likelyContribution ||
+    claimAssessments.length === 0 ||
+    !HUMAN_ACTIONS.has(suggestedHumanAction as string)
+  ) {
+    return null
+  }
+
+  return {
+    overall_assessment: overallAssessment,
+    decisive_reasons: cleanTextArray(data.decisive_reasons).slice(0, 2),
+    claim_assessments: claimAssessments,
+    likely_contribution: likelyContribution,
+    reservations: cleanTextArray(data.reservations).slice(0, 2),
+    reviewer_questions: cleanTextArray(data.reviewer_questions).slice(0, 2),
+    suggested_human_action:
+      suggestedHumanAction as DetailedReviewerOpinion["suggested_human_action"],
+  }
+}
+
 export function normaliseReviewerReport(raw: unknown): ReviewerReport | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
   const data = raw as Record<string, unknown>
@@ -82,6 +177,7 @@ export function normaliseReviewerReport(raw: unknown): ReviewerReport | null {
   const recommendation = data.advisory_recommendation
   const confidenceScore = cleanConfidence(data.confidence_score)
   const reviewerFocus = cleanText(data.reviewer_focus)
+  const detailedOpinion = normaliseDetailedReviewerOpinion(data.detailed_opinion)
 
   if (
     !applicantBio ||
@@ -101,6 +197,7 @@ export function normaliseReviewerReport(raw: unknown): ReviewerReport | null {
     weak_or_missing_signals: cleanTextArray(data.weak_or_missing_signals),
     safety_or_integrity_flags: cleanTextArray(data.safety_or_integrity_flags),
     reviewer_focus: reviewerFocus,
+    ...(detailedOpinion ? { detailed_opinion: detailedOpinion } : {}),
   }
 }
 
@@ -206,7 +303,7 @@ export function ensureEvidenceBackedReviewerReport(input: {
   })
   const coveredEvidenceReferences = input.definitions.flatMap((signal) => {
     const answer = answerByKey.get(signal.key)
-    if (answer?.covered === false) return []
+    if (!answer || answer.covered === false) return []
     return (answer?.sources ?? []).map((source) => ({
       signal_key: signal.key,
       signal_label: signal.label,
@@ -225,7 +322,7 @@ export function ensureEvidenceBackedReviewerReport(input: {
       `${item.quality === "thin" ? "Context needing follow-up" : "Additional transcript evidence"}: ${item.excerpt}`,
     ),
   ].slice(0, MAX_ITEMS)
-  const evidenceReferences = [
+  const candidateReferences = [
     ...coveredEvidenceReferences,
     ...additionalTranscriptEvidence.map((item) => ({
       signal_key: item.signalKey,
@@ -233,14 +330,39 @@ export function ensureEvidenceBackedReviewerReport(input: {
       source_message_id: item.id,
       excerpt: item.excerpt,
     })),
-  ].slice(0, MAX_ITEMS * 2)
+  ]
+  const messageById = new Map((input.messages ?? [])
+    .filter((message) => message.role === "user" && message.id)
+    .map((message) => [message.id as string, message]))
+  const precedingQuestionById = new Map<string, string>()
+  let precedingQuestion = ""
+  for (const message of input.messages ?? []) {
+    if (message.role === "assistant") precedingQuestion = message.content.trim()
+    else if (message.id) precedingQuestionById.set(message.id, precedingQuestion)
+  }
+  const evidenceReferences = [...new Map(candidateReferences
+    .map((reference) => {
+      const messageId = reference.source_message_id
+      const answer = messageById.get(messageId)
+      const question = precedingQuestionById.get(messageId)
+      return [messageId, {
+        ...reference,
+        excerpt: answer?.content.trim().slice(0, MAX_EVIDENCE_LENGTH) ?? reference.excerpt,
+        ...(question ? { preceding_question: question } : {}),
+      }]
+    })).values()].slice(0, MAX_ITEMS * 2)
+  const askedKeys = new Set((input.messages ?? []).flatMap((message) => {
+    if (message.role !== "assistant") return []
+    const next = metadataRecord(metadataRecord(message.metadata)?.application_next_signal)
+    return typeof next?.key === "string" ? [next.key] : []
+  }))
   const weakOrMissingSignals = input.definitions.flatMap((signal) => {
     const answer = answerByKey.get(signal.key)
-    if (answer?.covered !== false) return []
+    if (answer && answer.covered !== false) return []
     return [
-      input.insufficientEvidenceKeys?.has(signal.key)
+      input.insufficientEvidenceKeys?.has(signal.key) || askedKeys.has(signal.key) || Boolean(answer)
         ? `${signal.label}: insufficient evidence after the available follow-ups.`
-        : `${signal.label}: no usable evidence was established.`,
+        : `${signal.label}: not explored in this conversation.`,
     ]
   }).slice(0, MAX_ITEMS)
   const usableCount = coveredEvidenceSummary.length

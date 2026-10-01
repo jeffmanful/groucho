@@ -1,5 +1,11 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr"
 import { NextRequest, NextResponse } from "next/server"
+import {
+  COLORS_DEMO_TESTER_EMAIL,
+  DEMO_AUTH_COOKIE,
+  expectedTesterEmail,
+  verifyDemoToken,
+} from "@/lib/colors-demo-token"
 
 const PUBLIC_PATHS = [
   "/login",
@@ -19,11 +25,13 @@ type MiddlewareAuthClient = {
 }
 
 function authFailure(req: NextRequest) {
-  const { pathname } = req.nextUrl
+  const { pathname, search } = req.nextUrl
   if (pathname.startsWith("/api/") || pathname.startsWith("/v1/")) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
-  return NextResponse.redirect(new URL("/login", req.url))
+  const loginUrl = new URL("/login", req.url)
+  loginUrl.searchParams.set("next", `${pathname}${search}`)
+  return NextResponse.redirect(loginUrl)
 }
 
 function getRequestIdFromHeaders(headers: Headers): string | undefined {
@@ -80,10 +88,12 @@ async function verifyPeAuthEmail(
 }
 
 function isAllowedPlatformEmail(email: string): boolean {
+  const normalized = email.trim().toLowerCase()
+  if (normalized === COLORS_DEMO_TESTER_EMAIL || normalized === expectedTesterEmail()) return false
   const allowed = (process.env.ALLOWED_EMAILS || "")
     .split(",")
     .map((e) => e.trim().toLowerCase())
-  return allowed.includes(email.trim().toLowerCase())
+  return allowed.includes(normalized)
 }
 
 export async function middleware(req: NextRequest) {
@@ -102,6 +112,12 @@ export async function middleware(req: NextRequest) {
   }
 
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) return NextResponse.next()
+
+  if (pathname === "/demo/colors" || pathname.startsWith("/api/demo/colors/")) {
+    const tester = await verifyDemoToken(req.cookies.get(DEMO_AUTH_COOKIE)?.value, "tester")
+    if (tester) return nextWithRequestId(req)
+    return authFailure(req)
+  }
 
   const secret = process.env.AUTH_SECRET
   if (!secret) {

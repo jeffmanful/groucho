@@ -1,0 +1,21 @@
+- generic [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e19] [cursor=pointer]
+  - alert [ref=e23]
+  - generic [ref=e24]:
+    - banner:
+      - generic [ref=e51]: COLORS + STUDIOS
+      - generic:
+        - generic: Forum demo
+        - button "Sign out" [ref=e25]
+    - main "COLORS Forum application" [ref=e53]:
+      - generic [aria-hidden] [ref=e54]: COLORS Forum application
+      - generic [ref=e27]:
+        - region "Messages" [ref=e28]:
+          - log [ref=e29]:
+            - paragraph [ref=e368]: What's the best email for your application?
+        - button "Jump to latest message"
+      - generic [ref=e370]:
+        - textbox "Email address" [active] [ref=e371]:
+          - /placeholder: you@example.com
+        - button "Continue" [disabled] [ref=e372]
+    - paragraph: Powered by Groucho

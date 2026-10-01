@@ -1,6 +1,7 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr"
 import { cookies } from "next/headers"
 import { NextResponse } from "next/server"
+import { DEMO_AUTH_COOKIE, DEMO_SESSION_COOKIE } from "@/lib/colors-demo-token"
 
 export async function POST() {
   const cookieStore = await cookies()
@@ -9,6 +10,8 @@ export async function POST() {
 
   let res = NextResponse.json({ ok: true })
   res.cookies.delete("pe_auth")
+  res.cookies.delete(DEMO_AUTH_COOKIE)
+  res.cookies.delete(DEMO_SESSION_COOKIE)
 
   if (url && anon) {
     const supabase = createServerClient(url, anon, {

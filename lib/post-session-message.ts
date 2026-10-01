@@ -9,6 +9,7 @@ import type { AdminActor } from "@/lib/admin-actor"
 import {
   resolveProjectContext,
   touchApiKeyLastUsed,
+  type ProjectContext,
 } from "@/lib/project-resolution"
 import { resolvePlaygroundProjectContext } from "@/lib/playground-projects"
 import { checkRateLimit, readRateLimitConfig } from "@/lib/rate-limit"
@@ -349,6 +350,10 @@ export type PostSessionMessageInput = {
   /** Playground (`/doorcheck`): explicit project when caller is authenticated. */
   projectId?: string | null
   playgroundActor?: AdminActor | null
+  /** Server-validated, fixed COLORS project context; never accepted from a client body. */
+  demoProjectContext?: ProjectContext
+  /** Authenticated COLORS demo: add the private, full-transcript reviewer preview. */
+  demoReviewerPreview?: boolean
   /** From `x-request-id` middleware; echoed on responses and included in structured logs. */
   requestId?: string
   /** When set, used for optional bot UA heuristics (`GROUPCHO_*` env). */
@@ -380,7 +385,9 @@ export async function postSessionMessage(
   let projectResolved: Awaited<ReturnType<typeof resolveProjectContext>>
 
   const finishProjectResolution = timings.start("project_resolution")
-  if (projectIdOverride) {
+  if (input.demoProjectContext) {
+    projectResolved = { ok: true, context: input.demoProjectContext }
+  } else if (projectIdOverride) {
     if (!input.playgroundActor) {
       return traceJson(
         input,
@@ -1500,6 +1507,42 @@ export async function postSessionMessage(
     nextSignal,
   })
   assistantContent = explicitPrompt.reply
+  if (status === null && useCompactSignalState) {
+    const previousQuestions = priorHistory
+      .filter((entry) => entry.role === "assistant")
+      .slice(-6)
+      .map((entry) => entry.content)
+      .join("\n")
+    const finalIssue = activeApplicationReplyIssue({
+      reply: assistantContent,
+      interaction: interactionSpec,
+      closingMessage: applicationClosingMessage,
+      previousQuestion: previousQuestions,
+      hasArtistAntecedent,
+    })
+    if (finalIssue === "repeated_question" || finalIssue === "multiple_questions") {
+      const alternatives = [
+        ...(nextSignal?.promptRoutes ?? []),
+        "What else would you want the Forum to understand about how you participate around music?",
+      ]
+      const alternative = alternatives.find((question) =>
+        activeApplicationReplyIssue({
+          reply: question,
+          interaction: interactionSpec,
+          closingMessage: applicationClosingMessage,
+          previousQuestion: previousQuestions,
+          hasArtistAntecedent,
+        }) === null,
+      )
+      if (alternative) {
+        assistantContent = repairApplicationReplyWithQuestion({
+          reply: assistantContent,
+          currentAnswer: message,
+          question: alternative,
+        }).reply
+      }
+    }
+  }
   if (status !== null) {
     reviewerReport = ensureEvidenceBackedReviewerReport({
       report: reviewerReport,
@@ -1628,6 +1671,9 @@ export async function postSessionMessage(
           response_mode: responseMode,
           participant_orientation: participantOrientation,
           ...(reviewerReport ? { reviewer_report: reviewerReport } : {}),
+          ...(input.demoReviewerPreview && status !== null
+            ? { colors_demo_report_status: "pending" }
+            : {}),
           conversation_thread: updatedConversationThread,
           ...(nextSignal
             ? { application_next_signal: applicationSignalMetadata(nextSignal) }
@@ -1678,7 +1724,7 @@ export async function postSessionMessage(
   }
 
   let automaticDecision: AutomaticDecisionResult | null = null
-  if (status !== null) {
+  if (status !== null && !input.demoReviewerPreview) {
     try {
       automaticDecision = await timings.measure("client_decision_policy", () =>
         recordAutomaticApplicationDecision({
@@ -1701,7 +1747,7 @@ export async function postSessionMessage(
     }
   }
 
-  if (status !== null) {
+  if (status !== null && !input.demoReviewerPreview) {
     try {
       await timings.measure("terminal_job_enqueue", () => enqueueSessionCompletionJob({
         organisationId,
@@ -1752,6 +1798,6 @@ export async function postSessionMessage(
       ? { secret: automaticDecision.accessSecret }
       : {}),
     ...(structuredToolSeen ? { ui: interactionSpec } : {}),
-    ...(reviewerReport ? { reviewerReport } : {}),
+    ...(reviewerReport && !input.demoReviewerPreview ? { reviewerReport } : {}),
   })
 }
