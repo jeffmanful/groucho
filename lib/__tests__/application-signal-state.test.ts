@@ -4,6 +4,8 @@ import {
   applicationSignalDefinitionsForEvidence,
   applicationSignalDefinitionsForOrientation,
   buildCompactApplicationStateMessage,
+  collectApplicationRelevantSignalKeys,
+  newlyCoveredApplicationSignalKeys,
   collectApplicationInsufficientEvidenceKeys,
   collectApplicationSignalAnswers,
   expectedApplicationSignal,
@@ -53,7 +55,7 @@ describe("application signal state", () => {
     )
   })
 
-  it("keeps orientation descriptive and derives conditional relevance from evidence", () => {
+  it("keeps orientation descriptive and accepts model-recorded conditional relevance", () => {
     const goals = applicationSignalDefinitions([
       "What brought you here?",
       "Name an artist more people should know about.",
@@ -96,16 +98,15 @@ describe("application signal state", () => {
       curator.map((signal) => signal.promptRoutes),
     )
 
-    const listenerEvidence = applicationSignalDefinitionsForEvidence(goals, [
-      { answer: "I mostly listen and share songs with friends." },
-    ])
-    const brandAdmiration = applicationSignalDefinitionsForEvidence(goals, [
-      { answer: "I value the strength of COLORS' curation and art direction." },
-      { answer: "I want to connect with other artists." },
-    ])
-    const feedbackEvidence = applicationSignalDefinitionsForEvidence(goals, [
-      { answer: "I host a listening night and give feedback on unfinished work." },
-    ])
+    const feedbackKey = goals.find(
+      (signal) => signal.cluster === "care_and_feedback",
+    )!.key
+    const listenerEvidence = applicationSignalDefinitionsForEvidence(goals)
+    const brandAdmiration = applicationSignalDefinitionsForEvidence(goals)
+    const feedbackEvidence = applicationSignalDefinitionsForEvidence(
+      goals,
+      [feedbackKey],
+    )
     expect(
       listenerEvidence.some((signal) => signal.cluster === "care_and_feedback"),
     ).toBe(false)
@@ -117,23 +118,7 @@ describe("application signal state", () => {
     ).toBe(true)
   })
 
-  it.each([
-    {
-      description: "artist collaboration",
-      answer:
-        "I make music, but I also love collaborating with other artists and trading rough demos.",
-    },
-    {
-      description: "listener's future curation intent",
-      answer:
-        "I mostly listen now, but I want to start a listening night and learn how to curate it carefully.",
-    },
-    {
-      description: "informal creative exchange",
-      answer:
-        "I work with other producers and help shape songs while they are still unfinished.",
-    },
-  ])("opens feedback from $description rather than orientation", ({ answer }) => {
+  it("ignores unknown relevance keys and opens a known conditional key", () => {
     const goals = applicationSignalDefinitions([
       "What brought you here?",
       "Name an artist more people should know about.",
@@ -141,7 +126,13 @@ describe("application signal state", () => {
       "Which sounds most like you?",
       "What's one thing you could realistically contribute in your first month?",
     ])
-    const relevant = applicationSignalDefinitionsForEvidence(goals, [{ answer }])
+    const feedbackKey = goals.find(
+      (signal) => signal.cluster === "care_and_feedback",
+    )!.key
+    const relevant = applicationSignalDefinitionsForEvidence(
+      goals,
+      ["invented_key", feedbackKey],
+    )
 
     expect(
       relevant.some((signal) => signal.cluster === "care_and_feedback"),
@@ -164,7 +155,7 @@ describe("application signal state", () => {
         confidence: 0.9,
         evidence: ["Mostly listens"],
       }),
-      [{ answer: "I mostly listen" }],
+      [],
     )
     const participation = listenerGoals.find((signal) =>
       signal.label.includes("Which sounds"),
@@ -259,6 +250,52 @@ describe("application signal state", () => {
       definitions[0],
     )
     expect(hasLegacyUntaggedAnswers(messages, definitions)).toBe(false)
+  })
+
+  it("collects only configured model-recorded relevance keys", () => {
+    const messages = [{
+      role: "user" as const,
+      content: "I facilitate careful exchanges around unfinished work.",
+      metadata: {
+        application_relevant_signals: [
+          definitions[1],
+          { key: "invented", label: "Invented" },
+        ],
+      },
+    }]
+
+    expect([
+      ...collectApplicationRelevantSignalKeys(messages, definitions),
+    ]).toEqual([definitions[1].key])
+  })
+
+  it("accepts only newly covered configured keys for the current message", () => {
+    expect(
+      newlyCoveredApplicationSignalKeys(
+        [definitions[0].key, definitions[1].key, definitions[1].key, "invented"],
+        definitions,
+        [{
+          ...definitions[0],
+          answer: "Earlier evidence",
+          covered: true,
+        }],
+      ),
+    ).toEqual([definitions[1].key])
+  })
+
+  it("carries recent unclassified applicant facts into the compact prompt", () => {
+    const compact = buildCompactApplicationStateMessage({
+      definitions: [],
+      answers: [],
+      currentSignal: null,
+      currentQuestion: "How do you participate?",
+      currentAnswer: "Mostly I listen.",
+      recentApplicantAnswers: [
+        "I sent a friend a song last week and wrote one sentence about the vocal.",
+      ],
+    })
+    expect(compact).toContain("I sent a friend a song last week")
+    expect(compact).toContain("Do not ask them to restate one")
   })
 
   it("falls back to transcript mode when previous answers have no signal tag", () => {

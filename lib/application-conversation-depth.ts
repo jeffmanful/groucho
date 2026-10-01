@@ -41,6 +41,7 @@ export type ApplicationConversationDepth = {
   recentQualities: ApplicationAnswerQuality[]
   thinAnswerCount: number
   richAnswerCount: number
+  concerningAnswerCount: number
   openDoorUsed: boolean
   thinSignalCount: number
 }
@@ -158,6 +159,7 @@ export function collectApplicationConversationDepth(
     recentQualities: qualities.slice(-3),
     thinAnswerCount: qualities.filter((quality) => quality === "thin").length,
     richAnswerCount: qualities.filter((quality) => quality === "rich").length,
+    concerningAnswerCount: qualities.filter((quality) => quality === "concerning").length,
     openDoorUsed,
     thinSignalCount,
   }

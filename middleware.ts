@@ -113,6 +113,11 @@ export async function middleware(req: NextRequest) {
 
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) return NextResponse.next()
 
+  if (pathname === "/") {
+    const tester = await verifyDemoToken(req.cookies.get(DEMO_AUTH_COOKIE)?.value, "tester")
+    if (tester) return NextResponse.redirect(new URL("/demo/colors", req.url))
+  }
+
   if (pathname === "/demo/colors" || pathname.startsWith("/api/demo/colors/")) {
     const tester = await verifyDemoToken(req.cookies.get(DEMO_AUTH_COOKIE)?.value, "tester")
     if (tester) return nextWithRequestId(req)

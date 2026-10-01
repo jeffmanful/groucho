@@ -30,7 +30,9 @@ The page explicitly states that applicants would not see this report in a real a
 - Each demo session is bound to a second signed, HTTP-only cookie. The server resolves only the COLORS `forum-application` project; the browser cannot choose another project.
 - Demo completion does not run the automatic decision, completion-job or webhook path.
 - The private opinion is generated after the applicant closing message, saved to the final message, and can be fetched again after refresh. A failed generation offers a report-only retry.
-- The final reviewer pass may use only persisted, source-linked applicant evidence. Unknown source IDs and unsupported claims are removed.
+- The final reviewer pass may use only persisted, source-linked applicant evidence. A separate semantic verifier rejects unsupported or upgraded claims before the report is shown.
+- Conversation coverage and conditional relevance come from Claude's interpretation of the applicant's meaning, expressed as validated project signal keys; word-list matches do not decide them.
+- Safety and integrity flags remain server-controlled and provenance-linked rather than being invented by the report model.
 - Missing information is treated as uncertainty, not negative evidence.
 - Writing quality, English fluency, fame, audience size, industry access and familiarity with particular artists are not assessment criteria.
 - If detailed report generation fails, the demo shows an explicit error, not a generic report presented as a finished opinion.
@@ -62,6 +64,7 @@ Before sharing the link:
 ## Current verification status (1 October 2026)
 
 - Production build and TypeScript checks pass; the repository's automated suite passes.
+- The [1 October semantic-routing live replay](./colors-semantic-routing-live-replay-2026-10-01.md) completed all 78 Claude calls without infrastructure or schema failures. It found conversational pilot blockers in structured-input overrides, current-turn coverage provenance, one premature concern close and long-memory correction handling. External pilot status is therefore no-go until those P0 items are fixed and replayed.
 - The configured database contains the `COLORS` organisation and `forum-application` project.
 - Browser sign-in, three fresh persona runs, report quality review, refresh and retry still require a running deployment. The local workspace cannot bind a web-server port.
 - A separate demo password must be configured in the deployment environment before the link can be shared. The local ignored environment file was not changed by this implementation.

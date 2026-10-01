@@ -1274,7 +1274,8 @@ export function DoorCheckExperience({
 
   useEffect(() => {
     if (!isColorsDemo || !concluded || !sessionId || reviewerReport?.detailed_opinion) return
-    void requestDemoReport(sessionId)
+    const timer = window.setTimeout(() => { void requestDemoReport(sessionId) }, 0)
+    return () => window.clearTimeout(timer)
   }, [isColorsDemo, concluded, sessionId, reviewerReport, requestDemoReport])
 
   const bootstrapSession = useCallback(
@@ -1738,6 +1739,36 @@ export function DoorCheckExperience({
         assistantHandoffRef.current = nextMessage
       }
     } catch (err) {
+      if (isColorsDemo && sessionId) {
+        try {
+          const stateResponse = await fetch(
+            `/api/demo/colors/state?sessionId=${encodeURIComponent(sessionId)}`,
+            { credentials: "same-origin" },
+          )
+          if (stateResponse.ok) {
+            const state = await stateResponse.json()
+            if (["passed", "redirected", "rejected"].includes(state.status)) {
+              setMessages([{
+                id: crypto.randomUUID(),
+                role: "bot",
+                content: typeof state.message === "string"
+                  ? state.message
+                  : "Thank you for taking part.",
+              }])
+              setConcluded(true)
+              setDecisionPhase("revealed")
+              setInteractionUi(parseInteractionUi(state.ui))
+              setFailedAnswer(null)
+              setFailedInteractionAnswer(null)
+              setRequestError(null)
+              setInput("")
+              return
+            }
+          }
+        } catch {
+          // Preserve the original error and the answer for a later retry.
+        }
+      }
       const detail = err instanceof Error ? err.message : "Something went wrong."
       const errorMessage =
         detail === "AI service unavailable"

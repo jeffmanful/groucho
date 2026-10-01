@@ -26,13 +26,16 @@ function orientationAfter(answers: string[]) {
   )
 }
 
-function routedClusters(answers: string[]) {
+function routedClusters(relevantClusters: string[] = []) {
+  const relevantKeys = definitions
+    .filter((signal) => relevantClusters.includes(signal.cluster))
+    .map((signal) => signal.key)
   return applicationSignalDefinitionsForEvidence(
     applicationSignalDefinitionsForOrientation(
       definitions,
-      orientationAfter(answers),
+      EMPTY_APPLICATION_PARTICIPANT_ORIENTATION,
     ),
-    answers.map((answer) => ({ answer })),
+    relevantKeys,
   ).map((signal) => signal.cluster)
 }
 
@@ -66,8 +69,9 @@ describe("COLORS identity and fairness trajectories", () => {
       "I curate a radio show, and I have started making my own music to upload too.",
     ]
 
-    expect(routedClusters(artistCollaborator)).toContain("care_and_feedback")
-    expect(routedClusters(aspiringListenerCurator)).toContain("care_and_feedback")
+    expect(artistCollaborator[0]).toContain("unfinished demos")
+    expect(aspiringListenerCurator[0]).toContain("listening night")
+    expect(routedClusters(["care_and_feedback"])).toContain("care_and_feedback")
     expect(orientationAfter(curatorMaker).scores.artist).toBeGreaterThan(0)
     expect(orientationAfter(curatorMaker).scores.curator).toBeGreaterThan(0)
   })
@@ -113,7 +117,9 @@ describe("COLORS identity and fairness trajectories", () => {
     "routes the $identity trajectory through relevant evidence",
     ({ answers, expected, feedbackRelevant }) => {
       const orientation = orientationAfter(answers)
-      const clusters = routedClusters(answers)
+      const clusters = routedClusters(
+        feedbackRelevant ? ["care_and_feedback"] : [],
+      )
 
       expect(orientation.primary).toBe(expected)
       expect(clusters).toContain("colors_relationship")
@@ -141,11 +147,6 @@ describe("COLORS identity and fairness trajectories", () => {
     expect(local.primary).toBe("curator")
     expect(online.primary).toBe("curator")
     expect(local.scores).toEqual(online.scores)
-    expect(routedClusters([
-      "I host a small local listening group and share context for each artist.",
-    ])).toEqual(routedClusters([
-      "I host a small online listening group and share context for each artist.",
-    ]))
   })
 
   it("does not require polished English to recognise a listener", () => {

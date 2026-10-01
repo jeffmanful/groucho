@@ -293,6 +293,7 @@ export function ensureEvidenceBackedReviewerReport(input: {
   messages?: ApplicationSignalMessage[]
   insufficientEvidenceKeys?: Set<string>
   integrityFlags?: string[]
+  serverControlledFieldsOnly?: boolean
 }): ReviewerReport {
   const answerByKey = new Map(input.answers.map((answer) => [answer.key, answer]))
   const coveredEvidenceSummary = input.definitions.flatMap((signal) => {
@@ -376,13 +377,7 @@ export function ensureEvidenceBackedReviewerReport(input: {
     Math.min(0.9, input.scores.overall * 0.8 + Math.min(0.1, usableCount * 0.03)),
   )
   const suppliedBio = input.report?.applicant_bio?.trim() ?? ""
-  const safeSuppliedBio =
-    suppliedBio &&
-    !/\b(?:primarily|primary)\s+(?:an?\s+)?(?:artist|curator|enthusiast|hybrid)\s+orientation\b|\brelevant areas?\b/i.test(
-      suppliedBio,
-    )
-      ? suppliedBio
-      : ""
+  const safeSuppliedBio = input.serverControlledFieldsOnly ? "" : suppliedBio
 
   return {
     applicant_bio:
@@ -394,11 +389,13 @@ export function ensureEvidenceBackedReviewerReport(input: {
     evidence_references: evidenceReferences,
     weak_or_missing_signals: weakOrMissingSignals,
     safety_or_integrity_flags: [...new Set([
-      ...(input.report?.safety_or_integrity_flags ?? fallback.safety_or_integrity_flags),
+      ...(input.serverControlledFieldsOnly
+        ? []
+        : input.report?.safety_or_integrity_flags ?? fallback.safety_or_integrity_flags),
       ...(input.integrityFlags ?? []),
     ])].slice(0, MAX_ITEMS),
     reviewer_focus:
-      input.report?.reviewer_focus ||
+      (!input.serverControlledFieldsOnly ? input.report?.reviewer_focus : "") ||
       (weakOrMissingSignals.length
         ? "Review the concrete evidence alongside the unresolved areas before making the community decision."
         : "Review whether the concrete evidence and proposed participation fit the Forum's needs."),

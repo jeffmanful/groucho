@@ -24,12 +24,13 @@ export default function LoginPage() {
       })
 
       if (res.ok) {
+        const data = await res.json().catch(() => ({}))
         const requestedPath = new URLSearchParams(window.location.search).get("next")
         const safePath =
           requestedPath?.startsWith("/") && !requestedPath.startsWith("//")
             ? requestedPath
             : "/"
-        router.push(safePath)
+        router.push(data.role === "colors_demo_tester" ? "/demo/colors" : safePath)
         router.refresh()
       } else {
         setError("Access denied.")

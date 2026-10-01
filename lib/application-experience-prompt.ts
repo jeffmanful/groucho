@@ -3,15 +3,13 @@ import {
   type ApplicationExperience,
 } from "@/lib/project-settings"
 import { NATURAL_LANGUAGE_REPLY_GUIDANCE } from "@/lib/natural-language-style"
+import {
+  applicationSignalDefinitions,
+  isColorsForumSignalSet,
+} from "@/lib/application-signal-state"
 
 function isColorsForumApplication(signals: string[]): boolean {
-  const joined = signals.join("\n").toLowerCase()
-  return (
-    joined.includes("what brought you here") &&
-    joined.includes("name an artist more people should know about") &&
-    joined.includes("someone shares unfinished music") &&
-    joined.includes("first month")
-  )
+  return isColorsForumSignalSet(applicationSignalDefinitions(signals))
 }
 
 export function buildApplicationExperiencePromptAppendix(
@@ -27,22 +25,13 @@ export function buildApplicationExperiencePromptAppendix(
       ...app.required_signals.map((signal) => `- ${signal}`),
       "Treat every configured line as a private evidence intent. If it is phrased as a question, that wording is an example only—never a required line or ordered sequence. Infer the actual question from the applicant's words, the live thread, the relevant unresolved intent, and the persona. A single answer can cover several goals; mark every supported goal and do not ask for it again merely to complete the list. Follow a rich thread before filling gaps. Use the compact state's suggested gap only when the conversation has no stronger route. Do not force every applicant through the same path.",
     )
-    if (
-      app.required_signals.some((signal) =>
-        /\b(song|music)\b.*\brecommend|\brecommend.*\b(song|music)\b/i.test(
-          signal,
-        ),
-      )
-    ) {
+    const signalDefinitions = applicationSignalDefinitions(app.required_signals)
+    if (signalDefinitions.some((signal) => signal.kind === "recommendation")) {
       sections.push(
         "Recommendation privacy boundary: never ask who received, was sent, or was recommended the music. Ask only what they recommended and why it felt worth sharing.",
       )
     }
-    if (
-      app.required_signals.some(
-        (signal) => signal.trim().toLowerCase() === "which sounds most like you?",
-      )
-    ) {
+    if (signalDefinitions.some((signal) => signal.kind === "participation")) {
       sections.push(
         "Participation signal: the configured options—mostly listening, discussing music, giving feedback, or sharing discoveries—are examples that may help when a structured choice genuinely suits the exchange. Prefer an open question when the applicant has already given you a more specific route.",
       )

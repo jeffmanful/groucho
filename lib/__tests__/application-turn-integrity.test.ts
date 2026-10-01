@@ -1,17 +1,11 @@
 import { describe, expect, it } from "vitest"
 import {
   activeApplicationReplyIssue,
-  applicationAnswerSupportsSignal,
-  applicationQuestionSupportsSignal,
   ensureExplicitStructuredInputPrompt,
   keepFirstApplicationQuestion,
   repairApplicationReplyWithQuestion,
 } from "@/lib/application-turn-integrity"
 import { applicationSignalDefinitions } from "@/lib/application-signal-state"
-
-const contribution = applicationSignalDefinitions([
-  "What's one thing you could realistically contribute in your first month?",
-])[0]
 
 describe("application turn integrity", () => {
   it("keeps the first live question instead of replacing a stacked ask with another signal", () => {
@@ -35,36 +29,6 @@ describe("application turn integrity", () => {
     )
   })
 
-  it("does not accept an artist question as a participation question", () => {
-    const participation = applicationSignalDefinitions([
-      "Which sounds most like you?",
-    ])[0]
-    expect(
-      applicationQuestionSupportsSignal(
-        participation,
-        "Tell me about an artist more people should know about.",
-      ),
-    ).toBe(false)
-    expect(
-      applicationQuestionSupportsSignal(
-        participation,
-        "Where does music become social for you now, even informally?",
-      ),
-    ).toBe(true)
-    expect(
-      applicationQuestionSupportsSignal(
-        participation,
-        "What are you noticing in the music scene around you that someone outside it might miss?",
-      ),
-    ).toBe(true)
-    expect(
-      applicationQuestionSupportsSignal(
-        participation,
-        "Do you feel inside the music scene around you, adjacent to it, or mostly looking in from outside?",
-      ),
-    ).toBe(true)
-  })
-
   it("preserves a grounded receipt when replacing a mismatched question", () => {
     expect(
       repairApplicationReplyWithQuestion({
@@ -79,100 +43,6 @@ describe("application turn integrity", () => {
         "You keep returning to the listening nights you host. What do you actually do around music now?",
       receiptPreserved: true,
     })
-  })
-
-  it("does not treat a community condition as the concrete contribution question", () => {
-    expect(
-      applicationQuestionSupportsSignal(
-        contribution,
-        "What would a music community need to feel like for you to take part rather than only observe?",
-      ),
-    ).toBe(false)
-    expect(
-      applicationQuestionSupportsSignal(
-        contribution,
-        "What would you actually share, notice, or do here during your first month?",
-      ),
-    ).toBe(true)
-    expect(
-      applicationQuestionSupportsSignal(
-        contribution,
-        "When a music space keeps you coming back, what do you naturally give to it?",
-      ),
-    ).toBe(true)
-    expect(
-      applicationQuestionSupportsSignal(
-        contribution,
-        "Which part of what you already do around music could you keep contributing here?",
-      ),
-    ).toBe(true)
-  })
-
-  it("does not count a conditional community preference as concrete contribution evidence", () => {
-    expect(
-      applicationAnswerSupportsSignal(
-        contribution,
-        "I'd take part if a comment could be as simple as connecting a song to a feeling.",
-      ),
-    ).toBe(false)
-    expect(
-      applicationAnswerSupportsSignal(
-        contribution,
-        "I'd share one discovery each week and explain what I noticed in it.",
-      ),
-    ).toBe(true)
-    expect(
-      applicationAnswerSupportsSignal(
-        contribution,
-        "I run a listening group and would host one focused thread here.",
-      ),
-    ).toBe(true)
-    expect(
-      applicationAnswerSupportsSignal(
-        contribution,
-        "I regularly host a small listening circle and share notes after each session.",
-      ),
-    ).toBe(true)
-    expect(
-      applicationAnswerSupportsSignal(
-        contribution,
-        "I like spaces where other people keep the discussion active.",
-      ),
-    ).toBe(false)
-  })
-
-  it("accepts reciprocal giving and concrete participation as contribution", () => {
-    expect(
-      applicationAnswerSupportsSignal(
-        contribution,
-        "I can give other artists specific production feedback in return.",
-      ),
-    ).toBe(true)
-    expect(
-      applicationAnswerSupportsSignal(
-        contribution,
-        "I can take part through creating, documenting, recommending, organising, and welcoming.",
-      ),
-    ).toBe(true)
-  })
-
-  it("does not cover an artist reference with rich but off-target evidence", () => {
-    const artistReference = applicationSignalDefinitions([
-      "Name an artist more people should know about.",
-    ])[0]
-
-    expect(
-      applicationAnswerSupportsSignal(
-        artistReference,
-        "The useful exchange is specific: what the arrangement is doing, whether the vocal lands, and what the artist wants the track to become.",
-      ),
-    ).toBe(false)
-    expect(
-      applicationAnswerSupportsSignal(
-        artistReference,
-        "dexter in the newsagent. Their delivery leaves room for the lyric to feel lived-in.",
-      ),
-    ).toBe(true)
   })
 
   it("adds a visible question when structured options arrive with only an acknowledgement", () => {
@@ -193,6 +63,8 @@ describe("application turn integrity", () => {
     })
 
     expect(result.added).toBe(true)
+    expect(result.downgradedToText).toBe(false)
+    expect(result.interaction.inputType).toBe("singleSelect")
     expect(result.reply).toContain(
       "Which of these sounds most like how you participate around music?",
     )
@@ -213,7 +85,15 @@ describe("application turn integrity", () => {
 
     expect(result).toEqual({
       reply: "Which sounds most like you?",
+      interaction: {
+        intent: "probe",
+        inputType: "singleSelect",
+        options: ["Listener", "Curator"],
+        emotionalState: "curious",
+        visualState: "curious",
+      },
       added: false,
+      downgradedToText: false,
     })
   })
 
@@ -289,7 +169,7 @@ describe("application turn integrity", () => {
     ).toBe("multiple_questions")
   })
 
-  it("replaces a structured question that does not match its options", () => {
+  it("preserves a contextual question by downgrading inferred options to text", () => {
     expect(
       ensureExplicitStructuredInputPrompt({
         reply: "What are you trying to express in your own music?",
@@ -306,13 +186,51 @@ describe("application turn integrity", () => {
           visualState: "curious",
         },
         nextSignal: {
+          kind: "participation",
           label: "Which sounds most like you?",
           promptRoutes: ["How do you usually participate around music?"],
         },
       }),
     ).toEqual({
-      reply: "Which of these sounds most like how you participate around music?",
-      added: true,
+      reply: "What are you trying to express in your own music?",
+      interaction: {
+        intent: "probe",
+        inputType: "text",
+        emotionalState: "curious",
+        visualState: "curious",
+      },
+      added: false,
+      downgradedToText: true,
+    })
+  })
+
+  it("preserves a declarative contextual invitation instead of appending a selector", () => {
+    const result = ensureExplicitStructuredInputPrompt({
+      reply: "I'm curious what shifts for you between those two listens.",
+      interaction: {
+        intent: "probe",
+        inputType: "singleSelect",
+        options: ["I mostly listen", "I share discoveries"],
+        emotionalState: "curious",
+        visualState: "curious",
+      },
+      nextSignal: {
+        kind: "participation",
+        label: "Which sounds most like you?",
+        promptRoutes: [],
+      },
+    })
+
+    expect(result).toEqual({
+      reply: "I'm curious what shifts for you between those two listens.",
+      interaction: {
+        intent: "probe",
+        inputType: "text",
+        emotionalState: "curious",
+        visualState: "curious",
+      },
+      added: false,
+      downgradedToText: true,
     })
   })
 

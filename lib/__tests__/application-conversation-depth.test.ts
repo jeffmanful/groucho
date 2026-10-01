@@ -67,6 +67,7 @@ describe("application conversation depth", () => {
     expect(depth.openDoorUsed).toBe(true)
     expect(depth.thinAnswerCount).toBe(1)
     expect(depth.richAnswerCount).toBe(1)
+    expect(depth.concerningAnswerCount).toBe(0)
   })
 
   it("allows one open door only after repeated thin evidence", () => {

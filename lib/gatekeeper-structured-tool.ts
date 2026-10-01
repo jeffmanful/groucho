@@ -171,7 +171,13 @@ export const gatekeeperResponseTool = {
         type: "array",
         items: { type: "string" },
         description:
-          "Every application evidence-goal key explicitly supported by the current answer. One answer may cover several goals. Return an empty array when none is supported.",
+          "Every open application evidence-goal key newly supported at a usable level by the current answer. Coverage does not mean exhaustive exploration, and a brief direct answer may be covered while still earning depth. Exclude already-covered goals and facts supported only by earlier messages. Return an empty array when none is newly supported.",
+      },
+      relevantSignalKeys: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "Conditional evidence-goal keys made relevant by explicit meaning in the conversation. Return shared goals only when useful; never infer relevance from an orientation label. One concrete disclosure may make several goals relevant.",
       },
       nextSignalKey: {
         type: "string",
@@ -187,6 +193,7 @@ export const gatekeeperResponseTool = {
       "answerRelation",
       "conversationMove",
       "coveredSignalKeys",
+      "relevantSignalKeys",
       "nextSignalKey",
     ],
   },
@@ -209,7 +216,8 @@ Every assistant turn you MUST call the tool \`${GATEKEEPER_RESPONSE_TOOL_NAME}\`
 - On every active turn after a substantive answer, make the next invitation visibly grow from one concrete detail in that answer. Do not emit a bare next-signal or option question after the applicant has supplied a cultural judgment, creative disclosure, or personal observation.
 - \`terminal\` is \`none\` until the exchange should end. Terminal replies must use the configured neutral close and never reveal the private outcome.
 - \`scores\` and \`answerAssessment\` judge substance rather than length, fluency, status, fame, or familiarity with a reference.
-- \`coveredSignalKeys\` includes every supplied evidence intent supported by the current answer.
+- \`coveredSignalKeys\` includes every open evidence intent newly supported by the current answer. Exclude already-covered goals and evidence supplied only by earlier messages.
+- \`relevantSignalKeys\` identifies conditional evidence intents made relevant by the conversation's meaning. Do not rely on magic words, role labels, or orientation scores.
 - Participant orientation, response mode, thread bookkeeping, reviewer reporting, and UI presentation state are derived outside this model response. Bridge audit data and cultural-signal extraction are not returned on the live path.
 
 Do not emit a plain assistant text reply only; the tool call is required.`
@@ -228,6 +236,7 @@ export type ParsedGatekeeperStructured = {
   participantOrientation: ApplicationParticipantOrientationState
   culturalSignals: CulturalSignal[]
   coveredSignalKeys: string[]
+  relevantSignalKeys: string[]
   bridgePlan: ApplicationBridgePlan
   threadState: ApplicationConversationThread
   nextSignalKey: string | null
@@ -357,6 +366,9 @@ export function parseGatekeeperStructuredResponse(
       : [],
     coveredSignalKeys: toolSeen
       ? normaliseCoveredSignalKeys(toolInput.coveredSignalKeys)
+      : [],
+    relevantSignalKeys: toolSeen
+      ? normaliseCoveredSignalKeys(toolInput.relevantSignalKeys)
       : [],
     bridgePlan,
     threadState: normaliseApplicationConversationThread(

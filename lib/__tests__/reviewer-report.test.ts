@@ -82,6 +82,7 @@ describe("reviewer report helpers", () => {
     const definitions = [
       {
         key: "participation",
+        kind: "custom" as const,
         label: "How do you participate?",
         goal: "Understand participation.",
         promptRoutes: [],
@@ -91,6 +92,7 @@ describe("reviewer report helpers", () => {
       },
       {
         key: "contribution",
+        kind: "custom" as const,
         label: "What would you contribute?",
         goal: "Understand contribution.",
         promptRoutes: [],
@@ -182,6 +184,7 @@ describe("reviewer report helpers", () => {
   it("replaces untraceable model evidence with persisted application evidence", () => {
     const definition = {
       key: "participation",
+      kind: "custom" as const,
       label: "Participation",
       goal: "Understand participation.",
       promptRoutes: [],
@@ -222,6 +225,33 @@ describe("reviewer report helpers", () => {
     expect(report.evidence_references[0]?.source_message_id).toBe("message-1")
   })
 
+  it("uses only provenance-verified integrity flags for the COLORS report", () => {
+    const report = ensureEvidenceBackedReviewerReport({
+      report: normaliseReviewerReport({
+        applicant_bio: "Listener who hosts an opt-in table.",
+        advisory_recommendation: "human_review",
+        confidence_score: 0.6,
+        evidence_summary: [],
+        weak_or_missing_signals: [],
+        safety_or_integrity_flags: ["Applicant shared unreleased work without permission."],
+        reviewer_focus: "Review the alleged consent concern.",
+      }),
+      terminalStatus: "passed",
+      scores: { overall: 0.8 },
+      definitions: [],
+      answers: [],
+      integrityFlags: ["Verified concern from persisted application state."],
+      serverControlledFieldsOnly: true,
+    })
+
+    expect(report.safety_or_integrity_flags).toEqual([
+      "Verified concern from persisted application state.",
+    ])
+    expect(report.applicant_bio).toContain("0 established evidence areas")
+    expect(report.applicant_bio).not.toContain("opt-in table")
+    expect(report.reviewer_focus).not.toBe("Review the alleged consent concern.")
+  })
+
   it("preserves deterministic integrity flags when the model omits them", () => {
     const report = ensureEvidenceBackedReviewerReport({
       report: normaliseReviewerReport({
@@ -250,6 +280,7 @@ describe("reviewer report helpers", () => {
   it("keeps one full applicant record when an answer supports multiple signals", () => {
     const definitions = ["participation", "contribution", "unasked"].map((key) => ({
       key,
+      kind: "custom" as const,
       label: key,
       goal: key,
       promptRoutes: [],

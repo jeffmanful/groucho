@@ -167,12 +167,25 @@ The controller should enforce only durable boundaries:
 - an emergency loop stop;
 - no model-controlled admission or rejection.
 
+The conversational model, rather than a vocabulary matcher, decides which
+configured goals the applicant's meaning supports and which conditional goals
+have become relevant. It returns stable signal keys for both decisions; the
+controller validates those keys against project configuration and persists them.
+It does not infer coverage merely because an answer is long, on-topic, or contains
+a role-associated word.
+
 Question wording is not validated against a template regex. When a valid question
 clearly expresses a configured evidence intent, `nextSignalKey` records that private
 link. When a useful live-thread question does not map cleanly, the runtime records a
 conversational thread turn instead of rewriting the question or falsely assigning
 the applicant's next answer to another goal. That answer remains available to the
 final reviewer report and may still cover several goals later.
+
+The final reviewer report is drafted from the complete transcript and persisted
+evidence, then passed through a separate semantic evidence check before it is
+shown. That check rejects invented or upgraded facts, roles, contradictions,
+identity attributes, and integrity allegations. Integrity flags supplied to the
+report remain deterministic and provenance-controlled.
 
 ## Flexible pacing
 

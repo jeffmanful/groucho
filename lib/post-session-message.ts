@@ -68,8 +68,10 @@ import {
   applicationSignalAnswerAttemptCount,
   applicationSignalMetadata,
   buildCompactApplicationStateMessage,
+  collectApplicationRelevantSignalKeys,
   collectApplicationSignalAnswers,
   collectApplicationInsufficientEvidenceKeys,
+  newlyCoveredApplicationSignalKeys,
   expectedApplicationSignal,
   hasLegacyUntaggedAnswers,
   isColorsForumSignalSet,
@@ -82,7 +84,6 @@ import {
 import {
   collectApplicationParticipantOrientation,
   inferApplicationParticipantOrientation,
-  isExplicitCommunityIntent,
   type ApplicationParticipantOrientationState,
 } from "@/lib/application-participant-orientation"
 import {
@@ -114,8 +115,6 @@ import {
 } from "@/lib/application-conversation-bridge"
 import {
   activeApplicationReplyIssue,
-  applicationAnswerSupportsSignal,
-  applicationQuestionSupportsSignal,
   ensureExplicitStructuredInputPrompt,
   keepFirstApplicationQuestion,
   repairApplicationReplyWithQuestion,
@@ -191,16 +190,16 @@ function fallbackInteractionForApplicationSignal(
   }
 }
 
-function isArtistReferenceSignal(signal: { label: string }): boolean {
-  return signal.label.toLowerCase().includes("artist more people should know")
+function isArtistReferenceSignal(signal: { kind: string }): boolean {
+  return signal.kind === "artist_reference"
 }
 
-function isRecommendationSignal(signal: { label: string }): boolean {
-  const label = signal.label.toLowerCase()
-  return label.includes("song") && label.includes("recommend")
+function isRecommendationSignal(signal: { kind: string }): boolean {
+  return signal.kind === "recommendation"
 }
 
 function fallbackQuestionForApplicationSignal(signal: {
+  kind: string
   label: string
   promptRoutes?: string[]
 }, options?: { hasArtistAntecedent?: boolean }): string {
@@ -700,13 +699,14 @@ export async function postSessionMessage(
     priorHistory,
     signalDefinitions,
   )
-  const priorConversationEvidence = priorHistory
-    .filter((entry) => entry.role === "user")
-    .map((entry) => ({ answer: entry.content }))
+  const storedRelevantSignalKeys = collectApplicationRelevantSignalKeys(
+    priorHistory,
+    signalDefinitions,
+  )
   const priorRelevantSignalDefinitions =
     applicationSignalDefinitionsForEvidence(
       routedSignalDefinitions,
-      priorConversationEvidence,
+      storedRelevantSignalKeys,
     )
   const storedInsufficientEvidenceKeys =
     collectApplicationInsufficientEvidenceKeys(priorHistory)
@@ -770,6 +770,10 @@ export async function postSessionMessage(
             currentSignal,
             currentQuestion,
             currentAnswer: message.trim(),
+            recentApplicantAnswers: priorHistory
+              .filter((entry) => entry.role === "user")
+              .slice(-4)
+              .map((entry) => entry.content),
             answeredQuestionCount,
             maxQuestions: settings.applicationExperience.max_turns,
             maxFollowupsPerSignal: 2,
@@ -781,6 +785,7 @@ export async function postSessionMessage(
             participantOrientation: storedParticipantOrientation,
             adaptiveOrientationEnabled: colorsAdaptiveBranchesEnabled,
             insufficientEvidenceKeys: storedInsufficientEvidenceKeys,
+            relevantSignalKeys: storedRelevantSignalKeys,
           }),
         },
       ]
@@ -802,6 +807,7 @@ export async function postSessionMessage(
   let participantOrientation: ApplicationParticipantOrientationState =
     storedParticipantOrientation
   let coveredSignalKeys: string[] = []
+  let proposedRelevantSignalKeys: string[] = []
   let proposedBridgePlan: ApplicationBridgePlan = {
     candidates: [],
     selectedIndex: -1,
@@ -902,6 +908,7 @@ export async function postSessionMessage(
         currentAnswer: message.trim(),
       })
       coveredSignalKeys = parsed.coveredSignalKeys
+      proposedRelevantSignalKeys = parsed.relevantSignalKeys
       proposedBridgePlan = { candidates: [], selectedIndex: -1, selected: null }
       updatedConversationThread = fallbackApplicationConversationThread({
         previous: conversationThread,
@@ -944,31 +951,33 @@ export async function postSessionMessage(
     answerAssessment,
     currentIntegrityConcerns,
   )
+  if (
+    proposedConversationMove === "challenge" &&
+    answerAssessment &&
+    answerAssessment.quality !== "concerning"
+  ) {
+    // Keep Claude's structured intent internally consistent. A challenge is
+    // the semantic signal that this answer needs boundary clarification.
+    answerAssessment = { ...answerAssessment, quality: "concerning" }
+  }
+  const semanticChallengeTurn =
+    answerAssessment?.quality === "concerning" ||
+    proposedConversationMove === "challenge"
   const turnNeedsConversationalRepair =
     useCompactSignalState &&
     currentIntegrityConcerns.length === 0 &&
     applicationAnswerNeedsRepair(answerRelation)
-  if (currentIntegrityConcerns.length > 0) {
+  if (answerAssessment?.quality === "concerning") {
     proposedConversationMove = "challenge"
     proposedResponseMode = "challenge"
   }
 
-  coveredSignalKeys = coveredSignalKeys.filter((key) => {
-    const signal = signalDefinitions.find((definition) => definition.key === key)
-    return signal
-      ? applicationAnswerSupportsSignal(signal, message.trim())
-      : false
-  })
-  if (
-    coveredSignalKeys.length === 0 &&
-    !turnNeedsConversationalRepair &&
-    currentSignal &&
-    answerAssessment &&
-    ["usable", "rich"].includes(answerAssessment.quality) &&
-    applicationAnswerSupportsSignal(currentSignal, message.trim())
-  ) {
-    coveredSignalKeys = [currentSignal.key]
-  }
+  const configuredSignalKeys = new Set(signalDefinitions.map((signal) => signal.key))
+  coveredSignalKeys = newlyCoveredApplicationSignalKeys(
+    coveredSignalKeys,
+    signalDefinitions,
+    storedSignalAnswers,
+  )
   const currentSignalAttempts = applicationSignalAnswerAttemptCount(
     compactSignalAnswers.find((answer) => answer.key === currentSignal?.key),
   )
@@ -988,6 +997,14 @@ export async function postSessionMessage(
   const insufficientEvidenceKeys = new Set(storedInsufficientEvidenceKeys)
   if (currentInsufficientEvidence) {
     insufficientEvidenceKeys.add(currentInsufficientEvidence.key)
+  }
+  const relevantSignalKeys = new Set(storedRelevantSignalKeys)
+  for (const key of [
+    ...proposedRelevantSignalKeys,
+    ...coveredSignalKeys,
+    ...(parsedNextSignalKey ? [parsedNextSignalKey] : []),
+  ]) {
+    if (configuredSignalKeys.has(key)) relevantSignalKeys.add(key)
   }
 
   const { error: userMetadataError } = await supabase
@@ -1011,6 +1028,9 @@ export async function postSessionMessage(
           ? {
               application_signals: signalDefinitions
                 .filter((signal) => coveredSignalKeys.includes(signal.key))
+                .map((signal) => applicationSignalMetadata(signal)),
+              application_relevant_signals: signalDefinitions
+                .filter((signal) => relevantSignalKeys.has(signal.key))
                 .map((signal) => applicationSignalMetadata(signal)),
             }
           : {}),
@@ -1036,6 +1056,7 @@ export async function postSessionMessage(
     })
   }
 
+  let semanticConcernTerminalDeferred = false
   let status = computeTerminalStatusFromGatekeeperTurn({
     assistantContent,
     scores,
@@ -1071,6 +1092,16 @@ export async function postSessionMessage(
       structuredTerminal = "none"
       reviewerReport = null
     }
+  } else if (semanticChallengeTurn) {
+    // A semantic challenge and a terminal decision are mutually exclusive.
+    // Claude may recognise contextual concern that the deliberately narrow
+    // deterministic detector cannot classify, but that must remain a question
+    // rather than becoming a trusted reviewer allegation on the same turn.
+    semanticConcernTerminalDeferred = status !== null
+    status = null
+    structuredTerminal = "none"
+    reviewerReport = null
+    interactionSpec = interactionSpecForApplicationMove("challenge", "none")
   } else if (calibratedIntegrityStatus) {
     status = calibratedIntegrityStatus
     structuredTerminal = terminalFieldForSessionStatus(
@@ -1097,17 +1128,14 @@ export async function postSessionMessage(
     (answer) =>
       answer.covered !== false &&
       answer.answer.trim().length > 0 &&
-      answer.label.toLowerCase().includes("artist more people should know"),
+      answer.kind === "artist_reference",
   )
   const activeSignalDefinitions = applicationSignalDefinitionsForEvidence(
     applicationSignalDefinitionsForOrientation(
       signalDefinitions,
       participantOrientation,
     ),
-    [
-      ...priorConversationEvidence,
-      { answer: message.trim() },
-    ],
+    relevantSignalKeys,
   )
   const activeSignalKeys = new Set(
     activeSignalDefinitions.map((signal) => signal.key),
@@ -1143,6 +1171,21 @@ export async function postSessionMessage(
   const applicationClosingMessage =
     settings.applicationExperience.closing_message?.trim() ||
     DEFAULT_APPLICATION_CLOSING_MESSAGE
+  if (status === null && semanticChallengeTurn) {
+    const concernReplyIssue = activeApplicationReplyIssue({
+      reply: assistantContent,
+      interaction: interactionSpec,
+      closingMessage: applicationClosingMessage,
+      hasArtistAntecedent,
+    })
+    if (concernReplyIssue === "missing_invitation" || concernReplyIssue === "terminal_language") {
+      assistantContent = repairApplicationReplyWithQuestion({
+        reply: concernReplyIssue === "terminal_language" ? "" : assistantContent,
+        currentAnswer: message.trim(),
+        question: "Can you say more about how you understand the trust boundary in what you just described?",
+      }).reply
+    }
+  }
   if (
     status === null &&
     questionBudget.phase === "emergency_stop"
@@ -1175,7 +1218,7 @@ export async function postSessionMessage(
   let acceptedConversationMove: ApplicationConversationMove | null =
     status !== null ? "decide" : null
   let moveWasAdjusted = false
-  let communityIntentFollowup = false
+  let openingClarification = false
   let conversationalThreadTurn = false
   let groundedReceiptPreserved = false
   let colorsMediaQuestionInserted = false
@@ -1328,16 +1371,17 @@ export async function postSessionMessage(
     useCompactSignalState &&
     colorsAdaptiveBranchesEnabled &&
     currentSignal?.cluster === "orientation" &&
-    isExplicitCommunityIntent(message)
+    answerAssessment?.quality === "thin" &&
+    nextSignal?.key !== currentSignal.key
   ) {
-    assistantContent = "What does community mean to you?"
+    assistantContent = fallbackQuestionForApplicationSignal(currentSignal)
     interactionSpec = fallbackInteractionForApplicationSignal(currentSignal)
     nextSignal = currentSignal
     acceptedConversationMove = "clarify"
     acceptedBridge = null
     bridgeWasAdjusted = true
     moveWasAdjusted = true
-    communityIntentFollowup = true
+    openingClarification = true
   }
 
   if (status === null && useCompactSignalState) {
@@ -1436,17 +1480,7 @@ export async function postSessionMessage(
     }
   }
 
-  if (
-    status === null &&
-    nextSignal &&
-    ["text", "voice"].includes(interactionSpec.inputType) &&
-    !applicationQuestionSupportsSignal(nextSignal, assistantContent)
-  ) {
-    nextSignal = null
-    acceptedBridge = null
-    bridgeWasAdjusted = true
-    conversationalThreadTurn = true
-  } else if (status === null && !nextSignal) {
+  if (status === null && !nextSignal) {
     conversationalThreadTurn = true
   }
 
@@ -1507,6 +1541,7 @@ export async function postSessionMessage(
     nextSignal,
   })
   assistantContent = explicitPrompt.reply
+  interactionSpec = explicitPrompt.interaction
   if (status === null && useCompactSignalState) {
     const previousQuestions = priorHistory
       .filter((entry) => entry.role === "assistant")
@@ -1571,6 +1606,7 @@ export async function postSessionMessage(
         ...storedIntegrityConcerns,
         ...currentIntegrityConcerns,
       ].map((concern) => concern.reviewerFlag),
+      serverControlledFieldsOnly: colorsAdaptiveBranchesEnabled,
     })
   }
   const responseMode = resolveApplicationResponseMode({
@@ -1597,8 +1633,14 @@ export async function postSessionMessage(
           ...(explicitPrompt.added
             ? { application_explicit_question_added: true }
             : {}),
-          ...(communityIntentFollowup
-            ? { application_community_intent_followup: true }
+          ...(explicitPrompt.downgradedToText
+            ? { application_structured_input_downgraded: true }
+            : {}),
+          ...(semanticConcernTerminalDeferred
+            ? { application_semantic_concern_terminal_deferred: true }
+            : {}),
+          ...(openingClarification
+            ? { application_opening_clarification: true }
             : {}),
           ...(colorsMediaQuestionInserted
             ? {

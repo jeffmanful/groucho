@@ -20,6 +20,7 @@ describe("parseGatekeeperStructuredResponse", () => {
     const required = gatekeeperResponseTool.input_schema.required
 
     expect(properties).toHaveProperty("answerRelation")
+    expect(properties).toHaveProperty("relevantSignalKeys")
     expect(properties).not.toHaveProperty("selectedBridge")
     expect(properties).not.toHaveProperty("threadState")
     expect(properties).not.toHaveProperty("participantOrientation")
@@ -30,7 +31,7 @@ describe("parseGatekeeperStructuredResponse", () => {
     expect(properties).not.toHaveProperty("inputType")
     expect(properties).not.toHaveProperty("visualState")
     expect(required).toContain("answerRelation")
-    expect(required).toHaveLength(8)
+    expect(required).toHaveLength(9)
   })
 
   it("reads compact answer evidence and a single selected bridge", () => {
@@ -139,6 +140,7 @@ describe("parseGatekeeperStructuredResponse", () => {
           { type: "artist_reference", displayLabel: "Kelela", confidence: 0.92 },
         ],
         coveredSignalKeys: ["cultural_point_of_view", "discovery_and_sharing"],
+        relevantSignalKeys: ["community_contribution", "community_contribution", "invalid-key"],
         bridgeCandidates: [
           {
             sourceDetail: "Space between releases protects the work",
@@ -192,6 +194,7 @@ describe("parseGatekeeperStructuredResponse", () => {
       "cultural_point_of_view",
       "discovery_and_sharing",
     ])
+    expect(out.relevantSignalKeys).toEqual(["community_contribution"])
     expect(out.bridgePlan.selected).toMatchObject({
       kind: "tension_to_judgment",
       targetSignalKey: "community_contribution",

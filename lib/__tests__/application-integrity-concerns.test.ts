@@ -34,8 +34,18 @@ describe("application integrity concerns", () => {
     "I want to help an artist grow their audience with their permission.",
     "I host a listening group and ask before sharing unfinished work.",
     "I would like early access so I can prepare a thoughtful interview with the artist.",
+    "A COLORS performance is a shared reference that everyone can access without asking an artist to expose vulnerable work first.",
+    "I would not share private or unreleased artist work without permission.",
+    "I only share unfinished tracks with the artist's permission.",
   ])("does not flag adjacent but non-concerning language: %s", (answer) => {
     expect(detectApplicationIntegrityConcerns(answer)).toEqual([])
+  })
+
+  it("describes promotional intent without inventing privileged artist access", () => {
+    const concerns = detectApplicationIntegrityConcerns(
+      "I want early access because it could grow my audience.",
+    )
+    expect(concerns[0]?.reviewerFlag).not.toContain("privileged artist access")
   })
 
   it("forces a concerning assessment and a consent-specific challenge", () => {

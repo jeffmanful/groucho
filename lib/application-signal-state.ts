@@ -17,6 +17,15 @@ import { NATURAL_LANGUAGE_REPLY_GUIDANCE } from "@/lib/natural-language-style"
 
 export type ApplicationSignalDefinition = {
   key: string
+  kind:
+    | "colors_relationship"
+    | "motivation"
+    | "artist_reference"
+    | "recommendation"
+    | "feedback"
+    | "participation"
+    | "contribution"
+    | "custom"
   /** Original project configuration, retained for backwards compatibility. */
   label: string
   /** Private evidence goal. This is not a question Groucho must ask verbatim. */
@@ -59,6 +68,7 @@ export const COLORS_FORUM_OPENING_QUESTION =
 
 const COLORS_RELATIONSHIP_SIGNAL: ApplicationSignalDefinition = {
   key: "colors_relationship",
+  kind: "colors_relationship",
   label: "Relationship to COLORS",
   goal: "Understand why COLORS specifically matters to them, how they have engaged with its work, and what they believe the Forum could extend.",
   promptRoutes: [
@@ -76,7 +86,7 @@ function evidenceGoal(
   label: string,
 ): Pick<
   ApplicationSignalDefinition,
-  "goal" | "promptRoutes" | "priority" | "cluster" | "audiences"
+  "kind" | "goal" | "promptRoutes" | "priority" | "cluster" | "audiences"
 > {
   const normalized = label.trim().toLowerCase()
   if (
@@ -85,6 +95,7 @@ function evidenceGoal(
     normalized.includes("colors specifically")
   ) {
     return {
+      kind: "colors_relationship",
       goal: COLORS_RELATIONSHIP_SIGNAL.goal,
       promptRoutes: [...COLORS_RELATIONSHIP_SIGNAL.promptRoutes],
       priority: COLORS_RELATIONSHIP_SIGNAL.priority,
@@ -94,6 +105,7 @@ function evidenceGoal(
   }
   if (normalized.includes("what brought you here")) {
     return {
+      kind: "motivation",
       goal: "Understand their motivation and relationship to the Forum.",
       promptRoutes: ["What drew you towards this community?", "What are you hoping to find or take part in here?"],
       priority: "supporting",
@@ -103,6 +115,7 @@ function evidenceGoal(
   }
   if (normalized.includes("artist more people should know")) {
     return {
+      kind: "artist_reference",
       goal: "Hear a personal cultural point of view through a specific artist or creative reference.",
       promptRoutes: ["Who is making work you think deserves more attention?", "What do people tend to miss about work you care about?"],
       priority: "core",
@@ -112,6 +125,7 @@ function evidenceGoal(
   }
   if (normalized.includes("last song") && normalized.includes("recommend")) {
     return {
+      kind: "recommendation",
       goal: "Understand how and why they discover, contextualise, and share creative work.",
       promptRoutes: [
         "What is one of their songs that you have—or would—share with someone, and why?",
@@ -124,6 +138,7 @@ function evidenceGoal(
   }
   if (normalized.includes("unfinished music")) {
     return {
+      kind: "feedback",
       goal: "Understand their care, honesty, and judgment when responding to unfinished work.",
       promptRoutes: ["How do you approach feedback when the work is not naturally for you?", "What does useful honesty look like with unfinished work?"],
       priority: "core",
@@ -133,6 +148,7 @@ function evidenceGoal(
   }
   if (normalized.includes("which sounds most like you")) {
     return {
+      kind: "participation",
       goal: "Understand how they currently participate in music culture and community, including the exchanges and habits that keep them involved over time.",
       promptRoutes: [
         "How do you usually participate around music?",
@@ -145,6 +161,7 @@ function evidenceGoal(
   }
   if (normalized.includes("first month") || normalized.includes("contribut")) {
     return {
+      kind: "contribution",
       goal: "Find a concrete, realistic contribution pattern: what they already give or return to, and what they could sustain in the Forum.",
       promptRoutes: [
         "What do you already find yourself giving back in music communities?",
@@ -157,6 +174,7 @@ function evidenceGoal(
     }
   }
   return {
+    kind: "custom",
     goal: `Understand the applicant's evidence for: ${label.trim()}`,
     promptRoutes: [label.trim()],
     priority: "core",
@@ -244,38 +262,21 @@ export function applicationSignalDefinitionsForOrientation(
   return definitions
 }
 
-function answerShowsAudienceRelevance(
-  audience: "artist" | "curator" | "enthusiast",
-  answer: string,
-): boolean {
-  const value = answer.toLowerCase()
-  if (audience === "artist") {
-    return /\b(?:i (?:make|write|produce|sing|rap|record|perform)|i(?:'m| am) (?:making|writing|producing|recording)|my (?:music|songs?|tracks?|demos?|practice)|artist|musician|producer|performer|making (?:music|songs?|tracks?)|upload(?:ing)? my (?:music|songs?|tracks?))\b/.test(value)
-  }
-  if (audience === "curator") {
-    return /\b(?:(?:i|we|and) (?:curat\w*|organis\w*|organiz\w*|host\w*|run (?:a |an )?(?:small |monthly |local )?(?:playlist|radio show|listening (?:night|session|group))|program\w*|select\w*|introduc\w*|document\w*|moderate\w*)|(?:i|we) (?:want|hope|plan|would like) to (?:(?:start )?(?:curat\w*|organis\w*|organiz\w*|host\w*|program\w*|select\w*|put on|put together)|start (?:a |an )?(?:playlist|radio show|listening (?:night|session|group)))|my (?:playlist|radio show|listening (?:night|session|group))|(?:give|giving|gave|offer|offering|offered) feedback|unfinished (?:music|work|demo)|private demo|i collaborat\w*|when i collaborat\w*|collaborating with (?:other )?(?:artists?|musicians?|producers?)|co-?creat\w* with|i work with (?:other )?(?:artists?|musicians?|producers?)|i exchange (?:ideas?|music|demos?|works?)|i trade (?:ideas?|tracks?|demos?)|i share (?:rough|unfinished|unreleased) (?:music|work|tracks?|demos?)|i help (?:shape|develop|finish) (?:someone(?:'s)?|another artist(?:'s)?) (?:music|work|song|track|idea))\b/.test(value)
-  }
-  return /\b(?:mostly listen|listener|music fan|enthusiast|discover\w*|discuss\w* music|community)\b/.test(value)
-}
-
 /**
- * Conditional goals become eligible from explicit conversational evidence, not
- * from the applicant's orientation label or score.
+ * Conditional goals become eligible only when the conversational model records
+ * them as semantically relevant. Code validates stable keys; it does not try to
+ * rediscover meaning through a vocabulary list.
  */
 export function applicationSignalDefinitionsForEvidence(
   definitions: ApplicationSignalDefinition[],
-  answers: Array<Pick<ApplicationSignalAnswer, "answer">>,
+  relevantSignalKeys: Iterable<string> = [],
 ): ApplicationSignalDefinition[] {
   if (!isColorsForumSignalSet(definitions)) return definitions
-  const answerText = answers.map((answer) => answer.answer).join("\n")
+  const relevant = new Set(relevantSignalKeys)
   return definitions.filter(
     (signal) =>
       signal.audiences.includes("shared") ||
-      signal.audiences.some(
-        (audience) =>
-          audience !== "shared" &&
-          answerShowsAudienceRelevance(audience, answerText),
-      ),
+      relevant.has(signal.key),
   )
 }
 
@@ -293,7 +294,7 @@ function metadataHasField(metadata: unknown, field: string): boolean {
 
 function signalsFromMetadata(
   metadata: unknown,
-  field: "application_signal" | "application_signals" | "application_next_signal",
+  field: "application_signal" | "application_signals" | "application_next_signal" | "application_relevant_signals",
   definitions: ApplicationSignalDefinition[],
 ): ApplicationSignalDefinition[] {
   const record = metadataRecord(metadata)
@@ -307,6 +308,41 @@ function signalsFromMetadata(
     return signal ? [signal] : []
   })
   return [...new Map(found.map((signal) => [signal.key, signal])).values()]
+}
+
+export function collectApplicationRelevantSignalKeys(
+  messages: ApplicationSignalMessage[],
+  definitions: ApplicationSignalDefinition[],
+): Set<string> {
+  return new Set(messages.flatMap((message) => [
+    ...signalsFromMetadata(
+      message.metadata,
+      "application_relevant_signals",
+      definitions,
+    ),
+    ...signalsFromMetadata(message.metadata, "application_signal", definitions),
+    ...signalsFromMetadata(
+      message.metadata,
+      "application_next_signal",
+      definitions,
+    ),
+  ].map((signal) => signal.key)))
+}
+
+export function newlyCoveredApplicationSignalKeys(
+  proposedKeys: Iterable<string>,
+  definitions: ApplicationSignalDefinition[],
+  priorAnswers: ApplicationSignalAnswer[],
+): string[] {
+  const configured = new Set(definitions.map((signal) => signal.key))
+  const previouslyCovered = new Set(
+    priorAnswers
+      .filter((answer) => answer.covered !== false)
+      .map((answer) => answer.key),
+  )
+  return [...new Set(proposedKeys)].filter(
+    (key) => configured.has(key) && !previouslyCovered.has(key),
+  )
 }
 
 export function collectApplicationSignalAnswers(
@@ -562,6 +598,7 @@ export function buildCompactApplicationStateMessage(input: {
   currentSignal: ApplicationSignalDefinition | null
   currentQuestion: string
   currentAnswer: string
+  recentApplicantAnswers?: string[]
   answeredQuestionCount?: number
   maxQuestions?: number
   maxFollowupsPerSignal?: number
@@ -573,11 +610,12 @@ export function buildCompactApplicationStateMessage(input: {
   participantOrientation?: ApplicationParticipantOrientationState
   adaptiveOrientationEnabled?: boolean
   insufficientEvidenceKeys?: Set<string>
+  relevantSignalKeys?: Set<string>
 }): string {
   const answersByKey = new Map(input.answers.map((answer) => [answer.key, answer]))
   const relevantDefinitions = applicationSignalDefinitionsForEvidence(
     input.definitions,
-    input.answers,
+    input.relevantSignalKeys,
   )
   const relevantSignalKeys = new Set(
     relevantDefinitions.map((signal) => signal.key),
@@ -598,7 +636,7 @@ export function buildCompactApplicationStateMessage(input: {
     (input.adaptiveOrientationEnabled === true && orientation.primary === "unknown"
       ? input.definitions.find(
           (signal) =>
-            signal.label.toLowerCase().includes("which sounds most like you") &&
+            signal.kind === "participation" &&
             !previousAnswerCovered(answersByKey.get(signal.key)),
         )
       : null)?.key ??
@@ -620,10 +658,7 @@ export function buildCompactApplicationStateMessage(input: {
     maxQuestions,
   })
   const recommendationSignalKey =
-    input.definitions.find((signal) => {
-      const label = signal.label.toLowerCase()
-      return label.includes("recommend") && /\b(song|music)\b/.test(label)
-    })?.key ?? null
+    input.definitions.find((signal) => signal.kind === "recommendation")?.key ?? null
   const ownMusicSignalKeys = input.definitions
     .filter(
       (signal) =>
@@ -699,10 +734,15 @@ export function buildCompactApplicationStateMessage(input: {
           })()
         : {}),
     },
+    recentApplicantAnswers: (input.recentApplicantAnswers ?? [])
+      .slice(-4)
+      .map((answer) => answer.trim().replace(/\s+/g, " ").slice(0, 400))
+      .filter(Boolean),
     conversationDepth: input.conversationDepth ?? {
       recentQualities: [],
       thinAnswerCount: 0,
       richAnswerCount: 0,
+      concerningAnswerCount: 0,
       openDoorUsed: false,
       thinSignalCount: 0,
     },
@@ -839,7 +879,9 @@ Flexible pacing:
 - emergency_stop: do not ask another question. Set a terminal decision and use the neutral close.
 There is no closing phase at answers seven or eight. Missing evidence belongs in the later reviewer brief rather than compulsory gap-filling.
 
-Treat signals as private evidence intents, not a checklist and not a bank of required questions. exampleQuestions are illustrative routes only. Infer the actual question from the applicant's words, the live thread, the relevant unresolved intent, and Groucho's persona. Do not copy an example merely because its signal is open. One answer can cover several goals. Return every goal supported by the current answer in coveredSignalKeys, even if it was not the goal that prompted the answer. Never ask for evidence that is already covered unless a genuine conversational thread warrants one bounded depth question.
+Treat signals as private evidence intents, not a checklist and not a bank of required questions. exampleQuestions are illustrative routes only. Infer the actual question from the applicant's words, the live thread, the relevant unresolved intent, and Groucho's persona. Do not copy an example merely because its signal is open. One answer can cover several goals. Return every open goal newly supported by current.answer in coveredSignalKeys, even if it was not the goal that prompted the answer. Coverage records the presence of usable evidence, not that a goal has been exhaustively explored: a brief direct answer may cover a goal while still earning one natural depth question. Do not repeat keys whose signal status is already covered, and do not attribute facts found only in recentApplicantAnswers or another earlier message to the current answer. Never ask for evidence that is already covered unless a genuine conversational thread warrants one bounded depth question.
+
+Before writing a follow-up, check recentApplicantAnswers for facts the applicant has already supplied, including informal examples that were not assigned to an evidence goal. Do not ask them to restate one. If more detail is needed, name the detail already given and ask only for the missing part.
 
 The opening answer is the first conversational inflection point. Continue from the motivation actually expressed; participantOrientation only describes what emerges and must not select the next question. Community intent should lead into what community means to them; making work should lead into practice or desired exchange; curation or organising should lead into their real role and actions; discovery or listening should lead into how music becomes social or what they hope to find. Do not automatically jump from the opening answer to an artist question.
 

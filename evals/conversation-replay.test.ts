@@ -8,6 +8,7 @@ type Capture = { request: Anthropic.MessageCreateParamsNonStreaming; response: A
 const harness = vi.hoisted(() => ({
   tables: { sessions: [] as Row[], messages: [] as Row[] },
   arm: "control" as Arm,
+  expectedCoverage: [] as string[],
   capture: null as Capture | null,
   providerError: null as null | { name: string; errorClass: string; status: number | null; requestId: string | null; message: string; cause: string | null; stack: string | null },
 }))
@@ -93,7 +94,7 @@ vi.mock("@anthropic-ai/sdk", async (original) => {
         }
       } else {
         response = { id: "dry", type: "message", role: "assistant", model: request.model, stop_reason: "tool_use", stop_sequence: null,
-          content: [{ type: "tool_use", id: "dry-tool", name: "groucho_respond", input: { reply: "What part would you like to explore?", terminal: "none", scores: { specificity: 0.5, authenticity: 0.5, cultural_depth: 0.5, overall: 0.5 }, answerAssessment: { quality: "usable", reason: "Synthetic", evidenceFlags: ["detail"] }, answerRelation: { kind: "direct", reason: "Synthetic" }, conversationMove: "advance", coveredSignalKeys: [], nextSignalKey: "" } }],
+          content: [{ type: "tool_use", id: "dry-tool", name: "groucho_respond", input: { reply: "What part would you like to explore?", terminal: "none", scores: { specificity: 0.5, authenticity: 0.5, cultural_depth: 0.5, overall: 0.5 }, answerAssessment: { quality: "usable", reason: "Synthetic", evidenceFlags: ["detail"] }, answerRelation: { kind: "direct", reason: "Synthetic" }, conversationMove: "advance", coveredSignalKeys: harness.expectedCoverage, relevantSignalKeys: harness.expectedCoverage, nextSignalKey: "" } }],
           usage: { input_tokens: 0, output_tokens: 0 },
         } as Anthropic.Message
       }
@@ -110,6 +111,7 @@ type Result = {
   rawReply: string; visibleReply: string; relation: string | null;
   rawCoverage: string[]; persistedCoverage: string[]; coverageTp: number; coverageFp: number; coverageFn: number;
   relationCorrect: boolean; earlyClose: boolean; replyRewritten: boolean;
+  genericSelectorReplacement: boolean; structuredInputDowngraded: boolean;
   repair: boolean; markerPresent: boolean | null; mentionsCorrectedPlan: boolean | null;
 }
 const percentile = (values: number[], p: number) => {
@@ -132,7 +134,15 @@ describe("paired Groucho conversation replay", () => {
     const requestHashes: string[] = []
     const live = process.env.GROUCHO_LIVE_REPLAY === "1"
     const diagnostic = process.env.GROUCHO_REPLAY_DIAGNOSTIC === "1"
-    const cases = diagnostic ? REPLAY_CASES.slice(0, 2) : REPLAY_CASES
+    const requestedCase = process.env.GROUCHO_REPLAY_CASE
+    const cases = requestedCase
+      ? REPLAY_CASES.filter((fixture) => fixture.id === requestedCase)
+      : diagnostic
+        ? REPLAY_CASES.slice(0, 2)
+        : REPLAY_CASES
+    if (requestedCase && cases.length === 0) {
+      throw new Error(`Unknown GROUCHO_REPLAY_CASE: ${requestedCase}`)
+    }
     const repeats = diagnostic ? 1 : 2
     if (live && !process.env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is required")
     for (let repeat = 0; repeat < repeats; repeat++) {
@@ -141,6 +151,7 @@ describe("paired Groucho conversation replay", () => {
         const order = [...ARMS.slice(offset), ...ARMS.slice(0, offset)]
         for (const arm of order) {
           harness.arm = arm
+          harness.expectedCoverage = fixture.expectedCoverage
           harness.capture = null
           harness.providerError = null
           harness.tables.sessions = [{ id: "s1", session_id: "synthetic-session", project_id: "synthetic-project", status: "active", persona_id: "synthetic-persona" }]
@@ -187,6 +198,11 @@ describe("paired Groucho conversation replay", () => {
             relationCorrect: fixture.expectedRelation.includes(parsed?.answerRelation?.kind ?? ""),
             earlyClose: response.status === 200 && fixture.expectedActive && body.status !== "active",
             replyRewritten: Boolean(parsed && visibleReply !== parsed.reply),
+            genericSelectorReplacement:
+              visibleReply.includes("Which of these sounds most like how you participate around music?") &&
+              !parsed?.reply.includes("Which of these sounds most like how you participate around music?"),
+            structuredInputDowngraded:
+              metadata?.application_structured_input_downgraded === true,
             repair: Boolean(metadata?.application_active_reply_repair || metadata?.application_turn_repair),
             markerPresent: fixture.memoryMarker ? requestText.includes(fixture.memoryMarker) : null,
             mentionsCorrectedPlan: fixture.memoryMarker ? /digest|access.notes|summaris|summariz/i.test(visibleReply) : null,
@@ -207,6 +223,8 @@ describe("paired Groucho conversation replay", () => {
         relationCorrect: rows.filter((row) => row.relationCorrect).length,
         earlyCloses: rows.filter((row) => row.earlyClose).length,
         rewrites: rows.filter((row) => row.replyRewritten).length, repairs: rows.filter((row) => row.repair).length,
+        genericSelectorReplacements: rows.filter((row) => row.genericSelectorReplacement).length,
+        structuredInputDowngrades: rows.filter((row) => row.structuredInputDowngraded).length,
         truncations: rows.filter((row) => row.stopReason === "max_tokens").length,
         inputTokens: sum("inputTokens"), outputTokens: sum("outputTokens"), cacheRead: sum("cacheRead"), cacheWrite: sum("cacheWrite"),
         memoryMarkerPresent: rows.filter((row) => row.markerPresent === true).length,

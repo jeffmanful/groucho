@@ -41,12 +41,36 @@ const DEFINITIONS: Record<
   },
   extractive_access_intent: {
     reason: "The applicant frames community access primarily as growth or privileged access for their own platform.",
-    reviewerFlag: "Applicant framed Forum access primarily as a way to obtain privileged artist access or grow their own platform.",
+    reviewerFlag: "Applicant primarily framed Forum access as a way to promote their own clients or platform.",
   },
 }
 
 function concern(kind: ApplicationIntegrityConcernKind): ApplicationIntegrityConcern {
   return { kind, ...DEFINITIONS[kind] }
+}
+
+/**
+ * Conservative lexical candidate detection for one explicit client boundary.
+ * This is not a general semantic judge: it deliberately requires the action,
+ * artist work, and denied consent to occur in the same sentence, and it treats
+ * negated actions as safe. The live model still supplies context and the pilot
+ * keeps the resulting recommendation advisory.
+ */
+function explicitlySharesArtistWorkWithoutConsent(answer: string): boolean {
+  return answer.split(/[.!?;\n]+/).some((sentence) => {
+    const action = /\b(?:post|share|upload|publish|repost|circulate)\w*\b/g
+    const artistWork = /\b(?:private|unreleased|unfinished)\s+(?:demos?|tracks?|songs?|recordings?|work)\b/
+    const deniedConsent = /\b(?:without (?:asking|permission|consent)|even if (?:they|the artist) (?:are|is|were|was) hesitant)\b/
+    if (!artistWork.test(sentence) || !deniedConsent.test(sentence)) return false
+    for (const match of sentence.matchAll(action)) {
+      const before = sentence.slice(Math.max(0, match.index - 32), match.index)
+      if (/\b(?:do not|don't|would not|wouldn't|will not|won't|never|not)\s*$/.test(before)) {
+        continue
+      }
+      return true
+    }
+    return false
+  })
 }
 
 export function detectApplicationIntegrityConcerns(
@@ -62,10 +86,7 @@ export function detectApplicationIntegrityConcerns(
     detected.push(concern("admitted_fabrication"))
   }
 
-  if (
-    /\b(?:post|share|upload|publish|repost|circulate)\w*\b.{0,120}\b(?:without (?:asking|permission|consent)|even if (?:they|the artist) (?:are|is|were|was) hesitant)\b/.test(value) ||
-    /\b(?:private|unreleased) (?:demo|track|song|recording|work)\b.{0,120}\b(?:exposure|without (?:asking|permission|consent))\b/.test(value)
-  ) {
+  if (explicitlySharesArtistWorkWithoutConsent(value)) {
     detected.push(concern("artist_consent_violation"))
   }
 
