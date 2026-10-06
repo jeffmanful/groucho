@@ -1,7 +1,9 @@
 "use client"
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react"
+import { ReviewerReportView } from "@/components/admin/ReviewerReportView"
 import { tryCreateSupabaseBrowserClient } from "@/lib/supabase-browser"
+import type { ReviewerReport } from "@/lib/reviewer-report"
 
 type Score = {
   specificity: number
@@ -31,6 +33,7 @@ type LiveSession = {
   applicant_name: string | null
   messages: Message[]
   messagesLoaded: boolean
+  reviewerReport: ReviewerReport | null
 }
 
 type ProjectOption = {
@@ -85,6 +88,8 @@ export default function LiveConversations() {
   const [typingSessions, setTypingSessions] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [transcriptLoading, setTranscriptLoading] = useState(false)
+  const [transcriptRefreshKey, setTranscriptRefreshKey] = useState(0)
+  const [selectedView, setSelectedView] = useState<"conversation" | "report">("conversation")
   const [loadError, setLoadError] = useState<string | null>(null)
   const sessionRequest = useRef(0)
 
@@ -95,8 +100,10 @@ export default function LiveConversations() {
 
   const loadProjectSessions = useCallback(async (project: ProjectOption) => {
     const requestId = ++sessionRequest.current
+    const params = new URLSearchParams(window.location.search)
+    const focusSession = params.get("project") === project.id ? params.get("session") : null
     const response = await fetch(
-      `/api/admin/organisations/${project.organisationId}/projects/${project.id}/sessions`,
+      `/api/admin/organisations/${project.organisationId}/projects/${project.id}/sessions${focusSession ? `?session=${encodeURIComponent(focusSession)}` : ""}`,
     )
     if (requestId !== sessionRequest.current) return
     if (!response.ok) {
@@ -106,7 +113,7 @@ export default function LiveConversations() {
       return
     }
     const payload = (await response.json()) as {
-      sessions?: Omit<LiveSession, "messages" | "messagesLoaded">[]
+      sessions?: Omit<LiveSession, "messages" | "messagesLoaded" | "reviewerReport">[]
     }
     if (requestId !== sessionRequest.current) return
     const rows = payload.sessions ?? []
@@ -116,10 +123,19 @@ export default function LiveConversations() {
         messages: current.find((session) => session.id === row.id)?.messages ?? [],
         messagesLoaded:
           current.find((session) => session.id === row.id)?.messagesLoaded ?? false,
+        reviewerReport:
+          current.find((session) => session.id === row.id)?.reviewerReport ?? null,
       })),
     )
     setSelectedSessionId((current) => {
       if (current && rows.some((session) => session.id === current)) return current
+      const requestedSession = new URLSearchParams(window.location.search).get("session")
+      if (requestedSession && rows.some((session) => session.id === requestedSession)) {
+        return requestedSession
+      }
+      if (new URLSearchParams(window.location.search).get("view") === "report") {
+        return rows.find((session) => ["passed", "redirected", "rejected"].includes(session.status))?.id ?? rows[0]?.id ?? null
+      }
       return (rows.find((session) => session.status === "active") ?? rows[0])?.id ?? null
     })
     setLoading(false)
@@ -159,8 +175,11 @@ export default function LiveConversations() {
       )
       if (cancelled) return
       setProjects(nextProjects)
+      const params = new URLSearchParams(window.location.search)
+      if (params.get("view") === "report") setSelectedView("report")
       const remembered = window.localStorage.getItem(PROJECT_STORAGE_KEY)
       const initial =
+        nextProjects.find((project) => project.id === params.get("project")) ??
         nextProjects.find((project) => project.id === remembered) ??
         nextProjects.find((project) => project.activeSessions > 0) ??
         nextProjects[0]
@@ -274,6 +293,15 @@ export default function LiveConversations() {
                 : c
             )
           )
+          const metadata = r.metadata
+          if (
+            updatedMsg.role === "assistant" &&
+            metadata && typeof metadata === "object" &&
+            !Array.isArray(metadata) &&
+            "reviewer_report" in metadata
+          ) {
+            setTranscriptRefreshKey((current) => current + 1)
+          }
         }
       )
       .subscribe((status, err) => {
@@ -364,7 +392,10 @@ export default function LiveConversations() {
         }
         return
       }
-      const payload = (await response.json()) as { messages?: Omit<Message, "session_id">[] }
+      const payload = (await response.json()) as {
+        messages?: Omit<Message, "session_id">[]
+        reviewerReport?: ReviewerReport | null
+      }
       if (cancelled) return
       setSessions((current) =>
         current.map((session) =>
@@ -377,6 +408,7 @@ export default function LiveConversations() {
                   metadata: parseMetadata(message.metadata),
                 })),
                 messagesLoaded: true,
+                reviewerReport: payload.reviewerReport ?? null,
               }
             : session,
         ),
@@ -387,7 +419,7 @@ export default function LiveConversations() {
     return () => {
       cancelled = true
     }
-  }, [selectedProject, transcriptSessionId])
+  }, [selectedProject, transcriptSessionId, transcriptRefreshKey])
   const selectedIsTyping = selectedSession
     ? selectedSession.session_id in typingSessions
     : false
@@ -454,6 +486,7 @@ export default function LiveConversations() {
   function refreshSessions() {
     setLoading(true)
     setLoadError(null)
+    setTranscriptRefreshKey((current) => current + 1)
     void load()
   }
 
@@ -627,6 +660,7 @@ export default function LiveConversations() {
                   </span>
                   <span className="session-row-bottom">
                     <span style={{ color: STATUS_COLOR[session.status] ?? "#fff" }}>● {session.status}</span>
+                    {session.reviewerReport ? <span className="report-available">report ready</span> : null}
                     {isTyping ? <span className="typing">typing…</span> : null}
                     <span>{new Date(session.updated_at).toLocaleDateString()}</span>
                   </span>
@@ -641,7 +675,22 @@ export default function LiveConversations() {
             <span>{selectedSession ? selectedSession.applicant_name || "Conversation" : "Conversation"}</span>
             {selectedSession ? <span>{selectedSession.session_id.slice(0, 8)}</span> : null}
           </div>
-          <div className="transcript-scroll">
+          <div className="view-switcher" role="group" aria-label="Session view">
+            <button type="button" className={selectedView === "conversation" ? "active" : ""} aria-pressed={selectedView === "conversation"} onClick={() => setSelectedView("conversation")}>Conversation</button>
+            <button type="button" className={selectedView === "report" ? "active" : ""} aria-pressed={selectedView === "report"} onClick={() => setSelectedView("report")}>Report</button>
+          </div>
+          {selectedView === "report" ? (
+            <div className="report-scroll">
+              {selectedSession ? (
+                <ReviewerReportView
+                  key={selectedSession.id}
+                  report={selectedSession.reviewerReport}
+                  sessionStatus={selectedSession.status}
+                  loading={transcriptLoading || !selectedSession.messagesLoaded}
+                />
+              ) : <div className="empty-state">Select a session to view its report.</div>}
+            </div>
+          ) : <div className="transcript-scroll">
             {!selectedSession ? <div className="empty-state">Select a session to read it.</div> : null}
             {transcriptLoading ? <div className="empty-state">Loading conversation…</div> : null}
             {!transcriptLoading && selectedSession?.messagesLoaded && selectedSession.messages.length === 0 ? (
@@ -657,7 +706,7 @@ export default function LiveConversations() {
               </article>
             ))}
             {selectedIsTyping ? <div className="typing-line">Applicant is typing…</div> : null}
-          </div>
+          </div>}
         </section>
 
         <aside className="workspace-panel details" aria-label="Session details">
@@ -715,6 +764,13 @@ export default function LiveConversations() {
         .session-row-bottom { color: rgba(255,255,255,.34); font: .64rem monospace; text-transform: uppercase; letter-spacing: .04em; }
         .session-row-bottom > :last-child { margin-left: auto; }
         .typing, .typing-line { color: #86efac; }
+        .report-available { color: rgba(255,255,255,.6); }
+        .view-switcher { display: flex; gap: .25rem; padding: .5rem 1rem; border-bottom: 1px solid rgba(255,255,255,.1); }
+        .view-switcher button { min-height: 2.75rem; padding: .4rem .75rem; border: 1px solid transparent; background: transparent; color: rgba(255,255,255,.45); font: .7rem system-ui,sans-serif; cursor: pointer; transition: color 120ms ease, border-color 120ms ease, background-color 120ms ease; }
+        .view-switcher button:hover, .view-switcher button:focus-visible { color: #fff; }
+        .view-switcher button:focus-visible { outline: 2px solid rgba(255,255,255,.6); outline-offset: 2px; }
+        .view-switcher button.active { border-color: rgba(255,255,255,.3); background: rgba(255,255,255,.065); color: #fff; }
+        .report-scroll { max-height: min(62vh, 46rem); overflow-y: auto; padding: 1rem; }
         .transcript-scroll { padding: 1rem; }
         .message { margin-bottom: 1.2rem; max-width: 92%; }
         .message.user { margin-left: auto; }

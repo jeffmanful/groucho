@@ -36,6 +36,8 @@ describe("reviewer report helpers", () => {
   it("keeps only source-linked claims in a detailed opinion", () => {
     const opinion = normaliseDetailedReviewerOpinion(
       {
+        advisory_reason: "The applicant describes a recurring listening practice.",
+        advisory_evidence_reference_ids: ["message-1", "invented-source"],
         overall_assessment: "A credible community participant with one open question.",
         decisive_reasons: ["Shows recurring participation."],
         claim_assessments: [
@@ -64,6 +66,7 @@ describe("reviewer report helpers", () => {
     expect(opinion?.claim_assessments[0]?.evidence_reference_ids).toEqual([
       "message-1",
     ])
+    expect(opinion?.advisory_evidence_reference_ids).toEqual(["message-1"])
   })
 
   it("creates low-confidence fallback reports for terminal sessions", () => {
@@ -164,6 +167,22 @@ describe("reviewer report helpers", () => {
             answer_assessment: { quality: "thin" },
           },
         },
+        {
+          id: "clarification-request",
+          role: "user",
+          content: "That sounds like two questions. What do you want to know?",
+          metadata: {
+            application_answer_relation: { kind: "clarification_request" },
+          },
+        },
+        {
+          id: "process-correction",
+          role: "user",
+          content: "I did not give those works an order. Can we move on?",
+          metadata: {
+            application_process_feedback: { kind: "corrects_assistant_assumption" },
+          },
+        },
       ],
     })
 
@@ -179,6 +198,12 @@ describe("reviewer report helpers", () => {
       source_message_id: "maker-context",
       excerpt: "I make cinematic soundtracks.",
     })
+    expect(report.evidence_references.some(
+      (reference) => reference.source_message_id === "clarification-request",
+    )).toBe(false)
+    expect(report.evidence_references.some(
+      (reference) => reference.source_message_id === "process-correction",
+    )).toBe(false)
   })
 
   it.each([

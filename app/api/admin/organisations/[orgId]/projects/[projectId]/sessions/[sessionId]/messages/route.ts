@@ -3,6 +3,7 @@ import { resolveAdminActor } from "@/lib/admin-actor"
 import { requireOrgMember, unauthorized } from "@/lib/org-access"
 import { supabase } from "@/lib/supabase"
 import { isConcludedSessionStatus } from "@/lib/session-status"
+import { adminSessionReviewerReport } from "@/lib/admin-session-report"
 
 export async function GET(
   _req: NextRequest,
@@ -42,7 +43,7 @@ export async function GET(
   }
 
   let profile: unknown = session.profile ?? null
-  let reviewerReport: unknown = null
+  let verdictReport: unknown = null
   const concluded = isConcludedSessionStatus(
     (session as { status?: string }).status,
   )
@@ -57,9 +58,12 @@ export async function GET(
     const payload = (v?.payload as Record<string, unknown> | undefined) ?? null
     if (!profile && payload && payload.profile) profile = payload.profile
     if (payload && payload.reviewer_report) {
-      reviewerReport = payload.reviewer_report
+      verdictReport = payload.reviewer_report
     }
   }
+  const reviewerReport = concluded
+    ? adminSessionReviewerReport(data ?? [], verdictReport)
+    : null
 
   let personaSchema: unknown = null
   const personaId = (session as { persona_id?: string | null }).persona_id

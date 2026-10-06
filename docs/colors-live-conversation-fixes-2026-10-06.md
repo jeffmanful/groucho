@@ -1,0 +1,43 @@
+# COLORS live-conversation fixes — 6 October 2026
+
+## Reproduction
+
+Founder-style synthetic replay `59e7e2ba-6f5c-4117-b2e1-ef8b5b31f00c` completed in nine applicant turns. It avoided the redundant participation selector, but repeated a COLORS motivation question, implied an order for a remove-only media exercise, produced an unclear question, and joined the exercise's tracks to the applicant's separate monthly-session practice. The detailed report then treated a completed provisional choice as incomplete, inferred recurring attendees and shared trust, and assigned a sequencing tag despite no supplied order.
+
+## Causes
+
+1. The project used the shared `colors-groucho` persona, whose stored prompt still contained an old seven-step onboarding script and an explicit single-select participation question. Four projects referenced that persona, so changing it in place would affect other flows. The runtime appended a newer, contradictory evidence-intent contract.
+2. The applicant's direct COLORS answer had an empty coverage list. The late media-thread route treated that marker as proof the topic had not been answered and emitted an example question. Participation and contribution had a recovery audit; COLORS relationship did not.
+3. A remove choice has `explicitOrderOptionIds: null`. The model nonetheless inferred ordering from a desire to listen to transitions. It also fused two separate facts—the applicant hosts sessions and the exercise supplied four tracks—into an unsupported past event.
+4. The final visible question was not reliably checked after all routing changes. The current reply-shape helper flags the exact live wording as unclear, but the stored turn had no repair marker; without raw and final reply tracing, the bypass cannot be attributed more precisely.
+5. Report citations established only that source messages existed. The writer and same-model verifier accepted interpretations not entailed by the excerpts, while the report format encouraged tags and reservations for uncertainty.
+6. A later replay revealed that media-exercise answers could be credited as a real song recommendation. The same artist-reference marker also treated the exercise's four supplied artists as a singular artist antecedent, producing the unclear phrase "one of their songs." A follow-up replay showed that the late media-thread fallback also omitted the antecedent context when choosing a recommendation question, even after the exercise sources were correctly identified.
+7. A further replay exposed a separate question-to-signal mismatch. The stored next signal was "last song recommended," but Groucho visibly asked about participation or feedback. Because the recommendation goal was phrased broadly as sharing creative work, a later audit could accept a participation answer as recommendation evidence, and the report inherited the wrong label. The issue was not simply a missed keyword: the question, signal, answer relation, and report citation had become inconsistent.
+
+## Changes
+
+- A project-specific, voice-and-judgment-only persona lives in `lib/colors-forum-persona.ts`. `scripts/configure-colors-forum-persona.ts` creates it and assigns only the Forum Application project; it leaves the shared persona and its other projects unchanged. Run without `--apply` to inspect, then with `--apply` to configure. The script verifies the persisted assignment.
+- The final-question audit now revisits an earlier attempted-but-uncovered goal before repeating it, using only that goal's cited applicant messages. Existing participation and contribution recovery remains.
+- A completed remove-style media interaction receives one bounded depth question about the retained performances' relationship. It does not presume a supplied order. Subsequent turns leave the exercise.
+- Media-choice and media-depth answers cannot satisfy the separate recommendation goal merely by discussing the supplied works. Artist-antecedent routing ignores evidence whose only source is that exercise. The late media-thread fallback now passes that provenance result when choosing a recommendation question, so it cannot select "their songs" solely from Groucho's multi-artist exercise.
+- The recommendation goal now asks for an identifiable song actually shared and a reason. Its recovery audit requires an extractive song title and reason from the same applicant message; a general description of sharing music cannot be recovered as that example. When a live turn assigns the recommendation signal, a narrow semantic audit checks whether the visible question actually invites that evidence. If not, the question is repaired to the signal's open text route. A generic participation question is no longer an alternative repair when a different signal has been assigned.
+- A final reply-shape check runs after routing/audit and replaces a missing or unclear invitation with an explicit question.
+- Report reservations require an observed concern claim; missing information belongs in reviewer questions. Remove-only media facts with no explicit order cannot create sequencing tags or dimensions. Writer and verifier instructions call out the specific unsupported inferences from the replay.
+
+## Verification
+
+The dedicated persona assignment was confirmed by a read-only query after applying it. Intermediate live replays (`798c6659-d534-49da-b41c-044ccb2d0bd3`, `20381d5a-2ede-4c54-bb12-f6bbd2861f3c`, `6c7bb5e2-0037-4d36-88e1-3914a6d1c251`, `1df906f0-2d1c-43fb-8558-a079c76c0f7e`, and `364f62d6-8147-4b58-ad22-e0548dec2ae7`) exposed the successive routing and attribution failures described above; they remain useful regression artifacts but do not change retroactively. The final five-turn replay `260e8047-b83b-4d50-bb6d-5d533537efe6` did not repeat COLORS or show the redundant selector. It asked an order-neutral media-depth question, then directly requested a song actually shared. The report cited the applicant's Little Simz "Introvert" answer for recommendation, treated the exercise as provisional, and had no unsupported sequencing tag or reservation. The complete automated suite passed (369/369), as did TypeScript and production-file lint after the final routing correction.
+
+## Remaining boundary
+
+The report verifier remains a model judgment, not a formal entailment proof. A later slice should retain source IDs for each factual clause and record raw, repaired, and final replies in non-sensitive diagnostic traces so any future bypass can be located precisely. Also watch for process phrases such as "before we go further"; the new persona reduces but does not eliminate those model habits.
+
+## Advisory calibration follow-up
+
+The five-turn replay's terminal metadata was a model-selected `pass` at overall score `0.81`, not a question-budget close. Its evidence-backed base report was `recommend` with no weak signals or integrity flags. The independently generated detailed report nevertheless said `human_review` because the prompt allowed any incomplete evidence to count as uncertainty; it did not receive the session outcome or preliminary advisory in its assessment input. Its verifier checked factual support but not the downgrade's decision basis.
+
+The detailed reviewer now receives the terminal outcome and preliminary advisory as context, while remaining free to disagree. It must give a short, source-linked advisory reason. `human_review` requires a material source-backed concern, verified flag, or decision-relevant unresolved signal; routine follow-up questions and absent external observation of a self-reported present practice are not enough. For a passed session with a positive base report, positive claim evidence, and no such issue, an ungrounded downgrade is recalibrated to `recommend`. A cited concern still permits `human_review`. The verifier checks the advisory reason and factual premises in reviewer questions, and one bounded rewrite is attempted when a draft is invalid or fails evidence verification. The demo labels its score as evidence sufficiency rather than a probability of acceptance.
+
+A read-only regeneration on the same synthetic session returned `recommend`, `0.78` evidence sufficiency, no concerns or reservations, and neutral reviewer questions. This generated report was not written back to the historical session; reports already marked ready do not change retroactively.
+
+The final automated suite passed (371/371), and a production build completed with Next.js's documented `--webpack` option. The default Turbopack build could not start a worker/bind a port in this environment; that failure did not occur with Webpack. Next.js also reported the pre-existing `middleware`-to-`proxy` deprecation warning.

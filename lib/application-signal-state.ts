@@ -14,6 +14,10 @@ import {
   type ApplicationQuestionBudget,
 } from "@/lib/application-question-budget"
 import { NATURAL_LANGUAGE_REPLY_GUIDANCE } from "@/lib/natural-language-style"
+import {
+  isApplicationProcessFeedback,
+  type ApplicationFacts,
+} from "@/lib/application-facts"
 
 export type ApplicationSignalDefinition = {
   key: string
@@ -126,10 +130,10 @@ function evidenceGoal(
   if (normalized.includes("last song") && normalized.includes("recommend")) {
     return {
       kind: "recommendation",
-      goal: "Understand how and why they discover, contextualise, and share creative work.",
+      goal: "Hear one identifiable song they have actually recommended or shared, and why they thought that specific song was worth someone else's attention.",
       promptRoutes: [
-        "What is one of their songs that you have—or would—share with someone, and why?",
-        "When you pass music on, what makes it feel worth someone else's attention?",
+        "What is one of their songs that you have shared with someone, and why?",
+        "What is a song you have actually shared with someone, and what made it worth their attention?",
       ],
       priority: "supporting",
       cluster: "cultural_point_of_view",
@@ -352,6 +356,7 @@ export function collectApplicationSignalAnswers(
   const answers = new Map<string, ApplicationSignalAnswer>()
   for (const message of messages) {
     if (message.role !== "user") continue
+    if (isApplicationProcessFeedback(message.metadata)) continue
     const hasCoverage = metadataHasField(message.metadata, "application_signals")
     const coveredSignals = signalsFromMetadata(message.metadata, "application_signals", definitions)
     const promptedSignals = signalsFromMetadata(message.metadata, "application_signal", definitions)
@@ -378,10 +383,39 @@ export function collectApplicationSignalAnswers(
       })
     }
   }
-  return definitions.flatMap((signal) => {
+  let collected = definitions.flatMap((signal) => {
     const answer = answers.get(signal.key)
     return answer ? [answer] : []
   })
+  const userById = new Map(messages.flatMap((message) =>
+    message.role === "user" && message.id ? [[message.id, message]] as const : [],
+  ))
+  for (const message of messages) {
+    if (message.role !== "assistant") continue
+    const raw = metadataRecord(message.metadata)?.application_recovered_signal_evidence
+    for (const item of Array.isArray(raw) ? raw : [raw]) {
+      const recovered = metadataRecord(item)
+      const signal = definitions.find((candidate) => candidate.key === recovered?.signalKey)
+      const sourceId = recovered?.sourceMessageId
+      const source = typeof sourceId === "string" ? userById.get(sourceId) : null
+      if (!signal || !source?.id || !source.content.trim()) continue
+      if (isApplicationProcessFeedback(source.metadata)) continue
+      if (collected.find((answer) => answer.key === signal.key)?.sources?.some(
+        (entry) => entry.messageId === source.id,
+      )) {
+        collected = markCoveredSignals(collected, [signal])
+      } else {
+        collected = withCurrentSignalAnswer(
+          collected,
+          signal,
+          source.content,
+          true,
+          source.id,
+        )
+      }
+    }
+  }
+  return collected
 }
 
 export function collectApplicationInsufficientEvidenceKeys(
@@ -426,6 +460,7 @@ export function hasLegacyUntaggedAnswers(
 ): boolean {
   return messages.some((message, index) => {
     if (message.role !== "user") return false
+    if (isApplicationProcessFeedback(message.metadata)) return false
     const previous = messages[index - 1]
     const followsConversationalThread =
       previous?.role === "assistant" &&
@@ -611,6 +646,7 @@ export function buildCompactApplicationStateMessage(input: {
   adaptiveOrientationEnabled?: boolean
   insufficientEvidenceKeys?: Set<string>
   relevantSignalKeys?: Set<string>
+  facts?: ApplicationFacts
 }): string {
   const answersByKey = new Map(input.answers.map((answer) => [answer.key, answer]))
   const relevantDefinitions = applicationSignalDefinitionsForEvidence(
@@ -836,6 +872,7 @@ export function buildCompactApplicationStateMessage(input: {
       },
     },
     suggestedGapSignalKey,
+    ...(input.facts ? { durableFacts: input.facts } : {}),
   }
 
   const orientationInstructions = input.adaptiveOrientationEnabled
@@ -855,6 +892,7 @@ ${NATURAL_LANGUAGE_REPLY_GUIDANCE}
 Assess the current answer semantically as thin, usable, rich, or concerning. Use usable as the normal baseline for a clear answer that supplies any relevant fact, intention, preference, cultural judgment, or personal point of view, even when it deserves another question. Reserve thin for genuinely empty, evasive, non-responsive, or content-free answers. A short answer such as a creative medium, a concrete goal, or a reason for valuing COLORS is usable. Do not use length, fluency, vocabulary, professional status, fame, follower count, or whether you recognise a reference as a proxy for quality.
 
 Separately compare current.answer with current.question and set answerRelation. Use direct when it answers what was asked, partial when it answers only part, subject_shift when it clearly introduces another person, work, idea, or topic, and ambiguous when several connections are plausible but none is established. Do not lower a culturally meaningful answer's quality merely because its relation is unclear. For subject_shift or ambiguous, do not manufacture continuity, answer the missing question on the applicant's behalf, or make an unsupported observation about the new reference. Briefly receive the exact new detail and ask one natural disambiguating question, such as “Lucki—are you bringing him up as an influence on your own work?” Leave nextSignalKey empty and let this be a conversational repair turn. The applicant's next answer can establish the new thread or return to the earlier one.
+If the applicant asks whether your previous turn was a question or asks you to clarify what you meant, set answerRelation to clarification_request. This is feedback on your wording, not evidence about their suitability. Acknowledge the unclear turn without blaming the applicant, then restate one specific question about the same subject in plain language. Do not switch to another evidence goal, score the applicant's response, infer that the conversation is stilted, or use this turn to insert an exercise. Return no newly covered goals and leave nextSignalKey empty.
 ${orientationInstructions}
 
 Choose one conversationMove:
@@ -882,6 +920,9 @@ There is no closing phase at answers seven or eight. Missing evidence belongs in
 Treat signals as private evidence intents, not a checklist and not a bank of required questions. exampleQuestions are illustrative routes only. Infer the actual question from the applicant's words, the live thread, the relevant unresolved intent, and Groucho's persona. Do not copy an example merely because its signal is open. One answer can cover several goals. Return every open goal newly supported by current.answer in coveredSignalKeys, even if it was not the goal that prompted the answer. Coverage records the presence of usable evidence, not that a goal has been exhaustively explored: a brief direct answer may cover a goal while still earning one natural depth question. Do not repeat keys whose signal status is already covered, and do not attribute facts found only in recentApplicantAnswers or another earlier message to the current answer. Never ask for evidence that is already covered unless a genuine conversational thread warrants one bounded depth question.
 
 Before writing a follow-up, check recentApplicantAnswers for facts the applicant has already supplied, including informal examples that were not assigned to an evidence goal. Do not ask them to restate one. If more detail is needed, name the detail already given and ask only for the missing part.
+
+Use durableFacts as the typed record of what the interaction actually captured. A remove choice has no explicit order unless explicitOrderOptionIds is present. Applicant claims are attributed statements, not independently verified facts. If mediaChoice.depthFollowupUsed is true, leave that exercise now; do not ask another question about its performances. Requests to clarify, corrections of your premise, and requests to change topic are process feedback, not applicant-fit evidence.
+When current.question is a media-choice curation exercise, treat the rationale as a live editorial decision rather than a completed checkbox. If the answer leaves a meaningful trade-off or uncertainty, spend one follow-up on what relationship among the retained works they would test, or what listening would change their provisional decision. Then move on; do not keep interrogating the exercise. Do not pivot to a generic COLORS or participation question before giving that reasoning room, and never claim the applicant has heard or ordered performances they have not.
 
 The opening answer is the first conversational inflection point. Continue from the motivation actually expressed; participantOrientation only describes what emerges and must not select the next question. Community intent should lead into what community means to them; making work should lead into practice or desired exchange; curation or organising should lead into their real role and actions; discovery or listening should lead into how music becomes social or what they hope to find. Do not automatically jump from the opening answer to an artist question.
 

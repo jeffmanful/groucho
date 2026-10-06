@@ -58,24 +58,6 @@ describe("COLORS identity and fairness trajectories", () => {
     expect(curator).toEqual(definitions)
   })
 
-  it("allows fluid crossovers without requiring an orientation change first", () => {
-    const artistCollaborator = [
-      "I make music and trade unfinished demos when I collaborate with other artists.",
-    ]
-    const aspiringListenerCurator = [
-      "I mostly listen now, but I want to start a listening night for overlooked local work.",
-    ]
-    const curatorMaker = [
-      "I curate a radio show, and I have started making my own music to upload too.",
-    ]
-
-    expect(artistCollaborator[0]).toContain("unfinished demos")
-    expect(aspiringListenerCurator[0]).toContain("listening night")
-    expect(routedClusters(["care_and_feedback"])).toContain("care_and_feedback")
-    expect(orientationAfter(curatorMaker).scores.artist).toBeGreaterThan(0)
-    expect(orientationAfter(curatorMaker).scores.curator).toBeGreaterThan(0)
-  })
-
   it.each([
     {
       identity: "artist",

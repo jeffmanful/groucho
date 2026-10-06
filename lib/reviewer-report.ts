@@ -3,6 +3,7 @@ import type {
   ApplicationSignalDefinition,
   ApplicationSignalMessage,
 } from "@/lib/application-signal-state"
+import { isApplicationProcessFeedback } from "@/lib/application-facts"
 import {
   normaliseMediaChoiceAnswer,
   normaliseMediaChoiceInteraction,
@@ -85,13 +86,20 @@ export type ReviewerClaimAssessment = {
   assessment: "strength" | "concern" | "context"
 }
 
+export type ReviewerReservation = {
+  text: string
+  evidence_reference_ids: string[]
+}
+
 export type DetailedReviewerOpinion = {
   snapshot?: ReviewerReportSnapshot
+  advisory_reason?: string
+  advisory_evidence_reference_ids?: string[]
   overall_assessment: string
   decisive_reasons: string[]
   claim_assessments: ReviewerClaimAssessment[]
   likely_contribution: string
-  reservations: string[]
+  reservations: ReviewerReservation[]
   reviewer_questions: string[]
   curatorial_approach?: ReviewerCuratorialApproach
   suggested_human_action:
@@ -241,6 +249,11 @@ export function normaliseDetailedReviewerOpinion(
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
   const data = raw as Record<string, unknown>
   const overallAssessment = cleanText(data.overall_assessment)
+  const advisoryReason = cleanText(data.advisory_reason)
+  const advisoryEvidenceIds = cleanEvidenceIds(
+    data.advisory_evidence_reference_ids,
+    allowedEvidenceIds,
+  )
   const likelyContribution = cleanText(data.likely_contribution)
   const suggestedHumanAction = data.suggested_human_action
   const snapshotRaw = metadataRecord(data.snapshot)
@@ -320,6 +333,19 @@ export function normaliseDetailedReviewerOpinion(
           : []
       }).slice(0, 3)
     : []
+  const reservations = Array.isArray(data.reservations)
+    ? data.reservations.flatMap((item) => {
+        const reservation = metadataRecord(item)
+        const text = cleanText(reservation?.text)
+        const evidenceReferenceIds = cleanEvidenceIds(
+          reservation?.evidence_reference_ids,
+          allowedEvidenceIds,
+        )
+        return text && evidenceReferenceIds.length > 0
+          ? [{ text, evidence_reference_ids: evidenceReferenceIds }]
+          : []
+      }).slice(0, 2)
+    : []
 
   if (
     !overallAssessment ||
@@ -332,11 +358,17 @@ export function normaliseDetailedReviewerOpinion(
 
   return {
     ...(snapshot ? { snapshot } : {}),
+    ...(advisoryReason
+      ? {
+          advisory_reason: advisoryReason,
+          advisory_evidence_reference_ids: advisoryEvidenceIds,
+        }
+      : {}),
     overall_assessment: overallAssessment,
     decisive_reasons: cleanTextArray(data.decisive_reasons).slice(0, 2),
     claim_assessments: claimAssessments,
     likely_contribution: likelyContribution,
-    reservations: cleanTextArray(data.reservations).slice(0, 2),
+    reservations,
     reviewer_questions: cleanTextArray(data.reviewer_questions).slice(0, 2),
     ...(curatorialApproach ? { curatorial_approach: curatorialApproach } : {}),
     suggested_human_action:
@@ -441,6 +473,7 @@ function transcriptEvidence(
   return messages.flatMap((message) => {
     if (message.role !== "user" || !message.id || !message.content.trim()) return []
     const metadata = metadataRecord(message.metadata)
+    if (isApplicationProcessFeedback(message.metadata)) return []
     const signal = metadataRecord(metadata?.application_signal)
     const assessment = metadataRecord(metadata?.answer_assessment)
     return [{

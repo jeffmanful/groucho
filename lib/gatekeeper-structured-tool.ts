@@ -41,6 +41,12 @@ import {
   normaliseApplicationAnswerRelation,
   type ApplicationAnswerRelation,
 } from "@/lib/application-answer-relation"
+import {
+  APPLICATION_MEDIA_CLAIM_KINDS,
+  APPLICATION_PROCESS_FEEDBACK_KINDS,
+  normaliseProcessFeedbackKind,
+  type ApplicationProcessFeedbackKind,
+} from "@/lib/application-facts"
 
 export type {
   GatekeeperTerminalField,
@@ -144,7 +150,7 @@ export const gatekeeperResponseTool = {
             type: "string",
             enum: APPLICATION_ANSWER_RELATIONS,
             description:
-              "direct when it answers the question; partial when it answers only part; subject_shift when it clearly introduces a different subject; ambiguous when its intended connection cannot yet be known.",
+              "direct when it answers the question; partial when it answers only part; subject_shift when it clearly introduces a different subject; ambiguous when its intended connection cannot yet be known; clarification_request when the applicant asks you to explain or rephrase your preceding turn instead of answering it.",
           },
           reason: {
             type: "string",
@@ -153,6 +159,20 @@ export const gatekeeperResponseTool = {
           },
         },
         required: ["kind", "reason"],
+      },
+      processFeedback: {
+        type: "string",
+        enum: APPLICATION_PROCESS_FEEDBACK_KINDS,
+        description: "Use corrects_assistant_assumption when the applicant corrects your factual premise, requests_topic_change when they ask to leave the current subject, otherwise none. These are process turns, not applicant-fit evidence.",
+      },
+      mediaClaim: {
+        type: "object",
+        description: "Record a claim about the current media exercise only with an exact quote from the current applicant answer. Otherwise return none and an empty quote.",
+        properties: {
+          kind: { type: "string", enum: APPLICATION_MEDIA_CLAIM_KINDS },
+          quote: { type: "string" },
+        },
+        required: ["kind", "quote"],
       },
       conversationMove: {
         type: "string",
@@ -191,6 +211,8 @@ export const gatekeeperResponseTool = {
       "scores",
       "answerAssessment",
       "answerRelation",
+      "processFeedback",
+      "mediaClaim",
       "conversationMove",
       "coveredSignalKeys",
       "relevantSignalKeys",
@@ -213,6 +235,8 @@ Every assistant turn you MUST call the tool \`${GATEKEEPER_RESPONSE_TOOL_NAME}\`
 - Treat a clear relevant fact, intention, creative medium, COLORS reason, preference, or cultural judgment as usable evidence even when it deserves a follow-up. Reserve thin for genuinely empty, evasive, or non-responsive answers.
 - Assess \`answerRelation\` separately from quality. A culturally meaningful answer can be usable or rich while still being a subject shift or ambiguous response to the question just asked.
 - When \`answerRelation.kind\` is \`subject_shift\` or \`ambiguous\`, do not pretend the answer resolved the preceding question and do not invent a bridge. Receive the new detail neutrally, ask one short question that lets the applicant explain why they introduced it, and leave \`nextSignalKey\` empty for that repair turn.
+- When the applicant asks whether your last turn was a question, or asks what you meant, set \`answerRelation.kind\` to \`clarification_request\`. Own the ambiguity briefly and ask the intended question clearly, staying with the preceding subject. Do not assess their application, diagnose their mood, change topic, claim new evidence, or make a terminal decision. Return empty \`coveredSignalKeys\` and \`nextSignalKey\`.
+- Record factual corrections and requests to leave a subject in \`processFeedback\`, even when \`answerRelation.kind\` is direct. Do not count those process turns as applicant-fit evidence. For \`mediaClaim\`, copy an exact quote from the current answer or return none and an empty quote.
 - On every active turn after a substantive answer, make the next invitation visibly grow from one concrete detail in that answer. Do not emit a bare next-signal or option question after the applicant has supplied a cultural judgment, creative disclosure, or personal observation.
 - \`terminal\` is \`none\` until the exchange should end. Terminal replies must use the configured neutral close and never reveal the private outcome.
 - \`scores\` and \`answerAssessment\` judge substance rather than length, fluency, status, fame, or familiarity with a reference.
@@ -231,6 +255,8 @@ export type ParsedGatekeeperStructured = {
   scores: Score
   answerAssessment: ApplicationAnswerAssessment | null
   answerRelation: ApplicationAnswerRelation | null
+  processFeedback: ApplicationProcessFeedbackKind
+  mediaClaim: unknown
   conversationMove: ApplicationConversationMove | null
   responseMode: ApplicationResponseMode | null
   participantOrientation: ApplicationParticipantOrientationState
@@ -352,6 +378,10 @@ export function parseGatekeeperStructuredResponse(
     answerRelation: toolSeen
       ? normaliseApplicationAnswerRelation(toolInput.answerRelation)
       : null,
+    processFeedback: toolSeen
+      ? normaliseProcessFeedbackKind(toolInput.processFeedback)
+      : "none",
+    mediaClaim: toolSeen ? toolInput.mediaClaim : null,
     conversationMove: toolSeen
       ? normaliseApplicationConversationMove(toolInput.conversationMove)
       : null,

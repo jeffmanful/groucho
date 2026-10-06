@@ -13,10 +13,10 @@ export default function AdminSessionsPage() {
             margin: 0,
           }}
         >
-          LIVE SESSIONS
+          SESSIONS & REPORTS
         </h1>
         <p style={{ fontSize: "0.78rem", opacity: 0.35, marginTop: "0.5rem" }}>
-          Choose a project, browse its sessions and follow the selected conversation.
+          Choose a project and session to read the conversation or its generated report.
         </p>
       </div>
       <LiveConversations />

@@ -50,7 +50,18 @@ export function repairApplicationReplyWithQuestion(input: {
 function hasExplicitResponsePrompt(reply: string): boolean {
   const value = reply.trim()
   if (!value) return false
-  if (value.includes("?")) return true
+  const questions = value
+    .split(/(?<=[.!?])\s+|\n+/)
+    .filter((sentence) => sentence.includes("?"))
+  if (questions.some((question) => {
+    const clause = (question.split(/[,—–:]\s*(?=(?:what|how|why|where|when|who|which|is|are|was|were|do|does|did|can|could|would|will|should|have|has)\b)/i).at(-1) ?? question).trim()
+    if (/^what (?:strikes|stands out to|i (?:hear|notice|see|think|find))\b/i.test(clause)) {
+      return false
+    }
+    return /^(?:what|how|why|where|when|who|which|whose|is|are|was|were|do|does|did|can|could|would|will|should|have|has)\b/i.test(clause)
+  })) {
+    return true
+  }
   if (/\b(?:i(?:'m| am) curious|i wonder)\s+(?:what|how|whether|which|who|where|when)\b/i.test(value)) {
     return true
   }
@@ -62,6 +73,7 @@ function hasExplicitResponsePrompt(reply: string): boolean {
 export type ActiveApplicationReplyIssue =
   | "terminal_language"
   | "missing_invitation"
+  | "unclear_invitation"
   | "missing_artist_antecedent"
   | "multiple_questions"
   | "repeated_question"
@@ -132,7 +144,7 @@ export function activeApplicationReplyIssue(input: {
       input.interaction.inputType === "voice") &&
     !hasExplicitResponsePrompt(input.reply)
   ) {
-    return "missing_invitation"
+    return input.reply.includes("?") ? "unclear_invitation" : "missing_invitation"
   }
   if (
     normalizedQuestions(input.reply).length > 1 ||

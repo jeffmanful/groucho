@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useId, useMemo, useRef, useState } from "react"
 import type {
   MediaChoiceAnswer,
   MediaChoiceInteraction,
@@ -29,6 +29,23 @@ export function MediaChoiceInput({
   const [internalSelected, setInternalSelected] = useState<string[]>([])
   const [internalRationale, setInternalRationale] = useState("")
   const [playing, setPlaying] = useState<string | null>(null)
+  const dialogRef = useRef<HTMLDialogElement>(null)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
+  const playButtonRef = useRef<HTMLButtonElement | null>(null)
+  const playerTitleId = useId()
+  const playingOption = interaction.options.find((option) => option.id === playing)
+
+  useEffect(() => {
+    if (!playingOption) return
+    const dialog = dialogRef.current
+    if (!dialog) return
+    dialog.showModal()
+    closeButtonRef.current?.focus()
+    return () => {
+      if (dialog.open) dialog.close()
+      playButtonRef.current?.focus()
+    }
+  }, [playingOption])
   const selected = controlledSelected ?? internalSelected
   const rationale = controlledRationale ?? internalRationale
   const { mode, minSelections, maxSelections } = interaction.selection
@@ -98,7 +115,6 @@ export function MediaChoiceInput({
           const thumbnail =
             option.media.thumbnailUrl ??
             `https://i.ytimg.com/vi/${option.media.videoId}/hqdefault.jpg`
-          const player = `https://www.youtube-nocookie.com/embed/${option.media.videoId}?rel=0${option.media.startSeconds ? `&start=${option.media.startSeconds}` : ""}`
           return (
             <article
               key={option.id}
@@ -110,39 +126,29 @@ export function MediaChoiceInput({
               )}
             >
               <div className="relative aspect-video overflow-hidden bg-zinc-950 outline -outline-offset-1 outline-white/10">
-                {playing === option.id ? (
-                  <iframe
-                    src={player}
-                    title={option.media.title}
-                    className="h-full w-full border-0"
-                    loading="lazy"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                    allowFullScreen
-                    referrerPolicy="strict-origin-when-cross-origin"
-                  />
-                ) : (
-                  <>
-                    {/* External posters are intentional; the SDK contract restricts them to HTTPS. */}
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={thumbnail}
-                      alt={option.media.alt}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setPlaying(option.id)}
-                      disabled={disabled}
-                      aria-label={`Play ${option.media.title}`}
-                      className="absolute top-1/2 left-1/2 grid size-11 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-white/25 bg-black/65 text-white backdrop-blur-md transition-[scale,background-color,opacity] duration-150 ease-out hover:bg-black/85 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      <svg viewBox="0 0 24 24" className="size-5 translate-x-px" aria-hidden="true">
-                        <path d="M9 7.25v9.5L17 12 9 7.25Z" fill="currentColor" />
-                      </svg>
-                    </button>
-                  </>
-                )}
+                {/* External posters are intentional; the SDK contract restricts them to HTTPS. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={thumbnail}
+                  alt={option.media.alt}
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                />
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    playButtonRef.current = event.currentTarget
+                    setPlaying(option.id)
+                  }}
+                  disabled={disabled}
+                  aria-label={`Open video: ${option.media.title}`}
+                  className="absolute top-1/2 left-1/2 flex min-h-11 -translate-x-1/2 -translate-y-1/2 items-center gap-2 whitespace-nowrap rounded-full border border-white/25 bg-black/75 px-3 text-xs text-white backdrop-blur-md transition-[scale,background-color,opacity] duration-150 ease-out hover:bg-black/90 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <svg viewBox="0 0 24 24" className="size-4 shrink-0 translate-x-px" aria-hidden="true">
+                    <path d="M9 7.25v9.5L17 12 9 7.25Z" fill="currentColor" />
+                  </svg>
+                  <span>Open video</span>
+                </button>
                 {rank ? (
                   <span className="absolute top-2 left-2 grid min-h-7 min-w-7 place-items-center rounded-full border border-white/25 bg-black/70 px-2 text-[0.68rem] font-medium text-white tabular-nums backdrop-blur-sm" aria-label={`Rank ${rank}`}>
                     {rank}
@@ -268,6 +274,51 @@ export function MediaChoiceInput({
       >
         Send answer
       </button></> : null}
+
+      {section !== "composer" && playingOption ? (
+        <dialog
+          ref={dialogRef}
+          aria-labelledby={playerTitleId}
+          onClose={() => setPlaying(null)}
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setPlaying(null)
+          }}
+          className="fixed inset-0 m-auto w-[min(42rem,calc(100vw-2rem))] max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-xl border border-white/20 bg-zinc-950 p-4 text-white shadow-[0_24px_80px_rgba(0,0,0,0.55)] backdrop:bg-black/80 sm:p-5"
+        >
+          <div className="mb-3 flex items-start justify-between gap-4">
+            <h2 id={playerTitleId} className="text-pretty text-sm font-medium leading-relaxed">
+              {playingOption.media.title}
+            </h2>
+            <button
+              ref={closeButtonRef}
+              type="button"
+              onClick={() => setPlaying(null)}
+              aria-label="Close video"
+              className="grid size-11 shrink-0 place-items-center rounded-lg border border-white/20 text-lg leading-none text-white/75 transition-[border-color,color] hover:border-white/40 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+            >
+              ×
+            </button>
+          </div>
+          <div className="relative aspect-video min-h-[200px] w-full overflow-hidden rounded-lg bg-black">
+            <iframe
+              src={`https://www.youtube-nocookie.com/embed/${playingOption.media.videoId}?rel=0${playingOption.media.startSeconds ? `&start=${playingOption.media.startSeconds}` : ""}`}
+              title={playingOption.media.title}
+              className="absolute inset-0 h-full w-full border-0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+              referrerPolicy="strict-origin-when-cross-origin"
+            />
+          </div>
+          <a
+            href={`https://www.youtube.com/watch?v=${playingOption.media.videoId}`}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-3 inline-flex min-h-11 items-center text-xs text-white/65 underline underline-offset-4 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+          >
+            Open on YouTube if the video does not play here
+          </a>
+        </dialog>
+      ) : null}
     </div>
   )
 }

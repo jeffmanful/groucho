@@ -31,7 +31,9 @@ describe("parseGatekeeperStructuredResponse", () => {
     expect(properties).not.toHaveProperty("inputType")
     expect(properties).not.toHaveProperty("visualState")
     expect(required).toContain("answerRelation")
-    expect(required).toHaveLength(9)
+    expect(required).toContain("processFeedback")
+    expect(required).toContain("mediaClaim")
+    expect(required).toHaveLength(11)
   })
 
   it("reads compact answer evidence and a single selected bridge", () => {

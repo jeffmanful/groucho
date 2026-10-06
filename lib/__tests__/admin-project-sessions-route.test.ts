@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const database = vi.hoisted(() => ({ legacyPolicySchema: false }))
+const focusSessionId = "11111111-2222-4333-8444-555555555555"
+const database = vi.hoisted(() => ({ legacyPolicySchema: false, includeFocusedSession: false }))
 
 vi.mock("@/lib/admin-actor", () => ({
   resolveAdminActor: vi.fn(async () => ({
@@ -20,12 +21,14 @@ vi.mock("@/lib/supabase", () => ({
   supabase: {
     from(table: string) {
       let selected = ""
+      let selectedId = ""
       const chain = {
         select(columns: string) {
           selected = columns
           return chain
         },
-        eq() {
+        eq(column: string, value: string) {
+          if (column === "id") selectedId = value
           return chain
         },
         order() {
@@ -42,6 +45,23 @@ vi.mock("@/lib/supabase", () => ({
                     review_threshold: 0.55,
                   },
                 },
+              },
+              error: null,
+            }
+          }
+          if (table === "sessions" && database.includeFocusedSession && selectedId === focusSessionId) {
+            return {
+              data: {
+                id: focusSessionId,
+                session_id: "focused-applicant-session",
+                status: "passed",
+                persona_id: null,
+                created_at: "2026-09-06T08:00:00.000Z",
+                updated_at: "2026-09-06T08:05:00.000Z",
+                profile_extracted_at: null,
+                applicant_email: null,
+                applicant_name: "Focused applicant",
+                ...(selected.includes("suitability_score") ? { suitability_score: 0.42 } : {}),
               },
               error: null,
             }
@@ -127,15 +147,16 @@ vi.mock("@/lib/supabase", () => ({
 describe("admin project sessions route", () => {
   beforeEach(() => {
     database.legacyPolicySchema = false
+    database.includeFocusedSession = false
     vi.restoreAllMocks()
   })
 
-  async function getSessions() {
+  async function getSessions(focus?: string) {
     const { GET } = await import(
       "@/app/api/admin/organisations/[orgId]/projects/[projectId]/sessions/route"
     )
     return GET(
-      new NextRequest("http://localhost/api/admin/sessions"),
+      new NextRequest(`http://localhost/api/admin/sessions${focus ? `?session=${focus}` : ""}`),
       {
         params: Promise.resolve({ orgId: "org-1", projectId: "project-1" }),
       },
@@ -168,5 +189,17 @@ describe("admin project sessions route", () => {
       review_status: "approved",
       decision_source: "human",
     })
+  })
+
+  it("includes a linked session outside the first page", async () => {
+    database.includeFocusedSession = true
+    const response = await getSessions(focusSessionId)
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(body.total).toBe(1)
+    expect(body.sessions.map((session: { id: string }) => session.id)).toEqual([
+      focusSessionId,
+      "session-1",
+    ])
   })
 })

@@ -3,6 +3,7 @@ export const APPLICATION_ANSWER_RELATIONS = [
   "partial",
   "subject_shift",
   "ambiguous",
+  "clarification_request",
 ] as const
 
 export type ApplicationAnswerRelationKind =

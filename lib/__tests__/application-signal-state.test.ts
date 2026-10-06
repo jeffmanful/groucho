@@ -22,6 +22,57 @@ describe("application signal state", () => {
     "Community contribution",
   ])
 
+  it("recovers participation from an exact earlier applicant message, not a clarification request", () => {
+    const participation = definitions[1]
+    const answers = collectApplicationSignalAnswers([
+      {
+        id: "earlier-participation",
+        role: "user",
+        content: "I host a monthly listening night and introduce the artists to each other.",
+      },
+      {
+        id: "clarification",
+        role: "user",
+        content: "Is that a question?",
+        metadata: { application_answer_relation: { kind: "clarification_request" } },
+      },
+      {
+        id: "audited-turn",
+        role: "assistant",
+        content: "What would you test next?",
+        metadata: {
+          application_recovered_signal_evidence: {
+            signalKey: participation.key,
+            sourceMessageId: "earlier-participation",
+          },
+        },
+      },
+    ], definitions)
+
+    expect(answers).toEqual(expect.arrayContaining([expect.objectContaining({
+      key: participation.key,
+      covered: true,
+      sources: [expect.objectContaining({ messageId: "earlier-participation" })],
+    })]))
+    expect(answers.find((answer) => answer.key === participation.key)?.answer)
+      .not.toContain("Is that a question?")
+  })
+
+  it("does not count an applicant correction as a signal answer", () => {
+    const messages = [{
+      id: "correction",
+      role: "user" as const,
+      content: "I did not sequence those works; please move on.",
+      metadata: {
+        application_process_feedback: { kind: "corrects_assistant_assumption" },
+        application_signal: { key: definitions[0].key, label: definitions[0].label },
+        answer_assessment: { quality: "usable" },
+      },
+    }]
+    expect(collectApplicationSignalAnswers(messages, definitions)).toEqual([])
+    expect(hasLegacyUntaggedAnswers(messages, definitions)).toBe(false)
+  })
+
   it("creates stable unique keys", () => {
     const result = applicationSignalDefinitions(["Artist reference", "Artist reference"])
     expect(result.map(({ key, label }) => ({ key, label }))).toEqual([
@@ -51,7 +102,7 @@ describe("application signal state", () => {
     expect(goals[1].cluster).toBe(goals[2].cluster)
     expect(goals[3].cluster).toBe(goals[4].cluster)
     expect(goals[2].promptRoutes[0]).toBe(
-      "What is one of their songs that you have—or would—share with someone, and why?",
+      "What is one of their songs that you have shared with someone, and why?",
     )
   })
 
@@ -250,6 +301,23 @@ describe("application signal state", () => {
       definitions[0],
     )
     expect(hasLegacyUntaggedAnswers(messages, definitions)).toBe(false)
+  })
+
+  it("does not record a request for clarification as application evidence", () => {
+    const answers = collectApplicationSignalAnswers([{
+      id: "msg-clarify",
+      role: "user",
+      content: "Is that a question?",
+      metadata: {
+        application_signal: definitions[0],
+        application_signals: [],
+        application_answer_relation: {
+          kind: "clarification_request",
+          reason: "Asks for the prompt to be made clear.",
+        },
+      },
+    }], definitions)
+    expect(answers).toEqual([])
   })
 
   it("collects only configured model-recorded relevance keys", () => {

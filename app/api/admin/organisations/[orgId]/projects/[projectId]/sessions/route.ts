@@ -84,8 +84,9 @@ export async function GET(
   let data = sessionResult.data as SessionListRow[] | null
   let error = sessionResult.error
   let count = sessionResult.count
+  const legacySuitabilitySchema = isMissingSchemaPart(error, "suitability_score")
 
-  if (isMissingSchemaPart(error, "suitability_score")) {
+  if (legacySuitabilitySchema) {
     console.warn(
       "sessions list: decision-policy migration is not applied; loading without suitability scores",
     )
@@ -109,6 +110,36 @@ export async function GET(
   if (error) {
     console.error("sessions list:", error)
     return NextResponse.json({ error: "Database error" }, { status: 500 })
+  }
+
+  const focusSessionId = searchParams.get("session")?.trim()
+  if (
+    focusSessionId &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(focusSessionId) &&
+    !(data ?? []).some((session) => session.id === focusSessionId)
+  ) {
+    const focusResult = await supabase
+      .from("sessions")
+      .select(legacySuitabilitySchema
+        ? "id, session_id, status, persona_id, created_at, updated_at, profile_extracted_at, applicant_email, applicant_name"
+        : "id, session_id, status, persona_id, created_at, updated_at, profile_extracted_at, applicant_email, applicant_name, suitability_score")
+      .eq("id", focusSessionId)
+      .eq("project_id", projectId)
+      .eq("organisation_id", orgId)
+      .maybeSingle()
+    if (focusResult.error) {
+      console.error("focused session:", focusResult.error)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
+    const focusedSession = focusResult.data as unknown as SessionListRow | null
+    if (focusedSession) {
+      data = [{
+        ...focusedSession,
+        suitability_score: legacySuitabilitySchema
+          ? null
+          : focusedSession.suitability_score,
+      } as SessionListRow, ...(data ?? [])]
+    }
   }
 
   const sessionIds = (data ?? []).map((session) => session.id)

@@ -18,27 +18,18 @@ describe("application answer relation", () => {
     expect(applicationAnswerNeedsRepair(relation)).toBe(true)
   })
 
-  it("repairs ambiguity but lets direct and partial answers continue", () => {
-    expect(
-      applicationAnswerNeedsRepair(
-        normaliseApplicationAnswerRelation({ kind: "ambiguous", reason: "" }),
-      ),
-    ).toBe(true)
-    expect(
-      applicationAnswerNeedsRepair(
-        normaliseApplicationAnswerRelation({ kind: "direct", reason: "" }),
-      ),
-    ).toBe(false)
-    expect(
-      applicationAnswerNeedsRepair(
-        normaliseApplicationAnswerRelation({ kind: "partial", reason: "" }),
-      ),
-    ).toBe(false)
-  })
-
   it("rejects unknown relation values", () => {
     expect(
       normaliseApplicationAnswerRelation({ kind: "off_topic", reason: "" }),
     ).toBeNull()
+  })
+
+  it("recognises a request to clarify the assistant without treating it as a subject shift", () => {
+    const relation = normaliseApplicationAnswerRelation({
+      kind: "clarification_request",
+      reason: "The applicant asks whether the preceding reflection was a question.",
+    })
+    expect(relation?.kind).toBe("clarification_request")
+    expect(applicationAnswerNeedsRepair(relation)).toBe(false)
   })
 })

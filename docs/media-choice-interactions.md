@@ -201,6 +201,11 @@ titles ending in `A COLORS SHOW`, and caches the upstream result for 15 minutes.
 The browser receives only the normalised media-choice interaction; it does not
 fetch or parse the playlist itself.
 
+In the COLORS doorcheck preview, the performance cards open a single video
+player in a dialog large enough for YouTube's controls. Closing the dialog
+returns focus to the card and preserves the selected option and rationale. A
+link to the original YouTube page remains available if embedding is blocked.
+
 The same exercise is now integrated into the adaptive COLORS test flow. After
 the second applicant answer, Groucho may replace its next cultural-point-of-view
 prompt with a **remove one + rationale** exercise built from the latest four

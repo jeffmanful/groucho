@@ -130,6 +130,39 @@ describe("application turn integrity", () => {
     ).toBe("missing_invitation")
   })
 
+  it("does not mistake a questioning reflection for an invitation", () => {
+    expect(activeApplicationReplyIssue({
+      reply: "Those three make sense together. What strikes me about that choice is the framing, you're thinking about how they sit next to each other?",
+      interaction: {
+        intent: "probe",
+        inputType: "text",
+        emotionalState: "curious",
+        visualState: "curious",
+      },
+      closingMessage: "Thank you for your time.",
+    })).toBe("unclear_invitation")
+    expect(activeApplicationReplyIssue({
+      reply: "The restraint becomes legible as a choice. You know what that kind of listening actually requires, though?",
+      interaction: {
+        intent: "probe",
+        inputType: "text",
+        emotionalState: "curious",
+        visualState: "curious",
+      },
+      closingMessage: "Thank you for your time.",
+    })).toBe("unclear_invitation")
+    expect(activeApplicationReplyIssue({
+      reply: "Those three make sense together. What makes that sequence work for you?",
+      interaction: {
+        intent: "probe",
+        inputType: "text",
+        emotionalState: "curious",
+        visualState: "curious",
+      },
+      closingMessage: "Thank you for your time.",
+    })).toBeNull()
+  })
+
   it("accepts a clear text invitation with or without a question mark", () => {
     const interaction = {
       intent: "probe" as const,

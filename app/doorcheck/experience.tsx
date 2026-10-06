@@ -170,6 +170,8 @@ type ReviewerReport = {
         evidence_reference_ids: string[]
       }>
     }
+    advisory_reason?: string
+    advisory_evidence_reference_ids?: string[]
     overall_assessment: string
     decisive_reasons: string[]
     claim_assessments: Array<{
@@ -179,7 +181,7 @@ type ReviewerReport = {
       assessment: "strength" | "concern" | "context"
     }>
     likely_contribution: string
-    reservations: string[]
+    reservations: Array<{ text: string; evidence_reference_ids: string[] }>
     reviewer_questions: string[]
     curatorial_approach?: {
       present: boolean
@@ -615,6 +617,17 @@ function parseReviewerReport(raw: unknown): ReviewerReport | null {
           : []
       })
     : []
+  const evidenceIds = new Set(evidenceReferences.map((reference) => reference.source_message_id))
+  const reservations = detailedData && Array.isArray(detailedData.reservations)
+    ? detailedData.reservations.flatMap((item) => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) return []
+        const value = item as Record<string, unknown>
+        const ids = textItems(value.evidence_reference_ids).filter((id) => evidenceIds.has(id))
+        return typeof value.text === "string" && value.text.trim() && ids.length > 0
+          ? [{ text: value.text, evidence_reference_ids: ids }]
+          : []
+      })
+    : []
   const humanAction = detailedData?.suggested_human_action
   const snapshotData =
     detailedData?.snapshot &&
@@ -668,11 +681,18 @@ function parseReviewerReport(raw: unknown): ReviewerReport | null {
       humanAction === "decline")
       ? {
           ...(snapshot ? { snapshot } : {}),
+          ...(typeof detailedData.advisory_reason === "string" && detailedData.advisory_reason.trim()
+            ? {
+                advisory_reason: detailedData.advisory_reason,
+                advisory_evidence_reference_ids: textItems(detailedData.advisory_evidence_reference_ids)
+                  .filter((id) => evidenceIds.has(id)),
+              }
+            : {}),
           overall_assessment: detailedData.overall_assessment,
           decisive_reasons: textItems(detailedData.decisive_reasons),
           claim_assessments: claimAssessments,
           likely_contribution: detailedData.likely_contribution,
-          reservations: textItems(detailedData.reservations),
+          reservations,
           reviewer_questions: textItems(detailedData.reviewer_questions),
           ...(curatorialApproach
             ? { curatorial_approach: curatorialApproach }
@@ -718,7 +738,9 @@ function ReviewerReportPanel({
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false)
   const detailsId = useId()
-  const recommendation = report.advisory_recommendation.replace("_", " ")
+  const recommendation = report.advisory_recommendation === "human_review"
+    ? "needs discussion"
+    : report.advisory_recommendation
   const detailed = report.detailed_opinion
   const snapshot = detailed?.snapshot
   const primaryStrength = detailed?.claim_assessments.find(
@@ -776,12 +798,19 @@ function ReviewerReportPanel({
         <div className="flex items-center gap-2 text-[0.68rem] uppercase tracking-[0.12em] text-white/42">
           <span>{recommendation}</span>
           <span aria-hidden="true">·</span>
-          <span className="tabular-nums text-white/70">{`${Math.round(report.confidence_score * 100)}% confidence`}</span>
+          <span className="tabular-nums text-white/70">
+            {`${detailed ? "Evidence sufficiency" : "Report score"} ${Math.round(report.confidence_score * 100)}/100`}
+          </span>
         </div>
       </div>
       <p className="text-sm leading-relaxed text-white/72">
         {snapshot?.applicant_summary ?? report.applicant_bio}
       </p>
+      {detailed?.advisory_reason ? (
+        <p className="mt-2 text-xs leading-relaxed text-white/48">
+          Why: {detailed.advisory_reason}
+        </p>
+      ) : null}
       {snapshot?.tags.length ? (
         <div className="mt-3 flex flex-wrap gap-1.5" aria-label="Applicant evidence tags">
           {snapshot.tags.map((tag) => (
@@ -960,7 +989,28 @@ function ReviewerReportPanel({
                 {detailed.likely_contribution}
               </p>
             </div>
-            {listSection("reservations", detailed.reservations)}
+            {detailed.reservations.length ? (
+              <div>
+                <p className="mb-1 text-[0.62rem] uppercase tracking-[0.14em] text-white/32">
+                  reservations
+                </p>
+                <div className="space-y-3">
+                  {detailed.reservations.map((reservation, index) => (
+                    <div key={`${reservation.text}-${index}`}>
+                      <p className="text-sm leading-relaxed text-white/58">{reservation.text}</p>
+                      {reservation.evidence_reference_ids.flatMap((id) => {
+                        const reference = evidenceById.get(id)
+                        return reference ? [(
+                          <blockquote key={id} className="mt-1 border-l border-white/15 pl-3 text-xs leading-relaxed text-white/42">
+                            “{reference.excerpt}”
+                          </blockquote>
+                        )] : []
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             {listSection("questions for a human reviewer", detailed.reviewer_questions)}
             <div>
               <p className="mb-1 text-[0.62rem] uppercase tracking-[0.14em] text-white/32">
@@ -2153,10 +2203,12 @@ export function DoorCheckExperience({
     personas.find((item) => item.id === selectedPersonaId)?.name ?? "Lou"
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId)
-  const isGatekeeperPreview = selectedProject?.projectType === "gatekeeper"
+  const isGatekeeperPreview =
+    isColorsDemo || selectedProject?.projectType === "gatekeeper"
   const isColorsProject =
-    isGatekeeperPreview &&
-    selectedProject?.organisationName.trim().toLowerCase() === "colors"
+    isColorsDemo ||
+    (isGatekeeperPreview &&
+      selectedProject?.organisationName.trim().toLowerCase() === "colors")
   const showConclusionActions =
     concluded && (!isGatekeeperPreview || decisionPhase === "revealed")
   const showReviewerReport = Boolean(showConclusionActions && reviewerReport)

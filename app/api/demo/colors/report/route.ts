@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { colorsDemoProject } from "@/lib/colors-demo-access"
 import { demoSession } from "@/lib/colors-demo-token"
 import { generateDetailedReviewerReport } from "@/lib/detailed-reviewer-report"
+import { collectApplicationFacts } from "@/lib/application-facts"
 import { getOrCreateRequestId } from "@/lib/request-trace"
 import { normaliseReviewerReport } from "@/lib/reviewer-report"
 import { supabase } from "@/lib/supabase"
@@ -91,6 +92,9 @@ export async function POST(req: NextRequest) {
         message.role === "user" || message.role === "assistant",
       ).map(({ id, role, content }) => ({ id, role, content })),
       baseReport,
+      facts: collectApplicationFacts(rows.filter((message): message is ReportMessage & { role: "user" | "assistant" } =>
+        message.role === "user" || message.role === "assistant",
+      )),
       requestId: getOrCreateRequestId(req),
       organisationId: project.context.organisationId,
       projectId: project.context.projectId,

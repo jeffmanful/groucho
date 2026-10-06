@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useCallback, useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import type { AdminOverviewPayload } from "@/lib/admin-overview"
 
 const label: React.CSSProperties = {
@@ -92,23 +92,24 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setErr(null)
-    const res = await fetch("/api/admin/overview")
-    if (!res.ok) {
-      setErr("Could not load overview")
-      setData(null)
-      setLoading(false)
-      return
-    }
-    setData(await res.json())
-    setLoading(false)
-  }, [])
-
   useEffect(() => {
-    void load()
-  }, [load])
+    let cancelled = false
+    void fetch("/api/admin/overview")
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Could not load overview")
+        const payload = await res.json() as AdminOverviewPayload
+        if (cancelled) return
+        setData(payload)
+        setLoading(false)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setErr("Could not load overview")
+        setData(null)
+        setLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [])
 
   const canCreateAny =
     data?.organisations.some((o) => o.canCreateProject) ?? false
@@ -159,6 +160,9 @@ export default function AdminDashboard() {
               New project
             </Link>
           )}
+          <Link href="/admin/sessions?view=report" style={btn(false)}>
+            Reports
+          </Link>
           <Link href="/admin/sessions" style={btn(false)}>
             Live sessions
           </Link>
@@ -345,10 +349,10 @@ export default function AdminDashboard() {
                         </Link>
                       )}
                       <Link
-                        href={`/admin/sessions`}
+                        href={`/admin/sessions?project=${p.id}`}
                         style={{ ...btn(false), fontSize: "0.62rem" }}
                       >
-                        Live sessions
+                        Sessions & reports
                       </Link>
                     </div>
                   </li>
@@ -428,6 +432,14 @@ export default function AdminDashboard() {
                     >
                       Transcript
                     </Link>
+                    {["passed", "redirected", "rejected"].includes(s.status) ? (
+                      <Link
+                        href={`/admin/sessions?project=${s.projectId}&session=${s.id}&view=report`}
+                        style={{ ...btn(false), minHeight: "2.5rem", display: "inline-flex", alignItems: "center" }}
+                      >
+                        View report
+                      </Link>
+                    ) : null}
                   </li>
                 ))}
               </ul>

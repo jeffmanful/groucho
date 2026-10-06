@@ -97,6 +97,13 @@ import {
   type ApplicationAnswerRelation,
 } from "@/lib/application-answer-relation"
 import {
+  collectApplicationFacts,
+  isApplicationProcessFeedback,
+  normaliseMediaClaim,
+  type ApplicationMediaClaimKind,
+  type ApplicationProcessFeedbackKind,
+} from "@/lib/application-facts"
+import {
   collectApplicationConversationThread,
   fallbackApplicationConversationThread,
   type ApplicationConversationThread,
@@ -162,6 +169,146 @@ function traceJson(
 }
 
 const client = new Anthropic()
+
+async function findPriorApplicationEvidence(input: {
+  kind: string
+  goal: string
+  messages: Array<ApplicationSignalMessage & { id: string }>
+  sourceMessageIds?: string[]
+  requestId?: string
+  organisationId: string
+  projectId: string
+  sessionId: string
+}): Promise<string | null> {
+  const candidates = input.messages.filter((message) => {
+    if (message.role !== "user" || !message.content.trim()) return false
+    if (input.sourceMessageIds && !input.sourceMessageIds.includes(message.id)) return false
+    return !isApplicationProcessFeedback(message.metadata)
+  }).slice(-10)
+  if (!candidates.length) return null
+  const model = gatekeeperConversationModel()
+  const response = await client.messages.create({
+    model,
+    max_tokens: 160,
+    system: input.kind === "participation"
+      ? "You are a narrow evidence auditor. Decide whether the applicant has already explicitly described how they presently participate around music. Hosting, selecting, introducing, discussing, sharing, giving feedback or returning to a listening community can count when the applicant says they actually do it; a future plan alone does not. Do not infer from labels, status or enthusiasm. Cite exactly one applicant message id that supports the conclusion. Return JSON only."
+      : input.kind === "contribution"
+        ? "You are a narrow evidence auditor. Decide whether the applicant has already described a concrete, realistic contribution they currently make around music or could sustainably bring to this Forum. A repeatable existing habit may count when the applicant explains how it would continue here; a vague aspiration alone does not. Do not infer from labels, status or enthusiasm. Cite exactly one applicant message id that supports the conclusion. Return JSON only."
+        : input.kind === "recommendation"
+          ? "You are a narrow evidence auditor. The goal is evidence of one identifiable song the applicant actually recommended or shared, and why that specific song was worth sharing. General claims about selecting, introducing, or discussing music do not satisfy this goal. A song merely supplied by the exercise does not establish an actual recommendation. Return supported true only when one applicant message contains both a specific song title and a reason for sharing it. Copy the title and a short reason quote exactly from that same message; otherwise return supported false and empty strings. Cite that message id. Return JSON only."
+        : "You are a narrow evidence auditor. The applicant already answered a question associated with this evidence goal, but the live coverage marker remained false. Decide whether that earlier answer directly provides usable evidence for the goal. A clear relevant perception, reason, preference, intention, or example can be usable without exhausting the topic. Do not infer facts the applicant did not say, and do not treat a request to clarify Groucho as applicant evidence. Cite exactly one supporting applicant message id, or return supported false. Return JSON only.",
+    output_config: {
+      format: {
+        type: "json_schema",
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            supported: { type: "boolean" },
+            sourceMessageId: { type: "string" },
+            specificSongTitle: { type: "string" },
+            sharingReasonQuote: { type: "string" },
+          },
+          required: ["supported", "sourceMessageId", "specificSongTitle", "sharingReasonQuote"],
+        },
+      },
+    },
+    messages: [{
+      role: "user",
+      content: JSON.stringify({
+        goal: input.goal,
+        applicantMessages: candidates.map((message) => ({
+          id: message.id,
+          content: message.content,
+        })),
+      }),
+    }],
+  })
+  logLlmUsage({
+    operation: "gatekeeper_prior_signal_audit",
+    provider: "anthropic",
+    model,
+    usage: response.usage,
+    requestId: input.requestId,
+    organisationId: input.organisationId,
+    projectId: input.projectId,
+    sessionId: input.sessionId,
+  })
+  const textBlock = response.content.find((block) => block.type === "text")
+  const result = textBlock?.type === "text"
+    ? JSON.parse(textBlock.text) as {
+        supported?: unknown
+        sourceMessageId?: unknown
+        specificSongTitle?: unknown
+        sharingReasonQuote?: unknown
+      }
+    : null
+  const source = candidates.find((message) => message.id === result?.sourceMessageId)
+  if (input.kind === "recommendation") {
+    const title = typeof result?.specificSongTitle === "string"
+      ? result.specificSongTitle.trim()
+      : ""
+    const reason = typeof result?.sharingReasonQuote === "string"
+      ? result.sharingReasonQuote.trim()
+      : ""
+    if (!source || title.length < 2 || reason.length < 8 ||
+      !source.content.toLocaleLowerCase().includes(title.toLocaleLowerCase()) ||
+      !source.content.toLocaleLowerCase().includes(reason.toLocaleLowerCase())) {
+      return null
+    }
+  }
+  return result?.supported === true &&
+    typeof result.sourceMessageId === "string" &&
+    source !== undefined
+      ? result.sourceMessageId
+      : null
+}
+
+async function recommendationQuestionMatchesGoal(input: {
+  reply: string
+  goal: string
+  requestId?: string
+  organisationId: string
+  projectId: string
+  sessionId: string
+}): Promise<boolean> {
+  const model = gatekeeperConversationModel()
+  const response = await client.messages.create({
+    model,
+    max_tokens: 64,
+    system: "Check whether the actual invitation in Groucho's visible reply asks for the target evidence goal. Judge meaning, not shared words or the internal signal label. A broad question about participation, curation, or feedback is not an invitation to name a specific song actually recommended and explain why it was shared. Ignore reflective statements before the invitation. Return JSON only.",
+    output_config: {
+      format: {
+        type: "json_schema",
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          properties: { aligned: { type: "boolean" } },
+          required: ["aligned"],
+        },
+      },
+    },
+    messages: [{
+      role: "user",
+      content: JSON.stringify({ reply: input.reply, goal: input.goal }),
+    }],
+  })
+  logLlmUsage({
+    operation: "gatekeeper_recommendation_question_alignment",
+    provider: "anthropic",
+    model,
+    usage: response.usage,
+    requestId: input.requestId,
+    organisationId: input.organisationId,
+    projectId: input.projectId,
+    sessionId: input.sessionId,
+  })
+  const textBlock = response.content.find((block) => block.type === "text")
+  const result = textBlock?.type === "text"
+    ? JSON.parse(textBlock.text) as { aligned?: unknown }
+    : null
+  return result?.aligned === true
+}
 
 const COLORS_PARTICIPATION_OPTIONS = [
   "I mostly listen",
@@ -676,6 +823,12 @@ export async function postSessionMessage(
   }))
 
   const priorHistory = historyRows.slice(0, -1)
+  const priorFacts = collectApplicationFacts(priorHistory)
+  const currentFacts = input.interactionAnswer
+    ? collectApplicationFacts(historyRows.map((entry) => entry.id === userMsg.id
+      ? { ...entry, metadata: { interaction_answer: input.interactionAnswer } }
+      : entry))
+    : priorFacts
   const localTestMode = localGatekeeperTestModeEnabled()
   const configuredSignalDefinitions = applicationSignalDefinitions(
     settings.applicationExperience.required_signals,
@@ -735,10 +888,13 @@ export async function postSessionMessage(
     userMsg.id,
   )
   const conversationDepth = collectApplicationConversationDepth(priorHistory)
-  const answeredQuestionCount = dbHistory.filter(
-    (entry) => entry.role === "user",
-  ).length
-  const questionBudget = applicationQuestionBudget({
+  let answeredQuestionCount = historyRows.filter((entry) => {
+    if (entry.role !== "user") return false
+    const metadata = entry.metadata as Record<string, unknown> | null
+    const relation = metadata?.application_answer_relation as Record<string, unknown> | undefined
+    return relation?.kind !== "clarification_request"
+  }).length
+  let questionBudget = applicationQuestionBudget({
     answeredQuestions: answeredQuestionCount,
     maxQuestions: settings.applicationExperience.max_turns,
   })
@@ -784,6 +940,7 @@ export async function postSessionMessage(
             questionBudget,
             participantOrientation: storedParticipantOrientation,
             adaptiveOrientationEnabled: colorsAdaptiveBranchesEnabled,
+            facts: currentFacts,
             insufficientEvidenceKeys: storedInsufficientEvidenceKeys,
             relevantSignalKeys: storedRelevantSignalKeys,
           }),
@@ -802,6 +959,10 @@ export async function postSessionMessage(
   let parsedNextSignalKey: string | null = null
   let answerAssessment: ApplicationAnswerAssessment | null = null
   let answerRelation: ApplicationAnswerRelation | null = null
+  let processFeedback: ApplicationProcessFeedbackKind = "none"
+  let mediaClaim: { kind: ApplicationMediaClaimKind; quote: string } = {
+    kind: "none", quote: "",
+  }
   let proposedConversationMove: ApplicationConversationMove | null = null
   let proposedResponseMode: ApplicationResponseMode | null = null
   let participantOrientation: ApplicationParticipantOrientationState =
@@ -901,6 +1062,8 @@ export async function postSessionMessage(
       parsedNextSignalKey = parsed.nextSignalKey
       answerAssessment = parsed.answerAssessment
       answerRelation = parsed.answerRelation
+      processFeedback = parsed.processFeedback
+      mediaClaim = normaliseMediaClaim(parsed.mediaClaim, message.trim())
       proposedConversationMove = parsed.conversationMove
       proposedResponseMode = null
       participantOrientation = inferApplicationParticipantOrientation({
@@ -951,6 +1114,30 @@ export async function postSessionMessage(
     answerAssessment,
     currentIntegrityConcerns,
   )
+  const turnIsClarificationRequest =
+    useCompactSignalState &&
+    answerRelation?.kind === "clarification_request" &&
+    currentIntegrityConcerns.length === 0
+  const turnIsProcessFeedback = useCompactSignalState &&
+    currentIntegrityConcerns.length === 0 &&
+    (turnIsClarificationRequest || processFeedback !== "none")
+  if (turnIsProcessFeedback) {
+    answeredQuestionCount = Math.max(0, answeredQuestionCount - 1)
+    questionBudget = applicationQuestionBudget({
+      answeredQuestions: answeredQuestionCount,
+      maxQuestions: settings.applicationExperience.max_turns,
+    })
+    answerAssessment = null
+    participantOrientation = storedParticipantOrientation
+    coveredSignalKeys = []
+    proposedRelevantSignalKeys = []
+    parsedNextSignalKey = null
+    proposedBridgePlan = { candidates: [], selectedIndex: -1, selected: null }
+    proposedConversationMove = turnIsClarificationRequest ? "clarify" : "advance"
+    proposedResponseMode = "probe"
+    updatedConversationThread = conversationThread
+    interactionSpec = interactionSpecForApplicationMove(proposedConversationMove, "none")
+  }
   if (
     proposedConversationMove === "challenge" &&
     answerAssessment &&
@@ -966,7 +1153,7 @@ export async function postSessionMessage(
   const turnNeedsConversationalRepair =
     useCompactSignalState &&
     currentIntegrityConcerns.length === 0 &&
-    applicationAnswerNeedsRepair(answerRelation)
+    !turnIsProcessFeedback && applicationAnswerNeedsRepair(answerRelation)
   if (answerAssessment?.quality === "concerning") {
     proposedConversationMove = "challenge"
     proposedResponseMode = "challenge"
@@ -978,8 +1165,24 @@ export async function postSessionMessage(
     signalDefinitions,
     storedSignalAnswers,
   )
+  const priorAssistantMetadata = previousAssistant?.metadata &&
+    typeof previousAssistant.metadata === "object" &&
+    !Array.isArray(previousAssistant.metadata)
+    ? previousAssistant.metadata as Record<string, unknown>
+    : null
+  if (input.interactionAnswer || priorAssistantMetadata?.application_media_depth_followup === true) {
+    // The supplied exercise is hypothetical curation, not evidence that the
+    // applicant has recommended or shared any of its songs with someone.
+    const recommendationKeys = new Set(signalDefinitions
+      .filter((signal) => signal.kind === "recommendation")
+      .map((signal) => signal.key))
+    coveredSignalKeys = coveredSignalKeys.filter((key) => !recommendationKeys.has(key))
+  }
+  const evaluatedSignalAnswers = turnIsProcessFeedback
+    ? storedSignalAnswers
+    : compactSignalAnswers
   const currentSignalAttempts = applicationSignalAnswerAttemptCount(
-    compactSignalAnswers.find((answer) => answer.key === currentSignal?.key),
+    evaluatedSignalAnswers.find((answer) => answer.key === currentSignal?.key),
   )
   const currentInsufficientEvidence =
     useCompactSignalState &&
@@ -1014,12 +1217,18 @@ export async function postSessionMessage(
         ...(input.interactionAnswer
           ? { interaction_answer: input.interactionAnswer }
           : {}),
-        scores,
+        ...(turnIsProcessFeedback ? {} : { scores }),
         ...(answerAssessment
           ? { answer_assessment: answerAssessment }
           : {}),
         ...(answerRelation
           ? { application_answer_relation: answerRelation }
+          : {}),
+        ...(processFeedback !== "none"
+          ? { application_process_feedback: { kind: processFeedback, sourceMessageId: userMsg.id } }
+          : {}),
+        ...(mediaClaim.kind !== "none"
+          ? { application_media_claim: { ...mediaClaim, sourceMessageId: userMsg.id } }
           : {}),
         ...(useCompactSignalState && currentSignal
           ? { application_signal: applicationSignalMetadata(currentSignal) }
@@ -1066,7 +1275,7 @@ export async function postSessionMessage(
     structuredToolUsed: structuredToolSeen,
   })
   if (
-    turnNeedsConversationalRepair &&
+    (turnNeedsConversationalRepair || turnIsProcessFeedback) &&
     questionBudget.phase !== "emergency_stop"
   ) {
     status = null
@@ -1111,24 +1320,46 @@ export async function postSessionMessage(
   const coveredSignals = signalDefinitions.filter((signal) =>
     coveredSignalKeys.includes(signal.key),
   )
-  const answersWithCoverage = useCompactSignalState
+  let answersWithCoverage = useCompactSignalState
     ? withCoveredSignalAnswers(
-      compactSignalAnswers,
+      evaluatedSignalAnswers,
       coveredSignals,
       message.trim(),
       userMsg.id,
     )
     : compactSignalAnswers
-  const answersForRouting = answersWithCoverage.map((answer) =>
+  let answersForRouting = answersWithCoverage.map((answer) =>
     insufficientEvidenceKeys.has(answer.key)
       ? { ...answer, covered: true }
       : answer,
   )
+  const mediaExerciseAnswerIds = new Set<string>()
+  if (currentFacts.mediaChoice) {
+    for (let index = 1; index < historyRows.length; index += 1) {
+      const entry = historyRows[index]
+      const previous = historyRows[index - 1]
+      if (entry.role !== "user" || previous.role !== "assistant") continue
+      const metadata = previous.metadata && typeof previous.metadata === "object" &&
+        !Array.isArray(previous.metadata)
+        ? previous.metadata as Record<string, unknown>
+        : null
+      const ui = metadata?.ui && typeof metadata.ui === "object" &&
+        !Array.isArray(metadata.ui)
+        ? metadata.ui as Record<string, unknown>
+        : null
+      if (normaliseMediaChoiceInteraction(ui?.mediaChoice) ||
+        metadata?.application_media_depth_followup === true) {
+        mediaExerciseAnswerIds.add(entry.id)
+      }
+    }
+  }
   const hasArtistAntecedent = answersForRouting.some(
     (answer) =>
       answer.covered !== false &&
       answer.answer.trim().length > 0 &&
-      answer.kind === "artist_reference",
+      answer.kind === "artist_reference" &&
+      (!currentFacts.mediaChoice || answer.sources?.some((source) =>
+        !mediaExerciseAnswerIds.has(source.messageId))),
   )
   const activeSignalDefinitions = applicationSignalDefinitionsForEvidence(
     applicationSignalDefinitionsForOrientation(
@@ -1222,9 +1453,14 @@ export async function postSessionMessage(
   let conversationalThreadTurn = false
   let groundedReceiptPreserved = false
   let colorsMediaQuestionInserted = false
+  let colorsMediaDepthFollowup = false
+  const recoveredSignalEvidence: Array<{
+    signalKey: string
+    sourceMessageId: string
+  }> = []
   let activeReplyRepair: {
-    issue: ActiveApplicationReplyIssue
-    action: "next_signal" | "forced_close"
+    issue: ActiveApplicationReplyIssue | "signal_question_mismatch"
+    action: "next_signal" | "same_thread" | "forced_close"
     signalKey?: string
   } | null = null
   let nextSignal = null as (typeof signalDefinitions)[number] | null
@@ -1240,12 +1476,20 @@ export async function postSessionMessage(
     conversationalThreadTurn = true
   }
 
+  if (status === null && turnIsClarificationRequest) {
+    acceptedConversationMove = "clarify"
+    moveWasAdjusted = proposedConversationMove !== "clarify"
+    nextSignal = currentSignal
+    conversationalThreadTurn = false
+  }
+
   if (
     status === null &&
     useCompactSignalState &&
-    !turnNeedsConversationalRepair
+    !turnNeedsConversationalRepair &&
+    !turnIsClarificationRequest
   ) {
-    const currentAnswer = compactSignalAnswers.find(
+    const currentAnswer = evaluatedSignalAnswers.find(
       (answer) => answer.key === currentSignal?.key,
     )
     const attempts = applicationSignalAnswerAttemptCount(currentAnswer)
@@ -1359,7 +1603,7 @@ export async function postSessionMessage(
 
   }
 
-  if (status === null && nextSignal) {
+  if (status === null && nextSignal && !turnIsClarificationRequest) {
     const signalInteraction = fallbackInteractionForApplicationSignal(nextSignal)
     if (signalInteraction.inputType !== "text") {
       interactionSpec = signalInteraction
@@ -1368,10 +1612,30 @@ export async function postSessionMessage(
 
   if (
     status === null &&
+    colorsAdaptiveBranchesEnabled &&
+    input.interactionAnswer &&
+    currentSignal?.cluster === "cultural_point_of_view" &&
+    questionBudget.phase !== "emergency_stop"
+  ) {
+    // A remove choice has no order. Use the exercise's one bounded depth
+    // question rather than letting a fluent model reply imply a sequence.
+    assistantContent =
+      "What relationship among the performances you kept would you test before settling the programme?"
+    interactionSpec = interactionSpecForApplicationMove("clarify", "none")
+    nextSignal = currentSignal
+    acceptedConversationMove = "clarify"
+    acceptedBridge = null
+    colorsMediaDepthFollowup = true
+    moveWasAdjusted = true
+  }
+
+  if (
+    status === null &&
     useCompactSignalState &&
     colorsAdaptiveBranchesEnabled &&
     currentSignal?.cluster === "orientation" &&
     answerAssessment?.quality === "thin" &&
+    !turnIsClarificationRequest &&
     nextSignal?.key !== currentSignal.key
   ) {
     assistantContent = fallbackQuestionForApplicationSignal(currentSignal)
@@ -1397,7 +1661,107 @@ export async function postSessionMessage(
       previousQuestion: recentApplicationQuestions || currentQuestion,
       hasArtistAntecedent,
     })
-    if (replyIssue === "multiple_questions") {
+    const repeatedClarification = turnIsClarificationRequest && priorHistory.some((entry) => {
+      const metadata = entry.metadata && typeof entry.metadata === "object" && !Array.isArray(entry.metadata)
+        ? entry.metadata as Record<string, unknown>
+        : null
+      const relation = metadata?.application_answer_relation
+      return entry.role === "user" && relation && typeof relation === "object" &&
+        (relation as Record<string, unknown>).kind === "clarification_request"
+    })
+    if (turnIsClarificationRequest && (replyIssue || repeatedClarification)) {
+      let repairedReply = ""
+      try {
+        const model = gatekeeperConversationModel()
+        const repairResponse = await timings.measure("clarification_repair_model", () =>
+          client.messages.create({
+            model,
+            max_tokens: 180,
+            system: "Repair Groucho's unclear preceding turn. The applicant has asked Groucho to clarify, not supplied application evidence. Own the ambiguity in a brief sentence, then ask one explicit question grounded in the preceding substantive applicant answer. If Groucho's preceding line was only an observation, say so. Do not ask the applicant to explain what they meant, repeat an answered selector, diagnose their mood, or change topic. Return JSON with reply only.",
+            output_config: {
+              format: {
+                type: "json_schema",
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: { reply: { type: "string" } },
+                  required: ["reply"],
+                },
+              },
+            },
+            messages: [{
+              role: "user",
+              content: JSON.stringify({
+                precedingTurns: priorHistory.slice(-6).map((entry) => ({
+                  role: entry.role,
+                  content: entry.content,
+                })),
+                applicantClarificationRequest: message.trim(),
+              }),
+            }],
+          }),
+        )
+        logLlmUsage({
+          operation: "gatekeeper_clarification_repair",
+          provider: "anthropic",
+          model,
+          usage: repairResponse.usage,
+          requestId: input.requestId,
+          organisationId,
+          projectId,
+          sessionId,
+        })
+        const textBlock = repairResponse.content.find((block) => block.type === "text")
+        const candidate = textBlock?.type === "text"
+          ? (JSON.parse(textBlock.text) as { reply?: unknown }).reply
+          : null
+        if (typeof candidate === "string" && !activeApplicationReplyIssue({
+          reply: candidate,
+          interaction: interactionSpec,
+          closingMessage: applicationClosingMessage,
+        })) {
+          repairedReply = candidate.trim()
+        }
+      } catch (error) {
+        log.warn("application_clarification_repair_failed", {
+          requestId: input.requestId,
+          projectId,
+          sessionId,
+          detail: error instanceof Error ? error.message : String(error),
+        })
+      }
+      assistantContent = repairedReply ||
+        `You're right—that was an observation, not a clear question. ${
+          currentSignal
+            ? fallbackQuestionForApplicationSignal(currentSignal, { hasArtistAntecedent })
+            : "What would you want the Forum to understand about your approach?"
+        }`
+      moveWasAdjusted = true
+    } else if (replyIssue === "unclear_invitation") {
+      const sameThreadQuestion =
+        currentSignal && (isArtistReferenceSignal(currentSignal) || isRecommendationSignal(currentSignal))
+          ? "What would you want a listener to notice about that choice?"
+          : "What would you want me to understand about that?"
+      const repaired = repairApplicationReplyWithQuestion({
+        reply: assistantContent,
+        currentAnswer: message.trim(),
+        question: sameThreadQuestion,
+      })
+      assistantContent = repaired.reply
+      groundedReceiptPreserved ||= repaired.receiptPreserved
+      interactionSpec = interactionSpecForApplicationMove("clarify", "none")
+      nextSignal = currentSignal
+      acceptedBridge = null
+      acceptedConversationMove =
+        answerAssessment?.quality === "rich" ? "rabbit_hole" : "clarify"
+      conversationalThreadTurn = currentSignal === null
+      moveWasAdjusted = true
+      activeReplyRepair = {
+        issue: replyIssue,
+        action: "same_thread",
+        ...(currentSignal ? { signalKey: currentSignal.key } : {}),
+      }
+    } else if (replyIssue === "multiple_questions") {
       assistantContent = keepFirstApplicationQuestion(assistantContent)
       acceptedConversationMove =
         acceptedConversationMove ?? proposedConversationMove ?? "advance"
@@ -1484,6 +1848,41 @@ export async function postSessionMessage(
     conversationalThreadTurn = true
   }
 
+  // A completed media exercise gets one depth question, not an indefinite
+  // rabbit hole. Applicant corrections and requests to move on are not fit
+  // evidence and should not be routed back to the same exercise.
+  if (
+    status === null &&
+    priorFacts.mediaChoice?.depthFollowupUsed &&
+    currentSignal?.cluster === "cultural_point_of_view" &&
+    !turnIsClarificationRequest
+  ) {
+    const onward = resolveNextApplicationSignal(
+      null,
+      activeSignalDefinitions.filter((signal) => signal.key !== currentSignal.key),
+      answersForRouting,
+      null,
+    )
+    if (onward) {
+      nextSignal = onward
+      assistantContent = `${processFeedback === "corrects_assistant_assumption"
+        ? "You're right; I shouldn't have assumed that. "
+        : processFeedback === "requests_topic_change"
+          ? "Of course—let's move on. "
+          : ""}${fallbackQuestionForApplicationSignal(onward, { hasArtistAntecedent })}`
+      interactionSpec = fallbackInteractionForApplicationSignal(onward)
+      acceptedConversationMove = "advance"
+      acceptedBridge = null
+      moveWasAdjusted = true
+      conversationalThreadTurn = false
+    } else {
+      status = forcedCloseStatusFromScores({ scores, passThreshold, rejectThreshold })
+      structuredTerminal = terminalFieldForSessionStatus(status)
+      acceptedConversationMove = "decide"
+      nextSignal = null
+    }
+  }
+
   const openCulturalPointOfViewSignal = activeSignalDefinitions.find(
     (signal) =>
       signal.cluster === "cultural_point_of_view" &&
@@ -1498,6 +1897,7 @@ export async function postSessionMessage(
     questionBudget.phase !== "emergency_stop" &&
     answeredQuestionCount >= 2 &&
     !input.interactionAnswer &&
+    !turnIsClarificationRequest &&
     currentIntegrityConcerns.length === 0 &&
     !historyHasMediaChoice(priorHistory) &&
     Boolean(openCulturalPointOfViewSignal)
@@ -1542,6 +1942,14 @@ export async function postSessionMessage(
   })
   assistantContent = explicitPrompt.reply
   interactionSpec = explicitPrompt.interaction
+  if (
+    status === null &&
+    input.interactionAnswer &&
+    currentSignal?.cluster === "cultural_point_of_view" &&
+    nextSignal?.key === currentSignal.key
+  ) {
+    colorsMediaDepthFollowup = true
+  }
   if (status === null && useCompactSignalState) {
     const previousQuestions = priorHistory
       .filter((entry) => entry.role === "assistant")
@@ -1558,7 +1966,9 @@ export async function postSessionMessage(
     if (finalIssue === "repeated_question" || finalIssue === "multiple_questions") {
       const alternatives = [
         ...(nextSignal?.promptRoutes ?? []),
-        "What else would you want the Forum to understand about how you participate around music?",
+        ...(!nextSignal
+          ? ["What else would you want the Forum to understand about how you participate around music?"]
+          : []),
       ]
       const alternative = alternatives.find((question) =>
         activeApplicationReplyIssue({
@@ -1578,6 +1988,159 @@ export async function postSessionMessage(
       }
     }
   }
+
+  // Reconcile the final proposed question after every routing and reply repair.
+  // Earlier audits missed participation when a late media-thread move chose it.
+  if (
+    status === null &&
+    colorsAdaptiveBranchesEnabled &&
+    !localTestMode &&
+    questionBudget.phase !== "emergency_stop" &&
+    !colorsMediaQuestionInserted
+  ) {
+    for (let auditCount = 0; auditCount < 4; auditCount += 1) {
+      const candidate = nextSignal
+      if (!candidate) break
+      const candidateKind = candidate.kind
+      const isParticipationOrContribution =
+        candidateKind === "participation" || candidateKind === "contribution"
+      const priorAttempt = storedSignalAnswers.find((answer) =>
+        answer.key === candidate.key && answer.covered === false,
+      )
+      if (!isParticipationOrContribution &&
+        (candidate.key === currentSignal?.key || !priorAttempt?.sources?.length)) break
+      try {
+        const sourceMessageId = await timings.measure(
+          "prior_signal_audit",
+          () => findPriorApplicationEvidence({
+            kind: candidateKind,
+            goal: candidate.goal,
+            messages: turnIsProcessFeedback ? priorHistory : historyRows,
+            ...(!isParticipationOrContribution
+              ? { sourceMessageIds: priorAttempt?.sources?.map((source) => source.messageId) }
+              : {}),
+            requestId: input.requestId,
+            organisationId,
+            projectId,
+            sessionId,
+          }),
+        )
+        const source = sourceMessageId
+          ? historyRows.find((entry) => entry.id === sourceMessageId && entry.role === "user")
+          : null
+        if (!source || !sourceMessageId) break
+        answersWithCoverage = withCurrentSignalAnswer(
+          answersWithCoverage,
+          candidate,
+          source.content,
+          true,
+          sourceMessageId,
+        )
+        answersForRouting = answersWithCoverage.map((answer) =>
+          insufficientEvidenceKeys.has(answer.key)
+            ? { ...answer, covered: true }
+            : answer,
+        )
+        recoveredSignalEvidence.push({ signalKey: candidate.key, sourceMessageId })
+        nextSignal = resolveNextApplicationSignal(
+          null,
+          activeSignalDefinitions.filter((signal) =>
+            signal.key !== candidate.key && signal.key !== currentSignal?.key),
+          answersForRouting,
+          null,
+        )
+        acceptedBridge = null
+        bridgeWasAdjusted = true
+        moveWasAdjusted = true
+        if (!nextSignal) {
+          status = forcedCloseStatusFromScores({ scores, passThreshold, rejectThreshold })
+          structuredTerminal = terminalFieldForSessionStatus(status)
+          acceptedConversationMove = "decide"
+          break
+        }
+        assistantContent = fallbackQuestionForApplicationSignal(nextSignal, { hasArtistAntecedent })
+        interactionSpec = fallbackInteractionForApplicationSignal(nextSignal)
+        acceptedConversationMove = "advance"
+        conversationalThreadTurn = false
+      } catch (error) {
+        log.warn("prior_signal_audit_failed", {
+          requestId: input.requestId,
+          projectId,
+          sessionId,
+          detail: error instanceof Error ? error.message : String(error),
+        })
+        break
+      }
+    }
+  }
+  if (status === null && useCompactSignalState) {
+    const finalReplyIssue = activeApplicationReplyIssue({
+      reply: assistantContent,
+      interaction: interactionSpec,
+      closingMessage: applicationClosingMessage,
+      hasArtistAntecedent,
+    })
+    if (finalReplyIssue === "unclear_invitation" || finalReplyIssue === "missing_invitation") {
+      assistantContent = nextSignal
+        ? fallbackQuestionForApplicationSignal(nextSignal, { hasArtistAntecedent })
+        : "What would you want me to understand about that?"
+      interactionSpec = nextSignal
+        ? fallbackInteractionForApplicationSignal(nextSignal)
+        : interactionSpecForApplicationMove("clarify", "none")
+      acceptedBridge = null
+      moveWasAdjusted = true
+      activeReplyRepair = {
+        issue: finalReplyIssue,
+        action: "same_thread",
+        ...(nextSignal ? { signalKey: nextSignal.key } : {}),
+      }
+    }
+  }
+  if (
+    status === null &&
+    colorsAdaptiveBranchesEnabled &&
+    !localTestMode &&
+    !turnIsProcessFeedback &&
+    acceptedConversationMove !== "clarify" &&
+    nextSignal?.kind === "recommendation" &&
+    (interactionSpec.inputType === "text" || interactionSpec.inputType === "voice")
+  ) {
+    let aligned = false
+    try {
+      aligned = await timings.measure(
+        "recommendation_question_alignment",
+        () => recommendationQuestionMatchesGoal({
+          reply: assistantContent,
+          goal: nextSignal.goal,
+          requestId: input.requestId,
+          organisationId,
+          projectId,
+          sessionId,
+        }),
+      )
+    } catch (error) {
+      log.warn("recommendation_question_alignment_failed", {
+        requestId: input.requestId,
+        projectId,
+        sessionId,
+        detail: error instanceof Error ? error.message : String(error),
+      })
+    }
+    if (!aligned) {
+      assistantContent = repairApplicationReplyWithQuestion({
+        reply: assistantContent,
+        currentAnswer: message,
+        question: fallbackQuestionForApplicationSignal(nextSignal, { hasArtistAntecedent }),
+      }).reply
+      interactionSpec = fallbackInteractionForApplicationSignal(nextSignal)
+      activeReplyRepair = {
+        issue: "signal_question_mismatch",
+        action: "next_signal",
+        signalKey: nextSignal.key,
+      }
+      moveWasAdjusted = true
+    }
+  }
   if (status !== null) {
     reviewerReport = ensureEvidenceBackedReviewerReport({
       report: reviewerReport,
@@ -1590,8 +2153,16 @@ export async function postSessionMessage(
           ? {
               ...entry,
               metadata: {
-                answer_assessment: answerAssessment,
-                ...(currentSignal
+                ...(input.interactionAnswer ? { interaction_answer: input.interactionAnswer } : {}),
+                ...(answerAssessment ? { answer_assessment: answerAssessment } : {}),
+                ...(answerRelation ? { application_answer_relation: answerRelation } : {}),
+                ...(processFeedback !== "none"
+                  ? { application_process_feedback: { kind: processFeedback, sourceMessageId: userMsg.id } }
+                  : {}),
+                ...(mediaClaim.kind !== "none"
+                  ? { application_media_claim: { ...mediaClaim, sourceMessageId: userMsg.id } }
+                  : {}),
+                ...(currentSignal && !turnIsProcessFeedback
                   ? {
                       application_signal:
                         applicationSignalMetadata(currentSignal),
@@ -1620,12 +2191,34 @@ export async function postSessionMessage(
   const persistedTerminal: GatekeeperTerminalField | null = budgetForcedClose
     ? terminalFieldForSessionStatus(status ?? "redirected")
     : structuredTerminal
+  const factSnapshot = collectApplicationFacts([
+    ...priorHistory,
+    {
+      ...historyRows[historyRows.length - 1],
+      metadata: {
+        ...(input.interactionAnswer ? { interaction_answer: input.interactionAnswer } : {}),
+        ...(answerRelation ? { application_answer_relation: answerRelation } : {}),
+        ...(processFeedback !== "none"
+          ? { application_process_feedback: { kind: processFeedback, sourceMessageId: userMsg.id } }
+          : {}),
+        ...(mediaClaim.kind !== "none"
+          ? { application_media_claim: { ...mediaClaim, sourceMessageId: userMsg.id } }
+          : {}),
+      },
+    },
+    {
+      role: "assistant",
+      content: assistantContent,
+      metadata: { ...(colorsMediaDepthFollowup ? { application_media_depth_followup: true } : {}) },
+    },
+  ])
   const assistantMetadata =
     structuredToolSeen && persistedTerminal !== null
       ? {
           gatekeeper_structured: true,
           gatekeeper_terminal: persistedTerminal,
           ui: interactionSpec,
+          application_facts_v1: factSnapshot,
           ...(acceptedConversationMove
             ? { conversation_move: acceptedConversationMove }
             : {}),
@@ -1650,6 +2243,14 @@ export async function postSessionMessage(
                   pilot: true,
                 },
               }
+            : {}),
+          ...(colorsMediaDepthFollowup
+            ? { application_media_depth_followup: true }
+            : {}),
+          ...(recoveredSignalEvidence.length
+            ? { application_recovered_signal_evidence: recoveredSignalEvidence.length === 1
+                ? recoveredSignalEvidence[0]
+                : recoveredSignalEvidence }
             : {}),
           ...(conversationalThreadTurn
             ? { application_conversation_thread_turn: true }
