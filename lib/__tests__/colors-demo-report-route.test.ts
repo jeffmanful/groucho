@@ -11,6 +11,7 @@ import { extractProfile } from "@/lib/profile-extraction"
 const state = vi.hoisted(() => ({
   updates: [] as Array<Record<string, unknown>>,
   sessionStatus: "passed",
+  applicantContent: "I host a listening table.",
   metadata: {
     reviewer_report: {
       applicant_bio: "A listener who hosts a listening table.",
@@ -88,7 +89,7 @@ vi.mock("@/lib/supabase", () => ({
         },
         async order() {
           return { data: [
-            { id: "answer-1", role: "user", content: "I host a listening table.", metadata: {} },
+            { id: "answer-1", role: "user", content: state.applicantContent, metadata: {} },
             { id: "closing-1", role: "assistant", content: "Thank you.", metadata: state.metadata },
           ], error: null }
         },
@@ -119,6 +120,7 @@ describe("COLORS demo report endpoint", () => {
   beforeEach(() => {
     state.updates = []
     state.sessionStatus = "passed"
+    state.applicantContent = "I host a listening table."
     state.metadata = {
       reviewer_report: {
         applicant_bio: "A listener who hosts a listening table.",
@@ -209,7 +211,8 @@ describe("COLORS demo report endpoint", () => {
 
   it("builds the thin pilot report from the completed transcript without a live preliminary score", async () => {
     state.sessionStatus = "completed"
-    state.metadata = { conversation_engine: "colors_thin_pilot_v1", colors_demo_report_status: "pending" }
+    state.applicantContent = "I want a space that feels more tapped in. Is this something the Forum can provide?"
+    state.metadata = { conversation_engine: "colors_thin_pilot_v1", colors_demo_report_status: "pending", application_closing: true }
     const completedReport = {
       applicant_bio: "An attentive listener.",
       advisory_recommendation: "recommend",
@@ -243,6 +246,7 @@ describe("COLORS demo report endpoint", () => {
       expect.objectContaining({
         modelOverride: "claude-sonnet-5-5",
         forumMembershipPilot: true,
+        grouchoClosedWithQuestionPending: true,
         rubricVersion: "colors_forum_membership_v1",
         baseReport: expect.objectContaining({
           evidence_references: [expect.objectContaining({ source_message_id: "answer-1" })],

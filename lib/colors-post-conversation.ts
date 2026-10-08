@@ -205,8 +205,12 @@ export async function auditColorsConversationIntegrity(input: {
   })
   return {
     concerns,
-    processMessageIds: data.process_message_ids.filter((id): id is string =>
-      typeof id === "string" && byId.has(id),
-    ),
+    // In the thin pilot, the evidence reconciler decides which exact applicant
+    // quotes support a lens. Removing a whole mixed answer-and-question turn
+    // can erase the applicant's stated reason for joining.
+    processMessageIds: input.forumMembershipPilot ? [] :
+      data.process_message_ids.filter((id): id is string =>
+        typeof id === "string" && byId.has(id),
+      ),
   }
 }

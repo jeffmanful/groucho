@@ -295,9 +295,10 @@ const REVIEWER_CALIBRATION_INSTRUCTIONS = `The session's terminal outcome and pr
 
 function reviewerCalibrationInstructions(forumMembershipPilot?: boolean): string {
   if (!forumMembershipPilot) return REVIEWER_CALIBRATION_INSTRUCTIONS
-  return REVIEWER_CALIBRATION_INSTRUCTIONS
+  const calibration = REVIEWER_CALIBRATION_INSTRUCTIONS
     .replace("The session's terminal outcome and preliminary advisory are context, not a verdict you must copy.", "The session's terminal outcome is context, not a verdict you must copy.")
     .replace("If your advisory differs from the preliminary advisory, say why there.", "")
+  return `${calibration} If sessionOutcome says Groucho closed with an applicant question pending, the interview ended before the applicant could continue. Explain that process limitation in the overall assessment or reviewer focus. Do not imply the applicant chose to give a brief account or failed to offer more detail. Missing evidence may limit confidence, but it is not negative evidence about the applicant. Do not use human_review merely because that early close left optional details unexplored when direct positive evidence is supported and no concern or material gap exists.`
 }
 
 type ReviewerTranscriptMessage = {
@@ -317,6 +318,7 @@ export type DetailedReviewerReportInput = {
   projectId?: string
   sessionId?: string
   terminalStatus?: string
+  grouchoClosedWithQuestionPending?: boolean
   rubricVersion?: string
   modelOverride?: string
   forumMembershipPilot?: boolean
@@ -586,7 +588,10 @@ function reviewerInput(input: DetailedReviewerReportInput): string {
     )
     .join("\n")
   const sessionOutcome = input.forumMembershipPilot
-    ? { terminalStatus: input.terminalStatus ?? null }
+    ? {
+        terminalStatus: input.terminalStatus ?? null,
+        ...(input.grouchoClosedWithQuestionPending ? { grouchoClosedWithQuestionPending: true } : {}),
+      }
     : { terminalStatus: input.terminalStatus ?? null, preliminaryAdvisory: input.baseReport.advisory_recommendation }
   return `Session outcome (advisory context, not an automatic acceptance):\n${JSON.stringify(sessionOutcome)}\n\nApplicant evidence transcript (process-feedback turns and Groucho's replies omitted):\n${transcript}\n\nSource-linked application facts (null explicitOrderOptionIds means no order was established by the structured choice):\n${JSON.stringify(reviewerFacts(input))}\n\nAllowed evidence references:\n${JSON.stringify(eligibleEvidenceReferences(input), null, 2)}\n\nReconciled evidence state (authoritative for coverage; unverified is not negative evidence):\n${JSON.stringify(input.baseReport.evidence_state ?? null)}\n\nKnown weak or missing signals:\n${JSON.stringify(input.baseReport.weak_or_missing_signals)}\n\nKnown safety or integrity flags:\n${JSON.stringify(input.baseReport.safety_or_integrity_flags)}`
 }
@@ -839,6 +844,7 @@ function reviewerVerificationInput(
     sessionOutcome: {
       terminalStatus: input.terminalStatus ?? null,
       ...(!input.forumMembershipPilot ? { preliminaryAdvisory: input.baseReport.advisory_recommendation } : {}),
+      ...(input.grouchoClosedWithQuestionPending ? { grouchoClosedWithQuestionPending: true } : {}),
     },
     knownWeakOrMissingSignals: input.baseReport.weak_or_missing_signals,
     transcript: eligibleApplicantTranscript(input),
@@ -1114,6 +1120,10 @@ export async function generateDetailedReviewerReport(
           evaluation.recommendation,
           evaluation.opinion.suggested_human_action,
         ),
+        ...(input.grouchoClosedWithQuestionPending &&
+          !/\b(?:Groucho|interview|conversation)\b.{0,100}\b(?:closed|ended)\b.{0,100}\bquestion\b/i.test(evaluation.opinion.overall_assessment)
+          ? { overall_assessment: `${evaluation.opinion.overall_assessment} Groucho ended the interview while the applicant's question was pending; missing detail reflects that early close, not an applicant concern.` }
+          : {}),
       }
       const report: ReviewerReport = {
         ...input.baseReport,
@@ -1130,6 +1140,17 @@ export async function generateDetailedReviewerReport(
       }
       failureStage = "core_verification"
       try {
+        if (input.forumMembershipPilot && report.advisory_recommendation === "human_review" &&
+          input.baseReport.evidence_state?.some((entry) => entry.coverage === "supported") &&
+          !input.baseReport.evidence_state.some((entry) => entry.material_gap) &&
+          input.baseReport.safety_or_integrity_flags.length === 0 &&
+          opinion.reservations.length === 0 &&
+          !opinion.claim_assessments.some((claim) => claim.assessment === "concern")) {
+          throw new ReviewerVerificationError(
+            "Reviewer verification failed: human_review is unsupported. Direct positive evidence is present, with no source-linked concern, verified flag, or material gap. Recommend on the available evidence; do not turn optional details left unexplored by Groucho's early close into an applicant concern. Revise the advisory reason, reviewer focus, and overall assessment consistently.",
+            "report",
+          )
+        }
         await verifyReviewerEvaluation({
           reportInput: input,
           report,

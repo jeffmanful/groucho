@@ -9,9 +9,9 @@ vi.mock("@anthropic-ai/sdk", () => ({
 
 import { auditColorsConversationIntegrity } from "@/lib/colors-post-conversation"
 
-function response(observations: unknown[]) {
+function response(observations: unknown[], processMessageIds: string[] = []) {
   return {
-    content: [{ type: "text", text: JSON.stringify({ observations, process_message_ids: [] }) }],
+    content: [{ type: "text", text: JSON.stringify({ observations, process_message_ids: processMessageIds }) }],
     stop_reason: "end_turn",
     usage: {},
   }
@@ -59,5 +59,17 @@ describe("post-conversation integrity audit", () => {
       messages: [{ id: "first", role: "user", content: "I made that up." }],
     })
     expect(result.concerns).toEqual([])
+  })
+
+  it("keeps a mixed joining answer and Forum question for the thin pilot evidence pass", async () => {
+    createMock.mockResolvedValueOnce(response([], ["mixed-answer"]))
+    const result = await auditColorsConversationIntegrity({
+      forumMembershipPilot: true,
+      messages: [{
+        id: "mixed-answer", role: "user",
+        content: "I want a space that feels more tapped in. Is this something the Forum can provide?",
+      }],
+    })
+    expect(result.processMessageIds).toEqual([])
   })
 })

@@ -74,6 +74,61 @@ function response(value: unknown) {
 describe("detailed reviewer report verification", () => {
   beforeEach(() => createMock.mockReset())
 
+  it("attributes limited evidence to Groucho when it closed with an applicant question pending", async () => {
+    const answer = "I want a space that feels more tapped in. Is this something the Forum can provide?"
+    const supported = {
+      ...evaluation,
+      applicant_bio: "The applicant wants a more tapped-in music space.",
+      confidence_score: 0.4,
+      advisory_reason: "The applicant gives a clear reason to join, with no concern raised.",
+      snapshot: {
+        applicant_summary: "The applicant wants a more tapped-in music space.",
+        evidence_reference_ids: ["answer-1"],
+        tags: [{ value: "joining_motivation", evidence_reference_ids: ["answer-1"] }],
+      },
+      decisive_reasons: ["They want a more tapped-in music space."],
+      claim_assessments: [{
+        claim: "Wants a more tapped-in music space", evidence_reference_ids: ["answer-1"],
+        interpretation: "The applicant stated a specific joining hope.", assessment: "strength",
+      }],
+      likely_contribution: "Could discuss music with other members.",
+    }
+    createMock
+      .mockResolvedValueOnce(response({ signals: [
+        { signal_key: "joining_motivation", coverage: "supported", sources: [{ source_message_id: "answer-1", quote: "I want a space that feels more tapped in" }], material_gap: false, gap_reason: "" },
+        { signal_key: "colors_connection", coverage: "unverified", sources: [], material_gap: false, gap_reason: "" },
+        { signal_key: "music_relationship", coverage: "unverified", sources: [], material_gap: false, gap_reason: "" },
+        { signal_key: "community_participation", coverage: "unverified", sources: [], material_gap: false, gap_reason: "" },
+        { signal_key: "forum_participation", coverage: "unverified", sources: [], material_gap: false, gap_reason: "" },
+        { signal_key: "tones_connection", coverage: "unverified", sources: [], material_gap: false, gap_reason: "" },
+      ] }))
+      .mockResolvedValueOnce(response({
+        ...supported,
+        advisory_recommendation: "human_review",
+        advisory_reason: "The applicant's account is thin, so a reviewer needs more detail.",
+        overall_assessment: "The evidence is brief, so confidence is modest.",
+        suggested_human_action: "discuss",
+      }))
+      .mockResolvedValueOnce(response({ ...supported, overall_assessment: "Groucho ended the interview while the applicant's question was pending; the applicant gave a clear reason for joining." }))
+      .mockResolvedValueOnce(response({ supported: true, issues: [] }))
+    const report = await generateDetailedReviewerReport({
+      transcript: [{ id: "answer-1", role: "user", content: answer }],
+      baseReport,
+      rubricVersion: COLORS_FORUM_MEMBERSHIP_RUBRIC,
+      forumMembershipPilot: true,
+      grouchoClosedWithQuestionPending: true,
+    })
+    expect(report.evidence_state?.find((entry) => entry.signal_key === "joining_motivation")?.coverage)
+      .toBe("supported")
+    expect(report.advisory_recommendation).toBe("recommend")
+    expect(report.detailed_opinion?.overall_assessment).toContain("Groucho ended the interview")
+    expect(String(createMock.mock.calls[1]?.[0]?.messages?.[0]?.content))
+      .toContain('"grouchoClosedWithQuestionPending":true')
+    expect(String(createMock.mock.calls[2]?.[0]?.messages?.[0]?.content))
+      .toContain("human_review is unsupported")
+    expect(createMock).toHaveBeenCalledTimes(4)
+  })
+
   it.each([
     {
       answer: "I run a city music guide and publish weekly notes. I have a network of musicians and venues. Artists pay for most posts.",

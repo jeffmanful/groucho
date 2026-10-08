@@ -12,7 +12,7 @@ import { getOrCreateRequestId } from "@/lib/request-trace"
 import { COLORS_DETAILED_REPORT_VERSION, COLORS_FORUM_MEMBERSHIP_REPORT_VERSION, normaliseReviewerReport } from "@/lib/reviewer-report"
 import { log } from "@/lib/logger"
 import { supabase } from "@/lib/supabase"
-import { COLORS_THIN_PILOT_MARKER } from "@/lib/colors-thin-conversation"
+import { applicantAsksQuestion, COLORS_THIN_PILOT_MARKER } from "@/lib/colors-thin-conversation"
 import { auditColorsConversationIntegrity, groundColorsProfile, pendingColorsReport } from "@/lib/colors-post-conversation"
 import { extractProfile } from "@/lib/profile-extraction"
 import { COLORS_FORUM_MEMBERSHIP_PROFILE_HINT, COLORS_FORUM_MEMBERSHIP_PROFILE_SCHEMA, COLORS_THIN_PROFILE_EVIDENCE_HINT } from "@/lib/onboarding-persona-template"
@@ -166,6 +166,10 @@ export async function POST(req: NextRequest) {
     const transcriptRows = rows.filter((message): message is ReportMessage & { role: "user" | "assistant" } =>
       message.role === "user" || message.role === "assistant",
     )
+    const lastApplicantMessage = [...transcriptRows].reverse().find((message) => message.role === "user")
+    const grouchoClosedWithQuestionPending = thinPilot &&
+      record(lastAssistant.metadata).application_closing === true &&
+      applicantAsksQuestion(lastApplicantMessage?.content ?? "")
     const postAudit = thinPilot
       ? await auditColorsConversationIntegrity({
           messages: transcriptRows,
@@ -197,6 +201,7 @@ export async function POST(req: NextRequest) {
       projectId: project.context.projectId,
       sessionId,
       terminalStatus: session.status,
+      grouchoClosedWithQuestionPending,
       rubricVersion: thinPilot
         ? COLORS_FORUM_MEMBERSHIP_RUBRIC
         : isV1Session(rows) ? COLORS_FORUM_V1_RUBRIC : undefined,
