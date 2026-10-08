@@ -19,17 +19,35 @@ function additionalTesterEmail(): string {
   return process.env.COLORS_DEMO_ADDITIONAL_TESTER_EMAIL?.trim().toLowerCase() || ""
 }
 
+function extraTesters(): Map<string, string> {
+  const configured = process.env.COLORS_DEMO_EXTRA_TESTERS
+  if (!configured) return new Map()
+  try {
+    const parsed: unknown = JSON.parse(configured)
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return new Map()
+    return new Map(
+      Object.entries(parsed)
+        .filter(([email, password]) => email.trim() && typeof password === "string" && password.length > 0)
+        .map(([email, password]) => [email.trim().toLowerCase(), password as string]),
+    )
+  } catch {
+    return new Map()
+  }
+}
+
 export function isDemoTesterEmail(email: string): boolean {
   const normalized = email.trim().toLowerCase()
   return normalized === COLORS_DEMO_TESTER_EMAIL ||
     normalized === expectedTesterEmail() ||
-    Boolean(additionalTesterEmail() && normalized === additionalTesterEmail())
+    Boolean(additionalTesterEmail() && normalized === additionalTesterEmail()) ||
+    extraTesters().has(normalized)
 }
 
 function isConfiguredTesterEmail(email: string): boolean {
   const normalized = email.trim().toLowerCase()
   return normalized === expectedTesterEmail() ||
-    Boolean(additionalTesterEmail() && normalized === additionalTesterEmail())
+    Boolean(additionalTesterEmail() && normalized === additionalTesterEmail()) ||
+    extraTesters().has(normalized)
 }
 
 function encode(value: string): string {
@@ -97,8 +115,10 @@ export function demoPasswordMatches(email: string, password: string): boolean {
   const normalized = email.trim().toLowerCase()
   const primaryPassword = process.env.COLORS_DEMO_PASSWORD
   const additionalPassword = process.env.COLORS_DEMO_ADDITIONAL_TESTER_PASSWORD
+  const extraPassword = extraTesters().get(normalized)
   return Boolean(
     (primaryPassword && normalized === expectedTesterEmail() && password === primaryPassword) ||
-    (additionalPassword && additionalTesterEmail() && normalized === additionalTesterEmail() && password === additionalPassword),
+    (additionalPassword && additionalTesterEmail() && normalized === additionalTesterEmail() && password === additionalPassword) ||
+    (extraPassword && password === extraPassword),
   )
 }

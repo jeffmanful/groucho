@@ -14,6 +14,7 @@ const originalEmail = process.env.COLORS_DEMO_TESTER_EMAIL
 const originalPassword = process.env.COLORS_DEMO_PASSWORD
 const originalAdditionalEmail = process.env.COLORS_DEMO_ADDITIONAL_TESTER_EMAIL
 const originalAdditionalPassword = process.env.COLORS_DEMO_ADDITIONAL_TESTER_PASSWORD
+const originalExtraTesters = process.env.COLORS_DEMO_EXTRA_TESTERS
 const originalAllowed = process.env.ALLOWED_EMAILS
 const originalAdminPassword = process.env.ADMIN_PASSWORD
 
@@ -28,6 +29,8 @@ afterEach(() => {
   else process.env.COLORS_DEMO_ADDITIONAL_TESTER_EMAIL = originalAdditionalEmail
   if (originalAdditionalPassword === undefined) delete process.env.COLORS_DEMO_ADDITIONAL_TESTER_PASSWORD
   else process.env.COLORS_DEMO_ADDITIONAL_TESTER_PASSWORD = originalAdditionalPassword
+  if (originalExtraTesters === undefined) delete process.env.COLORS_DEMO_EXTRA_TESTERS
+  else process.env.COLORS_DEMO_EXTRA_TESTERS = originalExtraTesters
   if (originalAllowed === undefined) delete process.env.ALLOWED_EMAILS
   else process.env.ALLOWED_EMAILS = originalAllowed
   if (originalAdminPassword === undefined) delete process.env.ADMIN_PASSWORD
@@ -103,5 +106,33 @@ describe("COLORS demo access", () => {
 
     delete process.env.COLORS_DEMO_ADDITIONAL_TESTER_EMAIL
     expect(await verifyDemoToken(token, "tester")).toBeNull()
+  })
+
+  it("allows multiple extra demo testers without granting platform access", async () => {
+    process.env.AUTH_SECRET = "test-only-secret"
+    process.env.COLORS_DEMO_EXTRA_TESTERS = JSON.stringify({
+      "jacob@test.com": "test",
+      "dan@test.com": "test",
+    })
+    process.env.ALLOWED_EMAILS = "jacob@test.com,dan@test.com"
+    process.env.ADMIN_PASSWORD = "test-only-admin-password"
+
+    const request = (email: string, password: string) => new NextRequest("http://localhost/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    })
+    for (const email of ["jacob@test.com", "dan@test.com"]) {
+      const loggedIn = await login(request(email, "test"))
+      expect(loggedIn.status).toBe(200)
+      expect(loggedIn.cookies.get("pe_auth")).toBeUndefined()
+      expect(await verifyDemoToken(loggedIn.cookies.get(DEMO_AUTH_COOKIE)?.value, "tester"))
+        .toMatchObject({ email })
+      expect((await login(request(email, "test-only-admin-password"))).status).toBe(401)
+      expect(isAllowedPlatformEmail(email)).toBe(false)
+    }
+    expect((await login(request("other@test.com", "test"))).status).toBe(401)
+
+    process.env.COLORS_DEMO_EXTRA_TESTERS = "invalid JSON"
+    expect((await login(request("jacob@test.com", "test"))).status).toBe(401)
   })
 })

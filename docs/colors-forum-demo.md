@@ -45,6 +45,7 @@ Before sharing the link:
 1. Confirm the production project slug is `forum-application`, belongs to COLORS and has the intended early-application signals and copy.
 2. Set `COLORS_DEMO_TESTER_EMAIL=philipp@colorsxstudios.com` and a strong, independent `COLORS_DEMO_PASSWORD`. Remove Philipp from `ALLOWED_EMAILS`; that list grants platform-admin access.
    An optional second demo-only login uses `COLORS_DEMO_ADDITIONAL_TESTER_EMAIL` and `COLORS_DEMO_ADDITIONAL_TESTER_PASSWORD` in the server environment. Keep its password independent and strong before sharing a public deployment.
+   For more demo-only logins, set `COLORS_DEMO_EXTRA_TESTERS` to a JSON object mapping email addresses to passwords in the server environment. These accounts can access only the COLORS demo, even if an address appears in `ALLOWED_EMAILS`. Keep this value out of source control.
 3. Share the demo password through a secure channel. Do not put credentials in this repository or in the invitation email.
 4. Ensure the Anthropic key is configured. `GROUCHO_REVIEWER_MODEL` is optional; it defaults to the existing low-cost Anthropic model.
 5. Deploy, open `/demo/colors` in a signed-out browser and complete one realistic conversation.
