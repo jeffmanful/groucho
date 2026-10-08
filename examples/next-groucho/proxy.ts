@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 
-/** Self-contained example — no auth (contrast with repo root `middleware.ts`). */
-export function middleware() {
+/** Self-contained example — no auth (contrast with repo root `proxy.ts`). */
+export function proxy() {
   return NextResponse.next()
 }
 

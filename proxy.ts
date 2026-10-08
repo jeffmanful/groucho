@@ -19,7 +19,7 @@ const PUBLIC_PATHS = [
 const STATIC_PREFIXES = ["/_next/", "/favicon.ico"]
 const REQUEST_ID_HEADER = "x-request-id"
 
-type MiddlewareAuthClient = {
+type ProxyAuthClient = {
   getUser(): Promise<{ data: { user: { id: string } | null } }>
 }
 
@@ -95,7 +95,7 @@ function isAllowedPlatformEmail(email: string): boolean {
   return allowed.includes(normalized)
 }
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl
 
   if (STATIC_PREFIXES.some((p) => pathname.startsWith(p))) return NextResponse.next()
@@ -151,7 +151,7 @@ export async function middleware(req: NextRequest) {
         },
       },
     })
-    const auth = supabase.auth as unknown as MiddlewareAuthClient
+    const auth = supabase.auth as unknown as ProxyAuthClient
     const {
       data: { user },
     } = await auth.getUser()
