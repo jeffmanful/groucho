@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest"
 import { NextRequest } from "next/server"
-import { middleware } from "@/middleware"
+import { proxy } from "@/proxy"
 import { DEMO_AUTH_COOKIE, issueDemoToken } from "@/lib/colors-demo-token"
 
 const originalSecret = process.env.AUTH_SECRET
@@ -22,7 +22,7 @@ describe("COLORS demo root routing", () => {
     const request = new NextRequest("https://example.test/")
     request.cookies.set(DEMO_AUTH_COOKIE, token!)
 
-    const response = await middleware(request)
+    const response = await proxy(request)
     expect(response.status).toBe(307)
     expect(response.headers.get("location")).toBe("https://example.test/demo/colors")
   })

@@ -9,7 +9,7 @@ reviewer action or an enabled deterministic client policy.
 
 It is shipped as a **monorepo** with two products:
 
-1. **Platform** — a Next.js 16 / React 19 multi-tenant control plane and HTTP API (this repo's `app/`, `lib/`, `middleware.ts`, `supabase/`).
+1. **Platform** — a Next.js 16 / React 19 multi-tenant control plane and HTTP API (this repo's `app/`, `lib/`, `proxy.ts`, `supabase/`).
 2. **`@groucho/sdk`** — a published npm package (`packages/sdk`) with a headless TypeScript client, a server-only helper, and a React component kit (`<Gatekeeper />` + primitives) that host apps drop into their UI.
 
 Source of truth for the broader vision lives in [`docs/PRD.md`](./docs/PRD.md), and
@@ -73,7 +73,7 @@ Legacy routes `/api/chat` and `/api/access` exist for the in-repo `/doorcheck` e
 
 ### Platform (admin app under `/admin`)
 
-- Email-based platform login (`AUTH_SECRET` + Supabase Auth fallback) gated by [`middleware.ts`](./middleware.ts).
+- Email-based platform login (`AUTH_SECRET` + Supabase Auth fallback) gated by [`proxy.ts`](./proxy.ts).
 - Organisations, members, and invitation flow (`app/invite`, `app/signup`, `app/api/invitations/*`, `app/api/organisations/signup`).
 - Org-scoped project list and a **multi-step project creation wizard** at [`app/admin/organisations/[orgId]/projects/new/page.tsx`](./app/admin/organisations/[orgId]/projects/new/page.tsx).
 - Persona authoring under `app/admin/personas` and `app/api/admin/personas`.
@@ -158,7 +158,7 @@ examples/
   next-groucho/     Reference Next.js consumer of @groucho/sdk
 lib/                Server-side primitives: scoring, project resolution, rate limiting, webhooks, logging, RLS-aware Supabase clients
 loadtests/          k6-style load test scaffolding
-middleware.ts       Auth + tracing edge middleware
+proxy.ts            Auth + tracing Node.js proxy
 packages/
   sdk/              @groucho/sdk (headless client, server client, React components)
 prompts/            Source-of-truth prompt templates for the gatekeeper persona and scoring

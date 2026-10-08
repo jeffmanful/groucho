@@ -4,7 +4,7 @@ Demonstrates **ADR-0001** (host proxy): the browser talks only to `/api/groucho/
 
 ## Run
 
-This app includes its own `middleware.ts` (pass-through) so it does **not** pick up the parent repo’s authenticated middleware during `next build` in a workspace.
+This app includes its own `proxy.ts` (pass-through) so it does **not** pick up the parent repo’s authenticated proxy during `next build` in a workspace.
 
 1. Start the main Groucho app (or any server that serves `POST /v1/sessions/{sessionId}/messages` with API key auth), e.g. on port **3000**.
 2. From the repo root: `pnpm install`

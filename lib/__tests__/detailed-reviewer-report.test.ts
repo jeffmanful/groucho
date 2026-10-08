@@ -118,6 +118,8 @@ describe("detailed reviewer report verification", () => {
     }))
     expect(String(createMock.mock.calls[1]?.[0]?.system)).toContain("TONES awareness or first-hand experience")
     expect(String(createMock.mock.calls[1]?.[0]?.system)).toContain("with no audio uploads")
+    expect(String(createMock.mock.calls[0]?.[0]?.system)).toContain("Offline groups, events and scenes count as much as online discussion")
+    expect(String(createMock.mock.calls[0]?.[0]?.system)).toContain("Its cited quote must itself state that intended Forum action")
   })
 
   it("reconciles full V1 transcript evidence before writing and verifies the exact saved report", async () => {
