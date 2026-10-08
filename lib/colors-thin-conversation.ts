@@ -105,6 +105,12 @@ export function oneQuestion(reply: string): string {
     : reply
 }
 
+/** A direct applicant question must receive a live reply before the session can close. */
+export function applicantAsksQuestion(message: string): boolean {
+  return message.includes("?") ||
+    /(?:^|[.!]\s+)(?:is|are|can|could|would|will|do|does|did|should|what|how|why|where|when|who)\b/i.test(message.trim())
+}
+
 export async function postColorsThinConversation(input: {
   context: ProjectContext
   sessionId: string
@@ -173,6 +179,7 @@ export async function postColorsThinConversation(input: {
   const currentAnswer = input.interactionAnswer
     ? `${input.message}\nMedia choice: ${JSON.stringify(input.interactionAnswer)}`
     : input.message
+  const applicantQuestion = applicantAsksQuestion(input.message)
   const conversation = history.filter((entry) => entry.role === "assistant" || entry.role === "user")
     .slice(-20).map((entry) => ({
       role: entry.role as "assistant" | "user",
@@ -189,7 +196,9 @@ export async function postColorsThinConversation(input: {
         turnCount,
         softTarget,
         mediaCatalog: colorsInteractionCatalog(shows),
-      }),
+      }) + (applicantQuestion
+        ? "\n\nThe applicant's latest message asks you a direct question. Answer it in your own words using only the approved Forum context. If the answer is uncertain, say what is known and what is not. Do not restate their question as a question. Do not close on this turn; end with one relevant question that lets them respond."
+        : ""),
       messages: [...conversation, { role: "user", content: currentAnswer }],
       tools: [colorsThinResponseTool],
       tool_choice: { type: "tool", name: colorsThinResponseTool.name },
@@ -223,6 +232,58 @@ export async function postColorsThinConversation(input: {
       boundaryQuestion: value.boundaryQuestion.trim(),
       interactionProposal: value.interactionProposal,
     }
+    if (applicantQuestion && (proposal.close ||
+      (proposal.boundary !== "consent" || !proposal.boundaryQuestion.endsWith("?")) &&
+      !oneQuestion(proposal.reply).includes("?"))) {
+      log.warn("colors_thin_applicant_question_close_deferred", {
+        requestId: input.requestId, sessionId: input.sessionId, turnCount,
+      })
+      const repair = await new Anthropic().messages.create({
+        model,
+        max_tokens: 600,
+        system: colorsThinConversationPrompt({
+          objective: COLORS_FORUM_MEMBERSHIP_OBJECTIVE,
+          turnCount,
+          softTarget,
+          mediaCatalog: colorsInteractionCatalog(shows),
+        }) + "\n\nThe applicant asked a direct question. The previous proposal tried to close or did not leave a clear invitation. Answer their question directly using only the approved Forum context, then ask one relevant question. Do not restate their question as a question. Set close=false. If the answer is uncertain, say what is known and what is not. Do not end the conversation on this turn.",
+        messages: [...conversation, { role: "user", content: currentAnswer }],
+        tools: [colorsThinResponseTool],
+        tool_choice: { type: "tool", name: colorsThinResponseTool.name },
+      })
+      logLlmUsage({
+        operation: "colors_thin_question_reply_repair",
+        provider: "anthropic",
+        model,
+        usage: repair.usage,
+        requestId: input.requestId,
+        organisationId,
+        projectId,
+        sessionId: input.sessionId,
+      })
+      if (repair.stop_reason === "max_tokens" || repair.stop_reason === "refusal") {
+        throw new Error(`Question reply repair stopped: ${repair.stop_reason}`)
+      }
+      const repairedCall = repair.content.find((block) =>
+        block.type === "tool_use" && block.name === colorsThinResponseTool.name)
+      if (!repairedCall || repairedCall.type !== "tool_use") {
+        throw new Error("Question reply repair missing")
+      }
+      const repaired = record(repairedCall.input)
+      if (typeof repaired.reply !== "string" || !repaired.reply.trim() || repaired.close !== false ||
+        !["none", "consent", "safety"].includes(String(repaired.boundary)) ||
+        typeof repaired.boundaryQuestion !== "string" ||
+        !oneQuestion(repaired.reply).includes("?")) {
+        throw new Error("Question reply repair malformed")
+      }
+      proposal = {
+        reply: repaired.reply.trim(),
+        close: false,
+        boundary: repaired.boundary as ConversationReply["boundary"],
+        boundaryQuestion: repaired.boundaryQuestion.trim(),
+        interactionProposal: repaired.interactionProposal,
+      }
+    }
   } catch (error) {
     log.error("colors_thin_conversation_failed", {
       requestId: input.requestId,
@@ -235,7 +296,8 @@ export async function postColorsThinConversation(input: {
   const previousBoundary = record(lastAssistant?.metadata).boundary
   const firstBoundaryTurn = proposal.boundary === "consent" && previousBoundary !== "consent"
   const repeatedConsentBoundary = proposal.boundary === "consent" && previousBoundary === "consent"
-  const requestedClose = !firstBoundaryTurn && (proposal.close || repeatedConsentBoundary || turnCount >= emergencyLimit)
+  const requestedClose = !applicantQuestion && !firstBoundaryTurn &&
+    (proposal.close || repeatedConsentBoundary || turnCount >= emergencyLimit)
   if (firstBoundaryTurn && (!proposal.boundaryQuestion.endsWith("?") ||
     !/\b(?:consent|permission|ask|agree|approval)\b/i.test(proposal.boundaryQuestion))) {
     log.error("colors_thin_boundary_question_invalid", {
@@ -246,7 +308,8 @@ export async function postColorsThinConversation(input: {
   const rich = !requestedClose && proposal.boundary === "none"
     ? resolveApplicationRichInteraction(proposal.interactionProposal, shows)
     : null
-  const close = requestedClose || (!firstBoundaryTurn && !oneQuestion(rich?.question ?? proposal.reply).includes("?"))
+  const close = !applicantQuestion &&
+    (requestedClose || (!firstBoundaryTurn && !oneQuestion(rich?.question ?? proposal.reply).includes("?")))
   if (close && !requestedClose) {
     log.warn("colors_thin_questionless_turn_closed", {
       requestId: input.requestId, sessionId: input.sessionId, turnCount,

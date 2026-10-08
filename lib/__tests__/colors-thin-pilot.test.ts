@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { colorsThinConversationPrompt, colorsThinResponseTool, oneQuestion } from "@/lib/colors-thin-conversation"
+import { applicantAsksQuestion, colorsThinConversationPrompt, colorsThinResponseTool, oneQuestion } from "@/lib/colors-thin-conversation"
 import { groundColorsProfile, pendingColorsReport } from "@/lib/colors-post-conversation"
 import { COLORS_FORUM_MEMBERSHIP_OBJECTIVE } from "@/lib/colors-forum-membership-brief"
 import { COLORS_FORUM_MEMBERSHIP_PROFILE_SCHEMA } from "@/lib/onboarding-persona-template"
@@ -47,6 +47,12 @@ describe("COLORS thin conversation pilot", () => {
       .toBe("I heard your concern. What are you weighing?")
     expect(oneQuestion("Do you know TONES? It has a particular format."))
       .toBe("Do you know TONES?")
+  })
+
+  it("recognises an applicant question even after a substantive answer", () => {
+    expect(applicantAsksQuestion("I want a space that feels more tapped in. Is this something the Forum can provide?")).toBe(true)
+    expect(applicantAsksQuestion("I want a space that feels more tapped in. Can the Forum provide that")).toBe(true)
+    expect(applicantAsksQuestion("I usually share music on social media.")).toBe(false)
   })
 
   it("keeps a media choice and its question attached to the applicant's answer for later analysis", () => {
