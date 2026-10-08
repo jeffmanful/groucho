@@ -59,6 +59,17 @@ function concern(kind: ApplicationIntegrityConcernKind): ApplicationIntegrityCon
   return { kind, ...DEFINITIONS[kind] }
 }
 
+/** A later disclosure is not an admission that an earlier answer was invented. */
+export function explicitlyAdmitsEarlierFabrication(quote: string): boolean {
+  const value = quote.toLowerCase().replace(/[’]/g, "'")
+  return [
+    /\bi (?:lied|was lying) (?:earlier|before|about (?:that|it|my))/,
+    /\bi (?:made (?:that|it) up|invented (?:that|it))\b/,
+    /\b(?:what i (?:said|claimed|told you)|my (?:earlier|previous) (?:claim|answer|statement))\b.{0,100}\b(?:wasn't true|was not true|was false|was a lie|was made up)\b/,
+    /\bi (?:said|claimed|told you)\b.{0,100}\b(?:but|and) (?:that|it) (?:wasn't true|was not true|was false|was a lie|was made up)\b/,
+  ].some((pattern) => pattern.test(value))
+}
+
 /** A semantic concern must point at the applicant's actual words. */
 export function sourceLinkedApplicationIntegrityConcern(
   raw: unknown,

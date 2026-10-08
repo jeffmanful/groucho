@@ -5,11 +5,18 @@ import {
   calibratedStatusForIntegrityHistory,
   collectApplicationIntegrityConcerns,
   detectApplicationIntegrityConcerns,
+  explicitlyAdmitsEarlierFabrication,
   sourceLinkedApplicationIntegrityConcern,
   sourceLinkedConsentResolution,
 } from "@/lib/application-integrity-concerns"
 
 describe("application integrity concerns", () => {
+  it("requires an explicit retraction before calling a disclosure fabrication", () => {
+    expect(explicitlyAdmitsEarlierFabrication("I said I run a group, but that was not true.")).toBe(true)
+    expect(explicitlyAdmitsEarlierFabrication("I made that up.")).toBe(true)
+    expect(explicitlyAdmitsEarlierFabrication("I have paid placements in my guide, and I would link clients in the Forum.")).toBe(false)
+    expect(explicitlyAdmitsEarlierFabrication("I did not mention the paid placements earlier.")).toBe(false)
+  })
   it.each([
     {
       answer:
