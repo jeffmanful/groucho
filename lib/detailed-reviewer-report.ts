@@ -293,6 +293,13 @@ const REVIEWER_FACT_BOUNDARIES = [
 
 const REVIEWER_CALIBRATION_INSTRUCTIONS = `The session's terminal outcome and preliminary advisory are context, not a verdict you must copy. All completed applications await a human decision, so human_review is not a synonym for routine human approval. Recommend when the available evidence supports a positive assessment and no material concern or concrete decision-relevant uncertainty remains. Use human_review only for a concrete conflicting or concerning claim, a verified integrity flag requiring judgment, or a source-linked material gap that changes this applicant's assessment. A routine reviewer question, an unasked optional topic, lack of external observation of a self-reported existing practice, or a hypothetical exercise being hypothetical is not by itself a reason to downgrade. A first-person account of a present habit may be reported as the applicant's account; do not call it externally verified, and do not downgrade merely because no outside witness was interviewed. A single media choice shows a provisional listening hypothesis, not an established curatorial philosophy or successful programme. Do not upgrade an applicant's description into an objective claim about organizational fit, access arrangements, or who attends. Reviewer questions must ask neutrally rather than smuggle unsupported factual premises into their lead-in. Decline still requires a clear material concern. Give advisory_reason as one complete, concise sentence; aim for 240 characters, but length alone does not invalidate a source-supported report. If your advisory differs from the preliminary advisory, say why there. Fill advisory_evidence_reference_ids with the source ids supporting that reason; use an empty array only when the reason is a named weak signal or verified flag without a source message. The confidence_score is evidence sufficiency, not probability of acceptance or a suitability score.`
 
+function reviewerCalibrationInstructions(forumMembershipPilot?: boolean): string {
+  if (!forumMembershipPilot) return REVIEWER_CALIBRATION_INSTRUCTIONS
+  return REVIEWER_CALIBRATION_INSTRUCTIONS
+    .replace("The session's terminal outcome and preliminary advisory are context, not a verdict you must copy.", "The session's terminal outcome is context, not a verdict you must copy.")
+    .replace("If your advisory differs from the preliminary advisory, say why there.", "")
+}
+
 type ReviewerTranscriptMessage = {
   id: string
   role: "user" | "assistant"
@@ -578,7 +585,10 @@ function reviewerInput(input: DetailedReviewerReportInput): string {
       `[source_message_id=${message.id}] ${message.role === "user" ? "APPLICANT" : "GROUCHO"}: ${message.content}`,
     )
     .join("\n")
-  return `Session outcome (advisory context, not an automatic acceptance):\n${JSON.stringify({ terminalStatus: input.terminalStatus ?? null, preliminaryAdvisory: input.baseReport.advisory_recommendation })}\n\nApplicant evidence transcript (process-feedback turns and Groucho's replies omitted):\n${transcript}\n\nSource-linked application facts (null explicitOrderOptionIds means no order was established by the structured choice):\n${JSON.stringify(reviewerFacts(input))}\n\nAllowed evidence references:\n${JSON.stringify(eligibleEvidenceReferences(input), null, 2)}\n\nReconciled evidence state (authoritative for coverage; unverified is not negative evidence):\n${JSON.stringify(input.baseReport.evidence_state ?? null)}\n\nKnown weak or missing signals:\n${JSON.stringify(input.baseReport.weak_or_missing_signals)}\n\nKnown safety or integrity flags:\n${JSON.stringify(input.baseReport.safety_or_integrity_flags)}`
+  const sessionOutcome = input.forumMembershipPilot
+    ? { terminalStatus: input.terminalStatus ?? null }
+    : { terminalStatus: input.terminalStatus ?? null, preliminaryAdvisory: input.baseReport.advisory_recommendation }
+  return `Session outcome (advisory context, not an automatic acceptance):\n${JSON.stringify(sessionOutcome)}\n\nApplicant evidence transcript (process-feedback turns and Groucho's replies omitted):\n${transcript}\n\nSource-linked application facts (null explicitOrderOptionIds means no order was established by the structured choice):\n${JSON.stringify(reviewerFacts(input))}\n\nAllowed evidence references:\n${JSON.stringify(eligibleEvidenceReferences(input), null, 2)}\n\nReconciled evidence state (authoritative for coverage; unverified is not negative evidence):\n${JSON.stringify(input.baseReport.evidence_state ?? null)}\n\nKnown weak or missing signals:\n${JSON.stringify(input.baseReport.weak_or_missing_signals)}\n\nKnown safety or integrity flags:\n${JSON.stringify(input.baseReport.safety_or_integrity_flags)}`
 }
 
 function processMessageIds(input: DetailedReviewerReportInput): Set<string> {
@@ -815,7 +825,7 @@ function reviewerVerificationInput(
   return JSON.stringify({
     sessionOutcome: {
       terminalStatus: input.terminalStatus ?? null,
-      preliminaryAdvisory: input.baseReport.advisory_recommendation,
+      ...(!input.forumMembershipPilot ? { preliminaryAdvisory: input.baseReport.advisory_recommendation } : {}),
     },
     knownWeakOrMissingSignals: input.baseReport.weak_or_missing_signals,
     transcript: eligibleApplicantTranscript(input),
@@ -835,7 +845,7 @@ async function verifyReviewerEvaluation(input: {
   const response = await getClient().messages.create({
     model: input.model,
     max_tokens: 2400,
-    system: REVIEWER_VERIFICATION_INSTRUCTIONS + "\n\n" + REVIEWER_FACT_BOUNDARIES + "\n\n" + REVIEWER_CALIBRATION_INSTRUCTIONS + (input.reportInput.forumMembershipPilot ? "\n\nCurrent initial Forum product and membership brief:\n" + COLORS_FORUM_MEMBERSHIP_REVIEW_GUIDANCE : "") + " Reject a report that crosses any of these boundaries or gives an ungrounded downgrade. Verify advisory_reason against its cited messages, known weak signals, or verified flags. Optional reviewer questions have been checked separately; assess the final reviewer_focus against the questions that remain.",
+    system: REVIEWER_VERIFICATION_INSTRUCTIONS + "\n\n" + REVIEWER_FACT_BOUNDARIES + "\n\n" + reviewerCalibrationInstructions(input.reportInput.forumMembershipPilot) + (input.reportInput.forumMembershipPilot ? "\n\nCurrent initial Forum product and membership brief:\n" + COLORS_FORUM_MEMBERSHIP_REVIEW_GUIDANCE : "") + " Reject a report that crosses any of these boundaries or gives an ungrounded downgrade. Verify advisory_reason against its cited messages, known weak signals, or verified flags. Optional reviewer questions have been checked separately; assess the final reviewer_focus against the questions that remain.",
     output_config: {
       format: {
         type: "json_schema",
@@ -1012,7 +1022,7 @@ export async function generateDetailedReviewerReport(
       const response = await getClient().messages.create({
         model,
         max_tokens: 3000,
-        system: REVIEWER_INSTRUCTIONS + "\n\nRefer to the applicant as the applicant or they. Never infer pronouns from a name, voice, or writing.\n\n" + REVIEWER_FACT_BOUNDARIES + "\n\n" + REVIEWER_CALIBRATION_INSTRUCTIONS + (input.forumMembershipPilot ? "\n\nCurrent initial Forum product and membership brief:\n" + COLORS_FORUM_MEMBERSHIP_REVIEW_GUIDANCE : ""),
+        system: REVIEWER_INSTRUCTIONS + "\n\nRefer to the applicant as the applicant or they. Never infer pronouns from a name, voice, or writing.\n\n" + REVIEWER_FACT_BOUNDARIES + "\n\n" + reviewerCalibrationInstructions(input.forumMembershipPilot) + (input.forumMembershipPilot ? "\n\nCurrent initial Forum product and membership brief:\n" + COLORS_FORUM_MEMBERSHIP_REVIEW_GUIDANCE : ""),
         output_config: {
           format: {
             type: "json_schema",

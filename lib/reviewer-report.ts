@@ -141,7 +141,7 @@ export type ReviewerReport = {
 }
 
 export const COLORS_DETAILED_REPORT_VERSION = "colors_forum_report_v2"
-export const COLORS_FORUM_MEMBERSHIP_REPORT_VERSION = "colors_forum_membership_report_v2"
+export const COLORS_FORUM_MEMBERSHIP_REPORT_VERSION = "colors_forum_membership_report_v3"
 
 export type ReviewerEvidenceStateEntry = {
   signal_key: string

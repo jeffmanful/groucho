@@ -120,6 +120,10 @@ describe("detailed reviewer report verification", () => {
     expect(String(createMock.mock.calls[1]?.[0]?.system)).toContain("with no audio uploads")
     expect(String(createMock.mock.calls[0]?.[0]?.system)).toContain("Offline groups, events and scenes count as much as online discussion")
     expect(String(createMock.mock.calls[0]?.[0]?.system)).toContain("Its cited quote must itself state that intended Forum action")
+    for (const call of createMock.mock.calls.slice(1)) {
+      expect(String(call[0]?.messages?.[0]?.content)).not.toContain("preliminaryAdvisory")
+      expect(String(call[0]?.system)).not.toContain("preliminary advisory")
+    }
   })
 
   it("reconciles full V1 transcript evidence before writing and verifies the exact saved report", async () => {
