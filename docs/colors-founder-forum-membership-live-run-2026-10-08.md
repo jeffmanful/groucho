@@ -15,10 +15,10 @@ Saved session: `920463fa-1392-4941-a80a-992772474a04`. The conversation complete
 
 The route felt substantially more natural than the earlier founder-lens pass. It used the applicant's listening-session detail, asked no artist-permission hypothetical, did not make a COLORS show into a recall test, and closed without a redundant selector. Four answers were enough to establish motivation, a real music practice, a COLORS connection, and a plausible Forum contribution.
 
-Two issues remain:
+The founder review initially flagged two issues:
 
-- Groucho introduced TONES as “the listening events that happen alongside the Forum.” The approved brief only says TONES is part of the COLORS community and that the Forum will have space for TONES and live-event conversations. The description adds an unsupported format and relationship.
-- The applicant described an offline listening group. Groucho did not ask whether or how they participate in **online** communities, despite that being a stated membership objective. Its final question went to optional TONES familiarity instead.
+- Groucho introduced TONES as “the listening events that happen alongside the Forum.” The then-current approved brief lacked the series description. The founder has since clarified that TONES is a city-focused series of COLORS live events; “listening events” is still an overly narrow description, and “alongside the Forum” suggests an unsupported relationship.
+- Groucho followed the listening-session topic once, but did not learn much about the applicant's own role in making that group work. The initial review incorrectly treated missing **online** community experience as a gap. The founder clarified that an offline community practice is equally important.
 
 The repeated affirmation (“exactly the kind of listening,” “powerful reason”) was warmer than necessary, though it did not interrupt the flow. The share-or-join question also presented a narrow menu, but left room for “both,” which the applicant used.
 
@@ -26,8 +26,14 @@ The repeated affirmation (“exactly the kind of listening,” “powerful reaso
 
 The report was source-linked and generally faithful. It framed the listening sessions as the applicant's account and the monthly Forum thread as a proposal. It captured the Little Simz connection without claiming expertise. TONES nonattendance became context, with no reservation or material gap. No permission concern was invented. The saved profile's membership fields contain exact applicant excerpts.
 
-The report marked `community_participation` as supported by the offline listening-session example and listed no material gaps. That is support for participation with people around music, but it does **not** establish how this person behaves in an online community. The report should preserve that distinction when the live conversation has not covered online participation. The profile's Q&A also repeats Groucho's unsupported TONES description as the preceding question, although its extracted TONES connection quotes only the applicant.
+The report marked `community_participation` as supported by the offline listening-session example and listed no material gaps. That was appropriate: the applicant described bringing people together around music and a specific exchange that continued after the session. The report should make no claim about online practice, but it need not ask for one to support this lens. The profile's Q&A also repeats Groucho's overly narrow TONES description as the preceding question, although its extracted TONES connection quotes only the applicant.
 
 ## Next adjustment
 
-Keep the loose conversational arc and short close. When an applicant gives an offline community example, prefer one light question about their online-community habits or what they would do in an existing thread before spending the remaining beat on optional TONES familiarity. Keep TONES descriptions inside the approved product context. In post-conversation analysis, distinguish offline community practice from direct evidence of online participation; do not mark the latter covered solely by an offline example.
+Keep the loose conversational arc and short close. When an applicant gives a community example, use an earned follow-up to understand their own role or the exchange they sustain, if that is still unclear. Do not require an online example after an offline one. Use the founder's fuller city and community description for TONES, without inventing details of a particular event. The post-conversation report should value online and offline community practice equally while describing only the medium the applicant actually mentioned.
+
+## Replay after the founder's clarification
+
+Saved synthetic session: `f587c06b-0917-46e9-996a-6099ad5acab7`. The applicant again described an in-person music circle. Groucho followed it by asking how people connect through it; the applicant then described choosing a public performance with another organiser, making room for quieter voices and sending a follow-up note. Groucho asked about a COLORS show and closed after three answers. It did not demand an online example or make TONES attendance a test.
+
+The first saved report correctly supported `community_participation` from the offline exchange, but incorrectly marked `forum_participation` supported by a quote about the applicant's **existing** circle. The applicant had expressed only a general hope to bring that exchange into the Forum. The post-conversation instruction was tightened so a supported Forum-participation quote must itself state a specific intended Forum action. A read-only diagnostic then marked `forum_participation` unverified with no material gap and kept `community_participation` supported. The membership report version was advanced, and the corrected v2 report was regenerated and saved for this session. It still recommends approval.

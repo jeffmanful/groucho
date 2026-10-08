@@ -260,13 +260,13 @@ describe("COLORS demo report endpoint", () => {
     )
   })
 
-  it("marks the previous thin report outdated and regenerates it with membership lenses", async () => {
+  it("marks the earlier membership report outdated and regenerates it", async () => {
     state.sessionStatus = "completed"
     const oldReport = state.metadata.reviewer_report as Record<string, unknown>
     state.metadata = {
       conversation_engine: "colors_thin_pilot_v1",
       colors_demo_report_status: "ready",
-      reviewer_report: { ...oldReport, report_version: COLORS_DETAILED_REPORT_VERSION,
+      reviewer_report: { ...oldReport, report_version: "colors_forum_membership_report_v1",
         detailed_opinion: {
           overall_assessment: "Old opinion", decisive_reasons: [], claim_assessments: [{
             claim: "Hosts a listening table", evidence_reference_ids: ["answer-1"],
