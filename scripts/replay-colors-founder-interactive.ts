@@ -167,7 +167,10 @@ async function main() {
       stdout.write(`REPORT=${JSON.stringify(generated)}\n`)
       return
     }
-    const diagnosticAudit = ANALYZE_UNCLOSED
+    const thinPilot = rows.some((row) =>
+      (row.metadata as Record<string, unknown> | null)?.conversation_engine === "colors_thin_pilot_v1",
+    )
+    const diagnosticAudit = ANALYZE_UNCLOSED || thinPilot
       ? await auditColorsConversationIntegrity({
           messages: rows,
           organisationId: project.organisation_id,
@@ -222,7 +225,7 @@ async function main() {
       ...(diagnosticAudit ? { modelOverride: process.env.GROUCHO_COLORS_THIN_REVIEWER_MODEL?.trim() || "claude-sonnet-5-5" } : {}),
     })
     stdout.write(`REPORT=${JSON.stringify(report)}\n`)
-    if (ANALYZE_UNCLOSED) {
+    if (diagnosticAudit) {
       const profile = await extractProfile({
         transcript: rows.filter((row) => row.role === "user" || row.role === "assistant")
           .map((row) => ({ role: row.role as "user" | "assistant", content: row.content as string })),
@@ -235,7 +238,7 @@ async function main() {
         sessionId,
         terminalStatus: session.status,
       })
-      stdout.write(`PROFILE=${JSON.stringify(groundColorsProfile(profile, diagnosticAudit?.concerns ?? []))}\n`)
+      stdout.write(`PROFILE=${JSON.stringify(groundColorsProfile(profile, diagnosticAudit?.concerns ?? [], report))}\n`)
     }
   } finally {
     reader.close()

@@ -86,3 +86,26 @@ applicant's explicit prior-permission statements; the profile retained only
 the audited `artist_consent_violation` risk flag. This verification covers the
 local demo process and its linked database. A hosted app still needs this code
 and the flag in its own deployment environment.
+
+## October 8 applicant replay follow-up
+
+The latest local applicant session (`8337fba8-58fb-4f38-b543-b18e607294ef`)
+showed a useful music-community example: a two-week Migos discussion changed
+how the applicant appreciated the group. They also said they hoped to meet
+interesting people and share music and references. Groucho then spent several
+turns probing why they share and introduced a broad artist-permission scenario.
+The saved report treated an uncertain answer to that scenario as a reservation.
+There was no applicant-initiated disclosure of private or unreleased work.
+
+The live prompt now recognizes when one answer covers multiple purposes, favors
+closing once a concrete example and Forum hope or contribution are heard, and
+reserves a consent boundary for a concern the applicant actually raises. The
+target is about five answers with an eight-answer loop limit. The report prompt
+and verifier now reject a reservation based only on Groucho's hypothetical.
+The profile hint asks for a named song or artist before filling those specific
+fields. The profile summary uses the verified report snapshot so a separate
+extractor cannot reintroduce an unsupported concern. A replay of the same
+transcript yielded a recommendation with no consent reservation; that corrected
+report and profile were saved to the completed local session and read back. A
+fresh local conversation reached a natural close after four answers without
+the permission detour. These are qualitative checks.

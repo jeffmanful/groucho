@@ -214,7 +214,7 @@ export async function POST(req: NextRequest) {
         terminalStatus: session.status,
       })
       if (profile.extraction.status !== "ok") throw new Error(profile.extraction.reason)
-      const groundedProfile = groundColorsProfile(profile, postAudit.concerns)
+      const groundedProfile = groundColorsProfile(profile, postAudit.concerns, report)
       failureStage = "profile_persistence"
       const { error: profileError } = await supabase.from("sessions")
         .update({ profile: groundedProfile, profile_extracted_at: new Date().toISOString() })

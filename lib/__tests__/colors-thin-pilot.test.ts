@@ -65,7 +65,15 @@ describe("COLORS thin conversation pilot", () => {
     }, [{
       kind: "artist_consent_violation", reason: "", reviewerFlag: "",
       sourceMessageId: "answer-1", quote: "I post without asking first.",
-    }])
+    }], {
+      ...pendingColorsReport(),
+      detailed_opinion: {
+        snapshot: { applicant_summary: "The applicant shares music and joins community discussions.", evidence_reference_ids: [], tags: [] },
+        overall_assessment: "", decisive_reasons: [], claim_assessments: [],
+        likely_contribution: "", reservations: [], reviewer_questions: [], suggested_human_action: "discuss",
+      },
+    })
+    expect(profile.core?.summary).toBe("The applicant shares music and joins community discussions.")
     expect(profile.core?.risk_flags).toEqual(["artist_consent_violation"])
     expect(profile.custom).toEqual({ intent: "Wants access." })
   })

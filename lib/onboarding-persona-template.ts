@@ -4,7 +4,7 @@ export const COLORS_PROFILE_EXTRACTOR_HINT =
   "Extract practical, human-readable fields that help COLORS understand why the person came, their artist interests, participation in communities, Forum hopes, reciprocal contribution, and relationship to COLORS. Do not invent details."
 
 export const COLORS_THIN_PROFILE_EVIDENCE_HINT =
-  "Base risk flags only on explicit applicant conduct or intent. Do not infer legal violations, ownership, identity, or a sustained practice from a short conversation."
+  "Base risk flags and the core summary only on explicit applicant conduct or intent. Do not infer legal violations, ownership, identity, or a sustained practice from a short conversation. Use 'the applicant' or they/their in all fields; never infer he/she pronouns or other identity from musical interests. Groucho's broad permission, remixing, or reposting hypothetical about ordinary music sharing does not establish an applicant concern; do not carry uncertainty in response to that hypothetical into the summary or risk flags unless the applicant independently described sharing private or unreleased work without prior permission. Preserve the exchange in factual Q&A if useful. Leave recommendation and artist_reference empty unless the applicant names a specific song or artist and explains why they would share or recommend it."
 
 export const COLORS_PROFILE_SCHEMA: Record<string, unknown> = {
   type: "object",

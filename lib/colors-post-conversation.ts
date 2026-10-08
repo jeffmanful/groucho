@@ -74,11 +74,14 @@ export function pendingColorsReport(messages: ApplicantMessage[] = []): Reviewer
 export function groundColorsProfile(
   profile: Profile,
   concerns: ApplicationIntegrityConcern[],
+  verifiedReport?: ReviewerReport,
 ): Profile {
+  const verifiedSummary = verifiedReport?.detailed_opinion?.snapshot?.applicant_summary?.trim()
   return {
     ...profile,
     core: profile.core ? {
       ...profile.core,
+      ...(verifiedSummary ? { summary: verifiedSummary } : {}),
       risk_flags: [...new Set(concerns.map((concern) => concern.kind))],
     } : null,
     custom: profile.custom ? Object.fromEntries(
