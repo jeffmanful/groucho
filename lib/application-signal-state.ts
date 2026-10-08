@@ -23,6 +23,8 @@ export type ApplicationSignalDefinition = {
   key: string
   kind:
     | "colors_relationship"
+    | "music_relationship"
+    | "tones_connection"
     | "motivation"
     | "artist_reference"
     | "recommendation"
@@ -75,6 +77,55 @@ export const COLORS_FORUM_OPENING_QUESTION =
   "Why do you want to be an early applicant for the Forum?"
 
 export const COLORS_FORUM_V1_RUBRIC = "colors_forum_v1" as const
+export const COLORS_FORUM_MEMBERSHIP_RUBRIC = "colors_forum_membership_v1" as const
+
+/** Post-conversation lenses for the initial discussion Forum; never live questions. */
+const COLORS_FORUM_MEMBERSHIP_SIGNALS: ApplicationSignalDefinition[] = [
+  {
+    key: "joining_motivation", kind: "motivation", label: "Joining motivation",
+    evidenceLabel: "Joining motivation",
+    goal: "Why this person wants to join and what they hope the Forum will make possible.",
+    promptRoutes: [], priority: "core", cluster: "orientation", audiences: ["shared"],
+  },
+  {
+    key: "colors_connection", kind: "colors_relationship", label: "COLORS connection",
+    evidenceLabel: "COLORS connection",
+    goal: "Their actual prior connection to COLORS, including shows or artists when named. Unfamiliarity is neutral.",
+    promptRoutes: [], priority: "supporting", cluster: "colors_relationship", audiences: ["shared"],
+  },
+  {
+    key: "music_relationship", kind: "music_relationship", label: "Music relationship",
+    evidenceLabel: "Music relationship",
+    goal: "How music features in their life as a listener, maker, scene participant or another role they describe; no mode has higher status.",
+    promptRoutes: [], priority: "core", cluster: "cultural_point_of_view", audiences: ["shared"],
+  },
+  {
+    key: "community_participation", kind: "participation", label: "Community participation",
+    evidenceLabel: "Community participation",
+    goal: "How they currently show up in other communities, especially online spaces; reading, discussion, contextual sharing and organising may all count.",
+    promptRoutes: [], priority: "core", cluster: "participation", audiences: ["shared"],
+  },
+  {
+    key: "forum_participation", kind: "contribution", label: "Forum participation",
+    evidenceLabel: "Forum participation",
+    goal: "A specific way they themselves say they would take part at first. A general wish for other people to talk is a Forum hope, not a personal plan. Quiet participation counts.",
+    promptRoutes: [], priority: "supporting", cluster: "forum_hopes", audiences: ["shared"],
+  },
+  {
+    key: "tones_connection", kind: "tones_connection", label: "TONES connection",
+    evidenceLabel: "TONES connection",
+    goal: "Their stated awareness of or first-hand experience with TONES, if any. Lack of familiarity or attendance is neutral and never a material gap.",
+    promptRoutes: [], priority: "supporting", cluster: "tones_connection", audiences: ["shared"],
+  },
+]
+
+export function colorsForumMembershipSignalDefinitions(): ApplicationSignalDefinition[] {
+  return COLORS_FORUM_MEMBERSHIP_SIGNALS.map((signal) => ({
+    ...signal,
+    promptRoutes: [...signal.promptRoutes],
+    audiences: [...signal.audiences],
+  }))
+}
 
 /** Fixed evidence IDs for new COLORS Forum sessions; labels are display text only. */
 const COLORS_FORUM_V1_SIGNALS: ApplicationSignalDefinition[] = [

@@ -62,6 +62,11 @@ export type ReviewerCuratorialApproach = {
 }
 
 export const REVIEWER_SNAPSHOT_TAGS = [
+  "joining_motivation",
+  "colors_connection",
+  "music_relationship",
+  "forum_participation",
+  "tones_connection",
   "community_participation",
   "reciprocal_contribution",
   "forum_hopes",
@@ -136,6 +141,7 @@ export type ReviewerReport = {
 }
 
 export const COLORS_DETAILED_REPORT_VERSION = "colors_forum_report_v2"
+export const COLORS_FORUM_MEMBERSHIP_REPORT_VERSION = "colors_forum_membership_report_v1"
 
 export type ReviewerEvidenceStateEntry = {
   signal_key: string

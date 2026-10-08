@@ -6,10 +6,10 @@ import { generateDetailedReviewerReport } from "../lib/detailed-reviewer-report"
 import { collectApplicationFacts } from "../lib/application-facts"
 import { collectApplicationIntegrityConcerns } from "../lib/application-integrity-concerns"
 import { normaliseReviewerReport } from "../lib/reviewer-report"
-import { COLORS_FORUM_V1_RUBRIC } from "../lib/application-signal-state"
+import { COLORS_FORUM_MEMBERSHIP_RUBRIC, COLORS_FORUM_V1_RUBRIC } from "../lib/application-signal-state"
 import { auditColorsConversationIntegrity, groundColorsProfile, pendingColorsReport } from "../lib/colors-post-conversation"
 import { extractProfile } from "../lib/profile-extraction"
-import { COLORS_PROFILE_EXTRACTOR_HINT, COLORS_PROFILE_SCHEMA, COLORS_THIN_PROFILE_EVIDENCE_HINT } from "../lib/onboarding-persona-template"
+import { COLORS_FORUM_MEMBERSHIP_PROFILE_HINT, COLORS_FORUM_MEMBERSHIP_PROFILE_SCHEMA, COLORS_THIN_PROFILE_EVIDENCE_HINT } from "../lib/onboarding-persona-template"
 import {
   DEMO_AUTH_COOKIE,
   DEMO_SESSION_COOKIE,
@@ -173,6 +173,7 @@ async function main() {
     const diagnosticAudit = ANALYZE_UNCLOSED || thinPilot
       ? await auditColorsConversationIntegrity({
           messages: rows,
+          forumMembershipPilot: thinPilot,
           organisationId: project.organisation_id,
           projectId: PROJECT_ID,
           sessionId,
@@ -219,9 +220,12 @@ async function main() {
       projectId: PROJECT_ID,
       sessionId,
       terminalStatus: session.status,
-      rubricVersion: rows.some((row) =>
-        (row.metadata as Record<string, unknown> | null)?.application_rubric_version === COLORS_FORUM_V1_RUBRIC,
-      ) ? COLORS_FORUM_V1_RUBRIC : undefined,
+      rubricVersion: thinPilot
+        ? COLORS_FORUM_MEMBERSHIP_RUBRIC
+        : rows.some((row) =>
+          (row.metadata as Record<string, unknown> | null)?.application_rubric_version === COLORS_FORUM_V1_RUBRIC,
+        ) ? COLORS_FORUM_V1_RUBRIC : undefined,
+      forumMembershipPilot: thinPilot,
       ...(diagnosticAudit ? { modelOverride: process.env.GROUCHO_COLORS_THIN_REVIEWER_MODEL?.trim() || "claude-sonnet-5-5" } : {}),
     })
     stdout.write(`REPORT=${JSON.stringify(report)}\n`)
@@ -230,8 +234,8 @@ async function main() {
         transcript: rows.filter((row) => row.role === "user" || row.role === "assistant")
           .map((row) => ({ role: row.role as "user" | "assistant", content: row.content as string })),
         persona: {
-          profile_schema: COLORS_PROFILE_SCHEMA,
-          profile_extractor_hint: `${COLORS_PROFILE_EXTRACTOR_HINT} ${COLORS_THIN_PROFILE_EVIDENCE_HINT}`,
+          profile_schema: COLORS_FORUM_MEMBERSHIP_PROFILE_SCHEMA,
+          profile_extractor_hint: `${COLORS_FORUM_MEMBERSHIP_PROFILE_HINT} ${COLORS_THIN_PROFILE_EVIDENCE_HINT}`,
         },
         organisationId: project.organisation_id,
         projectId: PROJECT_ID,

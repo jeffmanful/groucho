@@ -29,15 +29,21 @@ async function main() {
     .eq("slug", PERSONA_SLUG)
     .maybeSingle()
   if (existingError) throw existingError
-  if (existing && (existing.prompt !== COLORS_FORUM_PERSONA_PROMPT || !existing.is_active)) {
-    throw new Error("Pilot persona already exists with different content; refusing to overwrite it")
-  }
+  const willUpdate = Boolean(existing &&
+    (existing.prompt !== COLORS_FORUM_PERSONA_PROMPT || !existing.is_active))
   if (!process.argv.includes("--apply")) {
-    console.log(JSON.stringify({ mode: "dry-run", projectId: PROJECT_ID, oldPersonaId, newPersonaId: existing?.id ?? null, willCreate: !existing }))
+    console.log(JSON.stringify({ mode: "dry-run", projectId: PROJECT_ID, oldPersonaId, newPersonaId: existing?.id ?? null, willCreate: !existing, willUpdate }))
     return
   }
 
   let newPersonaId = existing?.id
+  if (existing && willUpdate) {
+    const { error } = await db.from("personas").update({
+      prompt: COLORS_FORUM_PERSONA_PROMPT,
+      is_active: true,
+    }).eq("id", existing.id)
+    if (error) throw error
+  }
   if (!newPersonaId) {
     const { data: created, error } = await db.from("personas").insert({
       name: "COLORS Forum Groucho (pilot)",
@@ -63,7 +69,15 @@ async function main() {
   if (verifyError || verified?.settings?.persona_id !== newPersonaId) {
     throw verifyError ?? new Error("Persona assignment was not persisted")
   }
-  console.log(JSON.stringify({ mode: "applied", projectId: PROJECT_ID, oldPersonaId, newPersonaId }))
+  const { data: verifiedPersona, error: personaVerifyError } = await db.from("personas")
+    .select("prompt, is_active")
+    .eq("id", newPersonaId)
+    .single()
+  if (personaVerifyError || verifiedPersona?.prompt !== COLORS_FORUM_PERSONA_PROMPT ||
+    verifiedPersona?.is_active !== true) {
+    throw personaVerifyError ?? new Error("Pilot persona content was not persisted")
+  }
+  console.log(JSON.stringify({ mode: "applied", projectId: PROJECT_ID, oldPersonaId, newPersonaId, updated: willUpdate }))
 }
 
 main().catch((error) => {

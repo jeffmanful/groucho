@@ -10,10 +10,11 @@ required score fields are unchanged.
 The live model returns an applicant-facing reply, a close signal, a narrow
 consent/safety boundary signal, and optionally approved media IDs. It does not
 score answers, mark evidence coverage, or make a suitability decision. Its
-instructions give questions a loose purpose arc: why the person came, a
-concrete music/community example, what they hope to find or contribute, one
-follow-up on the most revealing detail, and close. Already-answered purposes
-can be skipped or combined. Media remains optional.
+instructions follow the [initial Forum membership brief](./colors-forum-membership-brief.md):
+why the person came, their actual connection to COLORS and music, how they
+participate in communities, what they hope to find or do, and an optional
+TONES branch. One concrete answer can cover several purposes. Already-answered
+purposes can be skipped or combined. Media remains optional.
 
 The demo stores the transcript and interaction answers. A close stores
 `sessions.status = 'completed'` with no suitability score or automatic decision.
@@ -21,6 +22,13 @@ The demo report request then audits process turns and source-linked integrity
 concerns, reconciles evidence from the full transcript, generates and verifies
 the reviewer report, and extracts a profile. A failed report remains retryable.
 The report's recommendation is advisory.
+The current thin pilot reconciles six post-conversation membership lenses:
+joining motivation, COLORS connection, music relationship, community
+participation, intended Forum participation, and optional TONES connection.
+Unasked lenses stay unverified; lack of TONES familiarity or attendance cannot
+create a material gap. Reports use `colors_forum_membership_report_v1`; older
+thin reports are marked outdated and can be regenerated without another
+conversation. The legacy five-lens rubric remains on older sessions.
 Profile risk flags are limited to source-linked concerns from the post-conversation
 audit; unspecified custom fields are omitted.
 The pilot report uses `claude-sonnet-5-5` by default, with

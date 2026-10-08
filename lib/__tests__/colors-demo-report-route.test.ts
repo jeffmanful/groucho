@@ -4,7 +4,7 @@ import {
   DetailedReportGenerationError,
   generateDetailedReviewerReport,
 } from "@/lib/detailed-reviewer-report"
-import { COLORS_DETAILED_REPORT_VERSION } from "@/lib/reviewer-report"
+import { COLORS_DETAILED_REPORT_VERSION, COLORS_FORUM_MEMBERSHIP_REPORT_VERSION } from "@/lib/reviewer-report"
 import { auditColorsConversationIntegrity } from "@/lib/colors-post-conversation"
 import { extractProfile } from "@/lib/profile-extraction"
 
@@ -224,7 +224,7 @@ describe("COLORS demo report endpoint", () => {
       weak_or_missing_signals: [],
       safety_or_integrity_flags: [],
       reviewer_focus: "Review the exchange.",
-      report_version: COLORS_DETAILED_REPORT_VERSION,
+      report_version: COLORS_FORUM_MEMBERSHIP_REPORT_VERSION,
       detailed_opinion: {
         overall_assessment: "The applicant described a listening practice.",
         decisive_reasons: [], claim_assessments: [], likely_contribution: "Listening",
@@ -236,13 +236,59 @@ describe("COLORS demo report endpoint", () => {
     const response = await POST(request())
     expect((await response.json()).status).toBe("ready")
     expect(vi.mocked(auditColorsConversationIntegrity)).toHaveBeenCalled()
+    expect(vi.mocked(auditColorsConversationIntegrity)).toHaveBeenCalledWith(
+      expect.objectContaining({ forumMembershipPilot: true }),
+    )
     expect(vi.mocked(generateDetailedReviewerReport)).toHaveBeenCalledWith(
       expect.objectContaining({
         modelOverride: "claude-sonnet-5-5",
+        forumMembershipPilot: true,
+        rubricVersion: "colors_forum_membership_v1",
         baseReport: expect.objectContaining({
           evidence_references: [expect.objectContaining({ source_message_id: "answer-1" })],
         }),
       }),
+    )
+    expect(vi.mocked(extractProfile)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        persona: expect.objectContaining({
+          profile_schema: expect.objectContaining({
+            properties: expect.objectContaining({ tones_connection: expect.any(Object) }),
+          }),
+        }),
+      }),
+    )
+  })
+
+  it("marks the previous thin report outdated and regenerates it with membership lenses", async () => {
+    state.sessionStatus = "completed"
+    const oldReport = state.metadata.reviewer_report as Record<string, unknown>
+    state.metadata = {
+      conversation_engine: "colors_thin_pilot_v1",
+      colors_demo_report_status: "ready",
+      reviewer_report: { ...oldReport, report_version: COLORS_DETAILED_REPORT_VERSION,
+        detailed_opinion: {
+          overall_assessment: "Old opinion", decisive_reasons: [], claim_assessments: [{
+            claim: "Hosts a listening table", evidence_reference_ids: ["answer-1"],
+            interpretation: "Describes community participation", assessment: "strength",
+          }],
+          likely_contribution: "Listening", reservations: [], reviewer_questions: [],
+          suggested_human_action: "approve",
+        },
+      },
+    }
+    const next = {
+      ...(state.metadata.reviewer_report as Record<string, unknown>),
+      report_version: COLORS_FORUM_MEMBERSHIP_REPORT_VERSION,
+    }
+    vi.mocked(generateDetailedReviewerReport).mockResolvedValueOnce(next as never)
+    const { GET, POST } = await import("@/app/api/demo/colors/report/route")
+    const before = await GET(new NextRequest("http://localhost/api/demo/colors/report?sessionId=client-session-1"))
+    expect((await before.json()).outdated).toBe(true)
+    const after = await POST(request())
+    expect((await after.json()).report.report_version).toBe(COLORS_FORUM_MEMBERSHIP_REPORT_VERSION)
+    expect(vi.mocked(generateDetailedReviewerReport)).toHaveBeenCalledWith(
+      expect.objectContaining({ rubricVersion: "colors_forum_membership_v1" }),
     )
   })
 

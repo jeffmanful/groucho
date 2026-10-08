@@ -10,6 +10,13 @@
 
 This document translates the COLORS tone-of-voice guidance into a usable Groucho persona and application-flow specification.
 
+For the current thin pilot's initial discussion Forum, use the
+[membership conversation brief](./docs/colors-forum-membership-brief.md) for
+conversation purposes, product context and post-conversation evidence. The
+older question examples and consent scenarios below document the previous
+gatekeeper design; they are not required questions or membership criteria for
+the initial Forum.
+
 It is intended for:
 
 - Persona authors configuring COLORS inside Groucho.

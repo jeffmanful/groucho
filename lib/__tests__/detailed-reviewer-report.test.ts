@@ -9,8 +9,8 @@ vi.mock("@anthropic-ai/sdk", () => ({
 }))
 
 import { generateDetailedReviewerReport } from "@/lib/detailed-reviewer-report"
-import { COLORS_FORUM_V1_RUBRIC } from "@/lib/application-signal-state"
-import { COLORS_DETAILED_REPORT_VERSION } from "@/lib/reviewer-report"
+import { COLORS_FORUM_MEMBERSHIP_RUBRIC, COLORS_FORUM_V1_RUBRIC } from "@/lib/application-signal-state"
+import { COLORS_DETAILED_REPORT_VERSION, COLORS_FORUM_MEMBERSHIP_REPORT_VERSION } from "@/lib/reviewer-report"
 import type { ReviewerReport } from "@/lib/reviewer-report"
 
 const baseReport: ReviewerReport = {
@@ -73,6 +73,52 @@ function response(value: unknown) {
 
 describe("detailed reviewer report verification", () => {
   beforeEach(() => createMock.mockReset())
+
+  it("uses the initial Forum's post-conversation lenses without making TONES a gap", async () => {
+    const answer = "I make music with friends and reply in a producers' Discord."
+    createMock
+      .mockResolvedValueOnce(response({ signals: [
+        { signal_key: "joining_motivation", coverage: "unverified", sources: [], material_gap: false, gap_reason: "" },
+        { signal_key: "colors_connection", coverage: "unverified", sources: [], material_gap: false, gap_reason: "" },
+        { signal_key: "music_relationship", coverage: "supported", sources: [{ source_message_id: "answer-1", quote: "I make music with friends" }], material_gap: false, gap_reason: "" },
+        { signal_key: "community_participation", coverage: "supported", sources: [{ source_message_id: "answer-1", quote: "reply in a producers' Discord" }], material_gap: false, gap_reason: "" },
+        { signal_key: "forum_participation", coverage: "unverified", sources: [], material_gap: false, gap_reason: "" },
+        { signal_key: "tones_connection", coverage: "unverified", sources: [], material_gap: false, gap_reason: "" },
+      ] }))
+      .mockResolvedValueOnce(response({
+        ...evaluation,
+        applicant_bio: "The applicant makes music with friends and replies in a producers' Discord.",
+        advisory_reason: "They describe making music and taking part in a producers' Discord.",
+        snapshot: {
+          applicant_summary: "The applicant makes music with friends and replies in a producers' Discord.",
+          evidence_reference_ids: ["answer-1"],
+          tags: [{ value: "music_relationship", evidence_reference_ids: ["answer-1"] }],
+        },
+        claim_assessments: [{
+          claim: "The applicant makes music with friends and replies in a producers' Discord.",
+          evidence_reference_ids: ["answer-1"],
+          interpretation: "A concrete music and community connection.",
+          assessment: "strength",
+        }],
+        reviewer_questions: [],
+      }))
+      .mockResolvedValueOnce(response({ supported: true, issues: [] }))
+    const report = await generateDetailedReviewerReport({
+      transcript: [{ id: "answer-1", role: "user", content: answer }],
+      baseReport,
+      rubricVersion: COLORS_FORUM_MEMBERSHIP_RUBRIC,
+      forumMembershipPilot: true,
+    })
+    expect(report.report_version).toBe(COLORS_FORUM_MEMBERSHIP_REPORT_VERSION)
+    expect(report.evidence_state).toHaveLength(6)
+    expect(report.evidence_state?.find((item) => item.signal_key === "tones_connection"))
+      .toMatchObject({ coverage: "unverified", material_gap: false })
+    expect(report.evidence_references).toContainEqual(expect.objectContaining({
+      signal_key: "music_relationship", source_message_id: "answer-1",
+    }))
+    expect(String(createMock.mock.calls[1]?.[0]?.system)).toContain("TONES awareness or first-hand experience")
+    expect(String(createMock.mock.calls[1]?.[0]?.system)).toContain("with no audio uploads")
+  })
 
   it("reconciles full V1 transcript evidence before writing and verifies the exact saved report", async () => {
     const v1Report: ReviewerReport = {

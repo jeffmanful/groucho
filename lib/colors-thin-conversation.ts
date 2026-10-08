@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk"
 import { NextResponse } from "next/server"
 import type { ApplicantIdentity } from "@/lib/applicant-identity"
 import { COLORS_FORUM_PERSONA_PROMPT } from "@/lib/colors-forum-persona"
+import { COLORS_FORUM_MEMBERSHIP_CONTEXT, COLORS_FORUM_MEMBERSHIP_OBJECTIVE } from "@/lib/colors-forum-membership-brief"
 import { fetchLatestColorsShows } from "@/lib/colors-youtube-feed"
 import {
   colorsInteractionCatalog,
@@ -68,11 +69,17 @@ export function colorsThinConversationPrompt(input: {
 
 Current project objective: ${input.objective}
 
-Give this conversation a loose arc: learn why the person came; hear one concrete example of their relationship with music or community; understand what they hope to find or contribute; follow the most revealing detail once; then close. These are purposes, not required questions or a fixed order. An answer may cover several purposes. Skip what is already understood. Follow a more meaningful thread when one appears. Do not ask a second example just to fill a category. An account of a music discussion can already show curiosity, participation and openness; a simple wish to share music can already tell you what someone might bring. Do not keep probing the mechanics or hidden motive of an ordinary contribution after the person has answered. A human reviewer can assess a brief, imperfect answer without another interrogation.
+${COLORS_FORUM_MEMBERSHIP_CONTEXT}
 
-Speak as Groucho, not as a reviewer. Respond to a specific detail, then ask one clear question at most. Vary the wording and route with the person. Do not announce stages, score, classify evidence, or mention an application checklist. A request to clarify or change topic deserves a direct response. Ordinary discussion, recommendations and links to publicly released music are normal Forum participation. Do not introduce a permission, copyright, remixing or reposting test because someone says they share music or references. Do not ask them to prove that routine sharing is safe. If the person themselves raises sharing private or unreleased artist work without prior permission, state the artist's consent boundary promptly and plainly. On that first boundary turn, put a brief statement only in reply and one model-written question about prior permission in boundaryQuestion. Do not ask about taste, reach, contacts, or another topic while that concrete concern is unresolved. On a repeated refusal, close rather than open another topic. Set boundary to consent or safety only when the applicant's own words actually raise that issue; Groucho's hypothetical question cannot create the concern. Otherwise boundaryQuestion must be empty.
+Give this conversation a loose arc: learn why the person wants to join; hear one concrete thread about COLORS, music, a scene, or another community; understand how they show up with others and what they hope to find or do in this Forum; follow the most revealing detail once; then close. These are purposes, not required questions or a fixed order. An answer may cover several purposes. Skip what is already understood. Make room for their actual COLORS relationship, which may include a favourite show or artist, a general impression, or no prior familiarity. Learn whether music is something they make, listen to, discuss, discover or experience with a scene; none is a higher-status answer. Other online communities and what keeps them returning are useful when relevant. How they would like to participate at first helps welcome them, not score them. If a real community story includes a different musical perspective, notice what happened without staging a disagreement test. Once a story already shows how they participate, move toward their COLORS connection or Forum hope rather than asking them to recall a song title, event name, lineup, frequency or another example. Do not ask a second example just to fill a category or keep probing the motive for ordinary sharing.
 
-This is answer ${input.turnCount} of an approximate ${input.softTarget}-answer conversation. The target is guidance, not a minimum. Close when a human reviewer would have a useful conversation to read, even if some topics were not explored. Once the arc has a concrete example and a Forum hope or contribution, prefer a warm close to another clarification. Do not keep asking merely because a topic remains unknown. The runtime will stop a loop at a higher emergency limit.
+TONES is an optional branch. If it comes up, follow what the person actually knows or experienced. If it has not come up and there is room, one light invitation about whether they know TONES may help introduce the Forum's TONES and live-events space. Ask first; only explain if they do not know it. Use only the approved TONES description above, without embellishment. Do not treat recognition or attendance as proof of fit, require a favourite show, or invent event details.
+
+A COLORS SHOW recording is not proof of attending a live event. Do not turn someone's interest in recorded shows into a question about whether they attended in person unless they themselves bring up live attendance. Do not ask for event names, dates, lineups or locations to validate an experience.
+
+Speak as Groucho, not as a reviewer. Respond to a specific detail, then ask one clear question at most. Every non-closing text turn must end with one direct question ending in ?. If there is no question worth asking, set close=true. Vary the wording and route with the person. Do not announce stages, score, classify evidence, or mention an application checklist. A request to clarify or change topic deserves a direct response. Sharing public music links and discussing artists are ordinary Forum activity. Never ask for artist permission because someone shares or recommends music, and never introduce a copyright, remixing or reposting test. If the applicant independently proposes exposing someone else's private material, state the privacy boundary plainly; do not generalise that situation into a test for everyone. Set boundary to consent or safety only for a concrete concern raised in the applicant's own words. Otherwise boundaryQuestion must be empty.
+
+This is answer ${input.turnCount} of an approximate ${input.softTarget}-answer conversation. The target is guidance, not a minimum. Close when a human reviewer would have a useful conversation to read, even if COLORS or TONES familiarity remains unknown. Once the arc has a concrete music or community thread and a Forum hope or participation preference, prefer a warm close to another clarification. The runtime will stop a loop at a higher emergency limit.
 
 Approved media catalog: ${JSON.stringify(input.mediaCatalog)}. Media is optional. Offer it only when it helps this person's current thread or they ask to see a source. Use only listed IDs. Never imply they watched or understood an asset before they say so. A reference uses one or two image/link cards; a choice uses two to four videos with a rationale. The reply must still make sense if media cannot be shown. Omit interactionProposal for an ordinary text turn or an unresolved boundary.
 
@@ -90,10 +97,10 @@ function record(value: unknown): Record<string, unknown> {
     ? value as Record<string, unknown> : {}
 }
 
-/** Keep the first invitation when the model accidentally combines questions. */
+/** End an active text turn at its first question so the invitation stays clear. */
 export function oneQuestion(reply: string): string {
   const first = reply.indexOf("?")
-  return first >= 0 && reply.indexOf("?", first + 1) >= 0
+  return first >= 0
     ? reply.slice(0, first + 1).trim()
     : reply
 }
@@ -178,7 +185,7 @@ export async function postColorsThinConversation(input: {
       model,
       max_tokens: 600,
       system: colorsThinConversationPrompt({
-        objective: "Understand how this person relates to music and community, what they hope to find in the COLORS Forum, and what they might bring to it.",
+        objective: COLORS_FORUM_MEMBERSHIP_OBJECTIVE,
         turnCount,
         softTarget,
         mediaCatalog: colorsInteractionCatalog(shows),
@@ -228,7 +235,7 @@ export async function postColorsThinConversation(input: {
   const previousBoundary = record(lastAssistant?.metadata).boundary
   const firstBoundaryTurn = proposal.boundary === "consent" && previousBoundary !== "consent"
   const repeatedConsentBoundary = proposal.boundary === "consent" && previousBoundary === "consent"
-  const close = !firstBoundaryTurn && (proposal.close || repeatedConsentBoundary || turnCount >= emergencyLimit)
+  const requestedClose = !firstBoundaryTurn && (proposal.close || repeatedConsentBoundary || turnCount >= emergencyLimit)
   if (firstBoundaryTurn && (!proposal.boundaryQuestion.endsWith("?") ||
     !/\b(?:consent|permission|ask|agree|approval)\b/i.test(proposal.boundaryQuestion))) {
     log.error("colors_thin_boundary_question_invalid", {
@@ -236,13 +243,20 @@ export async function postColorsThinConversation(input: {
     })
     return json({ error: "Groucho could not respond. Please try again." }, input.requestId, 503)
   }
-  const rich = !close && proposal.boundary === "none"
+  const rich = !requestedClose && proposal.boundary === "none"
     ? resolveApplicationRichInteraction(proposal.interactionProposal, shows)
     : null
-  const ui = rich?.kind === "reference"
-    ? { ...DEFAULT_INTERACTION_SPEC, inputType: "text" as const, referenceCards: rich.cards }
-    : rich?.kind === "choice"
-      ? { ...DEFAULT_INTERACTION_SPEC, inputType: "mediaChoice" as const, mediaChoice: rich.interaction }
+  const close = requestedClose || (!firstBoundaryTurn && !oneQuestion(rich?.question ?? proposal.reply).includes("?"))
+  if (close && !requestedClose) {
+    log.warn("colors_thin_questionless_turn_closed", {
+      requestId: input.requestId, sessionId: input.sessionId, turnCount,
+    })
+  }
+  const activeRich = close ? null : rich
+  const ui = activeRich?.kind === "reference"
+    ? { ...DEFAULT_INTERACTION_SPEC, inputType: "text" as const, referenceCards: activeRich.cards }
+    : activeRich?.kind === "choice"
+      ? { ...DEFAULT_INTERACTION_SPEC, inputType: "mediaChoice" as const, mediaChoice: activeRich.interaction }
       : DEFAULT_INTERACTION_SPEC
   const boundaryStatement = proposal.reply.split(/\n\s*\n/)[0]
     .replace(/\s*[^.!?]*\?[\s\S]*$/, "").trim()
@@ -250,7 +264,7 @@ export async function postColorsThinConversation(input: {
     ? settings.applicationExperience.closing_message?.trim() || DEFAULT_APPLICATION_CLOSING_MESSAGE
     : firstBoundaryTurn
       ? `${boundaryStatement} ${proposal.boundaryQuestion}`.trim()
-      : oneQuestion(rich?.question ?? proposal.reply)
+      : oneQuestion(activeRich?.question ?? proposal.reply)
 
   const { data: savedUser, error: userError } = await supabase.from("messages").insert({
     session_id: session.id,

@@ -6,16 +6,16 @@ import {
   generateDetailedReviewerReport,
 } from "@/lib/detailed-reviewer-report"
 import { collectApplicationFacts } from "@/lib/application-facts"
-import { COLORS_FORUM_V1_RUBRIC } from "@/lib/application-signal-state"
+import { COLORS_FORUM_MEMBERSHIP_RUBRIC, COLORS_FORUM_V1_RUBRIC } from "@/lib/application-signal-state"
 import { collectApplicationIntegrityConcerns } from "@/lib/application-integrity-concerns"
 import { getOrCreateRequestId } from "@/lib/request-trace"
-import { COLORS_DETAILED_REPORT_VERSION, normaliseReviewerReport } from "@/lib/reviewer-report"
+import { COLORS_DETAILED_REPORT_VERSION, COLORS_FORUM_MEMBERSHIP_REPORT_VERSION, normaliseReviewerReport } from "@/lib/reviewer-report"
 import { log } from "@/lib/logger"
 import { supabase } from "@/lib/supabase"
 import { COLORS_THIN_PILOT_MARKER } from "@/lib/colors-thin-conversation"
 import { auditColorsConversationIntegrity, groundColorsProfile, pendingColorsReport } from "@/lib/colors-post-conversation"
 import { extractProfile } from "@/lib/profile-extraction"
-import { COLORS_PROFILE_EXTRACTOR_HINT, COLORS_PROFILE_SCHEMA, COLORS_THIN_PROFILE_EVIDENCE_HINT } from "@/lib/onboarding-persona-template"
+import { COLORS_FORUM_MEMBERSHIP_PROFILE_HINT, COLORS_FORUM_MEMBERSHIP_PROFILE_SCHEMA, COLORS_THIN_PROFILE_EVIDENCE_HINT } from "@/lib/onboarding-persona-template"
 import { modelFromEnv } from "@/lib/llm-usage"
 
 type ReportMessage = {
@@ -37,19 +37,27 @@ function isV1Session(rows: ReportMessage[]) {
   )
 }
 
+function currentReportVersion(rows: ReportMessage[]) {
+  if (rows.some((message) =>
+    record(message.metadata).conversation_engine === COLORS_THIN_PILOT_MARKER,
+  )) return COLORS_FORUM_MEMBERSHIP_REPORT_VERSION
+  return isV1Session(rows) ? COLORS_DETAILED_REPORT_VERSION : null
+}
+
 function isCurrentReport(
   report: NonNullable<ReturnType<typeof normaliseReviewerReport>>,
   rows: ReportMessage[],
 ) {
+  const expected = currentReportVersion(rows)
   return Boolean(report.detailed_opinion) &&
-    (!isV1Session(rows) || report.report_version === COLORS_DETAILED_REPORT_VERSION)
+    (!expected || report.report_version === expected)
 }
 
 function preliminaryReportForRetry(
   report: NonNullable<ReturnType<typeof normaliseReviewerReport>>,
   rows: ReportMessage[],
 ) {
-  if (!isV1Session(rows) || !report.detailed_opinion || isCurrentReport(report, rows)) {
+  if (!currentReportVersion(rows) || !report.detailed_opinion || isCurrentReport(report, rows)) {
     return report
   }
   return {
@@ -68,7 +76,7 @@ async function load(req: NextRequest, sessionId: string) {
   if (!project) return { error: "COLORS Forum demo is not configured", status: 503 } as const
   const { data: session, error: sessionError } = await supabase
     .from("sessions")
-    .select("id, status, persona_id")
+    .select("id, status")
     .eq("session_id", sessionId)
     .eq("project_id", project.context.projectId)
     .maybeSingle()
@@ -161,6 +169,7 @@ export async function POST(req: NextRequest) {
     const postAudit = thinPilot
       ? await auditColorsConversationIntegrity({
           messages: transcriptRows,
+          forumMembershipPilot: true,
           requestId: getOrCreateRequestId(req),
           organisationId: project.context.organisationId,
           projectId: project.context.projectId,
@@ -188,24 +197,21 @@ export async function POST(req: NextRequest) {
       projectId: project.context.projectId,
       sessionId,
       terminalStatus: session.status,
-      rubricVersion: isV1Session(rows) ? COLORS_FORUM_V1_RUBRIC : undefined,
+      rubricVersion: thinPilot
+        ? COLORS_FORUM_MEMBERSHIP_RUBRIC
+        : isV1Session(rows) ? COLORS_FORUM_V1_RUBRIC : undefined,
+      forumMembershipPilot: thinPilot,
       ...(thinPilot ? { modelOverride: modelFromEnv("GROUCHO_COLORS_THIN_REVIEWER_MODEL", "claude-sonnet-5-5") } : {}),
     })
     failureStage = "report_validation"
     if (!report.detailed_opinion) throw new Error("Detailed report was empty")
     if (thinPilot) {
       failureStage = "profile_extraction"
-      const { data: persona } = session.persona_id
-        ? await supabase.from("personas")
-            .select("profile_schema, profile_extractor_hint")
-            .eq("id", session.persona_id)
-            .maybeSingle()
-        : { data: null }
       const profile = await extractProfile({
         transcript: transcriptRows.map(({ role, content }) => ({ role, content })),
         persona: {
-          profile_schema: persona?.profile_schema ?? COLORS_PROFILE_SCHEMA,
-          profile_extractor_hint: `${persona?.profile_extractor_hint ?? COLORS_PROFILE_EXTRACTOR_HINT} ${COLORS_THIN_PROFILE_EVIDENCE_HINT}`,
+          profile_schema: COLORS_FORUM_MEMBERSHIP_PROFILE_SCHEMA,
+          profile_extractor_hint: `${COLORS_FORUM_MEMBERSHIP_PROFILE_HINT} ${COLORS_THIN_PROFILE_EVIDENCE_HINT}`,
         },
         requestId: getOrCreateRequestId(req),
         organisationId: project.context.organisationId,
