@@ -102,7 +102,7 @@ const COLORS_FORUM_MEMBERSHIP_SIGNALS: ApplicationSignalDefinition[] = [
   {
     key: "community_participation", kind: "participation", label: "Community participation",
     evidenceLabel: "Community participation",
-    goal: "How they currently take part with other people in online or offline communities; listening, discussion, contextual sharing and organising may all count equally.",
+    goal: "How they currently take part with other people in online or offline communities. Cite a described exchange or shared activity; publishing, audience reach, contacts and future plans alone are not participation evidence. Listening together, discussion, contextual sharing and organising may all count equally.",
     promptRoutes: [], priority: "core", cluster: "participation", audiences: ["shared"],
   },
   {

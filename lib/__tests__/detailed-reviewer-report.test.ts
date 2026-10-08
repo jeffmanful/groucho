@@ -74,6 +74,48 @@ function response(value: unknown) {
 describe("detailed reviewer report verification", () => {
   beforeEach(() => createMock.mockReset())
 
+  it.each([
+    {
+      answer: "I run a city music guide and publish weekly notes. I have a network of musicians and venues. Artists pay for most posts.",
+      communityQuotes: ["publish weekly notes", "Artists pay for most posts"],
+      expectedCoverage: "unverified",
+    },
+    {
+      answer: "I publish a city guide and interview local musicians at shows.",
+      communityQuotes: ["I publish a city guide and interview local musicians at shows"],
+      expectedCoverage: "supported",
+    },
+    {
+      answer: "I host a monthly listening table at our community centre.",
+      communityQuotes: ["I host a monthly listening table"],
+      expectedCoverage: "supported",
+    },
+  ])("grounds community participation in actual exchange: $expectedCoverage for $answer", async ({
+    answer, communityQuotes, expectedCoverage,
+  }) => {
+    createMock
+      .mockResolvedValueOnce(response({ signals: [
+        { signal_key: "joining_motivation", coverage: "unverified", sources: [], material_gap: false, gap_reason: "" },
+        { signal_key: "colors_connection", coverage: "unverified", sources: [], material_gap: false, gap_reason: "" },
+        { signal_key: "music_relationship", coverage: "unverified", sources: [], material_gap: false, gap_reason: "" },
+        { signal_key: "community_participation", coverage: "supported", sources: communityQuotes.map((quote) => ({ source_message_id: "answer-1", quote })), material_gap: false, gap_reason: "" },
+        { signal_key: "forum_participation", coverage: "unverified", sources: [], material_gap: false, gap_reason: "" },
+        { signal_key: "tones_connection", coverage: "unverified", sources: [], material_gap: false, gap_reason: "" },
+      ] }))
+      .mockResolvedValueOnce(response(evaluation))
+      .mockResolvedValueOnce(response({ supported: true, issues: [] }))
+    const report = await generateDetailedReviewerReport({
+      transcript: [{ id: "answer-1", role: "user", content: answer }],
+      baseReport,
+      rubricVersion: COLORS_FORUM_MEMBERSHIP_RUBRIC,
+      forumMembershipPilot: true,
+    })
+    expect(report.evidence_state?.find((entry) => entry.signal_key === "community_participation"))
+      .toMatchObject({ coverage: expectedCoverage, material_gap: false })
+    expect(report.evidence_references.filter((reference) => reference.signal_key === "community_participation"))
+      .toHaveLength(expectedCoverage === "supported" ? 1 : 0)
+  })
+
   it("uses the initial Forum's post-conversation lenses without making TONES a gap", async () => {
     const answer = "I make music with friends and reply in a producers' Discord."
     createMock
