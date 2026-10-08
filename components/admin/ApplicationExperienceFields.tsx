@@ -168,16 +168,16 @@ export function ApplicationExperienceFields({
       )}
 
       <div style={{ marginBottom: "1rem" }}>
-        <label style={labelStyle}>Required signals (one per line)</label>
+        <label style={labelStyle}>Reviewer evidence lenses (one per line)</label>
         <textarea
           value={requiredSignals}
           onChange={(e) => onChange({ requiredSignals: e.target.value })}
           rows={4}
-          placeholder={"Why they want to join\nWhat they would contribute\nHow they understand the community"}
+          placeholder={"Motivation for joining\nWays of taking part\nPotential contribution"}
           style={textareaStyle(inputStyle)}
         />
         <p style={{ fontSize: "0.72rem", opacity: 0.35, lineHeight: 1.45 }}>
-          Goals for Doorman to learn — not a fixed question script.
+          Context for the reviewer, not questions Groucho must ask. New COLORS Forum sessions use five versioned evidence IDs; these text entries remain for older sessions and other projects. Answers link to source messages, and unexplored lenses remain unknown.
         </p>
       </div>
 

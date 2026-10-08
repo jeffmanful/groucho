@@ -60,6 +60,15 @@ export type MediaChoiceAnswer = {
   rationale?: string
 }
 
+export type ReferenceCard = {
+  id: string
+  kind: "image" | "link"
+  title: string
+  url: string
+  imageUrl?: string
+  alt?: string
+}
+
 export type GrouchoEmotionalState =
   | "neutral"
   | "curious"
@@ -86,6 +95,7 @@ export type GrouchoInteractionSpec = {
   visualState: GrouchoVisualState
   options?: string[]
   mediaChoice?: MediaChoiceInteraction
+  referenceCards?: ReferenceCard[]
 }
 
 export type GrouchoInteractionUi = GrouchoInteractionSpec
@@ -161,6 +171,33 @@ function safeResourceUrl(raw: unknown): string | undefined {
   } catch {
     return undefined
   }
+}
+
+export function normaliseReferenceCards(raw: unknown): ReferenceCard[] | undefined {
+  if (!Array.isArray(raw) || raw.length < 1 || raw.length > 2) return undefined
+  const cards = raw.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return []
+    const card = item as Record<string, unknown>
+    const id = trimmedString(card.id, 64)
+    const title = trimmedString(card.title, 160)
+    const url = safeResourceUrl(card.url)
+    const imageUrl = safeResourceUrl(card.imageUrl)
+    const alt = trimmedString(card.alt, 240)
+    if (!id || !SAFE_ID_RE.test(id) || !title || !url ||
+      (card.kind !== "image" && card.kind !== "link") ||
+      (card.kind === "image" && (!imageUrl || !alt))) return []
+    return [{
+      id,
+      kind: card.kind as "image" | "link",
+      title,
+      url,
+      ...(card.kind === "image" ? { imageUrl, alt } : {}),
+    }]
+  })
+  return cards.length === raw.length &&
+    new Set(cards.map((card) => card.id)).size === cards.length
+    ? cards
+    : undefined
 }
 
 function boundedInteger(

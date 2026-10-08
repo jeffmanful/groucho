@@ -23,6 +23,37 @@ describe("reviewer report helpers", () => {
     expect(report?.evidence_references).toEqual([])
   })
 
+  it("retains the reconciled report version and source-linked coverage after loading", () => {
+    const report = normaliseReviewerReport({
+      report_version: "colors_forum_report_v2",
+      evidence_state: [{
+        signal_key: "artist_engagement",
+        coverage: "supported",
+        source_message_ids: ["answer-2"],
+        material_gap: false,
+        gap_reason: "",
+      }],
+      applicant_bio: "Discusses an artist's performance.",
+      advisory_recommendation: "recommend",
+      confidence_score: 0.8,
+      evidence_references: [{
+        signal_key: "artist_engagement",
+        signal_label: "Artist engagement",
+        source_message_id: "answer-2",
+        excerpt: "I keep returning to this performance.",
+      }],
+      evidence_summary: [],
+      weak_or_missing_signals: [],
+      safety_or_integrity_flags: [],
+      reviewer_focus: "Review the artist engagement evidence.",
+    })
+    expect(report?.report_version).toBe("colors_forum_report_v2")
+    expect(report?.evidence_state).toEqual([expect.objectContaining({
+      signal_key: "artist_engagement",
+      source_message_ids: ["answer-2"],
+    })])
+  })
+
   it("returns null for malformed reviewer reports", () => {
     expect(
       normaliseReviewerReport({
@@ -87,6 +118,7 @@ describe("reviewer report helpers", () => {
         key: "participation",
         kind: "custom" as const,
         label: "How do you participate?",
+        evidenceLabel: "Participation",
         goal: "Understand participation.",
         promptRoutes: [],
         priority: "core" as const,
@@ -97,6 +129,7 @@ describe("reviewer report helpers", () => {
         key: "contribution",
         kind: "custom" as const,
         label: "What would you contribute?",
+        evidenceLabel: "Contribution",
         goal: "Understand contribution.",
         promptRoutes: [],
         priority: "core" as const,
@@ -130,17 +163,103 @@ describe("reviewer report helpers", () => {
     expect(report.applicant_bio).not.toContain("curator")
     expect(report.applicant_bio).toContain("1 established evidence area")
     expect(report.evidence_summary).toEqual([
-      "How do you participate?: I host a monthly listening night.",
+      "Participation: I host a monthly listening night.",
     ])
     expect(report.evidence_references).toEqual([
       {
         signal_key: "participation",
-        signal_label: "How do you participate?",
+        signal_label: "Participation",
         source_message_id: "message-participation",
         excerpt: "I host a monthly listening night.",
       },
     ])
     expect(report.weak_or_missing_signals[0]).toContain("insufficient evidence")
+  })
+
+  it("keeps distinct exact quotes for several lenses in one applicant message", () => {
+    const definitions = [
+      { key: "forum_hopes", kind: "motivation" as const, label: "Forum hopes", evidenceLabel: "Forum hopes", goal: "Hope", promptRoutes: [], priority: "core" as const, cluster: "orientation", audiences: ["shared" as const] },
+      { key: "community_participation", kind: "participation" as const, label: "Community participation", evidenceLabel: "Community participation", goal: "Participation", promptRoutes: [], priority: "core" as const, cluster: "community", audiences: ["shared" as const] },
+    ]
+    const first = "I host a small listening circle and hope the Forum lets more people listen together."
+    const later = "The circle meets monthly and each person brings a moment worth revisiting."
+    const report = ensureEvidenceBackedReviewerReport({
+      report: null,
+      terminalStatus: "passed",
+      scores: { overall: 0.8 },
+      definitions,
+      answers: definitions.map((signal) => ({
+        ...signal,
+        answer: first,
+        covered: true,
+        sources: [{ messageId: "m1", excerpt: first }],
+      })),
+      messages: [
+        { id: "m1", role: "user", content: first, metadata: { application_evidence_quotes: [
+          { key: "forum_hopes", quote: "hope the Forum lets more people listen together" },
+          { key: "community_participation", quote: "I host a small listening circle" },
+        ] } },
+        { id: "m2", role: "user", content: later, metadata: { application_evidence_quotes: [
+          { key: "community_participation", quote: "The circle meets monthly" },
+        ] } },
+      ],
+    })
+    expect(report.evidence_references).toEqual(expect.arrayContaining([
+      expect.objectContaining({ signal_key: "forum_hopes", source_message_id: "m1", excerpt: "hope the Forum lets more people listen together" }),
+      expect.objectContaining({ signal_key: "community_participation", source_message_id: "m1", excerpt: "I host a small listening circle" }),
+      expect.objectContaining({ signal_key: "community_participation", source_message_id: "m2", excerpt: "The circle meets monthly" }),
+    ]))
+    expect(report.evidence_summary).toContain("Community participation: The circle meets monthly")
+  })
+
+  it("does not promote an attempted but unverified Forum answer into lens evidence", () => {
+    const signal = {
+      key: "artist_engagement", kind: "artist_reference" as const,
+      label: "Artist engagement", evidenceLabel: "Artist engagement", goal: "Artist interest",
+      promptRoutes: [], priority: "supporting" as const,
+      cluster: "cultural_point_of_view", audiences: ["shared" as const],
+    }
+    const report = ensureEvidenceBackedReviewerReport({
+      report: null, terminalStatus: "passed", scores: { overall: 0.8 },
+      definitions: [signal],
+      answers: [{ ...signal, covered: true, answer: "An unnamed track.\nFollow-up: I keep returning to Ojerime.", sources: [
+        { messageId: "unnamed", excerpt: "An unnamed track." },
+        { messageId: "named", excerpt: "I keep returning to Ojerime." },
+      ] }],
+      messages: [
+        { id: "opening", role: "assistant", content: "Why join?", metadata: { application_rubric_version: "colors_forum_v1" } },
+        { id: "unnamed", role: "user", content: "An unnamed track changed on a second listen.", metadata: { application_signal: { key: "artist_engagement", label: "Artist engagement" } } },
+        { id: "named", role: "user", content: "I keep returning to Ojerime.", metadata: { application_evidence_quotes: [{ key: "artist_engagement", quote: "I keep returning to Ojerime" }] } },
+      ],
+    })
+    expect(report.evidence_references.filter((reference) => reference.signal_key === "artist_engagement"))
+      .toEqual([])
+    expect(report.evidence_references.find((reference) => reference.source_message_id === "named"))
+      .toEqual(expect.objectContaining({
+        signal_key: "conversation_context",
+        excerpt: "I keep returning to Ojerime.",
+      }))
+    expect(report.evidence_references.find((reference) => reference.source_message_id === "unnamed")?.signal_key).toBe("conversation_context")
+    expect(report.evidence_summary).toEqual([
+      "Transcript excerpt: An unnamed track changed on a second listen.",
+      "Transcript excerpt: I keep returning to Ojerime.",
+    ])
+    expect(report.weak_or_missing_signals).toEqual([])
+    expect(report.advisory_recommendation).toBe("human_review")
+    expect(report.reviewer_focus).toContain("full-transcript evidence review")
+  })
+
+  it("does not treat an applicant request for a media source as extra fit evidence", () => {
+    const report = ensureEvidenceBackedReviewerReport({
+      report: null, terminalStatus: "redirected", scores: { overall: 0.55 },
+      definitions: [], answers: [],
+      messages: [
+        { id: "media-request", role: "user", content: "Could you show me a performance so I can respond to something real?", metadata: { application_media_request: { format: "link" } } },
+        { id: "substantive", role: "user", content: "I welcome newcomers in my design group.", metadata: {} },
+      ],
+    })
+    expect(report.evidence_references.map((reference) => reference.source_message_id)).toEqual(["substantive"])
+    expect(report.evidence_summary.join(" ")).not.toContain("Could you show me")
   })
 
   it("retains contextual transcript evidence that did not map to a signal", () => {
@@ -301,6 +420,33 @@ describe("reviewer report helpers", () => {
     })
   })
 
+  it("links an open answer to the approved image or link it was shown with", () => {
+    const cards = [{
+      id: "yt_abc123xyz01",
+      kind: "image",
+      title: "Artist One - Song",
+      url: "https://www.youtube.com/watch?v=abc123xyz01",
+      imageUrl: "https://i.ytimg.com/vi/abc123xyz01/hqdefault.jpg",
+      alt: "Artist One official COLORS performance thumbnail",
+    }]
+    const report = ensureEvidenceBackedReviewerReport({
+      report: null,
+      terminalStatus: "redirected",
+      scores: { overall: 0.6 },
+      definitions: [],
+      answers: [],
+      messages: [
+        { id: "reference-question", role: "assistant", content: "What discussion would this start?", metadata: { ui: { inputType: "text", referenceCards: cards } } },
+        { id: "reference-answer", role: "user", content: "I would ask what the singer leaves unresolved." },
+      ],
+    })
+    expect(report.evidence_references).toContainEqual(expect.objectContaining({
+      source_message_id: "reference-answer",
+      preceding_question: "What discussion would this start?",
+      interaction: { type: "references", cards },
+    }))
+  })
+
   it("normalises source-linked curatorial synthesis and structured evidence", () => {
     const report = normaliseReviewerReport({
       applicant_bio: "Applicant completed a programming exercise.",
@@ -388,6 +534,7 @@ describe("reviewer report helpers", () => {
       key: "participation",
       kind: "custom" as const,
       label: "Participation",
+      evidenceLabel: "Participation",
       goal: "Understand participation.",
       promptRoutes: [],
       priority: "core" as const,
@@ -479,11 +626,12 @@ describe("reviewer report helpers", () => {
     )
   })
 
-  it("keeps one full applicant record when an answer supports multiple signals", () => {
+  it("keeps each signal link when one full applicant answer supports multiple signals", () => {
     const definitions = ["participation", "contribution", "unasked"].map((key) => ({
       key,
       kind: "custom" as const,
       label: key,
+      evidenceLabel: key,
       goal: key,
       promptRoutes: [],
       priority: "core" as const,
@@ -507,12 +655,17 @@ describe("reviewer report helpers", () => {
         { id: "answer-1", role: "user", content: fullAnswer },
       ],
     })
-    expect(report.evidence_references).toHaveLength(1)
-    expect(report.evidence_references[0]).toMatchObject({
-      source_message_id: "answer-1",
-      excerpt: fullAnswer,
-      preceding_question: "How have you participated with other listeners or artists?",
-    })
+    expect(report.evidence_references).toHaveLength(2)
+    expect(report.evidence_references.map((reference) => reference.signal_key)).toEqual([
+      "participation", "contribution",
+    ])
+    for (const reference of report.evidence_references) {
+      expect(reference).toMatchObject({
+        source_message_id: "answer-1",
+        excerpt: fullAnswer,
+        preceding_question: "How have you participated with other listeners or artists?",
+      })
+    }
     expect(report.weak_or_missing_signals).toContain("unasked: not explored in this conversation.")
   })
 })

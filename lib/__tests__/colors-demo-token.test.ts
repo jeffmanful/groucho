@@ -12,6 +12,8 @@ import { isAllowedPlatformEmail } from "@/lib/pe-auth"
 const originalSecret = process.env.AUTH_SECRET
 const originalEmail = process.env.COLORS_DEMO_TESTER_EMAIL
 const originalPassword = process.env.COLORS_DEMO_PASSWORD
+const originalAdditionalEmail = process.env.COLORS_DEMO_ADDITIONAL_TESTER_EMAIL
+const originalAdditionalPassword = process.env.COLORS_DEMO_ADDITIONAL_TESTER_PASSWORD
 const originalAllowed = process.env.ALLOWED_EMAILS
 const originalAdminPassword = process.env.ADMIN_PASSWORD
 
@@ -22,6 +24,10 @@ afterEach(() => {
   else process.env.COLORS_DEMO_TESTER_EMAIL = originalEmail
   if (originalPassword === undefined) delete process.env.COLORS_DEMO_PASSWORD
   else process.env.COLORS_DEMO_PASSWORD = originalPassword
+  if (originalAdditionalEmail === undefined) delete process.env.COLORS_DEMO_ADDITIONAL_TESTER_EMAIL
+  else process.env.COLORS_DEMO_ADDITIONAL_TESTER_EMAIL = originalAdditionalEmail
+  if (originalAdditionalPassword === undefined) delete process.env.COLORS_DEMO_ADDITIONAL_TESTER_PASSWORD
+  else process.env.COLORS_DEMO_ADDITIONAL_TESTER_PASSWORD = originalAdditionalPassword
   if (originalAllowed === undefined) delete process.env.ALLOWED_EMAILS
   else process.env.ALLOWED_EMAILS = originalAllowed
   if (originalAdminPassword === undefined) delete process.env.ADMIN_PASSWORD
@@ -71,5 +77,31 @@ describe("COLORS demo access", () => {
     expect(await verifyDemoToken(`${fresh}x`, "tester")).toBeNull()
     process.env.COLORS_DEMO_TESTER_EMAIL = "someone-else@example.com"
     expect(await verifyDemoToken(fresh ?? undefined, "tester")).toBeNull()
+  })
+
+  it("allows a second demo tester without granting platform access", async () => {
+    process.env.AUTH_SECRET = "test-only-secret"
+    process.env.COLORS_DEMO_TESTER_EMAIL = "philipp@colorsxstudios.com"
+    process.env.COLORS_DEMO_PASSWORD = "primary-test-password"
+    process.env.COLORS_DEMO_ADDITIONAL_TESTER_EMAIL = "jeff@colorsxstudios.com"
+    process.env.COLORS_DEMO_ADDITIONAL_TESTER_PASSWORD = "additional-test-password"
+    process.env.ALLOWED_EMAILS = "jeff@colorsxstudios.com,operator@example.com"
+    process.env.ADMIN_PASSWORD = "test-only-admin-password"
+
+    const request = (email: string, password: string) => new NextRequest("http://localhost/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    })
+    const loggedIn = await login(request("Jeff@ColorsXStudios.com", "additional-test-password"))
+    expect(loggedIn.status).toBe(200)
+    expect(loggedIn.cookies.get("pe_auth")).toBeUndefined()
+    const token = loggedIn.cookies.get(DEMO_AUTH_COOKIE)?.value
+    expect(await verifyDemoToken(token, "tester")).toMatchObject({ email: "jeff@colorsxstudios.com" })
+    expect((await login(request("jeff@colorsxstudios.com", "test-only-admin-password"))).status).toBe(401)
+    expect((await login(request("jeff@colorsxstudios.com", "primary-test-password"))).status).toBe(401)
+    expect(isAllowedPlatformEmail("jeff@colorsxstudios.com")).toBe(false)
+
+    delete process.env.COLORS_DEMO_ADDITIONAL_TESTER_EMAIL
+    expect(await verifyDemoToken(token, "tester")).toBeNull()
   })
 })

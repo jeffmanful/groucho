@@ -4,6 +4,7 @@ export const CONCLUDED_SESSION_STATUSES = [
   "redirected",
   "rejected",
   "abandoned",
+  "completed",
 ] as const
 
 export type ConcludedSessionStatus = (typeof CONCLUDED_SESSION_STATUSES)[number]

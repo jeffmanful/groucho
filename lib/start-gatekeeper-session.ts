@@ -22,6 +22,8 @@ import { isConcludedSessionStatus } from "@/lib/session-status"
 import {
   applicationOpeningMessageForSignals,
   applicationSignalDefinitions,
+  colorsForumV1SignalDefinitions,
+  COLORS_FORUM_V1_RUBRIC,
   applicationSignalMetadata,
   isColorsForumSignalSet,
 } from "@/lib/application-signal-state"
@@ -46,6 +48,7 @@ export type StartGatekeeperSessionInput = {
   requestId?: string
   context: ProjectContext
   projectSettings: NormalizedProjectSettings
+  conversationEngine?: string
 }
 
 async function resolvePersonaId(
@@ -87,9 +90,13 @@ export async function startGatekeeperSession(
     allowMissingApplicantIdentity,
   } = input
   const { organisationId, projectId, apiKeyId } = context
-  const openingSignals = applicationSignalDefinitions(
+  const configuredSignals = applicationSignalDefinitions(
     projectSettings.applicationExperience.required_signals,
   )
+  const colorsForumV1 = isColorsForumSignalSet(configuredSignals)
+  const openingSignals = colorsForumV1
+    ? colorsForumV1SignalDefinitions()
+    : configuredSignals
   const configuredOpeningMessage = resolveGatekeeperOpeningMessage(
     input.openingMessage,
     projectSettings.applicationExperience.opening_message,
@@ -257,6 +264,8 @@ export async function startGatekeeperSession(
     content: openingMessage,
     metadata: {
       gatekeeper_bootstrap: true,
+      ...(input.conversationEngine ? { conversation_engine: input.conversationEngine } : {}),
+      ...(colorsForumV1 ? { application_rubric_version: COLORS_FORUM_V1_RUBRIC } : {}),
       ui: openingInteraction,
       ...(openingSignal
         ? { application_next_signal: applicationSignalMetadata(openingSignal) }

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest"
 import {
   applicationSignalDefinitions,
+  colorsForumRubricForHistory,
+  colorsForumV1SignalDefinitions,
   applicationSignalDefinitionsForEvidence,
   applicationSignalDefinitionsForOrientation,
   buildCompactApplicationStateMessage,
@@ -10,8 +12,10 @@ import {
   collectApplicationSignalAnswers,
   expectedApplicationSignal,
   hasLegacyUntaggedAnswers,
+  isColorsForumSignalSet,
   resolveNextApplicationSignal,
   shouldDeferApplicationTerminal,
+  unattemptedCoreApplicationSignals,
   withCoveredSignalAnswers,
   withCurrentSignalAnswer,
 } from "@/lib/application-signal-state"
@@ -21,6 +25,91 @@ describe("application signal state", () => {
     "Why they came",
     "Community contribution",
   ])
+
+  it("uses fixed version-one COLORS evidence IDs while preserving unmarked sessions", () => {
+    const configured = applicationSignalDefinitions([
+      "What brought you here?",
+      "Name an artist more people should know about.",
+      "Someone shares unfinished music. How would you respond?",
+      "Which sounds most like you?",
+      "What could you contribute in your first month?",
+    ])
+    const v1 = colorsForumV1SignalDefinitions()
+    expect(v1.map(({ key }) => key)).toEqual([
+      "forum_hopes", "community_participation", "reciprocal_contribution",
+      "artist_engagement", "colors_relationship",
+    ])
+    expect(v1.some((signal) => signal.kind === "feedback")).toBe(false)
+    expect(colorsForumRubricForHistory([], configured)).toBe("colors_forum_v1")
+    expect(colorsForumRubricForHistory([{
+      role: "assistant", content: "An earlier question?",
+      metadata: { application_next_signal: { key: configured[0].key } },
+    }], configured)).toBeNull()
+    expect(colorsForumRubricForHistory([{
+      role: "assistant", content: "A new question?",
+      metadata: { application_rubric_version: "colors_forum_v1" },
+    }], configured)).toBe("colors_forum_v1")
+    const compact = buildCompactApplicationStateMessage({
+      definitions: v1,
+      answers: [],
+      currentSignal: v1[0],
+      currentQuestion: "Why this Forum?",
+      currentAnswer: "I want conversations where people listen well.",
+      adaptiveOrientationEnabled: true,
+    })
+    expect(compact).toContain('"rubricVersion":"colors_forum_v1"')
+    expect(compact).toContain("One answer can cover several")
+    expect(compact).not.toContain("artistToSong")
+    expect(compact).not.toContain("hypothetical unfinished-work feedback route")
+  })
+
+  it("treats tagged artist and brand interest as distinct from a fair chance to discuss community fit", () => {
+    const v1 = colorsForumV1SignalDefinitions()
+    const observed = ["forum_hopes", "artist_engagement", "colors_relationship"]
+      .map((key) => ({
+        ...v1.find((signal) => signal.key === key)!,
+        answer: "A directly supported but brief answer",
+        covered: true,
+      }))
+    expect(unattemptedCoreApplicationSignals(v1, observed).map((signal) => signal.key))
+      .toEqual(["community_participation", "reciprocal_contribution"])
+
+    const afterOneBroadAnswer = [
+      ...observed,
+      ...["community_participation", "reciprocal_contribution"].map((key) => ({
+        ...v1.find((signal) => signal.key === key)!,
+        answer: "I would share listening notes with others in the Forum",
+        covered: true,
+      })),
+    ]
+    expect(unattemptedCoreApplicationSignals(v1, afterOneBroadAnswer)).toEqual([])
+  })
+
+  it("recognises neutral COLORS lenses as evidence goals, not question templates", () => {
+    const lenses = applicationSignalDefinitions([
+      "Motivation for joining",
+      "Cultural point of view",
+      "Music shared with others",
+      "Care and feedback",
+      "Ways of taking part",
+      "Potential contribution",
+    ])
+    expect(isColorsForumSignalSet(lenses)).toBe(true)
+    expect(lenses.map((lens) => lens.evidenceLabel)).toContain("Relationship to COLORS")
+    const compact = buildCompactApplicationStateMessage({
+      definitions: lenses,
+      answers: [],
+      currentSignal: null,
+      currentQuestion: "What drew you here?",
+      currentAnswer: "The music.",
+    })
+    expect(compact).not.toContain('"exampleQuestions"')
+    expect(compact).toContain('"suggestedGapSignalKey":null')
+    expect(compact).toContain("source-linked time-frame evidence")
+    expect(compact).toContain("a one-off event")
+    expect(compact).toContain("Prefer a terminal decision")
+    expect(compact).toContain("mediaCatalog contains approved official COLORS assets")
+  })
 
   it("recovers participation from an exact earlier applicant message, not a clarification request", () => {
     const participation = definitions[1]
@@ -405,7 +494,7 @@ describe("application signal state", () => {
     expect(compact).not.toContain("Update participantOrientation")
   })
 
-  it("suggests an uncovered COLORS relationship after the opening without requiring it as a separate question", () => {
+  it("keeps the COLORS relationship lens open without routing to it automatically", () => {
     const goals = applicationSignalDefinitions([
       "What brought you here?",
       "Name an artist more people should know about.",
@@ -432,7 +521,7 @@ describe("application signal state", () => {
     })
 
     expect(compact).toContain(
-      `"suggestedGapSignalKey":"${relationship.key}"`,
+      '"suggestedGapSignalKey":null',
     )
     expect(compact).toContain(
       "Relationship to COLORS is a high-priority early intent, not a compulsory second question",
@@ -501,7 +590,7 @@ describe("application signal state", () => {
       },
     })
     expect(compact).toContain('"why_they_came"')
-    expect(compact).toContain('"status":"covered"')
+    expect(compact).toContain('"status":"observed"')
     expect(compact).toContain('"status":"open"')
     expect(compact).toContain('"questionBudget"')
     expect(compact).toContain('"phase":"explore"')
@@ -520,10 +609,10 @@ describe("application signal state", () => {
     expect(compact).toContain("rabbit_hole")
     expect(compact).toContain("Keep the exchange conversational")
     expect(compact).toContain("Avoid generic praise")
-    expect(compact).toContain("One answer can cover several goals")
+    expect(compact).toContain("One answer can inform several lenses")
     expect(compact).toContain("suggestedGapSignalKey")
     expect(compact).toContain('"subject":"Artistic restraint"')
-    expect(compact).toContain("continue that thread before filling an unrelated goal")
+    expect(compact).toContain("High momentum means the applicant gave useful material")
     expect(compact).toContain('"repeatedModeCount":2')
     expect(compact).toContain("Do not mechanically produce")
     expect(compact).toContain('"priorityConversationBridges"')
@@ -583,6 +672,46 @@ describe("application signal state", () => {
       [goals[2].key, true],
     ])
     expect(resolveNextApplicationSignal(goals[0].key, goals, answers, null)).toEqual(goals[0])
+  })
+
+  it("keeps a direct unfavorable answer source-linked and does not re-ask that lens", () => {
+    const goals = applicationSignalDefinitions([
+      "What brought you here?",
+      "Which sounds most like you?",
+    ])
+    const answers = collectApplicationSignalAnswers([{
+      id: "motivation-negative",
+      role: "user",
+      content: "I mostly want access to artists so I can promote my roster.",
+      metadata: {
+        application_signal: { key: goals[0].key },
+        application_signals: [{ key: goals[0].key }],
+        application_answer_relation: { kind: "direct" },
+        answer_assessment: { quality: "concerning" },
+      },
+    }], goals)
+    expect(answers[0]).toMatchObject({
+      covered: true,
+      addressed: true,
+      sources: [{ messageId: "motivation-negative" }],
+    })
+    expect(resolveNextApplicationSignal(null, goals, answers, goals[0])).toEqual(goals[1])
+  })
+
+  it("does not route back to a thin direct answer merely to finish a checklist", () => {
+    const goals = applicationSignalDefinitions(["Motivation", "Participation"])
+    const answers = collectApplicationSignalAnswers([{
+      id: "thin-direct",
+      role: "user",
+      content: "I'm not sure.",
+      metadata: {
+        application_signal: { key: goals[0].key },
+        application_signals: [],
+        application_answer_relation: { kind: "direct" },
+      },
+    }], goals)
+    expect(answers[0]).toMatchObject({ covered: false, addressed: true })
+    expect(resolveNextApplicationSignal(null, goals, answers, goals[0])).toEqual(goals[1])
   })
 
   it("does not immediately ask for an incidental goal covered on the same turn", () => {

@@ -84,7 +84,8 @@ export async function POST(
   }
   if (
     !isConcludedSessionStatus(session.status) ||
-    session.status === "abandoned"
+    session.status === "abandoned" ||
+    session.status === "completed"
   ) {
     return NextResponse.json(
       { error: "Only completed applications can be reviewed" },

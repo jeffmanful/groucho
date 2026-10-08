@@ -32,6 +32,8 @@ export type ApplicationSignalDefinition = {
     | "custom"
   /** Original project configuration, retained for backwards compatibility. */
   label: string
+  /** Neutral name shown in state and reports; never a question to ask. */
+  evidenceLabel: string
   /** Private evidence goal. This is not a question Groucho must ask verbatim. */
   goal: string
   /** Optional routes Groucho can adapt when the conversation needs a new opening. */
@@ -46,6 +48,8 @@ export type ApplicationSignalAnswer = ApplicationSignalDefinition & {
   answer: string
   /** False means the goal was attempted but the answer did not yet cover it. */
   covered?: boolean
+  /** A direct answer was given, even if its evidence remains thin or unfavorable. */
+  addressed?: boolean
   /** Exact applicant messages that supplied this evidence. */
   sources?: ApplicationSignalEvidenceSource[]
 }
@@ -70,10 +74,87 @@ const DEFAULT_MAX_FOLLOWUPS_PER_SIGNAL = 2
 export const COLORS_FORUM_OPENING_QUESTION =
   "Why do you want to be an early applicant for the Forum?"
 
+export const COLORS_FORUM_V1_RUBRIC = "colors_forum_v1" as const
+
+/** Fixed evidence IDs for new COLORS Forum sessions; labels are display text only. */
+const COLORS_FORUM_V1_SIGNALS: ApplicationSignalDefinition[] = [
+  {
+    key: "forum_hopes",
+    kind: "motivation",
+    label: "Forum hopes",
+    evidenceLabel: "Forum hopes",
+    goal: "Understand what they hope to find, experience, or make possible in the Forum, and why that matters to them. Aspirations are not evidence of existing practice.",
+    promptRoutes: ["What would make this Forum worth returning to for you?"],
+    priority: "core",
+    cluster: "orientation",
+    audiences: ["shared"],
+  },
+  {
+    key: "community_participation",
+    kind: "participation",
+    label: "Community participation",
+    evidenceLabel: "Community participation",
+    goal: "Understand how they participate in online or offline communities now: listening, discussing, welcoming, organising, or sustaining an exchange. Music relevance is helpful, not compulsory.",
+    promptRoutes: ["Where does music or creative work become a conversation with other people for you?"],
+    priority: "core",
+    cluster: "participation_and_contribution",
+    audiences: ["shared"],
+  },
+  {
+    key: "reciprocal_contribution",
+    kind: "contribution",
+    label: "Reciprocal contribution",
+    evidenceLabel: "Reciprocal contribution",
+    goal: "Understand what they might give as well as receive: a specific, realistic exchange they already make or could sustain in the Forum. Quiet participation counts; constant posting and unpaid labour are not expected.",
+    promptRoutes: ["What do you find yourself giving back in a community you value?"],
+    priority: "core",
+    cluster: "participation_and_contribution",
+    audiences: ["shared"],
+  },
+  {
+    key: "artist_engagement",
+    kind: "artist_reference",
+    label: "Artist engagement",
+    evidenceLabel: "Artist engagement",
+    goal: "Understand a particular artist or creative work they care about, or an explicit way they would like to engage with artists. A generic listening or discussion habit alone is not artist-engagement evidence. Naming a niche artist is welcome context, not a credential test.",
+    promptRoutes: ["Is there an artist whose work you would enjoy discussing with others here?"],
+    priority: "supporting",
+    cluster: "cultural_point_of_view",
+    audiences: ["shared"],
+  },
+  {
+    key: "colors_relationship",
+    kind: "colors_relationship",
+    label: "Relationship to COLORS",
+    evidenceLabel: "Relationship to COLORS",
+    goal: "Understand their actual relationship to COLORS, including experiences, perceptions, and what the Forum could extend. Familiarity and niche knowledge may enrich the brief but are not deciding factors.",
+    promptRoutes: ["What about COLORS makes this Forum feel like the right place for you?"],
+    priority: "supporting",
+    cluster: "colors_relationship",
+    audiences: ["shared"],
+  },
+]
+
+export function colorsForumV1SignalDefinitions(): ApplicationSignalDefinition[] {
+  return COLORS_FORUM_V1_SIGNALS.map((signal) => ({
+    ...signal,
+    promptRoutes: [...signal.promptRoutes],
+    audiences: [...signal.audiences],
+  }))
+}
+
+export function isColorsForumV1SignalSet(definitions: ApplicationSignalDefinition[]): boolean {
+  return definitions.length === COLORS_FORUM_V1_SIGNALS.length &&
+    COLORS_FORUM_V1_SIGNALS.every((signal) =>
+      definitions.some((definition) => definition.key === signal.key),
+    )
+}
+
 const COLORS_RELATIONSHIP_SIGNAL: ApplicationSignalDefinition = {
   key: "colors_relationship",
   kind: "colors_relationship",
   label: "Relationship to COLORS",
+  evidenceLabel: "Relationship to COLORS",
   goal: "Understand why COLORS specifically matters to them, how they have engaged with its work, and what they believe the Forum could extend.",
   promptRoutes: [
     "You could look for community in a lot of places—why does COLORS feel like the right one?",
@@ -90,7 +171,7 @@ function evidenceGoal(
   label: string,
 ): Pick<
   ApplicationSignalDefinition,
-  "kind" | "goal" | "promptRoutes" | "priority" | "cluster" | "audiences"
+  "kind" | "evidenceLabel" | "goal" | "promptRoutes" | "priority" | "cluster" | "audiences"
 > {
   const normalized = label.trim().toLowerCase()
   if (
@@ -100,6 +181,7 @@ function evidenceGoal(
   ) {
     return {
       kind: "colors_relationship",
+      evidenceLabel: "Relationship to COLORS",
       goal: COLORS_RELATIONSHIP_SIGNAL.goal,
       promptRoutes: [...COLORS_RELATIONSHIP_SIGNAL.promptRoutes],
       priority: COLORS_RELATIONSHIP_SIGNAL.priority,
@@ -107,9 +189,13 @@ function evidenceGoal(
       audiences: [...COLORS_RELATIONSHIP_SIGNAL.audiences],
     }
   }
-  if (normalized.includes("what brought you here")) {
+  if (
+    normalized.includes("what brought you here") ||
+    normalized === "motivation for joining"
+  ) {
     return {
       kind: "motivation",
+      evidenceLabel: "Motivation for joining",
       goal: "Understand their motivation and relationship to the Forum.",
       promptRoutes: ["What drew you towards this community?", "What are you hoping to find or take part in here?"],
       priority: "supporting",
@@ -117,9 +203,13 @@ function evidenceGoal(
       audiences: ["shared"],
     }
   }
-  if (normalized.includes("artist more people should know")) {
+  if (
+    normalized.includes("artist more people should know") ||
+    normalized === "cultural point of view"
+  ) {
     return {
       kind: "artist_reference",
+      evidenceLabel: "Cultural point of view",
       goal: "Hear a personal cultural point of view through a specific artist or creative reference.",
       promptRoutes: ["Who is making work you think deserves more attention?", "What do people tend to miss about work you care about?"],
       priority: "core",
@@ -127,9 +217,13 @@ function evidenceGoal(
       audiences: ["shared"],
     }
   }
-  if (normalized.includes("last song") && normalized.includes("recommend")) {
+  if (
+    (normalized.includes("last song") && normalized.includes("recommend")) ||
+    normalized === "music shared with others"
+  ) {
     return {
       kind: "recommendation",
+      evidenceLabel: "Music shared with others",
       goal: "Hear one identifiable song they have actually recommended or shared, and why they thought that specific song was worth someone else's attention.",
       promptRoutes: [
         "What is one of their songs that you have shared with someone, and why?",
@@ -140,9 +234,10 @@ function evidenceGoal(
       audiences: ["shared"],
     }
   }
-  if (normalized.includes("unfinished music")) {
+  if (normalized.includes("unfinished music") || normalized === "care and feedback") {
     return {
       kind: "feedback",
+      evidenceLabel: "Care and feedback",
       goal: "Understand their care, honesty, and judgment when responding to unfinished work.",
       promptRoutes: ["How do you approach feedback when the work is not naturally for you?", "What does useful honesty look like with unfinished work?"],
       priority: "core",
@@ -150,9 +245,13 @@ function evidenceGoal(
       audiences: ["curator"],
     }
   }
-  if (normalized.includes("which sounds most like you")) {
+  if (
+    normalized.includes("which sounds most like you") ||
+    normalized === "ways of taking part"
+  ) {
     return {
       kind: "participation",
+      evidenceLabel: "Ways of taking part",
       goal: "Understand how they currently participate in music culture and community, including the exchanges and habits that keep them involved over time.",
       promptRoutes: [
         "How do you usually participate around music?",
@@ -166,6 +265,7 @@ function evidenceGoal(
   if (normalized.includes("first month") || normalized.includes("contribut")) {
     return {
       kind: "contribution",
+      evidenceLabel: "Potential contribution",
       goal: "Find a concrete, realistic contribution pattern: what they already give or return to, and what they could sustain in the Forum.",
       promptRoutes: [
         "What do you already find yourself giving back in music communities?",
@@ -179,6 +279,7 @@ function evidenceGoal(
   }
   return {
     kind: "custom",
+    evidenceLabel: label.trim().replace(/[?]+$/, ""),
     goal: `Understand the applicant's evidence for: ${label.trim()}`,
     promptRoutes: [label.trim()],
     priority: "core",
@@ -235,6 +336,7 @@ export function applicationSignalDefinitions(
 export function isColorsForumSignalSet(
   definitions: ApplicationSignalDefinition[],
 ): boolean {
+  if (isColorsForumV1SignalSet(definitions)) return true
   const clusters = new Set(definitions.map((signal) => signal.cluster))
   return (
     clusters.has("orientation") &&
@@ -242,6 +344,19 @@ export function isColorsForumSignalSet(
     clusters.has("care_and_feedback") &&
     clusters.has("participation_and_contribution")
   )
+}
+
+/** A missing marker on an existing conversation means its original rubric stays in force. */
+export function colorsForumRubricForHistory(
+  history: ApplicationSignalMessage[],
+  configuredDefinitions: ApplicationSignalDefinition[],
+): typeof COLORS_FORUM_V1_RUBRIC | null {
+  if (history.some((message) =>
+    metadataRecord(message.metadata)?.application_rubric_version === COLORS_FORUM_V1_RUBRIC,
+  )) return COLORS_FORUM_V1_RUBRIC
+  return history.length === 0 && isColorsForumSignalSet(configuredDefinitions)
+    ? COLORS_FORUM_V1_RUBRIC
+    : null
 }
 
 export function applicationOpeningMessageForSignals(
@@ -367,6 +482,9 @@ export function collectApplicationSignalAnswers(
     const answer = message.content.trim()
     if (!answer) continue
     for (const signal of signals) {
+      const relation = metadataRecord(
+        metadataRecord(message.metadata)?.application_answer_relation,
+      )
       const previous = answers.get(signal.key)?.answer
       const combined = previous ? `${previous}\nFollow-up: ${answer}` : answer
       answers.set(signal.key, {
@@ -380,6 +498,14 @@ export function collectApplicationSignalAnswers(
         covered: hasCoverage
           ? coveredSignals.some((covered) => covered.key === signal.key) || previousAnswerCovered(answers.get(signal.key))
           : true,
+        ...(
+          coveredSignals.some((covered) => covered.key === signal.key) ||
+          (promptedSignals.some((prompted) => prompted.key === signal.key) &&
+            relation?.kind === "direct") ||
+          answers.get(signal.key)?.addressed === true
+            ? { addressed: true }
+            : {}
+        ),
       })
     }
   }
@@ -436,6 +562,10 @@ export function collectApplicationInsufficientEvidenceKeys(
 
 function previousAnswerCovered(answer: ApplicationSignalAnswer | undefined): boolean {
   return Boolean(answer && answer.covered !== false)
+}
+
+function previousAnswerHandled(answer: ApplicationSignalAnswer | undefined): boolean {
+  return previousAnswerCovered(answer) || answer?.addressed === true
 }
 
 function withEvidenceSource(
@@ -496,7 +626,7 @@ export function expectedApplicationSignal(
     break
   }
   if (requestedSignal) return requestedSignal
-  const answered = new Set(answers.filter(previousAnswerCovered).map((answer) => answer.key))
+  const answered = new Set(answers.filter(previousAnswerHandled).map((answer) => answer.key))
   return definitions.find((signal) => !answered.has(signal.key)) ?? null
 }
 
@@ -522,6 +652,9 @@ export function withCurrentSignalAnswer(
       currentAnswer,
     ),
     covered: covered || previousAnswerCovered(answers.find((answer) => answer.key === signal.key)),
+    ...(answers.find((answer) => answer.key === signal.key)?.addressed === true
+      ? { addressed: true }
+      : {}),
   })
   return next
 }
@@ -565,7 +698,17 @@ export function markCoveredSignals(
 ): ApplicationSignalAnswer[] {
   const coveredKeys = new Set(signals.map((signal) => signal.key))
   return answers.map((answer) =>
-    coveredKeys.has(answer.key) ? { ...answer, covered: true } : answer,
+    coveredKeys.has(answer.key) ? { ...answer, covered: true, addressed: true } : answer,
+  )
+}
+
+export function markAddressedSignals(
+  answers: ApplicationSignalAnswer[],
+  signals: ApplicationSignalDefinition[],
+): ApplicationSignalAnswer[] {
+  const addressedKeys = new Set(signals.map((signal) => signal.key))
+  return answers.map((answer) =>
+    addressedKeys.has(answer.key) ? { ...answer, addressed: true } : answer,
   )
 }
 
@@ -581,8 +724,9 @@ export function resolveNextApplicationSignal(
   definitions: ApplicationSignalDefinition[],
   answers: ApplicationSignalAnswer[],
   currentSignal: ApplicationSignalDefinition | null,
+  fallbackToOpen = true,
 ): ApplicationSignalDefinition | null {
-  const answered = new Set(answers.filter(previousAnswerCovered).map((answer) => answer.key))
+  const answered = new Set(answers.filter(previousAnswerHandled).map((answer) => answer.key))
   const nextMissing = definitions.find((signal) => !answered.has(signal.key)) ?? null
   if (requestedKey) {
     const requested = definitions.find((signal) => signal.key === requestedKey)
@@ -590,7 +734,7 @@ export function resolveNextApplicationSignal(
       return requested
     }
   }
-  return nextMissing ?? currentSignal ?? null
+  return fallbackToOpen ? nextMissing ?? currentSignal ?? null : null
 }
 
 export function unattemptedCoreApplicationSignals(
@@ -624,7 +768,7 @@ export function shouldDeferApplicationTerminal(input: {
 export function applicationSignalMetadata(
   signal: ApplicationSignalDefinition | null,
 ): Record<string, string> | undefined {
-  return signal ? { key: signal.key, label: signal.label } : undefined
+  return signal ? { key: signal.key, label: signal.evidenceLabel } : undefined
 }
 
 export function buildCompactApplicationStateMessage(input: {
@@ -647,6 +791,14 @@ export function buildCompactApplicationStateMessage(input: {
   insufficientEvidenceKeys?: Set<string>
   relevantSignalKeys?: Set<string>
   facts?: ApplicationFacts
+  integrityConcerns?: Array<{ kind: string; sourceMessageId?: string; quote?: string }>
+  mediaExerciseAvailable?: boolean
+  mediaCatalog?: Array<{
+    id: string
+    title: string
+    artist?: string
+    availableFormats: string[]
+  }>
 }): string {
   const answersByKey = new Map(input.answers.map((answer) => [answer.key, answer]))
   const relevantDefinitions = applicationSignalDefinitionsForEvidence(
@@ -659,27 +811,11 @@ export function buildCompactApplicationStateMessage(input: {
   const orientation =
     input.participantOrientation ??
     EMPTY_APPLICATION_PARTICIPANT_ORIENTATION
-  const earlyColorsRelationship =
-    input.currentSignal?.cluster === "orientation"
-      ? relevantDefinitions.find(
-          (signal) =>
-            signal.cluster === "colors_relationship" &&
-            !previousAnswerCovered(answersByKey.get(signal.key)),
-        )
-      : null
-  const suggestedGapSignalKey =
-    earlyColorsRelationship?.key ??
-    (input.adaptiveOrientationEnabled === true && orientation.primary === "unknown"
-      ? input.definitions.find(
-          (signal) =>
-            signal.kind === "participation" &&
-            !previousAnswerCovered(answersByKey.get(signal.key)),
-        )
-      : null)?.key ??
-    relevantDefinitions.find(
-      (signal) => !previousAnswerCovered(answersByKey.get(signal.key)),
-    )?.key ??
-    null
+  const suggestedGapSignalKey = isColorsForumSignalSet(input.definitions)
+    ? null
+    : relevantDefinitions.find(
+        (signal) => !previousAnswerHandled(answersByKey.get(signal.key)),
+      )?.key ?? null
   const maxQuestions = input.maxQuestions ?? DEFAULT_SOFT_QUESTION_TARGET
   const maxFollowupsPerSignal =
     input.maxFollowupsPerSignal ?? DEFAULT_MAX_FOLLOWUPS_PER_SIGNAL
@@ -718,6 +854,9 @@ export function buildCompactApplicationStateMessage(input: {
     )
     .map((signal) => signal.key)
   const state = {
+    ...(isColorsForumV1SignalSet(input.definitions)
+      ? { rubricVersion: COLORS_FORUM_V1_RUBRIC }
+      : {}),
     questionBudget: {
       ...resolvedQuestionBudget,
       maxFollowupsPerSignal,
@@ -728,9 +867,11 @@ export function buildCompactApplicationStateMessage(input: {
       const followupCount = Math.max(0, attempts - 1)
       return {
         key: signal.key,
+        evidenceLens: signal.evidenceLabel,
         evidenceGoal: signal.goal ?? evidenceGoal(signal.label).goal,
-        exampleQuestions:
-          signal.promptRoutes ?? evidenceGoal(signal.label).promptRoutes,
+        ...(!isColorsForumSignalSet(input.definitions)
+          ? { exampleQuestions: signal.promptRoutes ?? evidenceGoal(signal.label).promptRoutes }
+          : {}),
         priority: signal.priority ?? evidenceGoal(signal.label).priority,
         cluster: signal.cluster ?? evidenceGoal(signal.label).cluster,
         relevance: signal.audiences.includes("shared")
@@ -739,7 +880,9 @@ export function buildCompactApplicationStateMessage(input: {
             ? "explicit"
             : "conditional",
         status: previousAnswerCovered(answer)
-          ? "covered"
+          ? "observed"
+          : answer?.addressed
+            ? "addressed_insufficient_evidence"
           : input.insufficientEvidenceKeys?.has(signal.key)
             ? "insufficient_evidence"
             : "open",
@@ -749,12 +892,12 @@ export function buildCompactApplicationStateMessage(input: {
           0,
           maxFollowupsPerSignal - followupCount,
         ),
-        ...(answer ? { answer: answer.answer } : {}),
+        ...(answer ? { answer: answer.answer, sources: answer.sources ?? [] } : {}),
       }
     }),
     current: {
       signalKey: input.currentSignal?.key ?? null,
-      signalLabel: input.currentSignal?.label ?? null,
+      signalLabel: input.currentSignal?.evidenceLabel ?? null,
       question: input.currentQuestion,
       answer: input.currentAnswer,
       ...(input.currentSignal
@@ -797,7 +940,14 @@ export function buildCompactApplicationStateMessage(input: {
     ...(input.adaptiveOrientationEnabled
       ? {
           participantOrientation: orientation,
-          orientationLenses: {
+          orientationLenses: isColorsForumV1SignalSet(input.definitions) ? {
+            rule: "Descriptive context only. Do not choose, require, or score evidence goals from this label.",
+            shared: "All applicants can show community participation, Forum hopes, reciprocal contribution, artist engagement, and a COLORS relationship in different ways.",
+            artist: "Follow creative practice and desired exchange if the applicant introduces them; artist status is not a requirement.",
+            curator: "Follow concrete selection, hosting, context, or connection if it appears; do not require curation.",
+            enthusiast: "Thoughtful listening and community exchange are valid participation without formal creative credits.",
+            hybrid: "Follow the live crossover without asking the applicant to prove every role.",
+          } : {
             rule:
               "Descriptive context only. Never use an orientation label or score to add, remove, force, or prioritise an evidence goal. Goal relevance comes from explicit conversational evidence.",
             fluidity:
@@ -823,12 +973,17 @@ export function buildCompactApplicationStateMessage(input: {
       "maker_to_practice",
       "action_to_consequence",
       "sharing_to_selection",
-      "feedback_to_care",
+      ...(isColorsForumV1SignalSet(input.definitions) ? [] : ["feedback_to_care"]),
       "aspiration_to_contribution",
       "tension_to_judgment",
       "callback",
     ],
-    priorityConversationBridges: {
+    priorityConversationBridges: isColorsForumV1SignalSet(input.definitions) ? {
+      communityToHopes: "When they describe a community experience, explore what kind of exchange they hope the Forum could add only if that remains unclear.",
+      practiceToContribution: "When they describe something they already do, ask whether and how it could continue here; preserve the difference between a current habit and a proposed plan.",
+      artistToEngagement: "When they name an artist or work, follow what they value and how they would like to engage with artists or other listeners; do not demand a song title or critique.",
+      colorsToForum: "When they describe a COLORS experience, explore what the Forum might extend beyond watching performances, if that is still open.",
+    } : {
       artistToSong: {
         trigger:
           "The current thread identifies an artist and the recommendation goal is still open.",
@@ -872,7 +1027,38 @@ export function buildCompactApplicationStateMessage(input: {
       },
     },
     suggestedGapSignalKey,
+    mediaExerciseAvailable: input.mediaExerciseAvailable === true,
+    mediaCatalog: input.mediaCatalog ?? [],
     ...(input.facts ? { durableFacts: input.facts } : {}),
+    ...(input.integrityConcerns?.length
+      ? { unresolvedIntegrityObservations: input.integrityConcerns.map((item) => ({
+          kind: item.kind,
+          sourceMessageId: item.sourceMessageId ?? null,
+          quote: item.quote ?? null,
+        })) }
+      : {}),
+  }
+
+  if (isColorsForumV1SignalSet(input.definitions)) {
+    return `Review this compact COLORS Forum application state and produce Groucho's next turn.
+
+${NATURAL_LANGUAGE_REPLY_GUIDANCE}
+
+The stable signal keys in state.signals are private evidence IDs, not a sequence of questions. Assess current.answer semantically as thin, usable, rich, or concerning: a concise concrete preference, intention, practice, or observation is usable. Return every key newly supported by THIS answer in coveredSignalKeys, even if the current question aimed at a different lens. A critical or negative answer can still cover a lens. One answer can cover several; an open lens is uncertainty, not a reason to interrogate the applicant. Do not copy evidence from earlier answers into this turn's coverage. Keep established activity, one-off action, and aspiration distinct.
+
+Learn what community the applicant already participates in, what reciprocal exchange they could sustain, what they hope this Forum offers, how they engage with artists, and their actual relationship to COLORS. This is not an artist-submission review, a curation exam, or a fandom quiz. Online communities and quiet but thoughtful participation count. Familiarity with lesser-known COLORS work can enrich context but is not required. Applicant orientation is descriptive, never a routing decision or status judgment.
+
+Compare current.answer with current.question. Return answerRelation direct, partial, subject_shift, ambiguous, or clarification_request as appropriate. A request to clarify your wording is process feedback, not applicant-fit evidence: own the unclear question and restate one specific invitation on the same subject. If the applicant asks to leave a covered subject, honour that request. If they correct an assumption, acknowledge it and preserve their stated facts. For a genuine subject shift, do not invent a bridge; receive the new detail and ask one clarifying question. Do not turn feedback on Groucho into a reservation.
+
+Choose conversationMove from clarify, open_door, advance, rabbit_hole, challenge, or decide. Follow one concrete detail from the current answer where useful. A rich answer may earn one deeper question, but does not require it. Do not revisit an already-understood example simply because a lens remains open. A thin answer permits one targeted clarification; after repeated thin evidence, an open-door invitation may offer a different route without blame. Ask at most one clear applicant-directed question on an active turn, without announcing application stages or asking several evidence questions at once.
+
+Use questionBudget.softTarget as an upper pacing guide, not a minimum. Prefer a terminal decision once distinct evidence supports a useful advisory brief; missing optional detail can remain in the report. If all five lenses are already observed, normally decide now rather than asking for another illustration. Continue only if a specific unresolved contradiction, safety boundary, or decision-changing uncertainty remains. The five lenses are not questions to complete: you may close earlier when the brief is already useful. Never exceed questionBudget.emergencyLimit. Unresolved artist-consent or dignity concerns take priority, but do not introduce a hypothetical unfinished-work review unless the applicant's own account makes feedback or private work relevant. Distinguish permission uncertainty from a demonstrated violation.
+
+If the applicant asks to see or react to a video, image, or source link and mediaCatalog is available, honour that request with a relevant interactionProposal. Never ask them to inspect media that the UI has not shown. Otherwise use media only when it makes this thread more specific or revealing. An image reference shows a thumbnail; a link invites them to open the performance; a video choice asks them to compare or select. None is compulsory. Select IDs only from mediaCatalog; never invent URLs or facts about a show. Do not infer they watched a source merely because it was shown.
+
+Treat durableFacts as source-linked working memory. Applicant claims are attributed statements, not independently verified facts. A remove choice does not establish a sequence. If mediaChoice.depthFollowupUsed is true, leave that exercise. Use conversationThread and recentApplicantAnswers to avoid asking for information already given. Bridge from a concrete action to a possible Forum contribution only when the connection is earned. Set nextSignalKey to the stable evidence ID explored by your visible question when one fits; otherwise leave it empty. Do not force a mapping.
+
+On a terminal turn use the configured neutral close, never reveal the private recommendation. Return the structured tool response.\n\n${JSON.stringify(state)}`
   }
 
   const orientationInstructions = input.adaptiveOrientationEnabled
@@ -891,8 +1077,11 @@ ${NATURAL_LANGUAGE_REPLY_GUIDANCE}
 
 Assess the current answer semantically as thin, usable, rich, or concerning. Use usable as the normal baseline for a clear answer that supplies any relevant fact, intention, preference, cultural judgment, or personal point of view, even when it deserves another question. Reserve thin for genuinely empty, evasive, non-responsive, or content-free answers. A short answer such as a creative medium, a concrete goal, or a reason for valuing COLORS is usable. Do not use length, fluency, vocabulary, professional status, fame, follower count, or whether you recognise a reference as a proxy for quality.
 
+If the applicant asks to see or react to a video, image, or source link and mediaCatalog is available, honour that request with a relevant interactionProposal. Do not ask what they notice in a visual or performance you have not actually shown. If no approved asset fits, say so and ask a self-contained text question instead; never invent a link.
+
 Separately compare current.answer with current.question and set answerRelation. Use direct when it answers what was asked, partial when it answers only part, subject_shift when it clearly introduces another person, work, idea, or topic, and ambiguous when several connections are plausible but none is established. Do not lower a culturally meaningful answer's quality merely because its relation is unclear. For subject_shift or ambiguous, do not manufacture continuity, answer the missing question on the applicant's behalf, or make an unsupported observation about the new reference. Briefly receive the exact new detail and ask one natural disambiguating question, such as “Lucki—are you bringing him up as an influence on your own work?” Leave nextSignalKey empty and let this be a conversational repair turn. The applicant's next answer can establish the new thread or return to the earlier one.
-If the applicant asks whether your previous turn was a question or asks you to clarify what you meant, set answerRelation to clarification_request. This is feedback on your wording, not evidence about their suitability. Acknowledge the unclear turn without blaming the applicant, then restate one specific question about the same subject in plain language. Do not switch to another evidence goal, score the applicant's response, infer that the conversation is stilted, or use this turn to insert an exercise. Return no newly covered goals and leave nextSignalKey empty.
+If the applicant asks whether your previous turn was a question or asks you to clarify what you meant, set answerRelation to clarification_request. This is feedback on your wording, not evidence about their suitability. Acknowledge the unclear turn without blaming the applicant, then restate one specific question about the same subject in plain language. Do not switch to another evidence goal, score the applicant's response, infer that the conversation is stilted, or use this turn to insert an exercise. Return no newly covered goals and leave nextSignalKey empty. A request to stop revisiting an answered subject or discuss a different aspect is requests_topic_change, even if phrased as a question; it is not a clarification request. Honour that request without defending a narrower version of the same question.
+If unresolvedIntegrityObservations is present, first resolve the exact boundary in that source-linked account. Do not leave it for an unrelated open lens. A correction or retraction is a new applicant statement, not proof that the earlier account never happened. Distinguish a reported past practice from a future intention.
 ${orientationInstructions}
 
 Choose one conversationMove:
@@ -903,26 +1092,29 @@ Choose one conversationMove:
 - challenge: calmly address a concerning safety, dignity, integrity, or extractive signal;
 - decide: use only with a terminal decision.
 
-Use open_door only when conversationDepth shows repeated thin evidence and openDoorUsed is false. Use rabbit_hole for a rich current answer when the live thread can still add relevant understanding. The runtime validates safety, per-intent repetition, reply shape, and the emergency loop limit. When your reply contains one valid, relevant question, it remains the conversational authority even if it does not map neatly to a configured evidence goal.
+Use open_door only when conversationDepth shows repeated thin evidence and openDoorUsed is false. A rich answer permits but does not require a rabbit_hole. Once the applicant has given a rationale, example, limits, and a plausible action for a subject, treat that subject as understood; a finer distinction about the same example is not new depth. The runtime validates safety, per-intent repetition, reply shape, and the emergency loop limit. When your reply contains one valid, relevant question, it remains the conversational authority even if it does not map neatly to a configured evidence goal.
 
 Follow-up limits:
 - Ask at most questionBudget.maxFollowupsPerSignal follow-ups for any one signal.
-- questionBudget.softTarget is a pacing prompt, not a deadline. Do not distort a live thread to meet it.
+- questionBudget.softTarget is a ceiling to aim below when the evidence is already sufficient, not a minimum interview length. Do not extend a thread merely because there is room left.
 - questionBudget.emergencyLimit is only a loop-safety stop. Never ask beyond it.
 - If followupsRemaining is 0 for the current signal and evidence is still thin, record that weakness privately and move on or conclude.
 
 Flexible pacing:
-- explore: follow productive threads and gather evidence naturally;
-- consider_close: the soft target has been reached. Ask another question only when it grows naturally from the live thread or would materially improve the reviewer brief; otherwise conclude;
+- explore: follow productive threads, but close as soon as the applicant has given enough distinct evidence to support an advisory judgment;
+- consider_close: the soft target has been reached. Prefer a terminal decision. Ask again only when you can name a specific unresolved fact or concern whose answer could materially change the reviewer brief; a further illustration of an already-understood view is not enough;
 - emergency_stop: do not ask another question. Set a terminal decision and use the neutral close.
-There is no closing phase at answers seven or eight. Missing evidence belongs in the later reviewer brief rather than compulsory gap-filling.
+There is no fixed closing turn. Missing optional detail belongs in the reviewer brief rather than compulsory gap-filling. A rich answer does not automatically earn another rabbit-hole turn once its rationale, example, limits, and likely contribution are clear.
 
-Treat signals as private evidence intents, not a checklist and not a bank of required questions. exampleQuestions are illustrative routes only. Infer the actual question from the applicant's words, the live thread, the relevant unresolved intent, and Groucho's persona. Do not copy an example merely because its signal is open. One answer can cover several goals. Return every open goal newly supported by current.answer in coveredSignalKeys, even if it was not the goal that prompted the answer. Coverage records the presence of usable evidence, not that a goal has been exhaustively explored: a brief direct answer may cover a goal while still earning one natural depth question. Do not repeat keys whose signal status is already covered, and do not attribute facts found only in recentApplicantAnswers or another earlier message to the current answer. Never ask for evidence that is already covered unless a genuine conversational thread warrants one bounded depth question.
+Treat signals as private evidence lenses, not a checklist and not a bank of required questions. An observed answer can be positive, negative, or critical; do not leave a lens open just because the applicant's answer suggests poor fit. Example questions, when present, are illustrative routes only. Infer the actual invitation from the applicant's words, the live thread, and Groucho's persona. One answer can inform several lenses. Return every lens for which current.answer supplies usable evidence in coveredSignalKeys, even if it was not the lens that prompted the answer. An observed lens may still earn one natural depth question, but do not ask again merely because its evidence is unfavorable. Do not attribute facts found only in recentApplicantAnswers or another earlier message to the current answer.
+
+When mediaExerciseAvailable is true, mediaCatalog contains approved official COLORS assets you may use for a rich interaction. Consider whether showing an image, opening a source link, or inviting a choice among performances would make the next question more specific or revealing than another verbal probe. A rich interaction can explore community engagement, artist interests, a listening perspective, or a curatorial choice; it is not a compulsory curation test. Propose one only when the applicant's actual thread makes it relevant, and never during an unresolved disclosure, integrity concern, or clarification. If they correct you for asking about unseen media, own it and provide an approved reference when one fits. Choose asset IDs only from mediaCatalog. For reference, ask an open text question grounded in one or two image or link cards. For choice, write the visible question and rationale prompt yourself, choosing select, remove, or rank. Do not assume the applicant watched an asset merely because it was shown. Omit interactionProposal when a plain conversation is better. The old offerMediaExercise flag is a compatibility fallback, not the preferred route.
 
 Before writing a follow-up, check recentApplicantAnswers for facts the applicant has already supplied, including informal examples that were not assigned to an evidence goal. Do not ask them to restate one. If more detail is needed, name the detail already given and ask only for the missing part.
 
 Use durableFacts as the typed record of what the interaction actually captured. A remove choice has no explicit order unless explicitOrderOptionIds is present. Applicant claims are attributed statements, not independently verified facts. If mediaChoice.depthFollowupUsed is true, leave that exercise now; do not ask another question about its performances. Requests to clarify, corrections of your premise, and requests to change topic are process feedback, not applicant-fit evidence.
-When current.question is a media-choice curation exercise, treat the rationale as a live editorial decision rather than a completed checkbox. If the answer leaves a meaningful trade-off or uncertainty, spend one follow-up on what relationship among the retained works they would test, or what listening would change their provisional decision. Then move on; do not keep interrogating the exercise. Do not pivot to a generic COLORS or participation question before giving that reasoning room, and never claim the applicant has heard or ordered performances they have not.
+Use durableFacts.activityClaims as source-linked time-frame evidence. Keep a proposed recurring format distinct from a one-off event and an actual ongoing habit. A visitor returning the next week after one event does not make that event the first meeting of a recurring programme. If current.answer corrects your factual premise, acknowledge the correction explicitly, update that distinction, and do not ask them to prove the same point again.
+When current.question is a media-choice curation exercise, treat the rationale as a live editorial decision rather than a completed checkbox. If the answer leaves a meaningful trade-off or uncertainty, you may ask one follow-up about what relationship they would test or what listening could change the provisional decision. If their rationale already gives enough insight, follow their broader thread or close. Never claim the applicant has heard or ordered performances they have not, and do not interrogate the exercise repeatedly.
 
 The opening answer is the first conversational inflection point. Continue from the motivation actually expressed; participantOrientation only describes what emerges and must not select the next question. Community intent should lead into what community means to them; making work should lead into practice or desired exchange; curation or organising should lead into their real role and actions; discovery or listening should lead into how music becomes social or what they hope to find. Do not automatically jump from the opening answer to an artist question.
 
@@ -949,7 +1141,7 @@ Use priorityConversationBridges when their trigger is genuinely present in the c
 - A bridge must respect per-intent repetition and the emergency stop. Do not force it when the detail was incidental, its evidence goal is already covered, the thread has moved on, or the session should conclude.
 - Never invent an album title, track, release, genre, creative practice, or personal detail. Reuse only what the applicant actually supplied.
 
-Use conversationThread as read-only working memory for continuity. If its momentum is high or medium and the current answer keeps the openHook or strongestDetail alive, continue that thread before filling an unrelated goal. Connect the next reply to what was actually said, and do not repeat a generic acknowledgement of anything already in acknowledgedDetails. Pivot when momentum is low or exhausted, the hook is resolved, the relevant depth/follow-up budget is unavailable, or an important gap must be checked near the end. Thread bookkeeping is updated by the runtime and must not be returned.
+Use conversationThread as read-only working memory for continuity, not as a reason to keep probing a resolved idea. High momentum means the applicant gave useful material, not that they owe another question about it. Continue only when a particular unanswered hook remains; otherwise pivot, offer a useful optional comparison, or close. A request to change topic overrides momentum immediately. Do not repeat a generic acknowledgement of anything already in acknowledgedDetails. Thread bookkeeping is updated by the runtime and must not be returned.
 
 Choose a conversational shape internally as well as returning conversationMove:
 - reflect: name a concrete detail and give it room;
@@ -970,5 +1162,5 @@ Use transition shape deliberately:
 - connect: name or clearly reuse one concrete detail and make its relationship to the next evidence goal perceptible;
 - pivot: briefly land the previous thread, then change subject cleanly without claiming a false connection.
 
-Keep the exchange conversational: respond to one concrete detail, tension, or gap before asking. Prefer a question that grows out of the current answer. Treat exampleQuestions as adaptable inspiration only when the thread offers no natural route. Avoid generic praise and do not sound like a form. Never call an answer interesting unless you name the specific thing that interested you. Do not force the same acknowledgement-plus-question shape every turn, but do not skip over a meaningful disclosure merely to sound concise. Do not ask who received, was sent, or was recommended music. Set nextSignalKey to the private evidence intent your visible question is exploring; use current.signalKey for clarify, open_door, rabbit_hole, or challenge, choose any relevant open signal for advance, and use an empty string on terminal turns.\n\n${JSON.stringify(state)}`
+Keep the exchange conversational: respond to one concrete detail, tension, or gap before asking. Prefer a question that grows out of the current answer. Treat exampleQuestions as adaptable inspiration only when the thread offers no natural route. Avoid generic praise and do not sound like a form. Never call an answer interesting unless you name the specific thing that interested you. Do not force the same acknowledgement-plus-question shape every turn, but do not skip over a meaningful disclosure merely to sound concise. Do not ask who received, was sent, or was recommended music. Set nextSignalKey to the evidence lens your visible question explores when one fits; leave it empty for a contextual thread that does not map cleanly to one lens or for a terminal turn. Do not invent a lens mapping merely to fill the field.\n\n${JSON.stringify(state)}`
 }

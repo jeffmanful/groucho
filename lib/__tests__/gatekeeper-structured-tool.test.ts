@@ -21,6 +21,10 @@ describe("parseGatekeeperStructuredResponse", () => {
 
     expect(properties).toHaveProperty("answerRelation")
     expect(properties).toHaveProperty("relevantSignalKeys")
+    expect(properties).toHaveProperty("offerMediaExercise")
+    expect(properties).toHaveProperty("activityClaims")
+    expect(required).toContain("offerMediaExercise")
+    expect(required).toContain("activityClaims")
     expect(properties).not.toHaveProperty("selectedBridge")
     expect(properties).not.toHaveProperty("threadState")
     expect(properties).not.toHaveProperty("participantOrientation")
@@ -33,7 +37,8 @@ describe("parseGatekeeperStructuredResponse", () => {
     expect(required).toContain("answerRelation")
     expect(required).toContain("processFeedback")
     expect(required).toContain("mediaClaim")
-    expect(required).toHaveLength(11)
+    expect(required).toContain("integrityObservation")
+    expect(required).toHaveLength(14)
   })
 
   it("reads compact answer evidence and a single selected bridge", () => {
@@ -104,6 +109,25 @@ describe("parseGatekeeperStructuredResponse", () => {
     ] as never)
 
     expect(out.reply).toBe("A grounded receipt.\n\nWhat changed?")
+  })
+
+  it("requires an explicit model opt-in for the optional media exercise", () => {
+    const offered = parseGatekeeperStructuredResponse([
+      toolBlock({ reply: "What would you test?", terminal: "none", offerMediaExercise: true }),
+    ] as never)
+    const ordinary = parseGatekeeperStructuredResponse([
+      toolBlock({ reply: "What would you test?", terminal: "none" }),
+    ] as never)
+    expect(offered.offerMediaExercise).toBe(true)
+    expect(ordinary.offerMediaExercise).toBe(false)
+  })
+
+  it("passes source-quoted activity claims to the turn controller", () => {
+    const claims = [{ status: "one_off", quote: "I hosted one listening night." }]
+    const out = parseGatekeeperStructuredResponse([
+      toolBlock({ reply: "What changed?", terminal: "none", activityClaims: claims }),
+    ] as never)
+    expect(out.activityClaims).toEqual(claims)
   })
 
   it("reads reply, terminal, and interaction spec from groucho_respond", () => {

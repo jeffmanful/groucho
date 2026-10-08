@@ -15,6 +15,23 @@ export function expectedTesterEmail(): string {
   return process.env.COLORS_DEMO_TESTER_EMAIL?.trim().toLowerCase() || COLORS_DEMO_TESTER_EMAIL
 }
 
+function additionalTesterEmail(): string {
+  return process.env.COLORS_DEMO_ADDITIONAL_TESTER_EMAIL?.trim().toLowerCase() || ""
+}
+
+export function isDemoTesterEmail(email: string): boolean {
+  const normalized = email.trim().toLowerCase()
+  return normalized === COLORS_DEMO_TESTER_EMAIL ||
+    normalized === expectedTesterEmail() ||
+    Boolean(additionalTesterEmail() && normalized === additionalTesterEmail())
+}
+
+function isConfiguredTesterEmail(email: string): boolean {
+  const normalized = email.trim().toLowerCase()
+  return normalized === expectedTesterEmail() ||
+    Boolean(additionalTesterEmail() && normalized === additionalTesterEmail())
+}
+
 function encode(value: string): string {
   return btoa(value).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
 }
@@ -54,7 +71,7 @@ export async function verifyDemoToken(raw: string | undefined, kind: DemoToken["
     )
     if (!valid) return null
     const payload = JSON.parse(decode(body)) as DemoToken
-    if (payload.kind !== kind || payload.email !== expectedTesterEmail()) return null
+    if (payload.kind !== kind || !isConfiguredTesterEmail(payload.email)) return null
     if (!Number.isFinite(payload.issuedAt) || payload.issuedAt > Date.now() + 60_000) return null
     const lifetime = kind === "tester" ? 7 * 24 * 60 * 60_000 : 24 * 60 * 60_000
     if (Date.now() - payload.issuedAt > lifetime) return null
@@ -77,6 +94,11 @@ export async function demoSession(req: NextRequest, sessionId: string): Promise<
 }
 
 export function demoPasswordMatches(email: string, password: string): boolean {
-  const configured = process.env.COLORS_DEMO_PASSWORD
-  return Boolean(configured && email.trim().toLowerCase() === expectedTesterEmail() && password === configured)
+  const normalized = email.trim().toLowerCase()
+  const primaryPassword = process.env.COLORS_DEMO_PASSWORD
+  const additionalPassword = process.env.COLORS_DEMO_ADDITIONAL_TESTER_PASSWORD
+  return Boolean(
+    (primaryPassword && normalized === expectedTesterEmail() && password === primaryPassword) ||
+    (additionalPassword && additionalTesterEmail() && normalized === additionalTesterEmail() && password === additionalPassword),
+  )
 }

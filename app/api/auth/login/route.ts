@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import {
   DEMO_AUTH_COOKIE,
-  COLORS_DEMO_TESTER_EMAIL,
   demoPasswordMatches,
-  expectedTesterEmail,
+  isDemoTesterEmail,
   issueDemoToken,
 } from "@/lib/colors-demo-token"
 
@@ -56,7 +55,7 @@ export async function POST(req: NextRequest) {
     return res
   }
 
-  if (emailLower === expectedTesterEmail() || emailLower === COLORS_DEMO_TESTER_EMAIL) {
+  if (isDemoTesterEmail(emailLower)) {
     return NextResponse.json({ error: "Access denied" }, { status: 401 })
   }
 

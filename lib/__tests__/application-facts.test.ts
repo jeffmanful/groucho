@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   collectApplicationFacts,
+  normaliseApplicationActivityClaims,
   normaliseMediaClaim,
 } from "@/lib/application-facts"
 
@@ -93,5 +94,63 @@ describe("source-linked application facts", () => {
       kind: "none",
       quote: "",
     })
+  })
+
+  it("keeps an explicit topic-change request when the relation also says clarification", () => {
+    const facts = collectApplicationFacts([{
+      id: "move-on",
+      role: "user",
+      content: "We've covered that; can we discuss something else?",
+      metadata: {
+        application_answer_relation: { kind: "clarification_request" },
+        application_process_feedback: { kind: "requests_topic_change" },
+      },
+    }])
+    expect(facts.processFeedback).toEqual([
+      { kind: "requests_topic_change", sourceMessageId: "move-on" },
+    ])
+  })
+
+  it("carries quoted one-off, ongoing, and proposed activity without upgrading their status", () => {
+    const proposed = "I would start a monthly circle using public performances."
+    const oneOff = "I hosted one listening night with a few friends."
+    const correction = "That was one night, not the first meeting of a circle."
+    const facts = collectApplicationFacts([
+      {
+        id: "plan",
+        role: "user",
+        content: proposed,
+        metadata: { application_activity_claims: [
+          { status: "proposed", quote: proposed, sourceMessageId: "plan" },
+        ] },
+      },
+      {
+        id: "example",
+        role: "user",
+        content: `${oneOff} I often replay a phrase on my own.`,
+        metadata: { application_activity_claims: [
+          { status: "one_off", quote: oneOff, sourceMessageId: "example" },
+          { status: "ongoing", quote: "I often replay a phrase on my own.", sourceMessageId: "example" },
+        ] },
+      },
+      {
+        id: "correction",
+        role: "user",
+        content: correction,
+        metadata: { application_activity_claims: [
+          { status: "one_off", quote: correction, sourceMessageId: "correction" },
+        ] },
+      },
+    ])
+
+    expect(facts.activityClaims).toEqual([
+      { status: "proposed", quote: proposed, sourceMessageId: "plan" },
+      { status: "one_off", quote: oneOff, sourceMessageId: "example" },
+      { status: "ongoing", quote: "I often replay a phrase on my own.", sourceMessageId: "example" },
+      { status: "one_off", quote: correction, sourceMessageId: "correction" },
+    ])
+    expect(normaliseApplicationActivityClaims([
+      { status: "ongoing", quote: "I run the circle every month." },
+    ], correction)).toEqual([])
   })
 })

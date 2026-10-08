@@ -125,6 +125,7 @@ export function activeApplicationReplyIssue(input: {
   closingMessage: string
   previousQuestion?: string
   hasArtistAntecedent?: boolean
+  requireExplicitQuestion?: boolean
 }): ActiveApplicationReplyIssue | null {
   if (
     containsTerminalApplicationLanguage(input.reply, input.closingMessage)
@@ -142,7 +143,8 @@ export function activeApplicationReplyIssue(input: {
   if (
     (input.interaction.inputType === "text" ||
       input.interaction.inputType === "voice") &&
-    !hasExplicitResponsePrompt(input.reply)
+    (!hasExplicitResponsePrompt(input.reply) ||
+      (input.requireExplicitQuestion && !input.reply.includes("?")))
   ) {
     return input.reply.includes("?") ? "unclear_invitation" : "missing_invitation"
   }

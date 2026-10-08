@@ -130,6 +130,27 @@ describe("application turn integrity", () => {
     ).toBe("missing_invitation")
   })
 
+  it("requires an explicit question for new Forum text turns", () => {
+    const interaction = {
+      intent: "probe" as const,
+      inputType: "text" as const,
+      emotionalState: "curious" as const,
+      visualState: "curious" as const,
+    }
+    expect(activeApplicationReplyIssue({
+      reply: "I'm curious what that changes about who speaks when the exchange is asynchronous.",
+      interaction,
+      closingMessage: "Thank you for your time.",
+      requireExplicitQuestion: true,
+    })).toBe("missing_invitation")
+    expect(activeApplicationReplyIssue({
+      reply: "What changes about who speaks when the exchange is asynchronous?",
+      interaction,
+      closingMessage: "Thank you for your time.",
+      requireExplicitQuestion: true,
+    })).toBeNull()
+  })
+
   it("does not mistake a questioning reflection for an invitation", () => {
     expect(activeApplicationReplyIssue({
       reply: "Those three make sense together. What strikes me about that choice is the framing, you're thinking about how they sit next to each other?",

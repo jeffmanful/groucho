@@ -2,6 +2,22 @@ import { describe, expect, it } from "vitest"
 import { buildApplicationExperiencePromptAppendix } from "@/lib/application-experience-prompt"
 
 describe("buildApplicationExperiencePromptAppendix", () => {
+  it("uses the version-one Forum evidence rubric without the old review route", () => {
+    const appendix = buildApplicationExperiencePromptAppendix({
+      opening_message: "What brought you here?",
+      required_signals: ["Someone shares unfinished music. How would you respond?"],
+    }, "colors_forum_v1")
+    for (const id of [
+      "forum_hopes", "community_participation", "reciprocal_contribution",
+      "artist_engagement", "colors_relationship",
+    ]) expect(appendix).toContain(id)
+    expect(appendix).toContain("not questions or a checklist")
+    expect(appendix).toContain("An artist or COLORS reference alone does not show how someone might participate")
+    expect(appendix).toContain("do not ask merely to fill a label")
+    expect(appendix).toContain("do not introduce a hypothetical unfinished-work review")
+    expect(appendix).not.toContain("Someone shares unfinished music. How would you respond?")
+    expect(appendix).not.toContain("Artist-to-song bridge")
+  })
   it("always includes neutral terminal close guidance", () => {
     const appendix = buildApplicationExperiencePromptAppendix({
       opening_message: "Hi.",
@@ -13,7 +29,7 @@ describe("buildApplicationExperiencePromptAppendix", () => {
     expect(appendix).toContain("sounds natural when spoken")
   })
 
-  it("includes required signals, preferred input types, and max turns", () => {
+  it("presents configured goals as evidence lenses with flexible pacing", () => {
     const appendix = buildApplicationExperiencePromptAppendix({
       opening_message: "Welcome.",
       closing_message: "Thanks. We'll be in touch.",
@@ -25,15 +41,16 @@ describe("buildApplicationExperiencePromptAppendix", () => {
     expect(appendix).toContain("APPLICATION CONFIGURATION")
     expect(appendix).toContain("- intent")
     expect(appendix).toContain("- contribution")
-    expect(appendix).toContain("never a required line or ordered sequence")
-    expect(appendix).toContain("single answer can cover several goals")
-    expect(appendix).toContain("Infer the actual question")
-    expect(appendix).toContain("Follow a rich thread before filling gaps")
-    expect(appendix).toContain("Do not force every applicant through the same path")
+    expect(appendix).toContain("not questions to ask or a checklist")
+    expect(appendix).toContain("One answer can inform several lenses")
+    expect(appendix).toContain("applicant's intent")
+    expect(appendix).toContain("Unexplored lenses remain uncertainty")
     expect(appendix).toContain("Preferred input types")
     expect(appendix).toContain("text, singleSelect")
     expect(appendix).toContain("Soft conversational target: around 4 applicant answers")
-    expect(appendix).toContain("not a deadline")
+    expect(appendix).toContain("not a minimum length or hard deadline")
+    expect(appendix).toContain("not a minimum length")
+    expect(appendix).toContain("specific unresolved fact or concern")
   })
 
   it("prevents recommendation questions from asking about the recipient", () => {
@@ -47,14 +64,13 @@ describe("buildApplicationExperiencePromptAppendix", () => {
     expect(appendix).toContain("never ask who received")
   })
 
-  it("binds the COLORS participation question to its approved options", () => {
+  it("keeps a participation choice optional", () => {
     const appendix = buildApplicationExperiencePromptAppendix({
       opening_message: "What brought you here?",
       required_signals: ["Which sounds most like you?"],
     })
-    expect(appendix).toContain("Participation signal")
-    expect(appendix).toContain("examples that may help")
-    expect(appendix).toContain("sharing discoveries")
+    expect(appendix).toContain("A structured choice is optional")
+    expect(appendix).toContain("do not use it merely because the participation lens remains open")
   })
 
   it("adds COLORS advisory rubric guidance for the forum application flow", () => {
@@ -80,7 +96,9 @@ describe("buildApplicationExperiencePromptAppendix", () => {
     expect(appendix).toContain("overlapping, fluid facets")
     expect(appendix).toContain("may collaborate or curate")
     expect(appendix).toContain("may make or upload their own music")
-    expect(appendix).toContain("never turn `I want to start`")
+    expect(appendix).toContain("Never turn `I want to start`")
+    expect(appendix).toContain("do not call a one-off night the first meeting")
+    expect(appendix).toContain("do not keep requesting variants of the same rationale")
     expect(appendix).toContain("Establish their relationship to COLORS early")
     expect(appendix).toContain("do not force it into the second question")
     expect(appendix).toContain("not a fandom, recall, or cultural-status test")

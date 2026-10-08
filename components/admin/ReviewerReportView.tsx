@@ -1,4 +1,7 @@
-import type { ReviewerReport } from "@/lib/reviewer-report"
+import {
+  COLORS_DETAILED_REPORT_VERSION,
+  type ReviewerReport,
+} from "@/lib/reviewer-report"
 
 function readable(value: string): string {
   return value.replaceAll("_", " ")
@@ -82,6 +85,11 @@ export function ReviewerReportView({
         </p>
       ) : (
         <>
+          {detailed && report.report_version !== COLORS_DETAILED_REPORT_VERSION ? (
+            <p className="mb-4 border-l border-white/30 pl-3 text-xs leading-relaxed text-white/65">
+              Earlier report version. Use a newly generated opinion before making a decision.
+            </p>
+          ) : null}
           <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.68rem] uppercase tracking-wider text-white/50">
             <span className="text-white/85">{recommendation}</span>
             <span aria-hidden="true">·</span>

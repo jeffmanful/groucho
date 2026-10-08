@@ -33,6 +33,18 @@ export type ApplicationMediaClaim = {
   quote: string
 }
 
+export const APPLICATION_ACTIVITY_STATUSES = [
+  "one_off",
+  "ongoing",
+  "proposed",
+] as const
+
+export type ApplicationActivityClaim = {
+  status: (typeof APPLICATION_ACTIVITY_STATUSES)[number]
+  sourceMessageId: string
+  quote: string
+}
+
 export type ApplicationFacts = {
   version: 1
   mediaChoice: {
@@ -46,6 +58,7 @@ export type ApplicationFacts = {
     applicantClaims: ApplicationMediaClaim[]
   } | null
   processFeedback: ApplicationProcessFeedback[]
+  activityClaims?: ApplicationActivityClaim[]
 }
 
 export type ApplicationFactMessage = {
@@ -84,11 +97,33 @@ export function normaliseMediaClaim(raw: unknown, currentAnswer: string): {
   return { kind: "none", quote: "" }
 }
 
+export function normaliseApplicationActivityClaims(
+  raw: unknown,
+  currentAnswer: string,
+): Array<Omit<ApplicationActivityClaim, "sourceMessageId">> {
+  if (!Array.isArray(raw)) return []
+  const seen = new Set<string>()
+  return raw.flatMap((item) => {
+    const value = record(item)
+    const status = value?.status
+    const quote = typeof value?.quote === "string" ? value.quote.trim() : ""
+    if (!APPLICATION_ACTIVITY_STATUSES.some((candidate) => candidate === status) ||
+      quote.length < 12 || !currentAnswer.includes(quote) ||
+      seen.has(`${status}:${quote}`)) return []
+    seen.add(`${status}:${quote}`)
+    return [{
+      status: status as ApplicationActivityClaim["status"],
+      quote: quote.slice(0, 240),
+    }]
+  }).slice(0, 3)
+}
+
 export function collectApplicationFacts(messages: ApplicationFactMessage[]): ApplicationFacts {
   const facts: ApplicationFacts = {
     version: 1,
     mediaChoice: null,
     processFeedback: [],
+    activityClaims: [],
   }
   let activeMediaQuestion: ReturnType<typeof normaliseMediaChoiceInteraction>
   for (const message of messages) {
@@ -103,13 +138,29 @@ export function collectApplicationFacts(messages: ApplicationFactMessage[]): App
       continue
     }
     if (!message.id) continue
+    const messageId = message.id
     const relation = record(metadata?.application_answer_relation)
     const feedback = record(metadata?.application_process_feedback)
-    const feedbackKind = relation?.kind === "clarification_request"
-      ? "clarification_request"
-      : normaliseProcessFeedbackKind(feedback?.kind)
+    const explicitFeedbackKind = normaliseProcessFeedbackKind(feedback?.kind)
+    const feedbackKind = explicitFeedbackKind !== "none"
+      ? explicitFeedbackKind
+      : relation?.kind === "clarification_request"
+        ? "clarification_request"
+        : "none"
     if (feedbackKind !== "none") {
-      facts.processFeedback.push({ kind: feedbackKind, sourceMessageId: message.id })
+      facts.processFeedback.push({ kind: feedbackKind, sourceMessageId: messageId })
+    }
+
+    const activityClaims = normaliseApplicationActivityClaims(
+      metadata?.application_activity_claims,
+      message.content,
+    )
+    facts.activityClaims?.push(...activityClaims.map((claim) => ({
+      ...claim,
+      sourceMessageId: messageId,
+    })))
+    if (facts.activityClaims && facts.activityClaims.length > 12) {
+      facts.activityClaims = facts.activityClaims.slice(-12)
     }
 
     const answer = normaliseMediaChoiceAnswer(metadata?.interaction_answer)

@@ -1,9 +1,8 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr"
 import { NextRequest, NextResponse } from "next/server"
 import {
-  COLORS_DEMO_TESTER_EMAIL,
   DEMO_AUTH_COOKIE,
-  expectedTesterEmail,
+  isDemoTesterEmail,
   verifyDemoToken,
 } from "@/lib/colors-demo-token"
 
@@ -89,7 +88,7 @@ async function verifyPeAuthEmail(
 
 function isAllowedPlatformEmail(email: string): boolean {
   const normalized = email.trim().toLowerCase()
-  if (normalized === COLORS_DEMO_TESTER_EMAIL || normalized === expectedTesterEmail()) return false
+  if (isDemoTesterEmail(normalized)) return false
   const allowed = (process.env.ALLOWED_EMAILS || "")
     .split(",")
     .map((e) => e.trim().toLowerCase())

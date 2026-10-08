@@ -20,14 +20,17 @@ import {
 } from "motion/react"
 import { TextShimmer } from "@/components/doorcheck/TextShimmer"
 import { MediaChoiceInput } from "@/components/doorcheck/MediaChoiceInput"
+import { RichReferenceCards } from "@/components/doorcheck/RichReferenceCards"
 import { cn } from "@/lib/utils"
 import { DEFAULT_APPLICATION_OPENING_MESSAGE } from "@/lib/project-settings"
 import { useBrowserDictation } from "@/lib/use-browser-dictation"
 import {
   normaliseMediaChoiceInteraction,
+  normaliseReferenceCards,
   type MediaChoiceAnswer,
   type MediaChoiceInteraction,
   type MediaChoiceMode,
+  type ReferenceCard,
 } from "@/lib/gatekeeper-interaction-spec"
 
 function createDoorcheckSupabase(): SupabaseClient | null {
@@ -99,6 +102,7 @@ type GrouchoInteractionUi = {
   visualState: GrouchoVisualState
   options?: string[]
   mediaChoice?: MediaChoiceInteraction
+  referenceCards?: ReferenceCard[]
 }
 
 type DecisionPhase = "none" | "evaluating" | "decision" | "revealed"
@@ -156,7 +160,7 @@ type ReviewerReport = {
         position?: number
       }>
       rationale: string
-    }
+    } | { type: "references"; cards: ReferenceCard[] }
   }>
   weak_or_missing_signals: string[]
   safety_or_integrity_flags: string[]
@@ -458,6 +462,7 @@ function parseInteractionUi(raw: unknown): GrouchoInteractionUi {
     ? data.options.filter((item): item is string => typeof item === "string")
     : undefined
   const mediaChoice = normaliseMediaChoiceInteraction(data.mediaChoice)
+  const referenceCards = normaliseReferenceCards(data.referenceCards)
   return {
     intent: typeof data.intent === "string" ? data.intent : undefined,
     inputType,
@@ -466,6 +471,7 @@ function parseInteractionUi(raw: unknown): GrouchoInteractionUi {
     visualState,
     ...(options && options.length > 0 ? { options } : {}),
     ...(mediaChoice ? { mediaChoice } : {}),
+    ...(referenceCards && inputType === "text" ? { referenceCards } : {}),
   }
 }
 
@@ -561,6 +567,9 @@ function parseReviewerReport(raw: unknown): ReviewerReport | null {
                 : []
             })
           : []
+        const referenceCards = interactionValue?.type === "references"
+          ? normaliseReferenceCards(interactionValue.cards)
+          : undefined
         const interaction =
           interactionValue?.type === "mediaChoice" &&
           typeof interactionValue.question_id === "string" &&
@@ -574,7 +583,9 @@ function parseReviewerReport(raw: unknown): ReviewerReport | null {
                 selected_options: selectedOptions,
                 rationale: interactionValue.rationale,
               }
-            : null
+            : referenceCards
+              ? { type: "references" as const, cards: referenceCards }
+              : null
         return typeof value.signal_key === "string" &&
           typeof value.signal_label === "string" &&
           typeof value.source_message_id === "string" &&
@@ -896,7 +907,7 @@ function ReviewerReportPanel({
               <div className="mt-3 space-y-3">
                 {detailed.curatorial_approach.evidence_reference_ids.flatMap((id) => {
                   const reference = evidenceById.get(id)
-                  if (!reference?.interaction) return []
+                  if (reference?.interaction?.type !== "mediaChoice") return []
                   const choice = reference.interaction
                   const choiceLabel = choice.mode === "remove"
                     ? "Removed"
@@ -970,6 +981,18 @@ function ReviewerReportPanel({
                         <blockquote className="border-l border-white/15 pl-3 text-sm leading-relaxed text-white/48">
                           “{reference.excerpt}”
                         </blockquote>
+                        {reference.interaction?.type === "references" ? (
+                          <p className="mt-1 text-xs leading-relaxed text-white/35">
+                            Shown: {reference.interaction.cards.map((card, cardIndex) => (
+                              <span key={card.id}>
+                                {cardIndex > 0 ? ", " : ""}
+                                <a href={card.url} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-white/65">
+                                  {card.title}
+                                </a>
+                              </span>
+                            ))}
+                          </p>
+                        ) : null}
                       </div>
                     ))}
                     <p className="mt-2 text-sm leading-relaxed text-white/58">
@@ -1033,6 +1056,11 @@ function ReviewerReportPanel({
               <li key={`${reference.signal_key}-${reference.source_message_id}`}>
                 <span className="text-white/72">{reference.signal_label}:</span>{" "}
                 {reference.excerpt}{" "}
+                {reference.interaction?.type === "references" ? (
+                  <span className="text-white/40">
+                    (shown {reference.interaction.cards.map((card) => card.title).join(", ")}){" "}
+                  </span>
+                ) : null}
                 <span className="font-mono text-[0.65rem] text-white/28">
                   [{reference.source_message_id.slice(0, 8)}]
                 </span>
@@ -1230,36 +1258,38 @@ function ColorsTranscript({
         )
       })}
 
-      <MessageScroller.Item
-        messageId="colors-assistant-status"
-        className="colors-chat-status-row"
-      >
-        <AnimatePresence
-          initial={false}
-          mode="wait"
-          onExitComplete={commitHandoff}
+      {applicantEmail ? (
+        <MessageScroller.Item
+          messageId="colors-assistant-status"
+          className="colors-chat-status-row"
         >
-          {colorsInteractionPhase === "reading" ? (
-            <motion.div
-              key={showSlowResponse ? "slow" : "considering"}
-              className="colors-chat-status"
-              initial={{ opacity: 0, y: 4, filter: "blur(2px)" }}
-              animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-              exit={{ opacity: 0, y: -3, filter: "blur(2px)" }}
-              transition={{ duration: 0.16, ease: EASE_OUT }}
-              role="status"
-              aria-live="polite"
-            >
-              <span className="colors-chat-status-mark" aria-hidden="true" />
-              <span>
-                {showSlowResponse
-                  ? "Still considering — thoughtful answers can take a little longer."
-                  : "Considering your answer…"}
-              </span>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
-      </MessageScroller.Item>
+          <AnimatePresence
+            initial={false}
+            mode="wait"
+            onExitComplete={commitHandoff}
+          >
+            {colorsInteractionPhase === "reading" ? (
+              <motion.div
+                key={showSlowResponse ? "slow" : "considering"}
+                className="colors-chat-status"
+                initial={{ opacity: 0, y: 4, filter: "blur(2px)" }}
+                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                exit={{ opacity: 0, y: -3, filter: "blur(2px)" }}
+                transition={{ duration: 0.16, ease: EASE_OUT }}
+                role="status"
+                aria-live="polite"
+              >
+                <span className="colors-chat-status-mark" aria-hidden="true" />
+                <span>
+                  {showSlowResponse
+                    ? "Still considering — thoughtful answers can take a little longer."
+                    : "Considering your answer…"}
+                </span>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+        </MessageScroller.Item>
+      ) : null}
     </>
   )
 }
@@ -1464,7 +1494,7 @@ export function DoorCheckExperience({
         if (!response.ok) return
         const state = await response.json()
         if (typeof state.applicantEmail === "string") setApplicantEmail(state.applicantEmail)
-        if (["passed", "redirected", "rejected"].includes(state.status)) {
+        if (["passed", "redirected", "rejected", "completed"].includes(state.status)) {
           setMessages([{
             id: crypto.randomUUID(), role: "bot",
             content: typeof state.message === "string" ? state.message : "Thank you for taking part.",
@@ -1550,6 +1580,12 @@ export function DoorCheckExperience({
           setDemoReportState("idle")
           return
         }
+        if (data.status === "failed" && parsed) {
+          setReviewerReport(parsed)
+          setDemoReportState("failed")
+          setDemoReportError(typeof data.error === "string" ? data.error : "The detailed opinion could not be verified.")
+          return
+        }
         if (data.status === "pending" && response.ok) {
           await new Promise((resolve) => window.setTimeout(resolve, 2500))
           continue
@@ -1565,10 +1601,10 @@ export function DoorCheckExperience({
   }, [])
 
   useEffect(() => {
-    if (!isColorsDemo || !concluded || !sessionId || reviewerReport?.detailed_opinion) return
+    if (!isColorsDemo || !concluded || !sessionId || reviewerReport?.detailed_opinion || demoReportState === "failed") return
     const timer = window.setTimeout(() => { void requestDemoReport(sessionId) }, 0)
     return () => window.clearTimeout(timer)
-  }, [isColorsDemo, concluded, sessionId, reviewerReport, requestDemoReport])
+  }, [isColorsDemo, concluded, sessionId, reviewerReport, demoReportState, requestDemoReport])
 
   const bootstrapSession = useCallback(
     async (
@@ -1944,7 +1980,7 @@ export function DoorCheckExperience({
 
       if (data.currentStep) {
         setCurrentStep(nextStep)
-      } else if (data.status === "passed") {
+      } else if (data.status === "passed" || data.status === "completed") {
         setCurrentStep(null)
       }
       if (!isColorsSubmission) setSelectedOptions([])
@@ -1963,7 +1999,7 @@ export function DoorCheckExperience({
         }
       }
 
-      if (data.status === "passed") {
+      if (data.status === "passed" || data.status === "completed") {
         if (data.profile) {
           try {
             localStorage.setItem(PROFILE_KEY, JSON.stringify(data.profile))
@@ -2039,7 +2075,7 @@ export function DoorCheckExperience({
           )
           if (stateResponse.ok) {
             const state = await stateResponse.json()
-            if (["passed", "redirected", "rejected"].includes(state.status)) {
+            if (["passed", "redirected", "rejected", "completed"].includes(state.status)) {
               setMessages([{
                 id: crypto.randomUUID(),
                 role: "bot",
@@ -2254,6 +2290,17 @@ export function DoorCheckExperience({
     (!isColorsProject || colorsInteractionPhase !== "revealing") &&
     interactionUi.inputType === "mediaChoice" &&
     interactionUi.mediaChoice,
+  )
+  const showReferenceCards = Boolean(
+    applicantEmail &&
+    !concluded &&
+    !loading &&
+    !bootstrapping &&
+    decisionPhase === "none" &&
+    (!isGatekeeperPreview || questionReady) &&
+    (!isColorsProject || colorsInteractionPhase !== "revealing") &&
+    interactionUi.inputType === "text" &&
+    interactionUi.referenceCards?.length,
   )
   const showAnswerArea =
     !concluded &&
@@ -2578,6 +2625,9 @@ export function DoorCheckExperience({
           className={cn(
             "contents",
             isColorsProject && "colors-conversation-shell",
+            isColorsProject && !applicantEmail && !pendingResume &&
+              messages.length === 1 && messages[0]?.id === "applicant-email" &&
+              "colors-conversation-shell--opening",
           )}
           aria-label={isColorsProject ? "COLORS Forum application" : undefined}
         >
@@ -2870,6 +2920,16 @@ export function DoorCheckExperience({
               </MessageScroller.Item>
             ) : null}
 
+            {showReferenceCards && interactionUi.referenceCards ? (
+              <MessageScroller.Item
+                messageId={`references-${currentBotMessage?.id ?? "current"}`}
+                scrollAnchor
+                className="w-full"
+              >
+                <RichReferenceCards cards={interactionUi.referenceCards} />
+              </MessageScroller.Item>
+            ) : null}
+
             {showMediaChoice && interactionUi.mediaChoice ? (
               <MessageScroller.Item
                 messageId={`media-options-${interactionUi.mediaChoice.id}`}
@@ -2971,6 +3031,14 @@ export function DoorCheckExperience({
                   )}
                 >
                   <ReviewerReportPanel report={reviewerReport} sample={isColorsDemo} />
+                  {isColorsDemo && demoReportState === "failed" ? (
+                    <div className="mb-5 rounded-xl border border-amber-200/20 bg-amber-100/[0.06] p-4 text-sm text-white/65">
+                      <p>{demoReportError ?? "The detailed opinion could not be verified. Showing the preliminary evidence snapshot."}</p>
+                      <button type="button" onClick={() => void requestDemoReport(sessionId)} className="mt-3 rounded-md border border-white/25 px-3 py-1.5 text-white hover:bg-white/10">
+                        Retry detailed report
+                      </button>
+                    </div>
+                  ) : null}
                 </motion.div>
               </MessageScroller.Item>
             ) : null}
@@ -3779,6 +3847,13 @@ export function DoorCheckExperience({
             inset 0 1px 0 rgb(255 255 255 / 0.035);
           backdrop-filter: blur(18px) saturate(0.7);
         }
+        .colors-conversation-shell.colors-conversation-shell--opening {
+          height: min(16rem, calc(100dvh - 10rem));
+          min-height: 0;
+        }
+        .colors-conversation-shell--opening .colors-chat-content {
+          padding-block: 0.25rem 0.75rem;
+        }
         .colors-chat-panel-label {
           display: flex;
           min-height: 2.75rem;
@@ -4390,6 +4465,10 @@ export function DoorCheckExperience({
             margin-top: 4.5rem;
             margin-bottom: 2.25rem;
             border-radius: 0.65rem;
+          }
+          .colors-conversation-shell.colors-conversation-shell--opening {
+            height: min(16rem, calc(100dvh - 7.25rem));
+            margin-block: auto;
           }
           .colors-chat-panel-label {
             min-height: 2.5rem;

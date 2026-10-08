@@ -1,8 +1,15 @@
-import { createHash, randomBytes } from "crypto"
+import { createHash, randomBytes, randomUUID } from "crypto"
 import { createClient } from "@supabase/supabase-js"
+import {
+  DEMO_AUTH_COOKIE,
+  DEMO_SESSION_COOKIE,
+  expectedTesterEmail,
+  issueDemoToken,
+} from "../lib/colors-demo-token"
 
 const PROJECT_ID = "e9e6aa45-5ef3-4ec3-9451-1703d32abed3"
 const BASE_URL = process.env.IDENTITY_REPLAY_BASE_URL ?? "http://127.0.0.1:3000"
+const USE_DEMO = process.env.IDENTITY_REPLAY_DEMO === "1"
 
 type IdentityName =
   | "artist"
@@ -313,13 +320,14 @@ function answerFor(identity: IdentityName, question: string, ui?: { inputType?: 
   return profile.fallback
 }
 
-async function jsonRequest(url: string, apiKey: string, body: unknown) {
+async function jsonRequest(url: string, apiKey: string | null, body: unknown, cookie?: string) {
   const started = Date.now()
   const response = await fetch(url, {
     method: "POST",
     headers: {
-      authorization: `Bearer ${apiKey}`,
+      ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
       "content-type": "application/json",
+      ...(cookie ? { cookie } : {}),
     },
     body: JSON.stringify(body),
   })
@@ -344,20 +352,26 @@ async function main() {
     .single()
   if (projectResult.error) throw projectResult.error
 
-  const plaintext = `gk_${randomBytes(24).toString("base64url")}`
-  const keyHash = createHash("sha256").update(plaintext, "utf8").digest("hex")
-  const keyRow = await supabase
-    .from("api_keys")
-    .insert({
-      organisation_id: projectResult.data.organisation_id,
-      project_id: PROJECT_ID,
-      key_hash: keyHash,
-      key_prefix: plaintext.slice(0, 12),
-      label: "Temporary COLORS identity replay",
-    })
-    .select("id")
-    .single()
-  if (keyRow.error) throw keyRow.error
+  const plaintext = USE_DEMO ? null : `gk_${randomBytes(24).toString("base64url")}`
+  const keyRow = plaintext
+    ? await supabase
+      .from("api_keys")
+      .insert({
+        organisation_id: projectResult.data.organisation_id,
+        project_id: PROJECT_ID,
+        key_hash: createHash("sha256").update(plaintext, "utf8").digest("hex"),
+        key_prefix: plaintext.slice(0, 12),
+        label: "Temporary COLORS identity replay",
+      })
+      .select("id")
+      .single()
+    : null
+  if (keyRow?.error) throw keyRow.error
+  const testerEmail = expectedTesterEmail()
+  const testerToken = USE_DEMO
+    ? await issueDemoToken({ kind: "tester", email: testerEmail, issuedAt: Date.now() })
+    : null
+  if (USE_DEMO && !testerToken) throw new Error("Demo tester token unavailable")
 
   const runStamp = new Date().toISOString().replace(/\D/g, "").slice(0, 14)
   const summaries: Record<string, unknown>[] = []
@@ -371,7 +385,15 @@ async function main() {
     for (const identity of (Object.keys(profiles) as IdentityName[]).filter(
       (candidate) => requestedIdentities.has(candidate),
     )) {
-      const sessionId = `colors-${identity}-integrity-rerun-${runStamp}`
+      const sessionId = USE_DEMO ? randomUUID() : `colors-${identity}-integrity-rerun-${runStamp}`
+      const sessionToken = USE_DEMO
+        ? await issueDemoToken({ kind: "session", email: testerEmail, sessionId, issuedAt: Date.now() })
+        : null
+      if (USE_DEMO && !sessionToken) throw new Error("Demo session token unavailable")
+      const testerCookie = testerToken ? `${DEMO_AUTH_COOKIE}=${testerToken}` : undefined
+      const sessionCookie = testerCookie && sessionToken
+        ? `${testerCookie}; ${DEMO_SESSION_COOKIE}=${sessionToken}`
+        : undefined
       const applicant = {
         email: `${sessionId}@example.invalid`,
         name: `Synthetic ${identity}`,
@@ -380,9 +402,12 @@ async function main() {
       const durations: number[] = []
       const requestTimings: RequestTiming[] = []
       const started = await jsonRequest(
-        `${BASE_URL}/v1/sessions/${encodeURIComponent(sessionId)}/start`,
+        USE_DEMO
+          ? `${BASE_URL}/api/demo/colors/start`
+          : `${BASE_URL}/v1/sessions/${encodeURIComponent(sessionId)}/start`,
         plaintext,
-        { applicant },
+        { applicant, ...(USE_DEMO ? { sessionId } : {}) },
+        testerCookie,
       )
       durations.push(started.durationMs)
       requestTimings.push({
@@ -406,9 +431,12 @@ async function main() {
         transcript.push({ role: "user", content: answer })
         process.stdout.write(`\n[${identity} ${turn + 1}] ${assistantMessage}\n> ${answer}\n`)
         const next = await jsonRequest(
-          `${BASE_URL}/v1/sessions/${encodeURIComponent(sessionId)}/messages`,
+          USE_DEMO
+            ? `${BASE_URL}/api/demo/colors/message`
+            : `${BASE_URL}/v1/sessions/${encodeURIComponent(sessionId)}/messages`,
           plaintext,
-          { message: answer, applicant },
+          { message: answer, applicant, ...(USE_DEMO ? { sessionId } : {}) },
+          sessionCookie,
         )
         durations.push(next.durationMs)
         requestTimings.push({
@@ -462,6 +490,10 @@ async function main() {
         ),
       )
       const repeatedQuestionCount = normalizedQuestions.length - new Set(normalizedQuestions).size
+      const applicantAnswers = messageResult.data
+        .filter((row) => row.role === "user")
+        .map((row) => String(row.content).trim().toLowerCase())
+      const repeatedApplicantAnswerCount = applicantAnswers.length - new Set(applicantAnswers).size
       const activeFalseClose = assistantRows.some((row) => {
         const metadata = row.metadata as Record<string, unknown> | null
         return metadata?.gatekeeper_terminal === "none" &&
@@ -506,6 +538,7 @@ async function main() {
           return Boolean(metadata?.application_insufficient_evidence)
         }).length,
         repeatedQuestionCount,
+        repeatedApplicantAnswerCount,
         genericThatMatters: /(?:^|[.!?]\s+)that matters(?:[—,.]|\b)/i.test(allText),
         averageMs: Math.round(durations.reduce((sum, value) => sum + value, 0) / durations.length),
         maxMs: Math.max(...durations),
@@ -517,10 +550,12 @@ async function main() {
       process.stdout.write(`\n[${identity} complete] ${sessionResult.data.status}\n`)
     }
   } finally {
-    await supabase
-      .from("api_keys")
-      .update({ revoked_at: new Date().toISOString() })
-      .eq("id", keyRow.data.id)
+    if (keyRow?.data) {
+      await supabase
+        .from("api_keys")
+        .update({ revoked_at: new Date().toISOString() })
+        .eq("id", keyRow.data.id)
+    }
   }
 
   const messageTimings = allRequestTimings.filter((timing) => timing.phase === "message")
@@ -530,11 +565,37 @@ async function main() {
   const modelTimings = messageTimings
     .map((timing) => serverTimingValue(timing.serverTiming, "conversation_model"))
     .filter((value): value is number => value !== null)
+  const stageNames = [
+    "colors_media_catalog",
+    "conversation_model",
+    "v1_evidence_audit",
+    "v1_media_request",
+    "rich_interaction_planner",
+    "v1_sufficiency_review",
+    "invitation_repair_model",
+    "final_invitation_repair_model",
+  ]
   process.stdout.write(`\nIDENTITY_REPLAY_LATENCY=${JSON.stringify({
     browserObserved: latencyStats(messageTimings.map((timing) => timing.durationMs)),
     serverTotal: latencyStats(totalTimings),
     conversationModel: latencyStats(modelTimings),
   })}\n`)
+  process.stdout.write(`IDENTITY_REPLAY_STAGES=${JSON.stringify(Object.fromEntries(
+    stageNames.map((name) => [name, latencyStats(messageTimings
+      .map((timing) => serverTimingValue(timing.serverTiming, name))
+      .filter((value): value is number => value !== null))]),
+  ))}\n`)
+  process.stdout.write(`IDENTITY_REPLAY_QUALITY=${JSON.stringify(summaries.map((summary) => ({
+    identity: summary.identity,
+    status: summary.status,
+    userTurns: summary.userTurns,
+    reviewerRecommendation: summary.reviewerRecommendation,
+    repeatedQuestionCount: summary.repeatedQuestionCount,
+    repeatedApplicantAnswerCount: summary.repeatedApplicantAnswerCount,
+    activeWithoutQuestion: summary.activeWithoutQuestion,
+    processLanguage: summary.processLanguage,
+    genericThatMatters: summary.genericThatMatters,
+  })))}\n`)
   process.stdout.write(`IDENTITY_REPLAY_RESULT=${JSON.stringify(summaries)}\n`)
 }
 

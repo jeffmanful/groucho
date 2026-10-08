@@ -5,6 +5,8 @@ import {
   calibratedStatusForIntegrityHistory,
   collectApplicationIntegrityConcerns,
   detectApplicationIntegrityConcerns,
+  sourceLinkedApplicationIntegrityConcern,
+  sourceLinkedConsentResolution,
 } from "@/lib/application-integrity-concerns"
 
 describe("application integrity concerns", () => {
@@ -56,7 +58,7 @@ describe("application integrity concerns", () => {
       quality: "concerning",
     })
     expect(applicationIntegrityChallengeQuestion(concerns)).toContain(
-      "their permission matters",
+      "permission matters",
     )
   })
 
@@ -76,6 +78,57 @@ describe("application integrity concerns", () => {
         },
       ]),
     ).toHaveLength(1)
+  })
+
+  it("carries a semantic consent disclosure only with an exact applicant quote", () => {
+    const answer = "I put up unreleased clips and don't always ask first."
+    expect(detectApplicationIntegrityConcerns(answer)).toEqual([])
+    const observation = sourceLinkedApplicationIntegrityConcern(
+      { kind: "artist_consent_violation", quote: "don't always ask first" },
+      answer,
+      "m-consent",
+    )
+    expect(observation).toMatchObject({
+      kind: "artist_consent_violation",
+      quote: "don't always ask first",
+      sourceMessageId: "m-consent",
+    })
+    expect(sourceLinkedApplicationIntegrityConcern(
+      { kind: "artist_consent_violation", quote: "I never ask" },
+      answer,
+      "m-consent",
+    )).toBeNull()
+    expect(collectApplicationIntegrityConcerns([{
+      id: "m-consent",
+      role: "user",
+      content: answer,
+      metadata: { application_integrity_concerns: [observation] },
+    }])).toMatchObject([observation])
+  })
+
+  it("keeps an unconfirmed permission question distinct from a violation, then clears it on sourced confirmation", () => {
+    const answer = "I would share an unreleased demo she sent me."
+    const pending = sourceLinkedApplicationIntegrityConcern(
+      { kind: "artist_consent_unestablished", quote: "unreleased demo she sent me" },
+      answer,
+      "m-pending",
+    )
+    expect(pending?.reviewerFlag).toBe("")
+    expect(applicationIntegrityChallengeQuestion(pending ? [pending] : [])).toContain("has the artist said")
+    const confirmation = sourceLinkedConsentResolution(
+      { kind: "artist_consent_confirmed", quote: "She told me I can share it" },
+      "She told me I can share it publicly.",
+      "m-confirmed",
+    )
+    expect(collectApplicationIntegrityConcerns([
+      { id: "m-pending", role: "user", content: answer, metadata: { application_integrity_concerns: [pending] } },
+      { id: "m-confirmed", role: "user", content: "She told me I can share it publicly.", metadata: { application_integrity_resolution: confirmation } },
+    ])).toEqual([])
+    expect(sourceLinkedApplicationIntegrityConcern(
+      { kind: "artist_consent_unestablished", quote: "without permission" },
+      "I would post it without permission.",
+      "m-refusal",
+    )?.kind).toBe("artist_consent_violation")
   })
 
   it.each([

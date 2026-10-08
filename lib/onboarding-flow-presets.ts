@@ -34,11 +34,10 @@ export const COLORS_ONBOARDING_STEPS: OnboardingFlowStep[] = [
     min_answer_chars: 18,
   },
   {
-    id: "community_value",
-    title: "Community Value",
-    question:
-      "Someone shares unfinished music that isn't really for you. How would you respond?",
-    profile_key: "community_value",
+    id: "forum_hopes",
+    title: "Forum Hopes",
+    question: "What are you hoping to find or help make possible in the Forum?",
+    profile_key: "forum_hopes",
     required: true,
     min_answer_chars: 18,
   },

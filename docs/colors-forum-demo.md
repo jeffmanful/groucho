@@ -27,7 +27,7 @@ The page explicitly states that applicants would not see this report in a real a
 ## Demo safeguards
 
 - The demo route and its API use a separate signed tester cookie. A tester cannot use platform-admin endpoints.
-- Philipp's address is explicitly denied platform-admin access even if an old `ALLOWED_EMAILS` entry remains. Without `COLORS_DEMO_PASSWORD`, his login fails closed.
+- Demo tester addresses are explicitly denied platform-admin access even if an old `ALLOWED_EMAILS` entry remains. Without a configured demo password, a tester login fails closed.
 - Each demo session is bound to a second signed, HTTP-only cookie. The server resolves only the COLORS `forum-application` project; the browser cannot choose another project.
 - Demo completion does not run the automatic decision, completion-job or webhook path.
 - The private opinion is generated after the applicant closing message, saved to the final message, and can be fetched again after refresh. A failed generation offers a report-only retry.
@@ -44,6 +44,7 @@ Before sharing the link:
 
 1. Confirm the production project slug is `forum-application`, belongs to COLORS and has the intended early-application signals and copy.
 2. Set `COLORS_DEMO_TESTER_EMAIL=philipp@colorsxstudios.com` and a strong, independent `COLORS_DEMO_PASSWORD`. Remove Philipp from `ALLOWED_EMAILS`; that list grants platform-admin access.
+   An optional second demo-only login uses `COLORS_DEMO_ADDITIONAL_TESTER_EMAIL` and `COLORS_DEMO_ADDITIONAL_TESTER_PASSWORD` in the server environment. Keep its password independent and strong before sharing a public deployment.
 3. Share the demo password through a secure channel. Do not put credentials in this repository or in the invitation email.
 4. Ensure the Anthropic key is configured. `GROUCHO_REVIEWER_MODEL` is optional; it defaults to the existing low-cost Anthropic model.
 5. Deploy, open `/demo/colors` in a signed-out browser and complete one realistic conversation.

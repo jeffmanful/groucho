@@ -62,6 +62,10 @@ import {
 import { logLlmUsage } from "@/lib/llm-usage"
 import {
   applicationSignalDefinitions,
+  colorsForumRubricForHistory,
+  colorsForumV1SignalDefinitions,
+  isColorsForumV1SignalSet,
+  COLORS_FORUM_V1_RUBRIC,
   applicationSignalDefinitionsForEvidence,
   applicationSignalDefinitionsForOrientation,
   applicationOpeningMessageForSignals,
@@ -72,13 +76,16 @@ import {
   collectApplicationSignalAnswers,
   collectApplicationInsufficientEvidenceKeys,
   newlyCoveredApplicationSignalKeys,
+  markAddressedSignals,
   expectedApplicationSignal,
   hasLegacyUntaggedAnswers,
   isColorsForumSignalSet,
   resolveNextApplicationSignal,
   shouldDeferApplicationTerminal,
+  unattemptedCoreApplicationSignals,
   withCoveredSignalAnswers,
   withCurrentSignalAnswer,
+  type ApplicationSignalAnswer,
   type ApplicationSignalMessage,
 } from "@/lib/application-signal-state"
 import {
@@ -99,7 +106,9 @@ import {
 import {
   collectApplicationFacts,
   isApplicationProcessFeedback,
+  normaliseApplicationActivityClaims,
   normaliseMediaClaim,
+  type ApplicationActivityClaim,
   type ApplicationMediaClaimKind,
   type ApplicationProcessFeedbackKind,
 } from "@/lib/application-facts"
@@ -133,6 +142,9 @@ import {
   calibratedStatusForIntegrityHistory,
   collectApplicationIntegrityConcerns,
   detectApplicationIntegrityConcerns,
+  sourceLinkedApplicationIntegrityConcern,
+  sourceLinkedConsentResolution,
+  type ApplicationIntegrityConcern,
 } from "@/lib/application-integrity-concerns"
 import {
   RequestTimings,
@@ -146,7 +158,12 @@ import {
 import {
   buildColorsMediaQuestion,
   fetchLatestColorsShows,
+  type ColorsYoutubeShow,
 } from "@/lib/colors-youtube-feed"
+import {
+  colorsInteractionCatalog,
+  resolveApplicationRichInteraction,
+} from "@/lib/application-rich-interaction"
 
 function traceJson(
   input: PostSessionMessageInput,
@@ -169,6 +186,114 @@ function traceJson(
 }
 
 const client = new Anthropic()
+
+async function colorsForumV1ConversationIsSufficient(input: {
+  answers: ApplicationSignalAnswer[]
+  recentTurns: Array<{ role: "user" | "assistant"; content: string }>
+  draftReply: string
+  requestId?: string
+  organisationId: string
+  projectId: string
+  sessionId: string
+}): Promise<boolean> {
+  const model = gatekeeperConversationModel()
+  const response = await client.messages.create({
+    model,
+    max_tokens: 200,
+    system: "You are a conservative stopping reviewer for a human-reviewed COLORS Forum application. Decide whether the drafted next invitation would change the advisory brief materially. Do not require every private evidence lens to be covered. Close when the applicant's participation, hopes, and possible contribution are already understandable and the draft would only request another illustration, artist, or variant of an established point. Continue when the draft asks for a concrete, still-unknown aspect of how this person might participate or contribute; a category tag alone does not establish depth. Continue for a specific decision-changing uncertainty, contradiction, or boundary not already answered. Applicant requests to stop should be respected unless a concrete safety boundary needs clarification. Do not assume the draft is useful merely because it is a question: compare it with the actual evidence. Return JSON with close (boolean), reason (one sentence), and unresolvedQuestion (empty string when close is true).",
+    output_config: {
+      format: {
+        type: "json_schema",
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            close: { type: "boolean" },
+            reason: { type: "string" },
+            unresolvedQuestion: { type: "string" },
+          },
+          required: ["close", "reason", "unresolvedQuestion"],
+        },
+      },
+    },
+    messages: [{
+      role: "user",
+      content: JSON.stringify({
+        evidence: input.answers.map((answer) => ({
+          id: answer.key,
+          observed: answer.covered !== false,
+          applicantAccount: answer.answer.slice(0, 450),
+        })),
+        recentTurns: input.recentTurns.slice(-10),
+        draftReply: input.draftReply,
+      }),
+    }],
+  })
+  logLlmUsage({
+    operation: "colors_forum_v1_sufficiency_review",
+    provider: "anthropic",
+    model,
+    usage: response.usage,
+    requestId: input.requestId,
+    organisationId: input.organisationId,
+    projectId: input.projectId,
+    sessionId: input.sessionId,
+  })
+  if (response.stop_reason === "max_tokens") return false
+  const textBlock = response.content.find((block) => block.type === "text")
+  if (textBlock?.type !== "text") return false
+  const parsed = JSON.parse(textBlock.text) as Record<string, unknown>
+  return parsed.close === true &&
+    typeof parsed.reason === "string" && parsed.reason.trim().length >= 12 &&
+    parsed.unresolvedQuestion === ""
+}
+
+async function classifyColorsForumMediaRequest(input: {
+  answer: string
+  requestId?: string
+  organisationId: string
+  projectId: string
+  sessionId: string
+}): Promise<"link" | "image" | null> {
+  const model = gatekeeperConversationModel()
+  const response = await client.messages.create({
+    model,
+    max_tokens: 100,
+    system: "Did the applicant explicitly ask Groucho to SHOW or PROVIDE an actual COLORS performance/video, source link, or image now? A comment about music or visual style is not a request. A request for a performance, movement, sound, or a link needs a playable source link; a request specifically for a still image can use an image. If no asset was requested, return requested false and format none. JSON only.",
+    output_config: {
+      format: {
+        type: "json_schema",
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            requested: { type: "boolean" },
+            format: { type: "string", enum: ["link", "image", "none"] },
+          },
+          required: ["requested", "format"],
+        },
+      },
+    },
+    messages: [{ role: "user", content: input.answer }],
+  })
+  logLlmUsage({
+    operation: "colors_forum_v1_media_request",
+    provider: "anthropic",
+    model,
+    usage: response.usage,
+    requestId: input.requestId,
+    organisationId: input.organisationId,
+    projectId: input.projectId,
+    sessionId: input.sessionId,
+  })
+  const textBlock = response.content.find((block) => block.type === "text")
+  if (response.stop_reason === "max_tokens" || textBlock?.type !== "text") return null
+  const parsed = JSON.parse(textBlock.text) as Record<string, unknown>
+  return parsed.requested === true &&
+    (parsed.format === "link" || parsed.format === "image")
+    ? parsed.format
+    : null
+}
 
 async function findPriorApplicationEvidence(input: {
   kind: string
@@ -193,7 +318,7 @@ async function findPriorApplicationEvidence(input: {
     system: input.kind === "participation"
       ? "You are a narrow evidence auditor. Decide whether the applicant has already explicitly described how they presently participate around music. Hosting, selecting, introducing, discussing, sharing, giving feedback or returning to a listening community can count when the applicant says they actually do it; a future plan alone does not. Do not infer from labels, status or enthusiasm. Cite exactly one applicant message id that supports the conclusion. Return JSON only."
       : input.kind === "contribution"
-        ? "You are a narrow evidence auditor. Decide whether the applicant has already described a concrete, realistic contribution they currently make around music or could sustainably bring to this Forum. A repeatable existing habit may count when the applicant explains how it would continue here; a vague aspiration alone does not. Do not infer from labels, status or enthusiasm. Cite exactly one applicant message id that supports the conclusion. Return JSON only."
+        ? "You are a narrow evidence auditor. Decide whether the applicant has already described a concrete, realistic contribution they could sustainably bring to this Forum. The same applicant message must state both a specific action or role and how they would bring or continue it here. A one-off act of sharing a song with a friend, general music participation, or a vague aspiration does not establish a Forum contribution. Do not infer a Forum connection from status, enthusiasm, or an unrelated message. Copy an exact action quote and an exact Forum-connection quote from the cited message; otherwise return supported false and empty strings. Return JSON only."
         : input.kind === "recommendation"
           ? "You are a narrow evidence auditor. The goal is evidence of one identifiable song the applicant actually recommended or shared, and why that specific song was worth sharing. General claims about selecting, introducing, or discussing music do not satisfy this goal. A song merely supplied by the exercise does not establish an actual recommendation. Return supported true only when one applicant message contains both a specific song title and a reason for sharing it. Copy the title and a short reason quote exactly from that same message; otherwise return supported false and empty strings. Cite that message id. Return JSON only."
         : "You are a narrow evidence auditor. The applicant already answered a question associated with this evidence goal, but the live coverage marker remained false. Decide whether that earlier answer directly provides usable evidence for the goal. A clear relevant perception, reason, preference, intention, or example can be usable without exhausting the topic. Do not infer facts the applicant did not say, and do not treat a request to clarify Groucho as applicant evidence. Cite exactly one supporting applicant message id, or return supported false. Return JSON only.",
@@ -208,8 +333,10 @@ async function findPriorApplicationEvidence(input: {
             sourceMessageId: { type: "string" },
             specificSongTitle: { type: "string" },
             sharingReasonQuote: { type: "string" },
+            concreteActionQuote: { type: "string" },
+            forumConnectionQuote: { type: "string" },
           },
-          required: ["supported", "sourceMessageId", "specificSongTitle", "sharingReasonQuote"],
+          required: ["supported", "sourceMessageId", "specificSongTitle", "sharingReasonQuote", "concreteActionQuote", "forumConnectionQuote"],
         },
       },
     },
@@ -241,6 +368,8 @@ async function findPriorApplicationEvidence(input: {
         sourceMessageId?: unknown
         specificSongTitle?: unknown
         sharingReasonQuote?: unknown
+        concreteActionQuote?: unknown
+        forumConnectionQuote?: unknown
       }
     : null
   const source = candidates.find((message) => message.id === result?.sourceMessageId)
@@ -254,6 +383,19 @@ async function findPriorApplicationEvidence(input: {
     if (!source || title.length < 2 || reason.length < 8 ||
       !source.content.toLocaleLowerCase().includes(title.toLocaleLowerCase()) ||
       !source.content.toLocaleLowerCase().includes(reason.toLocaleLowerCase())) {
+      return null
+    }
+  }
+  if (input.kind === "contribution") {
+    const action = typeof result?.concreteActionQuote === "string"
+      ? result.concreteActionQuote.trim()
+      : ""
+    const connection = typeof result?.forumConnectionQuote === "string"
+      ? result.forumConnectionQuote.trim()
+      : ""
+    if (!source || action.length < 8 || connection.length < 8 ||
+      !source.content.toLocaleLowerCase().includes(action.toLocaleLowerCase()) ||
+      !source.content.toLocaleLowerCase().includes(connection.toLocaleLowerCase())) {
       return null
     }
   }
@@ -310,25 +452,74 @@ async function recommendationQuestionMatchesGoal(input: {
   return result?.aligned === true
 }
 
-const COLORS_PARTICIPATION_OPTIONS = [
-  "I mostly listen",
-  "I like discussing music",
-  "I enjoy giving feedback",
-  "I regularly share discoveries",
-]
+async function repairApplicationInvitationFromContext(input: {
+  reply: string
+  applicantAnswer: string
+  recentTurns: Array<{ role: "user" | "assistant"; content: string }>
+  interaction: ReturnType<typeof fallbackInteractionForApplicationSignal>
+  closingMessage: string
+  previousQuestions: string
+  hasArtistAntecedent: boolean
+  requireExplicitQuestion?: boolean
+  requestId?: string
+  organisationId: string
+  projectId: string
+  sessionId: string
+}): Promise<string | null> {
+  const model = gatekeeperConversationModel()
+  const response = await client.messages.create({
+    model,
+    max_tokens: 220,
+    system: "Repair Groucho's visible reply, which did not make a clear invitation to respond. Keep the conversation on a concrete detail from the applicant's latest substantive answer. Write a brief grounded acknowledgement and exactly one explicit, natural question ending in a question mark that explores that detail. Do not pivot to an evidence checklist, artist-name prompt, song-recommendation prompt, or a topic already answered. Do not invent facts or ask the applicant to explain Groucho's wording. Return JSON with reply only.",
+    output_config: {
+      format: {
+        type: "json_schema",
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          properties: { reply: { type: "string" } },
+          required: ["reply"],
+        },
+      },
+    },
+    messages: [{
+      role: "user",
+      content: JSON.stringify({
+        recentTurns: input.recentTurns.slice(-6),
+        applicantAnswer: input.applicantAnswer,
+        rejectedReply: input.reply,
+      }),
+    }],
+  })
+  logLlmUsage({
+    operation: "gatekeeper_invitation_repair",
+    provider: "anthropic",
+    model,
+    usage: response.usage,
+    requestId: input.requestId,
+    organisationId: input.organisationId,
+    projectId: input.projectId,
+    sessionId: input.sessionId,
+  })
+  const textBlock = response.content.find((block) => block.type === "text")
+  const candidate = textBlock?.type === "text"
+    ? (JSON.parse(textBlock.text) as { reply?: unknown }).reply
+    : null
+  if (typeof candidate !== "string" || activeApplicationReplyIssue({
+    reply: candidate,
+    interaction: input.interaction,
+    closingMessage: input.closingMessage,
+    previousQuestion: input.previousQuestions,
+    hasArtistAntecedent: input.hasArtistAntecedent,
+    requireExplicitQuestion: input.requireExplicitQuestion,
+  })) return null
+  return candidate.trim()
+}
 
 function fallbackInteractionForApplicationSignal(
   signal: { label: string },
 ) {
-  if (signal.label.trim().toLowerCase() === "which sounds most like you?") {
-    return {
-      intent: "probe" as const,
-      inputType: "singleSelect" as const,
-      options: COLORS_PARTICIPATION_OPTIONS,
-      emotionalState: "curious" as const,
-      visualState: "curious" as const,
-    }
-  }
+  void signal
   return {
     intent: "probe" as const,
     inputType: "text" as const,
@@ -456,7 +647,7 @@ ${openingMessage}
 Do not repeat the opening. Treat the user's next message as their response to it.`
 }
 
-function historyHasMediaChoice(history: ApplicationSignalMessage[]): boolean {
+function historyHasRichInteraction(history: ApplicationSignalMessage[]): boolean {
   return history.some((entry) => {
     if (
       entry.role !== "assistant" ||
@@ -471,7 +662,8 @@ function historyHasMediaChoice(history: ApplicationSignalMessage[]): boolean {
       return false
     }
     const ui = metadata.ui as Record<string, unknown>
-    return normaliseMediaChoiceInteraction(ui.mediaChoice) !== undefined
+    return normaliseMediaChoiceInteraction(ui.mediaChoice) !== undefined ||
+      (Array.isArray(ui.referenceCards) && ui.referenceCards.length > 0)
   })
 }
 
@@ -830,9 +1022,16 @@ export async function postSessionMessage(
       : entry))
     : priorFacts
   const localTestMode = localGatekeeperTestModeEnabled()
-  const configuredSignalDefinitions = applicationSignalDefinitions(
+  const legacyConfiguredSignalDefinitions = applicationSignalDefinitions(
     settings.applicationExperience.required_signals,
   )
+  const rubricVersion = colorsForumRubricForHistory(
+    priorHistory,
+    legacyConfiguredSignalDefinitions,
+  )
+  const configuredSignalDefinitions = rubricVersion === COLORS_FORUM_V1_RUBRIC
+    ? colorsForumV1SignalDefinitions()
+    : legacyConfiguredSignalDefinitions
   const signalDefinitions = localTestMode
     ? localGatekeeperTestSignalDefinitions(configuredSignalDefinitions)
     : configuredSignalDefinitions
@@ -840,10 +1039,15 @@ export async function postSessionMessage(
     collectApplicationParticipantOrientation(priorHistory)
   const colorsAdaptiveBranchesEnabled =
     isColorsForumSignalSet(signalDefinitions)
-  const currentIntegrityConcerns = colorsAdaptiveBranchesEnabled
-    ? detectApplicationIntegrityConcerns(message.trim())
+  let currentIntegrityConcerns: ApplicationIntegrityConcern[] = colorsAdaptiveBranchesEnabled
+    ? detectApplicationIntegrityConcerns(message.trim()).map((concern) => ({
+        ...concern,
+        sourceMessageId: userMsg.id,
+        quote: message.trim().slice(0, 240),
+      }))
     : []
-  const storedIntegrityConcerns = collectApplicationIntegrityConcerns(priorHistory)
+  let storedIntegrityConcerns = collectApplicationIntegrityConcerns(priorHistory)
+  let consentResolution: ReturnType<typeof sourceLinkedConsentResolution> = null
   const routedSignalDefinitions = applicationSignalDefinitionsForOrientation(
     signalDefinitions,
     storedParticipantOrientation,
@@ -901,6 +1105,33 @@ export async function postSessionMessage(
   const conversationThread = collectApplicationConversationThread(priorHistory)
   const responseModeHistory = collectApplicationResponseModeHistory(priorHistory)
   const bridgeHistory = collectApplicationBridgeHistory(priorHistory)
+  const mediaOpportunityEligible =
+    useCompactSignalState &&
+    colorsAdaptiveBranchesEnabled &&
+    colorsMediaPilotEnabled(projectIdOverride, settings.raw) &&
+    (rubricVersion === COLORS_FORUM_V1_RUBRIC || answeredQuestionCount >= 2) &&
+    questionBudget.phase === "explore" &&
+    !input.interactionAnswer &&
+    currentIntegrityConcerns.length === 0 &&
+    storedIntegrityConcerns.length === 0 &&
+    !historyHasRichInteraction(priorHistory)
+  let approvedMediaShows: ColorsYoutubeShow[] = []
+  if (mediaOpportunityEligible) {
+    try {
+      approvedMediaShows = await timings.measure("colors_media_catalog", () =>
+        fetchLatestColorsShows(4),
+      )
+    } catch (error) {
+      log.warn("colors_media_catalog_unavailable", {
+        requestId: input.requestId,
+        projectId,
+        sessionId,
+        detail: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+  const mediaExerciseAvailable = approvedMediaShows.length >=
+    (rubricVersion === COLORS_FORUM_V1_RUBRIC ? 1 : 2)
 
   const hasPersistedOpener =
     dbHistory.length > 0 && dbHistory[0].role === "assistant"
@@ -909,6 +1140,7 @@ export async function postSessionMessage(
     : openingMessage
   const applicationAppendix = buildApplicationExperiencePromptAppendix(
     settings.applicationExperience,
+    rubricVersion,
   )
   const systemPrompt = `${withConfiguredOpeningContext(
     baseSystem,
@@ -941,8 +1173,11 @@ export async function postSessionMessage(
             participantOrientation: storedParticipantOrientation,
             adaptiveOrientationEnabled: colorsAdaptiveBranchesEnabled,
             facts: currentFacts,
+            integrityConcerns: storedIntegrityConcerns,
             insufficientEvidenceKeys: storedInsufficientEvidenceKeys,
             relevantSignalKeys: storedRelevantSignalKeys,
+            mediaExerciseAvailable,
+            mediaCatalog: colorsInteractionCatalog(approvedMediaShows),
           }),
         },
       ]
@@ -963,11 +1198,14 @@ export async function postSessionMessage(
   let mediaClaim: { kind: ApplicationMediaClaimKind; quote: string } = {
     kind: "none", quote: "",
   }
+  let activityClaims: Array<Omit<ApplicationActivityClaim, "sourceMessageId">> = []
   let proposedConversationMove: ApplicationConversationMove | null = null
   let proposedResponseMode: ApplicationResponseMode | null = null
   let participantOrientation: ApplicationParticipantOrientationState =
     storedParticipantOrientation
   let coveredSignalKeys: string[] = []
+  let offerMediaExercise = false
+  let interactionProposal: unknown = null
   let proposedRelevantSignalKeys: string[] = []
   let proposedBridgePlan: ApplicationBridgePlan = {
     candidates: [],
@@ -1032,7 +1270,7 @@ export async function postSessionMessage(
       const model = gatekeeperConversationModel()
       const response = await timings.measure("conversation_model", () => client.messages.create({
         model,
-        max_tokens: 500,
+        max_tokens: 900,
         system: [
           {
             type: "text",
@@ -1055,7 +1293,31 @@ export async function postSessionMessage(
         sessionId,
       })
 
+      if (response.stop_reason === "max_tokens" || response.stop_reason === "refusal") {
+        throw new Error(`Gatekeeper model stopped: ${response.stop_reason}`)
+      }
+
       const parsed = parseGatekeeperStructuredResponse(response.content)
+      if (colorsAdaptiveBranchesEnabled) {
+        consentResolution = sourceLinkedConsentResolution(
+          parsed.integrityObservation,
+          message.trim(),
+          userMsg.id,
+        )
+        if (consentResolution) {
+          storedIntegrityConcerns = storedIntegrityConcerns.filter(
+            (item) => item.kind !== "artist_consent_unestablished",
+          )
+        }
+        const observation = sourceLinkedApplicationIntegrityConcern(
+          parsed.integrityObservation,
+          message.trim(),
+          userMsg.id,
+        )
+        if (observation && !currentIntegrityConcerns.some((item) => item.kind === observation.kind)) {
+          currentIntegrityConcerns = [...currentIntegrityConcerns, observation]
+        }
+      }
       assistantContent = parsed.reply
       structuredToolSeen = parsed.toolSeen
       structuredTerminal = parsed.terminal
@@ -1064,6 +1326,10 @@ export async function postSessionMessage(
       answerRelation = parsed.answerRelation
       processFeedback = parsed.processFeedback
       mediaClaim = normaliseMediaClaim(parsed.mediaClaim, message.trim())
+      activityClaims = normaliseApplicationActivityClaims(
+        parsed.activityClaims,
+        message.trim(),
+      )
       proposedConversationMove = parsed.conversationMove
       proposedResponseMode = null
       participantOrientation = inferApplicationParticipantOrientation({
@@ -1071,6 +1337,8 @@ export async function postSessionMessage(
         currentAnswer: message.trim(),
       })
       coveredSignalKeys = parsed.coveredSignalKeys
+      offerMediaExercise = parsed.offerMediaExercise
+      interactionProposal = parsed.interactionProposal
       proposedRelevantSignalKeys = parsed.relevantSignalKeys
       proposedBridgePlan = { candidates: [], selectedIndex: -1, selected: null }
       updatedConversationThread = fallbackApplicationConversationThread({
@@ -1117,25 +1385,37 @@ export async function postSessionMessage(
   const turnIsClarificationRequest =
     useCompactSignalState &&
     answerRelation?.kind === "clarification_request" &&
+    processFeedback === "none" &&
     currentIntegrityConcerns.length === 0
   const turnIsProcessFeedback = useCompactSignalState &&
     currentIntegrityConcerns.length === 0 &&
     (turnIsClarificationRequest || processFeedback !== "none")
+  const processTurnAlsoAnswered =
+    processFeedback !== "none" &&
+    (answerRelation?.kind === "direct" || answerRelation?.kind === "partial") &&
+    answerAssessment?.quality !== "thin" &&
+    coveredSignalKeys.length > 0
   if (turnIsProcessFeedback) {
-    answeredQuestionCount = Math.max(0, answeredQuestionCount - 1)
-    questionBudget = applicationQuestionBudget({
-      answeredQuestions: answeredQuestionCount,
-      maxQuestions: settings.applicationExperience.max_turns,
-    })
-    answerAssessment = null
-    participantOrientation = storedParticipantOrientation
-    coveredSignalKeys = []
-    proposedRelevantSignalKeys = []
+    if (!processTurnAlsoAnswered) {
+      answeredQuestionCount = Math.max(0, answeredQuestionCount - 1)
+      questionBudget = applicationQuestionBudget({
+        answeredQuestions: answeredQuestionCount,
+        maxQuestions: settings.applicationExperience.max_turns,
+      })
+      answerAssessment = null
+      participantOrientation = storedParticipantOrientation
+      coveredSignalKeys = []
+      proposedRelevantSignalKeys = []
+    }
     parsedNextSignalKey = null
     proposedBridgePlan = { candidates: [], selectedIndex: -1, selected: null }
     proposedConversationMove = turnIsClarificationRequest ? "clarify" : "advance"
     proposedResponseMode = "probe"
-    updatedConversationThread = conversationThread
+    updatedConversationThread = processFeedback === "requests_topic_change"
+      ? { ...conversationThread, momentum: "exhausted", openHook: null }
+      : processFeedback === "corrects_assistant_assumption"
+        ? { ...conversationThread, momentum: "low", openHook: null }
+        : conversationThread
     interactionSpec = interactionSpecForApplicationMove(proposedConversationMove, "none")
   }
   if (
@@ -1159,7 +1439,21 @@ export async function postSessionMessage(
     proposedResponseMode = "challenge"
   }
 
+  // The live model's stable IDs are provisional routing hints. Full-transcript,
+  // source-linked reconciliation already runs when the detailed report is made;
+  // repeating that audit before every visible reply added several model calls.
   const configuredSignalKeys = new Set(signalDefinitions.map((signal) => signal.key))
+  if (
+    useCompactSignalState &&
+    currentSignal &&
+    answerRelation?.kind === "direct" &&
+    answerAssessment &&
+    answerAssessment.quality !== "thin" &&
+    rubricVersion !== COLORS_FORUM_V1_RUBRIC &&
+    !turnIsProcessFeedback
+  ) {
+    coveredSignalKeys.push(currentSignal.key)
+  }
   coveredSignalKeys = newlyCoveredApplicationSignalKeys(
     coveredSignalKeys,
     signalDefinitions,
@@ -1210,6 +1504,43 @@ export async function postSessionMessage(
     if (configuredSignalKeys.has(key)) relevantSignalKeys.add(key)
   }
 
+  const modelRequestedMedia = offerMediaExercise || (
+    interactionProposal !== null &&
+    typeof interactionProposal === "object" &&
+    !Array.isArray(interactionProposal) &&
+    ("kind" in interactionProposal) &&
+    (interactionProposal.kind === "reference" || interactionProposal.kind === "choice")
+  )
+  let explicitRequestedMediaFormat: "link" | "image" | null = null
+  if (
+    rubricVersion === COLORS_FORUM_V1_RUBRIC &&
+    mediaExerciseAvailable &&
+    !modelRequestedMedia &&
+    (answerRelation?.kind === "ambiguous" || answerRelation?.kind === "subject_shift") &&
+    !turnIsProcessFeedback &&
+    currentIntegrityConcerns.length === 0 &&
+    storedIntegrityConcerns.length === 0
+  ) {
+    try {
+      explicitRequestedMediaFormat = await timings.measure("v1_media_request", () =>
+        classifyColorsForumMediaRequest({
+          answer: message.trim(),
+          requestId: input.requestId,
+          organisationId,
+          projectId,
+          sessionId,
+        }),
+      )
+    } catch (error) {
+      log.warn("v1_media_request_classification_failed", {
+        requestId: input.requestId,
+        projectId,
+        sessionId,
+        detail: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
   const { error: userMetadataError } = await supabase
     .from("messages")
     .update({
@@ -1227,8 +1558,17 @@ export async function postSessionMessage(
         ...(processFeedback !== "none"
           ? { application_process_feedback: { kind: processFeedback, sourceMessageId: userMsg.id } }
           : {}),
+        ...(explicitRequestedMediaFormat
+          ? { application_media_request: { format: explicitRequestedMediaFormat, sourceMessageId: userMsg.id } }
+          : {}),
         ...(mediaClaim.kind !== "none"
           ? { application_media_claim: { ...mediaClaim, sourceMessageId: userMsg.id } }
+          : {}),
+        ...(activityClaims.length
+          ? { application_activity_claims: activityClaims.map((claim) => ({
+              ...claim,
+              sourceMessageId: userMsg.id,
+            })) }
           : {}),
         ...(useCompactSignalState && currentSignal
           ? { application_signal: applicationSignalMetadata(currentSignal) }
@@ -1252,6 +1592,9 @@ export async function postSessionMessage(
           : {}),
         ...(currentIntegrityConcerns.length
           ? { application_integrity_concerns: currentIntegrityConcerns }
+          : {}),
+        ...(consentResolution
+          ? { application_integrity_resolution: consentResolution }
           : {}),
       },
     })
@@ -1328,6 +1671,9 @@ export async function postSessionMessage(
       userMsg.id,
     )
     : compactSignalAnswers
+  if (answerRelation?.kind === "direct" && currentSignal && !turnIsProcessFeedback) {
+    answersWithCoverage = markAddressedSignals(answersWithCoverage, [currentSignal])
+  }
   let answersForRouting = answersWithCoverage.map((answer) =>
     insufficientEvidenceKeys.has(answer.key)
       ? { ...answer, covered: true }
@@ -1454,13 +1800,15 @@ export async function postSessionMessage(
   let groundedReceiptPreserved = false
   let colorsMediaQuestionInserted = false
   let colorsMediaDepthFollowup = false
+  let richInteractionInserted = false
+  let richInteractionMetadata: { kind: string; purpose: string; assetIds: string[] } | null = null
   const recoveredSignalEvidence: Array<{
     signalKey: string
     sourceMessageId: string
   }> = []
   let activeReplyRepair: {
     issue: ActiveApplicationReplyIssue | "signal_question_mismatch"
-    action: "next_signal" | "same_thread" | "forced_close"
+    action: "next_signal" | "same_thread" | "keep_reply" | "forced_close"
     signalKey?: string
   } | null = null
   let nextSignal = null as (typeof signalDefinitions)[number] | null
@@ -1537,7 +1885,10 @@ export async function postSessionMessage(
       "open_door",
       "rabbit_hole",
       "challenge",
-    ].includes(moveValidation.move)
+    ].includes(moveValidation.move) || Boolean(
+      input.interactionAnswer &&
+      requestedNextSignalKey === currentSignal?.key,
+    )
     if (staysOnCurrentSignal) {
       nextSignal = currentSignal
     } else {
@@ -1553,6 +1904,7 @@ export async function postSessionMessage(
         eligibleSignals,
         answersForRouting,
         null,
+        !colorsAdaptiveBranchesEnabled,
       )
     }
 
@@ -1612,25 +1964,6 @@ export async function postSessionMessage(
 
   if (
     status === null &&
-    colorsAdaptiveBranchesEnabled &&
-    input.interactionAnswer &&
-    currentSignal?.cluster === "cultural_point_of_view" &&
-    questionBudget.phase !== "emergency_stop"
-  ) {
-    // A remove choice has no order. Use the exercise's one bounded depth
-    // question rather than letting a fluent model reply imply a sequence.
-    assistantContent =
-      "What relationship among the performances you kept would you test before settling the programme?"
-    interactionSpec = interactionSpecForApplicationMove("clarify", "none")
-    nextSignal = currentSignal
-    acceptedConversationMove = "clarify"
-    acceptedBridge = null
-    colorsMediaDepthFollowup = true
-    moveWasAdjusted = true
-  }
-
-  if (
-    status === null &&
     useCompactSignalState &&
     colorsAdaptiveBranchesEnabled &&
     currentSignal?.cluster === "orientation" &&
@@ -1648,6 +1981,24 @@ export async function postSessionMessage(
     openingClarification = true
   }
 
+  if (
+    status === null &&
+    colorsAdaptiveBranchesEnabled &&
+    answerRelation?.kind === "subject_shift" &&
+    storedIntegrityConcerns.some((item) => item.kind === "artist_consent_violation") &&
+    currentIntegrityConcerns.length === 0
+  ) {
+    // A newly named artist is not evidence that this particular artist's work
+    // was posted. Keep the unresolved boundary, without attaching it to them.
+    assistantContent = "I want to stay with what you said about sharing work without asking. What would you do if the artist did not want it posted?"
+    interactionSpec = interactionSpecForApplicationMove("challenge", "none")
+    nextSignal = null
+    acceptedBridge = null
+    acceptedConversationMove = "challenge"
+    conversationalThreadTurn = true
+    moveWasAdjusted = true
+  }
+
   if (status === null && useCompactSignalState) {
     const recentApplicationQuestions = priorHistory
       .filter((entry) => entry.role === "assistant")
@@ -1660,6 +2011,7 @@ export async function postSessionMessage(
       closingMessage: applicationClosingMessage,
       previousQuestion: recentApplicationQuestions || currentQuestion,
       hasArtistAntecedent,
+      requireExplicitQuestion: rubricVersion === COLORS_FORUM_V1_RUBRIC,
     })
     const repeatedClarification = turnIsClarificationRequest && priorHistory.some((entry) => {
       const metadata = entry.metadata && typeof entry.metadata === "object" && !Array.isArray(entry.metadata)
@@ -1719,6 +2071,7 @@ export async function postSessionMessage(
           reply: candidate,
           interaction: interactionSpec,
           closingMessage: applicationClosingMessage,
+          previousQuestion: recentApplicationQuestions || currentQuestion,
         })) {
           repairedReply = candidate.trim()
         }
@@ -1731,41 +2084,130 @@ export async function postSessionMessage(
         })
       }
       assistantContent = repairedReply ||
-        `You're right—that was an observation, not a clear question. ${
-          currentSignal
-            ? fallbackQuestionForApplicationSignal(currentSignal, { hasArtistAntecedent })
-            : "What would you want the Forum to understand about your approach?"
-        }`
+        "You're right—I wasn't clear, and I don't want to make you repeat an answer. What would you want the Forum to understand about your approach that we haven't touched on?"
+      if (!repairedReply) {
+        nextSignal = null
+        conversationalThreadTurn = true
+      }
       moveWasAdjusted = true
-    } else if (replyIssue === "unclear_invitation") {
-      const sameThreadQuestion =
-        currentSignal && (isArtistReferenceSignal(currentSignal) || isRecommendationSignal(currentSignal))
-          ? "What would you want a listener to notice about that choice?"
-          : "What would you want me to understand about that?"
-      const repaired = repairApplicationReplyWithQuestion({
+    } else if (replyIssue === "unclear_invitation" || replyIssue === "missing_invitation") {
+      let repairedReply: string | null = null
+      try {
+        repairedReply = await timings.measure("invitation_repair_model", () =>
+          repairApplicationInvitationFromContext({
+            reply: assistantContent,
+            applicantAnswer: message.trim(),
+            recentTurns: priorHistory,
+            interaction: fallbackInteractionForApplicationSignal(currentSignal ?? { label: "" }),
+            closingMessage: applicationClosingMessage,
+            previousQuestions: recentApplicationQuestions || currentQuestion,
+            hasArtistAntecedent,
+            requireExplicitQuestion: rubricVersion === COLORS_FORUM_V1_RUBRIC,
+            requestId: input.requestId,
+            organisationId,
+            projectId,
+            sessionId,
+          }),
+        )
+      } catch (error) {
+        log.warn("application_invitation_repair_failed", {
+          requestId: input.requestId,
+          projectId,
+          sessionId,
+          detail: error instanceof Error ? error.message : String(error),
+        })
+      }
+      assistantContent = repairedReply ?? repairApplicationReplyWithQuestion({
         reply: assistantContent,
         currentAnswer: message.trim(),
-        question: sameThreadQuestion,
-      })
-      assistantContent = repaired.reply
-      groundedReceiptPreserved ||= repaired.receiptPreserved
+        question: "What about what you just described matters most to you?",
+      }).reply
       interactionSpec = interactionSpecForApplicationMove("clarify", "none")
-      nextSignal = currentSignal
+      nextSignal = null
       acceptedBridge = null
       acceptedConversationMove =
         answerAssessment?.quality === "rich" ? "rabbit_hole" : "clarify"
-      conversationalThreadTurn = currentSignal === null
+      conversationalThreadTurn = true
       moveWasAdjusted = true
       activeReplyRepair = {
         issue: replyIssue,
         action: "same_thread",
-        ...(currentSignal ? { signalKey: currentSignal.key } : {}),
       }
     } else if (replyIssue === "multiple_questions") {
       assistantContent = keepFirstApplicationQuestion(assistantContent)
       acceptedConversationMove =
         acceptedConversationMove ?? proposedConversationMove ?? "advance"
       moveWasAdjusted = true
+    } else if (replyIssue === "repeated_question" && colorsAdaptiveBranchesEnabled) {
+      let repairedReply = ""
+      try {
+        const model = gatekeeperConversationModel()
+        const repairResponse = await timings.measure("repeated_question_repair_model", () =>
+          client.messages.create({
+            model,
+            max_tokens: 180,
+            system: "Repair Groucho's repeated question. The applicant has already supplied relevant evidence. Ask exactly one NEW, explicit question arising from a specific detail in their latest answer, or from the unresolved consent boundary if one exists. Do not reopen an observed evidence lens, ask for the same song or practice again, or substitute the next checklist question. Return JSON with reply only.",
+            output_config: {
+              format: {
+                type: "json_schema",
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: { reply: { type: "string" } },
+                  required: ["reply"],
+                },
+              },
+            },
+            messages: [{
+              role: "user",
+              content: JSON.stringify({
+                recentTurns: priorHistory.slice(-6).map((entry) => ({
+                  role: entry.role,
+                  content: entry.content,
+                })),
+                applicantAnswer: message.trim(),
+                rejectedReply: assistantContent,
+                unresolvedIntegrityObservations: storedIntegrityConcerns,
+              }),
+            }],
+          }),
+        )
+        logLlmUsage({
+          operation: "gatekeeper_repeated_question_repair",
+          provider: "anthropic",
+          model,
+          usage: repairResponse.usage,
+          requestId: input.requestId,
+          organisationId,
+          projectId,
+          sessionId,
+        })
+        const textBlock = repairResponse.content.find((block) => block.type === "text")
+        const candidate = textBlock?.type === "text"
+          ? (JSON.parse(textBlock.text) as { reply?: unknown }).reply
+          : null
+        if (typeof candidate === "string" && !activeApplicationReplyIssue({
+          reply: candidate,
+          interaction: interactionSpec,
+          closingMessage: applicationClosingMessage,
+          previousQuestion: recentApplicationQuestions || currentQuestion,
+          hasArtistAntecedent,
+        })) repairedReply = candidate.trim()
+      } catch (error) {
+        log.warn("application_repeated_question_repair_failed", {
+          requestId: input.requestId,
+          projectId,
+          sessionId,
+          detail: error instanceof Error ? error.message : String(error),
+        })
+      }
+      assistantContent = repairedReply ||
+        "You've already covered that. What part of your approach have I not made room for yet?"
+      nextSignal = null
+      acceptedBridge = null
+      conversationalThreadTurn = true
+      moveWasAdjusted = true
+      activeReplyRepair = { issue: replyIssue, action: "same_thread" }
     } else if (replyIssue) {
       const openRepairSignals = activeSignalDefinitions.filter(
         (signal) =>
@@ -1848,13 +2290,13 @@ export async function postSessionMessage(
     conversationalThreadTurn = true
   }
 
-  // A completed media exercise gets one depth question, not an indefinite
-  // rabbit hole. Applicant corrections and requests to move on are not fit
-  // evidence and should not be routed back to the same exercise.
+  // Only intervene when the model tries to stay on an already-explored media
+  // choice. A valid pivot or close remains the model's decision.
   if (
     status === null &&
     priorFacts.mediaChoice?.depthFollowupUsed &&
     currentSignal?.cluster === "cultural_point_of_view" &&
+    (nextSignal?.key === currentSignal.key || processFeedback !== "none") &&
     !turnIsClarificationRequest
   ) {
     const onward = resolveNextApplicationSignal(
@@ -1883,31 +2325,257 @@ export async function postSessionMessage(
     }
   }
 
-  const openCulturalPointOfViewSignal = activeSignalDefinitions.find(
-    (signal) =>
-      signal.cluster === "cultural_point_of_view" &&
-      !answersForRouting.some(
-        (answer) => answer.key === signal.key && answer.covered !== false,
+  if (status === null && processFeedback === "requests_topic_change") {
+    const alternativeSignals = activeSignalDefinitions.filter((signal) =>
+      signal.key !== currentSignal?.key &&
+      signal.cluster !== currentSignal?.cluster &&
+      !answersForRouting.some((answer) =>
+        answer.key === signal.key && answer.covered !== false,
       ),
+    )
+    let alternative: { reply: string; nextSignalKey: string | null; close: boolean } | null = null
+    if (alternativeSignals.length) {
+      try {
+        const model = gatekeeperConversationModel()
+        const response = await timings.measure("topic_change_repair_model", () =>
+          client.messages.create({
+            model,
+            max_tokens: 220,
+            system: "The applicant has asked to leave an already-covered subject. Respect that boundary now. Decide whether the conversation already has enough evidence for an advisory brief; if so, return close true. Otherwise write one natural question on a genuinely different, useful subject, grounded where possible in what the applicant has said. Choose one of the supplied open evidence lenses, but do not treat them as mandatory questions. Do not ask for another variation of the previous example, explain why the old question was different, or make the applicant defend their request. Return JSON only.",
+            output_config: {
+              format: {
+                type: "json_schema",
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    close: { type: "boolean" },
+                    reply: { type: "string" },
+                    nextSignalKey: { type: "string" },
+                  },
+                  required: ["close", "reply", "nextSignalKey"],
+                },
+              },
+            },
+            messages: [{
+              role: "user",
+              content: JSON.stringify({
+                recentTurns: priorHistory.slice(-8).map((entry) => ({
+                  role: entry.role,
+                  content: entry.content,
+                })),
+                applicantRequest: message.trim(),
+                openLenses: alternativeSignals.map((signal) => ({
+                  key: signal.key,
+                  goal: signal.goal,
+                })),
+              }),
+            }],
+          }),
+        )
+        logLlmUsage({
+          operation: "gatekeeper_topic_change_repair",
+          provider: "anthropic",
+          model,
+          usage: response.usage,
+          requestId: input.requestId,
+          organisationId,
+          projectId,
+          sessionId,
+        })
+        const textBlock = response.content.find((block) => block.type === "text")
+        if (textBlock?.type === "text") {
+          const value = JSON.parse(textBlock.text) as {
+            close?: unknown
+            reply?: unknown
+            nextSignalKey?: unknown
+          }
+          if (value.close === true) {
+            alternative = { close: true, reply: "", nextSignalKey: null }
+          } else {
+            const selected = alternativeSignals.find((signal) => signal.key === value.nextSignalKey)
+            const reply = typeof value.reply === "string" ? value.reply.trim() : ""
+            if (selected && reply && !activeApplicationReplyIssue({
+              reply,
+              interaction: fallbackInteractionForApplicationSignal(selected),
+              closingMessage: applicationClosingMessage,
+              previousQuestion: priorHistory.filter((entry) => entry.role === "assistant")
+                .slice(-5).map((entry) => entry.content).join("\n"),
+            })) {
+              alternative = { close: false, reply, nextSignalKey: selected.key }
+            }
+          }
+        }
+      } catch (error) {
+        log.warn("application_topic_change_repair_failed", {
+          requestId: input.requestId,
+          projectId,
+          sessionId,
+          detail: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+    if (alternative?.close || alternativeSignals.length === 0) {
+      status = forcedCloseStatusFromScores({ scores, passThreshold, rejectThreshold })
+      structuredTerminal = terminalFieldForSessionStatus(status)
+      acceptedConversationMove = "decide"
+      nextSignal = null
+    } else {
+      nextSignal = alternativeSignals.find((signal) => signal.key === alternative?.nextSignalKey) ??
+        resolveNextApplicationSignal(null, alternativeSignals, answersForRouting, null)
+      if (nextSignal) {
+        assistantContent = alternative?.reply ?? fallbackQuestionForApplicationSignal(nextSignal, { hasArtistAntecedent })
+        interactionSpec = fallbackInteractionForApplicationSignal(nextSignal)
+        acceptedConversationMove = "advance"
+        conversationalThreadTurn = false
+      }
+    }
+    acceptedBridge = null
+    moveWasAdjusted = true
+  }
+
+  const culturalPointOfViewSignal = activeSignalDefinitions.find(
+    (signal) => signal.cluster === "cultural_point_of_view",
   )
+  const canUseRichInteractionThisTurn =
+    (!turnIsClarificationRequest && !turnNeedsConversationalRepair) ||
+    (rubricVersion === COLORS_FORUM_V1_RUBRIC && !turnIsProcessFeedback)
+  let richInteraction = mediaExerciseAvailable
+    ? resolveApplicationRichInteraction(interactionProposal, approvedMediaShows)
+    : null
+  if (
+    status === null &&
+    mediaExerciseAvailable &&
+    !richInteraction &&
+    modelRequestedMedia &&
+    canUseRichInteractionThisTurn &&
+    !semanticChallengeTurn &&
+    currentIntegrityConcerns.length === 0
+  ) {
+    try {
+      const model = gatekeeperConversationModel()
+      const response = await timings.measure("rich_interaction_planner", () =>
+        client.messages.create({
+          model,
+          max_tokens: 420,
+          system: `You are checking whether an optional media interaction would make Groucho's NEXT question more grounded and useful. This is not a required stage. Use the applicant's actual thread and request, not a checklist. If they explicitly ask to be shown a performance, image, or link, provide one on THIS turn when a suitable approved asset exists; never ask them to recall details after they requested something concrete, and never promise to show something without attaching it. An ambiguous answer can be a legitimate request for a source, not avoidance. If they ask to be shown ONE example, choose a single reference card, not a comparison or choice; reserve choices for an applicant thread about comparing or selecting. Prefer a source link when they want to assess movement, sound, or the performance over time; an image thumbnail supports only visible still-image observations. If plain conversation is better, choose none. A video choice asks a specific select/remove/rank question and a separate rationale. A rationale prompt must ask why the applicant chose, removed, or ranked something; do not use it to promise future media. The question should reveal how they listen, engage with artists, or contribute to a community—not assume that curation is their role. Do not claim anything about an asset beyond its catalog title. Use only catalog IDs and write one natural question. Return JSON only.`,
+          output_config: {
+            format: {
+              type: "json_schema",
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  kind: { type: "string", enum: ["none", "reference", "choice"] },
+                  format: { type: "string", enum: ["image", "link", "video"] },
+                  assetIds: { type: "array", items: { type: "string" } },
+                  mode: { type: "string", enum: ["select", "remove", "rank"] },
+                  question: { type: "string" },
+                  rationalePrompt: { type: "string" },
+                  purpose: { type: "string" },
+                },
+                required: ["kind"],
+              },
+            },
+          },
+          messages: [{
+            role: "user",
+            content: JSON.stringify({
+              recentTurns: priorHistory.slice(-6).map((entry) => ({
+                role: entry.role,
+                content: entry.content,
+              })),
+              applicantAnswer: message.trim(),
+              draftReply: assistantContent,
+              approvedAssets: colorsInteractionCatalog(approvedMediaShows),
+            }),
+          }],
+        }),
+      )
+      logLlmUsage({
+        operation: "gatekeeper_rich_interaction_planner",
+        provider: "anthropic",
+        model,
+        usage: response.usage,
+        requestId: input.requestId,
+        organisationId,
+        projectId,
+        sessionId,
+      })
+      const textBlock = response.content.find((block) => block.type === "text")
+      if (textBlock?.type === "text") {
+        richInteraction = resolveApplicationRichInteraction(
+          JSON.parse(textBlock.text),
+          approvedMediaShows,
+        )
+      }
+    } catch (error) {
+      log.warn("rich_interaction_planner_failed", {
+        requestId: input.requestId,
+        projectId,
+        sessionId,
+        detail: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+  if (
+    status === null &&
+    explicitRequestedMediaFormat &&
+    (!richInteraction ||
+      richInteraction.kind !== "reference" ||
+      richInteraction.cards.some((card) => card.kind !== explicitRequestedMediaFormat))
+  ) {
+    richInteraction = resolveApplicationRichInteraction({
+      kind: "reference",
+      format: explicitRequestedMediaFormat,
+      assetIds: [colorsInteractionCatalog(approvedMediaShows)[0].id],
+      question: explicitRequestedMediaFormat === "link"
+        ? "Open this official COLORS performance when you're ready. What detail would you bring into a Forum discussion after watching?"
+        : "What visible detail in this COLORS thumbnail would you want to discuss with others?",
+      purpose: "Honor the applicant's request for a concrete approved source",
+    }, approvedMediaShows)
+  }
+  if (
+    status === null &&
+    richInteraction &&
+    canUseRichInteractionThisTurn &&
+    !semanticChallengeTurn &&
+    currentIntegrityConcerns.length === 0
+  ) {
+    assistantContent = richInteraction.question
+    interactionSpec = richInteraction.kind === "reference"
+      ? { ...interactionSpec, inputType: "text", referenceCards: richInteraction.cards }
+      : { ...interactionSpec, inputType: "mediaChoice", mediaChoice: richInteraction.interaction }
+    richInteractionMetadata = {
+      kind: richInteraction.kind,
+      purpose: richInteraction.purpose,
+      assetIds: richInteraction.kind === "reference"
+        ? richInteraction.cards.map((card) => card.id)
+        : richInteraction.interaction.options.map((option) => option.id),
+    }
+    richInteractionInserted = true
+    colorsMediaQuestionInserted = richInteraction.kind === "choice"
+    acceptedBridge = null
+    structuredTerminal = "none"
+    reviewerReport = null
+    conversationalThreadTurn = false
+  }
   const shouldInsertColorsMediaQuestion =
     status === null &&
-    colorsAdaptiveBranchesEnabled &&
-    colorsMediaPilotEnabled(projectIdOverride, settings.raw) &&
-    questionBudget.phase !== "emergency_stop" &&
-    answeredQuestionCount >= 2 &&
-    !input.interactionAnswer &&
+    mediaExerciseAvailable &&
+    !richInteractionInserted &&
+    !isColorsForumV1SignalSet(signalDefinitions) &&
+    offerMediaExercise &&
     !turnIsClarificationRequest &&
+    !turnIsProcessFeedback &&
+    !turnNeedsConversationalRepair &&
+    !semanticChallengeTurn &&
     currentIntegrityConcerns.length === 0 &&
-    !historyHasMediaChoice(priorHistory) &&
-    Boolean(openCulturalPointOfViewSignal)
+    Boolean(culturalPointOfViewSignal)
 
-  if (shouldInsertColorsMediaQuestion && openCulturalPointOfViewSignal) {
+  if (shouldInsertColorsMediaQuestion && culturalPointOfViewSignal) {
     try {
-      const shows = await timings.measure("colors_media_feed", () =>
-        fetchLatestColorsShows(4),
-      )
-      const mediaQuestion = buildColorsMediaQuestion(shows, "remove")
+      const mediaQuestion = buildColorsMediaQuestion(approvedMediaShows, "remove")
       if (mediaQuestion) {
         assistantContent = mediaQuestion.message
         interactionSpec = {
@@ -1917,7 +2585,7 @@ export async function postSessionMessage(
           visualState: "interested",
           mediaChoice: mediaQuestion.interaction,
         }
-        nextSignal = openCulturalPointOfViewSignal
+        nextSignal = culturalPointOfViewSignal
         acceptedConversationMove = "challenge"
         acceptedBridge = null
         structuredTerminal = "none"
@@ -1994,9 +2662,12 @@ export async function postSessionMessage(
   if (
     status === null &&
     colorsAdaptiveBranchesEnabled &&
+    rubricVersion !== COLORS_FORUM_V1_RUBRIC &&
     !localTestMode &&
     questionBudget.phase !== "emergency_stop" &&
-    !colorsMediaQuestionInserted
+    !colorsMediaQuestionInserted &&
+    currentIntegrityConcerns.length === 0 &&
+    storedIntegrityConcerns.length === 0
   ) {
     for (let auditCount = 0; auditCount < 4; auditCount += 1) {
       const candidate = nextSignal
@@ -2079,20 +2750,53 @@ export async function postSessionMessage(
       interaction: interactionSpec,
       closingMessage: applicationClosingMessage,
       hasArtistAntecedent,
+      requireExplicitQuestion: rubricVersion === COLORS_FORUM_V1_RUBRIC,
     })
     if (finalReplyIssue === "unclear_invitation" || finalReplyIssue === "missing_invitation") {
-      assistantContent = nextSignal
-        ? fallbackQuestionForApplicationSignal(nextSignal, { hasArtistAntecedent })
-        : "What would you want me to understand about that?"
-      interactionSpec = nextSignal
-        ? fallbackInteractionForApplicationSignal(nextSignal)
-        : interactionSpecForApplicationMove("clarify", "none")
+      let repairedReply: string | null = null
+      try {
+        repairedReply = await timings.measure("final_invitation_repair_model", () =>
+          repairApplicationInvitationFromContext({
+            reply: assistantContent,
+            applicantAnswer: message.trim(),
+            recentTurns: priorHistory,
+            interaction: fallbackInteractionForApplicationSignal(nextSignal ?? { label: "" }),
+            closingMessage: applicationClosingMessage,
+            previousQuestions: priorHistory
+              .filter((entry) => entry.role === "assistant")
+              .slice(-6)
+              .map((entry) => entry.content)
+              .join("\n"),
+            hasArtistAntecedent,
+            requireExplicitQuestion: rubricVersion === COLORS_FORUM_V1_RUBRIC,
+            requestId: input.requestId,
+            organisationId,
+            projectId,
+            sessionId,
+          }),
+        )
+      } catch (error) {
+        log.warn("application_final_invitation_repair_failed", {
+          requestId: input.requestId,
+          projectId,
+          sessionId,
+          detail: error instanceof Error ? error.message : String(error),
+        })
+      }
+      assistantContent = repairedReply ?? repairApplicationReplyWithQuestion({
+        reply: assistantContent,
+        currentAnswer: message.trim(),
+        question: "What about what you just described matters most to you?",
+      }).reply
+      interactionSpec = interactionSpecForApplicationMove("clarify", "none")
+      nextSignal = null
       acceptedBridge = null
+      conversationalThreadTurn = true
+      acceptedConversationMove = "clarify"
       moveWasAdjusted = true
       activeReplyRepair = {
         issue: finalReplyIssue,
         action: "same_thread",
-        ...(nextSignal ? { signalKey: nextSignal.key } : {}),
       }
     }
   }
@@ -2101,17 +2805,22 @@ export async function postSessionMessage(
     colorsAdaptiveBranchesEnabled &&
     !localTestMode &&
     !turnIsProcessFeedback &&
+    currentIntegrityConcerns.length === 0 &&
+    storedIntegrityConcerns.length === 0 &&
     acceptedConversationMove !== "clarify" &&
     nextSignal?.kind === "recommendation" &&
+    !answersForRouting.some((answer) =>
+      answer.key === nextSignal?.key && answer.covered !== false) &&
     (interactionSpec.inputType === "text" || interactionSpec.inputType === "voice")
   ) {
+    const recommendationSignal = nextSignal
     let aligned = false
     try {
       aligned = await timings.measure(
         "recommendation_question_alignment",
         () => recommendationQuestionMatchesGoal({
           reply: assistantContent,
-          goal: nextSignal.goal,
+          goal: recommendationSignal.goal,
           requestId: input.requestId,
           organisationId,
           projectId,
@@ -2127,18 +2836,68 @@ export async function postSessionMessage(
       })
     }
     if (!aligned) {
-      assistantContent = repairApplicationReplyWithQuestion({
-        reply: assistantContent,
-        currentAnswer: message,
-        question: fallbackQuestionForApplicationSignal(nextSignal, { hasArtistAntecedent }),
-      }).reply
-      interactionSpec = fallbackInteractionForApplicationSignal(nextSignal)
+      const unmatchedSignalKey = recommendationSignal.key
+      nextSignal = null
+      acceptedBridge = null
+      acceptedConversationMove = "rabbit_hole"
+      conversationalThreadTurn = true
       activeReplyRepair = {
         issue: "signal_question_mismatch",
-        action: "next_signal",
-        signalKey: nextSignal.key,
+        action: "keep_reply",
+        signalKey: unmatchedSignalKey,
       }
       moveWasAdjusted = true
+    }
+  }
+  let sufficiencyClosed = false
+  // A tagged artist or brand reference is not a substitute for understanding
+  // participation and reciprocity. An applicant can address several lenses in
+  // one answer, but do not let this second reviewer close before the shared
+  // core areas have each had a fair opportunity to surface.
+  const unattemptedCoreSignals = rubricVersion === COLORS_FORUM_V1_RUBRIC
+    ? unattemptedCoreApplicationSignals(activeSignalDefinitions, answersWithCoverage)
+    : []
+  if (
+    status === null &&
+    rubricVersion === COLORS_FORUM_V1_RUBRIC &&
+    !localTestMode &&
+    answeredQuestionCount >= 4 &&
+    !turnIsProcessFeedback &&
+    !turnNeedsConversationalRepair &&
+    !semanticChallengeTurn &&
+    !richInteractionInserted &&
+    unattemptedCoreSignals.length === 0 &&
+    currentIntegrityConcerns.length === 0 &&
+    storedIntegrityConcerns.length === 0
+  ) {
+    try {
+      sufficiencyClosed = await timings.measure("v1_sufficiency_review", () =>
+        colorsForumV1ConversationIsSufficient({
+          answers: answersWithCoverage,
+          recentTurns: historyRows,
+          draftReply: assistantContent,
+          requestId: input.requestId,
+          organisationId,
+          projectId,
+          sessionId,
+        }),
+      )
+    } catch (error) {
+      log.warn("v1_sufficiency_review_failed", {
+        requestId: input.requestId,
+        projectId,
+        sessionId,
+        detail: error instanceof Error ? error.message : String(error),
+      })
+    }
+    if (sufficiencyClosed) {
+      status = forcedCloseStatusFromScores({ scores, passThreshold, rejectThreshold })
+      structuredTerminal = terminalFieldForSessionStatus(status)
+      reviewerReport = null
+      nextSignal = null
+      acceptedBridge = null
+      acceptedConversationMove = "decide"
+      interactionSpec = interactionSpecForApplicationMove("decide", "none")
     }
   }
   if (status !== null) {
@@ -2159,8 +2918,17 @@ export async function postSessionMessage(
                 ...(processFeedback !== "none"
                   ? { application_process_feedback: { kind: processFeedback, sourceMessageId: userMsg.id } }
                   : {}),
+                ...(explicitRequestedMediaFormat
+                  ? { application_media_request: { format: explicitRequestedMediaFormat, sourceMessageId: userMsg.id } }
+                  : {}),
                 ...(mediaClaim.kind !== "none"
                   ? { application_media_claim: { ...mediaClaim, sourceMessageId: userMsg.id } }
+                  : {}),
+                ...(activityClaims.length
+                  ? { application_activity_claims: activityClaims.map((claim) => ({
+                      ...claim,
+                      sourceMessageId: userMsg.id,
+                    })) }
                   : {}),
                 ...(currentSignal && !turnIsProcessFeedback
                   ? {
@@ -2176,7 +2944,7 @@ export async function postSessionMessage(
       integrityFlags: [
         ...storedIntegrityConcerns,
         ...currentIntegrityConcerns,
-      ].map((concern) => concern.reviewerFlag),
+      ].map((concern) => concern.reviewerFlag).filter(Boolean),
       serverControlledFieldsOnly: colorsAdaptiveBranchesEnabled,
     })
   }
@@ -2204,6 +2972,12 @@ export async function postSessionMessage(
         ...(mediaClaim.kind !== "none"
           ? { application_media_claim: { ...mediaClaim, sourceMessageId: userMsg.id } }
           : {}),
+        ...(activityClaims.length
+          ? { application_activity_claims: activityClaims.map((claim) => ({
+              ...claim,
+              sourceMessageId: userMsg.id,
+            })) }
+          : {}),
       },
     },
     {
@@ -2218,6 +2992,7 @@ export async function postSessionMessage(
           gatekeeper_structured: true,
           gatekeeper_terminal: persistedTerminal,
           ui: interactionSpec,
+          ...(rubricVersion ? { application_rubric_version: rubricVersion } : {}),
           application_facts_v1: factSnapshot,
           ...(acceptedConversationMove
             ? { conversation_move: acceptedConversationMove }
@@ -2239,10 +3014,13 @@ export async function postSessionMessage(
             ? {
                 application_media_question: {
                   source: "colors_official_playlist",
-                  mode: "remove",
+                  mode: interactionSpec.mediaChoice?.selection.mode ?? "remove",
                   pilot: true,
                 },
               }
+            : {}),
+          ...(richInteractionMetadata
+            ? { application_rich_interaction: richInteractionMetadata }
             : {}),
           ...(colorsMediaDepthFollowup
             ? { application_media_depth_followup: true }
@@ -2281,6 +3059,7 @@ export async function postSessionMessage(
                 },
               }
             : {}),
+          ...(sufficiencyClosed ? { application_sufficiency_close: true } : {}),
           ...(calibratedIntegrityStatus
             ? {
                 application_integrity_calibrated_outcome: {

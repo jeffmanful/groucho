@@ -9,6 +9,8 @@ vi.mock("@anthropic-ai/sdk", () => ({
 }))
 
 import { generateDetailedReviewerReport } from "@/lib/detailed-reviewer-report"
+import { COLORS_FORUM_V1_RUBRIC } from "@/lib/application-signal-state"
+import { COLORS_DETAILED_REPORT_VERSION } from "@/lib/reviewer-report"
 import type { ReviewerReport } from "@/lib/reviewer-report"
 
 const baseReport: ReviewerReport = {
@@ -72,6 +74,177 @@ function response(value: unknown) {
 describe("detailed reviewer report verification", () => {
   beforeEach(() => createMock.mockReset())
 
+  it("reconciles full V1 transcript evidence before writing and verifies the exact saved report", async () => {
+    const v1Report: ReviewerReport = {
+      ...baseReport,
+      evidence_references: [{
+        signal_key: "community_participation",
+        signal_label: "Community participation",
+        source_message_id: "answer-1",
+        excerpt: "I host a listening table.",
+      }, {
+        signal_key: "forum_hopes",
+        signal_label: "Forum hopes",
+        source_message_id: "answer-2",
+        excerpt: "Yseult's Corps",
+      }],
+      weak_or_missing_signals: [
+        "Artist engagement: not explored in this conversation.",
+        "Relationship to COLORS: not explored in this conversation.",
+      ],
+    }
+    const state = { signals: [
+      { signal_key: "forum_hopes", coverage: "unverified", sources: [], material_gap: false, gap_reason: "" },
+      { signal_key: "community_participation", coverage: "supported", sources: [{ source_message_id: "answer-1", quote: "I host a listening table." }], material_gap: false, gap_reason: "" },
+      { signal_key: "reciprocal_contribution", coverage: "unverified", sources: [], material_gap: false, gap_reason: "" },
+      { signal_key: "artist_engagement", coverage: "supported", sources: [{ source_message_id: "answer-2", quote: "Yseult's Corps" }], material_gap: false, gap_reason: "" },
+      { signal_key: "colors_relationship", coverage: "supported", sources: [{ source_message_id: "answer-2", quote: "Yseult's Corps on COLORS" }], material_gap: false, gap_reason: "" },
+    ] }
+    const draft = {
+      ...evaluation,
+      applicant_bio: "Hosts a listening table and follows Yseult's COLORS performance.",
+      advisory_reason: "The applicant describes a listening table and specific engagement with a COLORS performance.",
+      reviewer_questions: ["What is their favourite colour?"],
+    }
+    createMock
+      .mockResolvedValueOnce(response(state))
+      .mockResolvedValueOnce(response(draft))
+      .mockResolvedValueOnce(response({ supported: true, issues: [] }))
+
+    const report = await generateDetailedReviewerReport({
+      transcript: [
+        { id: "answer-1", role: "user", content: "I host a listening table." },
+        { id: "answer-2", role: "user", content: "I keep returning to Yseult's Corps on COLORS." },
+      ],
+      baseReport: v1Report,
+      rubricVersion: COLORS_FORUM_V1_RUBRIC,
+      terminalStatus: "passed",
+    })
+
+    expect(report.report_version).toBe(COLORS_DETAILED_REPORT_VERSION)
+    expect(report.weak_or_missing_signals).toEqual([])
+    expect(report.evidence_state?.find((entry) => entry.signal_key === "artist_engagement"))
+      .toMatchObject({ coverage: "supported", source_message_ids: ["answer-2"] })
+    expect(report.evidence_references).toContainEqual(expect.objectContaining({
+      signal_key: "colors_relationship",
+      source_message_id: "answer-2",
+    }))
+    expect(report.evidence_references.some((reference) =>
+      reference.signal_key === "forum_hopes" && reference.source_message_id === "answer-2",
+    )).toBe(false)
+    expect(report.detailed_opinion?.reviewer_questions).toEqual([])
+    expect(report.reviewer_focus).toBe(draft.advisory_reason)
+    expect(createMock).toHaveBeenCalledTimes(3)
+    const writerInput = String(createMock.mock.calls[1]?.[0]?.messages?.[0]?.content)
+    expect(writerInput).toContain("Yseult's Corps on COLORS")
+    expect(writerInput).not.toContain("Artist engagement: not explored")
+    const verifierInput = JSON.parse(String(createMock.mock.calls[2]?.[0]?.messages?.[0]?.content)
+      .split("\n\nSource-linked integrity observations")[0])
+    expect(verifierInput.assembledReport).toEqual(report)
+  })
+
+  it("repairs evidence-state citations that point to process feedback", async () => {
+    const signals = [
+      { signal_key: "forum_hopes", coverage: "unverified", sources: [], material_gap: false, gap_reason: "" },
+      { signal_key: "community_participation", coverage: "supported", sources: [{ source_message_id: "answer-1", quote: "I host a listening table." }], material_gap: false, gap_reason: "" },
+      { signal_key: "reciprocal_contribution", coverage: "unverified", sources: [], material_gap: false, gap_reason: "" },
+      { signal_key: "artist_engagement", coverage: "unverified", sources: [], material_gap: false, gap_reason: "" },
+      { signal_key: "colors_relationship", coverage: "unverified", sources: [], material_gap: false, gap_reason: "" },
+    ]
+    createMock
+      .mockResolvedValueOnce(response({ signals: [{
+        ...signals[0],
+        coverage: "supported",
+        sources: [{ source_message_id: "process-turn", quote: "What did you mean?" }],
+      }, ...signals.slice(1)] }))
+      .mockResolvedValueOnce(response({ signals }))
+      .mockResolvedValueOnce(response(evaluation))
+      .mockResolvedValueOnce(response({ supported: true, issues: [] }))
+
+    const report = await generateDetailedReviewerReport({
+      transcript: [
+        { id: "answer-1", role: "user", content: "I host a listening table." },
+        { id: "process-turn", role: "user", content: "What did you mean?" },
+      ],
+      baseReport,
+      rubricVersion: COLORS_FORUM_V1_RUBRIC,
+      facts: {
+        version: 1,
+        mediaChoice: null,
+        processFeedback: [{ kind: "clarification_request", sourceMessageId: "process-turn" }],
+      },
+    })
+
+    expect(report.evidence_state?.find((entry) => entry.signal_key === "forum_hopes")?.coverage)
+      .toBe("unverified")
+    expect(report.evidence_references.some((reference) => reference.source_message_id === "process-turn"))
+      .toBe(false)
+    expect(String(createMock.mock.calls[1]?.[0]?.messages?.[0]?.content))
+      .toContain("lacks an exact applicant quote")
+  })
+
+  it("accepts typographic punctuation differences while storing the source's exact wording", async () => {
+    const source = "I host a listening table. I’d like a Forum where listeners compare what they hear."
+    createMock
+      .mockResolvedValueOnce(response({ signals: [
+        { signal_key: "forum_hopes", coverage: "supported", sources: [{ source_message_id: "answer-1", quote: "I'd like a Forum where listeners compare what they hear." }], material_gap: false, gap_reason: "" },
+        { signal_key: "community_participation", coverage: "supported", sources: [{ source_message_id: "answer-1", quote: "I host a listening table." }], material_gap: false, gap_reason: "" },
+        { signal_key: "reciprocal_contribution", coverage: "unverified", sources: [], material_gap: false, gap_reason: "" },
+        { signal_key: "artist_engagement", coverage: "unverified", sources: [], material_gap: false, gap_reason: "" },
+        { signal_key: "colors_relationship", coverage: "unverified", sources: [], material_gap: false, gap_reason: "" },
+      ] }))
+      .mockResolvedValueOnce(response(evaluation))
+      .mockResolvedValueOnce(response({ supported: true, issues: [] }))
+
+    const report = await generateDetailedReviewerReport({
+      transcript: [{ id: "answer-1", role: "user", content: source }],
+      baseReport,
+      rubricVersion: COLORS_FORUM_V1_RUBRIC,
+    })
+    expect(report.evidence_references).toContainEqual(expect.objectContaining({
+      signal_key: "forum_hopes",
+      excerpt: "I’d like a Forum where listeners compare what they hear.",
+    }))
+    expect(createMock).toHaveBeenCalledTimes(3)
+  })
+
+  it("reconciles the evidence state again when the final verifier rejects an invented gap", async () => {
+    const source = "I host a listening table and keep returning to Yseult's Corps."
+    const signals = [
+      { signal_key: "forum_hopes", coverage: "unverified", sources: [], material_gap: false, gap_reason: "" },
+      { signal_key: "community_participation", coverage: "supported", sources: [{ source_message_id: "answer-1", quote: "I host a listening table" }], material_gap: false, gap_reason: "" },
+      { signal_key: "reciprocal_contribution", coverage: "unverified", sources: [], material_gap: false, gap_reason: "" },
+      { signal_key: "artist_engagement", coverage: "partial", sources: [{ source_message_id: "answer-1", quote: "Yseult's Corps" }], material_gap: true, gap_reason: "Artist exchange has not been tested at Forum scale." },
+      { signal_key: "colors_relationship", coverage: "unverified", sources: [], material_gap: false, gap_reason: "" },
+    ]
+    createMock
+      .mockResolvedValueOnce(response({ signals }))
+      .mockResolvedValueOnce(response(evaluation))
+      .mockResolvedValueOnce(response({ supported: false, issues: [
+        "evidence_state invents a Forum-scale material gap from an artist interest already shown.",
+      ], repair_target: "evidence_state" }))
+      .mockResolvedValueOnce(response({ signals: signals.map((signal) =>
+        signal.signal_key === "artist_engagement"
+          ? { ...signal, coverage: "supported", material_gap: false, gap_reason: "" }
+          : signal,
+      ) }))
+      .mockResolvedValueOnce(response(evaluation))
+      .mockResolvedValueOnce(response({ supported: true, issues: [] }))
+
+    const report = await generateDetailedReviewerReport({
+      transcript: [{ id: "answer-1", role: "user", content: source }],
+      baseReport,
+      rubricVersion: COLORS_FORUM_V1_RUBRIC,
+    })
+
+    expect(report.weak_or_missing_signals).toEqual([])
+    expect(report.evidence_state?.find((signal) => signal.signal_key === "artist_engagement")?.coverage)
+      .toBe("supported")
+    expect(String(createMock.mock.calls[3]?.[0]?.messages?.[0]?.content))
+      .toContain("evidence_state invents a Forum-scale material gap")
+    expect(createMock).toHaveBeenCalledTimes(6)
+  })
+
   it("returns a source-linked report after semantic verification", async () => {
     createMock
       .mockResolvedValueOnce(response(evaluation))
@@ -95,10 +268,113 @@ describe("detailed reviewer report verification", () => {
     const writerSystem = String((createMock.mock.calls[0]?.[0] as { system?: unknown })?.system)
     const verifierSystem = String((createMock.mock.calls[1]?.[0] as { system?: unknown })?.system)
     for (const instructions of [writerSystem, verifierSystem]) {
+      expect(instructions).toContain("mandatory question checklist")
       expect(instructions).toContain("does not establish an order")
       expect(instructions).toContain("not the same as asking permission")
+      expect(instructions).toContain("does not prove the applicant would knowingly post after an explicit refusal")
       expect(instructions).toContain("requests for Groucho to clarify")
+      expect(instructions).toContain("One hosted night and one song shared with a friend")
+      expect(instructions).toContain("Do not call isolated examples a consistent practice")
     }
+  })
+
+  it("retries when isolated examples are described as a sustained practice", async () => {
+    const isolatedReport: ReviewerReport = {
+      ...baseReport,
+      evidence_references: [{
+        ...baseReport.evidence_references[0],
+        excerpt: "I hosted one listening night and sent a song to a friend.",
+      }],
+    }
+    const corrected = {
+      ...evaluation,
+      advisory_reason: "The applicant describes one hosted night and one song shared with a friend.",
+      overall_assessment: "Two concrete examples support the applicant's proposed contribution, without establishing a recurring practice.",
+      decisive_reasons: ["The applicant describes one hosted night and one shared song."],
+      likely_contribution: "They propose to convene a listening circle.",
+    }
+    createMock
+      .mockResolvedValueOnce(response({
+        ...evaluation,
+        advisory_reason: "The applicant has a sustained listening practice.",
+      }))
+      .mockResolvedValueOnce(response({
+        supported: false,
+        issues: ["One night and one song do not establish a sustained practice."],
+      }))
+      .mockResolvedValueOnce(response(corrected))
+      .mockResolvedValueOnce(response({ supported: true, issues: [] }))
+
+    const report = await generateDetailedReviewerReport({
+      transcript: [{
+        id: "answer-1",
+        role: "user",
+        content: "I hosted one listening night and sent a song to a friend.",
+      }],
+      baseReport: isolatedReport,
+      terminalStatus: "passed",
+    })
+
+    expect(createMock).toHaveBeenCalledTimes(4)
+    expect(report.detailed_opinion?.advisory_reason).toBe(corrected.advisory_reason)
+    const retryInput = String(createMock.mock.calls[2]?.[0]?.messages?.[0]?.content)
+    expect(retryInput).toContain("One night and one song do not establish a sustained practice.")
+    expect(retryInput).toContain('"advisory_reason":"The applicant has a sustained listening practice."')
+  })
+
+  it("accepts a reason above the editorial target when it fits the report field", async () => {
+    const longerReason = `${evaluation.advisory_reason} ${"A".repeat(200)}`
+    createMock
+      .mockResolvedValueOnce(response({ ...evaluation, advisory_reason: longerReason }))
+      .mockResolvedValueOnce(response({ supported: true, issues: [] }))
+
+    const report = await generateDetailedReviewerReport({
+      transcript: [{ id: "answer-1", role: "user", content: "I host a listening table." }],
+      baseReport,
+    })
+
+    expect(report.detailed_opinion?.advisory_reason).toBe(longerReason)
+    expect(createMock).toHaveBeenCalledTimes(2)
+    expect(String((createMock.mock.calls[1]?.[0] as { system?: unknown })?.system))
+      .toContain("length alone does not invalidate a source-supported report")
+  })
+
+  it("repairs a reason longer than the report field without starting a blank report", async () => {
+    createMock
+      .mockResolvedValueOnce(response({ ...evaluation, advisory_reason: "A".repeat(801) }))
+      .mockResolvedValueOnce(response(evaluation))
+      .mockResolvedValueOnce(response({ supported: true, issues: [] }))
+
+    const report = await generateDetailedReviewerReport({
+      transcript: [{ id: "answer-1", role: "user", content: "I host a listening table." }],
+      baseReport,
+    })
+
+    expect(report.detailed_opinion?.advisory_reason).toBe(evaluation.advisory_reason)
+    expect(createMock).toHaveBeenCalledTimes(3)
+    const repairInput = String(createMock.mock.calls[1]?.[0]?.messages?.[0]?.content)
+    expect(repairInput).toContain("at most 800 characters")
+    expect(repairInput).toContain('"applicant_bio":"Hosts a listening table."')
+  })
+
+  it("retries malformed model JSON with a specific validation issue", async () => {
+    createMock
+      .mockResolvedValueOnce({
+        content: [{ type: "text", text: "not json" }],
+        stop_reason: "end_turn",
+        usage: {},
+      })
+      .mockResolvedValueOnce(response(evaluation))
+      .mockResolvedValueOnce(response({ supported: true, issues: [] }))
+
+    const report = await generateDetailedReviewerReport({
+      transcript: [{ id: "answer-1", role: "user", content: "I host a listening table." }],
+      baseReport,
+    })
+
+    expect(report.detailed_opinion?.overall_assessment).toBe(evaluation.overall_assessment)
+    expect(String(createMock.mock.calls[1]?.[0]?.messages?.[0]?.content))
+      .toContain("invalid draft not object field")
   })
 
   it("keeps routine follow-up questions from downgrading a passed, positive application", async () => {
@@ -111,6 +387,9 @@ describe("detailed reviewer report verification", () => {
         advisory_evidence_reference_ids: [],
         reviewer_questions: ["How does the listening table operate?"],
         suggested_human_action: "discuss",
+      }))
+      .mockResolvedValueOnce(response({
+        decisions: [{ index: 0, supported: true, reason: "" }],
       }))
       .mockResolvedValueOnce(response({ supported: true, issues: [] }))
 
@@ -126,8 +405,187 @@ describe("detailed reviewer report verification", () => {
       "How does the listening table operate?",
     ])
     expect(report.detailed_opinion?.advisory_reason).toBe("This is an established practice.")
-    const verifierInput = String(createMock.mock.calls[1]?.[0]?.messages?.[0]?.content)
+    const verifierInput = String(createMock.mock.calls[2]?.[0]?.messages?.[0]?.content)
     expect(verifierInput).toContain('"advisory_recommendation":"recommend"')
+    expect(verifierInput).toContain('"reviewer_questions":["How does the listening table operate?"]')
+    expect(verifierInput).toContain('"reviewer_focus":"How does the listening table operate?"')
+  })
+
+  it("omits an unsupported reviewer question without failing the core report", async () => {
+    createMock
+      .mockResolvedValueOnce(response({
+        ...evaluation,
+        reviewer_questions: [
+          "Does your shift work prevent weekly synchronous Forum attendance?",
+          "What would you hope to discuss with other listeners?",
+        ],
+      }))
+      .mockResolvedValueOnce(response({ decisions: [
+        { index: 0, supported: false, reason: "No synchronous attendance requirement was supplied." },
+        { index: 1, supported: true, reason: "" },
+      ] }))
+      .mockResolvedValueOnce(response({ supported: true, issues: [] }))
+
+    const report = await generateDetailedReviewerReport({
+      transcript: [{ id: "answer-1", role: "user", content: "I work shifts and host a listening table." }],
+      baseReport,
+      terminalStatus: "passed",
+    })
+
+    expect(report.detailed_opinion?.reviewer_questions).toEqual([
+      "What would you hope to discuss with other listeners?",
+    ])
+    expect(report.reviewer_focus).toBe("What would you hope to discuss with other listeners?")
+    expect(createMock).toHaveBeenCalledTimes(3)
+    const verifierInput = String(createMock.mock.calls[2]?.[0]?.messages?.[0]?.content)
+    expect(verifierInput).toContain('"reviewer_focus":"What would you hope to discuss with other listeners?"')
+    expect(verifierInput).not.toContain("Does your shift work prevent weekly synchronous Forum attendance?")
+  })
+
+  it("omits optional questions when their verifier is unavailable", async () => {
+    createMock
+      .mockResolvedValueOnce(response({
+        ...evaluation,
+        reviewer_questions: ["What would you hope to discuss with other listeners?"],
+      }))
+      .mockRejectedValueOnce(new Error("provider unavailable"))
+      .mockResolvedValueOnce(response({ supported: true, issues: [] }))
+
+    const report = await generateDetailedReviewerReport({
+      transcript: [{ id: "answer-1", role: "user", content: "I host a listening table." }],
+      baseReport: {
+        ...baseReport,
+        reviewer_focus: "Can they attend a synchronous Forum every week?",
+      },
+    })
+
+    expect(report.detailed_opinion?.reviewer_questions).toEqual([])
+    expect(report.reviewer_focus).toBe(
+      "Review the applicant's source-linked evidence and proposed contribution.",
+    )
+    expect(report.detailed_opinion?.overall_assessment).toBe(evaluation.overall_assessment)
+    expect(String(createMock.mock.calls[2]?.[0]?.messages?.[0]?.content))
+      .toContain('"reviewer_questions":[]')
+  })
+
+  it("checks the assembled headline and weak signals against the claims before returning", async () => {
+    const weakReport = {
+      ...baseReport,
+      weak_or_missing_signals: ["Community participation: insufficient evidence in this conversation."],
+    }
+    const overstated = {
+      ...evaluation,
+      advisory_reason: "The applicant has an established online community practice.",
+      claim_assessments: [{
+        ...evaluation.claim_assessments[0],
+        claim: "Runs a sustained online listening community.",
+      }],
+    }
+    const corrected = {
+      ...evaluation,
+      advisory_recommendation: "human_review",
+      advisory_reason: "One hosted listening table is concrete, while broader community participation remains untested.",
+      claim_assessments: [{
+        ...evaluation.claim_assessments[0],
+        claim: "Describes hosting one listening table.",
+        interpretation: "This is one concrete example, not an established online-community practice.",
+      }],
+      suggested_human_action: "discuss",
+    }
+    createMock
+      .mockResolvedValueOnce(response(overstated))
+      .mockResolvedValueOnce(response({
+        supported: false,
+        issues: ["claim_assessments and advisory_reason describe established participation while weak_or_missing_signals says it remains insufficient."],
+      }))
+      .mockResolvedValueOnce(response(corrected))
+      .mockResolvedValueOnce(response({ supported: true, issues: [] }))
+
+    const report = await generateDetailedReviewerReport({
+      transcript: [{ id: "answer-1", role: "user", content: "I hosted one listening table." }],
+      baseReport: weakReport,
+    })
+
+    expect(report.detailed_opinion?.advisory_reason).toBe(corrected.advisory_reason)
+    expect(createMock).toHaveBeenCalledTimes(4)
+    const verifierInput = String(createMock.mock.calls[1]?.[0]?.messages?.[0]?.content)
+    expect(verifierInput).toContain('"weak_or_missing_signals":["Community participation: insufficient evidence in this conversation."]')
+    expect(verifierInput).toContain('"claim":"Runs a sustained online listening community."')
+    expect(verifierInput).toContain('"reviewer_focus":"Review the applicant\'s source-linked evidence and proposed contribution."')
+    expect(String(createMock.mock.calls[1]?.[0]?.system)).toContain("Finally check the assembled report")
+    expect(String(createMock.mock.calls[2]?.[0]?.messages?.[0]?.content))
+      .toContain("claim_assessments and advisory_reason describe established participation")
+  })
+
+  it("retries a stale weak signal rather than changing the report after verification", async () => {
+    const weakReport = {
+      ...baseReport,
+      weak_or_missing_signals: [
+        "Community participation: not explored in this conversation.",
+        "Artist engagement: not explored in this conversation.",
+      ],
+    }
+    createMock
+      .mockResolvedValueOnce(response(evaluation))
+      .mockResolvedValueOnce(response({
+        supported: false,
+        issues: ["Community participation is directly cited but marked not explored."],
+      }))
+      .mockResolvedValueOnce(response(evaluation))
+      .mockResolvedValueOnce(response({
+        supported: false,
+        issues: ["Community participation is directly cited but marked not explored."],
+      }))
+      .mockResolvedValueOnce(response(evaluation))
+      .mockResolvedValueOnce(response({
+        supported: false,
+        issues: ["Community participation is directly cited but marked not explored."],
+      }))
+
+    await expect(generateDetailedReviewerReport({
+      transcript: [{ id: "answer-1", role: "user", content: "I host a listening table." }],
+      baseReport: weakReport,
+    })).rejects.toThrow("Community participation is directly cited but marked not explored")
+
+    expect(weakReport.weak_or_missing_signals).toHaveLength(2)
+    const verifierInput = String(createMock.mock.calls[1]?.[0]?.messages?.[0]?.content)
+    expect(verifierInput).toContain("Community participation: not explored in this conversation.")
+    expect(verifierInput).toContain("Artist engagement: not explored in this conversation.")
+    expect(String(createMock.mock.calls[1]?.[0]?.system))
+      .toContain("Verify the exact assembled object")
+  })
+
+  it("keeps a material reservation ahead of a routine question in the headline focus", async () => {
+    createMock
+      .mockResolvedValueOnce(response({
+        ...evaluation,
+        advisory_recommendation: "human_review",
+        claim_assessments: [{
+          claim: "Dismisses listeners who disagree.",
+          evidence_reference_ids: ["answer-1"],
+          interpretation: "This raises a concern about reciprocal discussion.",
+          assessment: "concern",
+        }],
+        reservations: [{
+          text: "The stated approach to disagreement needs review.",
+          evidence_reference_ids: ["answer-1"],
+        }],
+        reviewer_questions: ["What else would the applicant hope to discuss?"],
+        suggested_human_action: "discuss",
+      }))
+      .mockResolvedValueOnce(response({
+        decisions: [{ index: 0, supported: true, reason: "" }],
+      }))
+      .mockResolvedValueOnce(response({ supported: true, issues: [] }))
+
+    const report = await generateDetailedReviewerReport({
+      transcript: [{ id: "answer-1", role: "user", content: "I dismiss listeners who disagree." }],
+      baseReport,
+    })
+
+    expect(report.reviewer_focus).toBe("The stated approach to disagreement needs review.")
+    expect(String(createMock.mock.calls[2]?.[0]?.messages?.[0]?.content))
+      .toContain('"reviewer_focus":"The stated approach to disagreement needs review."')
   })
 
   it("allows a source-backed concern to override a passed preliminary recommendation", async () => {
@@ -176,7 +634,7 @@ describe("detailed reviewer report verification", () => {
     )
   })
 
-  it("repairs a rejected draft once and still fails if the correction is unsupported", async () => {
+  it("repairs a rejected draft and still fails after the bounded retries", async () => {
     const unsupported = { ...evaluation, applicant_bio: "A music-industry director." }
     const rejected = {
       supported: false,
@@ -204,9 +662,165 @@ describe("detailed reviewer report verification", () => {
       .mockResolvedValueOnce(response(rejected))
       .mockResolvedValueOnce(response(unsupported))
       .mockResolvedValueOnce(response(rejected))
+      .mockResolvedValueOnce(response(unsupported))
+      .mockResolvedValueOnce(response(rejected))
 
     await expect(generateDetailedReviewerReport(input)).rejects.toThrow("professional title")
+    expect(createMock).toHaveBeenCalledTimes(6)
+  })
+
+  it("repairs a pre-consent concern without inventing defiance of an explicit refusal", async () => {
+    const concernBase: ReviewerReport = {
+      ...baseReport,
+      advisory_recommendation: "decline",
+      safety_or_integrity_flags: ["Applicant described posting private clips without prior permission."],
+      evidence_references: [{
+        ...baseReport.evidence_references[0],
+        excerpt: "I post private artist clips before asking and remove them if the artist objects.",
+      }],
+    }
+    const unsupported = {
+      ...evaluation,
+      advisory_recommendation: "decline",
+      advisory_reason: "The applicant would post even after an artist explicitly refused.",
+      claim_assessments: [{
+        claim: "The applicant posts despite explicit refusal.",
+        evidence_reference_ids: ["answer-1"],
+        interpretation: "This shows defiance of a known refusal.",
+        assessment: "concern",
+      }],
+      suggested_human_action: "decline",
+    }
+    const corrected = {
+      ...unsupported,
+      advisory_reason: "The applicant reports posting private artist clips before asking, then removing them if an artist objects.",
+      claim_assessments: [{
+        claim: "The applicant posts private artist clips before asking permission.",
+        evidence_reference_ids: ["answer-1"],
+        interpretation: "Removal after objection does not erase the prior-permission concern.",
+        assessment: "concern",
+      }],
+    }
+    createMock
+      .mockResolvedValueOnce(response(unsupported))
+      .mockResolvedValueOnce(response({
+        supported: false,
+        issues: ["The source describes posting before asking, not posting after a known refusal."],
+      }))
+      .mockResolvedValueOnce(response(corrected))
+      .mockResolvedValueOnce(response({ supported: true, issues: [] }))
+
+    const report = await generateDetailedReviewerReport({
+      transcript: [{
+        id: "answer-1",
+        role: "user",
+        content: "I post private artist clips before asking and remove them if the artist objects.",
+      }],
+      baseReport: concernBase,
+      terminalStatus: "rejected",
+    })
+
+    expect(report.advisory_recommendation).toBe("decline")
+    expect(report.detailed_opinion?.advisory_reason).toBe(corrected.advisory_reason)
+    const repairInput = String(createMock.mock.calls[2]?.[0]?.messages?.[0]?.content)
+    expect(repairInput).toContain("not posting after a known refusal")
+    expect(repairInput).toContain('"claim":"The applicant posts despite explicit refusal."')
+  })
+
+  it("retries a verifier rejection even when the verifier supplies no issues", async () => {
+    createMock
+      .mockResolvedValueOnce(response(evaluation))
+      .mockResolvedValueOnce(response({ supported: false, issues: [] }))
+      .mockResolvedValueOnce(response(evaluation))
+      .mockResolvedValueOnce(response({ supported: true, issues: [] }))
+
+    const report = await generateDetailedReviewerReport({
+      transcript: [{ id: "answer-1", role: "user", content: "I host a listening table." }],
+      baseReport,
+    })
+
+    expect(report.detailed_opinion?.overall_assessment).toBe(evaluation.overall_assessment)
+    expect(String(createMock.mock.calls[2]?.[0]?.messages?.[0]?.content))
+      .toContain("rejected the report without a specific issue")
+  })
+
+  it("rejects a consent concern attached to an artist named only later", async () => {
+    const concernBase = {
+      ...baseReport,
+      safety_or_integrity_flags: ["Applicant described sharing artist work without permission."],
+      evidence_references: [
+        { ...baseReport.evidence_references[0], source_message_id: "consent-1", excerpt: "I post private demos without asking." },
+        { ...baseReport.evidence_references[0], source_message_id: "artist-2", excerpt: "Nia Vale's unfinished recordings feel direct." },
+      ],
+    }
+    const unsupported = {
+      ...evaluation,
+      advisory_evidence_reference_ids: ["consent-1"],
+      snapshot: { ...evaluation.snapshot, evidence_reference_ids: ["consent-1"], tags: [] },
+      claim_assessments: [{
+        claim: "The applicant posted Nia Vale's private recordings.",
+        evidence_reference_ids: ["consent-1", "artist-2"],
+        interpretation: "They posted Nia's work without consent.",
+        assessment: "concern",
+      }],
+      reviewer_questions: ["Did Nia Vale give permission for the clips?"],
+    }
+    const corrected = {
+      ...evaluation,
+      advisory_evidence_reference_ids: ["consent-1"],
+      snapshot: { ...evaluation.snapshot, evidence_reference_ids: ["consent-1"], tags: [] },
+      claim_assessments: [{
+        claim: "The applicant says they post private demos without asking.",
+        evidence_reference_ids: ["consent-1"],
+        interpretation: "This reported practice needs human review.",
+        assessment: "concern",
+      }],
+      reviewer_questions: ["How does the applicant seek permission before sharing private work?"],
+    }
+    createMock
+      .mockResolvedValueOnce(response(unsupported))
+      .mockResolvedValueOnce(response(corrected))
+      .mockResolvedValueOnce(response({
+        decisions: [{ index: 0, supported: true, reason: "" }],
+      }))
+      .mockResolvedValueOnce(response({ supported: true, issues: [] }))
+    const report = await generateDetailedReviewerReport({
+      transcript: [
+        { id: "consent-1", role: "user", content: "I post private demos without asking." },
+        { id: "artist-2", role: "user", content: "Nia Vale's unfinished recordings feel direct." },
+      ],
+      baseReport: concernBase,
+      integrityObservations: [{ kind: "artist_consent_violation", sourceMessageId: "consent-1", quote: "I post private demos without asking." }],
+    })
     expect(createMock).toHaveBeenCalledTimes(4)
+    expect(String(createMock.mock.calls[1]?.[0]?.messages?.[0]?.content)).toContain("did not name that artist")
+    expect(report.detailed_opinion?.reviewer_questions[0]).not.toContain("Nia")
+
+    createMock.mockReset()
+    createMock
+      .mockResolvedValueOnce(response({
+        ...unsupported,
+        claim_assessments: [{
+          claim: "The applicant says they would post Nia Vale's recordings without permission.",
+          evidence_reference_ids: ["artist-2", "consent-1"],
+          interpretation: "This is a stated intention, not a verified completed action.",
+          assessment: "concern",
+        }],
+      }))
+      .mockResolvedValueOnce(response({
+        decisions: [{ index: 0, supported: false, reason: "The question assumes permission was sought." }],
+      }))
+      .mockResolvedValueOnce(response({ supported: true, issues: [] }))
+    await expect(generateDetailedReviewerReport({
+      transcript: [
+        { id: "artist-2", role: "user", content: "Nia Vale's unfinished recordings feel direct." },
+        { id: "question", role: "assistant", content: "What would you do with Nia Vale's recordings?" },
+        { id: "consent-1", role: "user", content: "I would post it without permission." },
+      ],
+      baseReport: concernBase,
+      integrityObservations: [{ kind: "artist_consent_violation", sourceMessageId: "consent-1", quote: "I would post it without permission." }],
+    })).resolves.toHaveProperty("detailed_opinion")
+    expect(createMock).toHaveBeenCalledTimes(3)
   })
 
   it("accepts only evidence-linked reservations and excludes process feedback from review", async () => {
@@ -241,9 +855,11 @@ describe("detailed reviewer report verification", () => {
       ...evaluation,
       reservations: [{ text: "Applicant changed topic twice.", evidence_reference_ids: ["process-turn"] }],
     })
-    createMock.mockResolvedValueOnce(invalidDraft).mockResolvedValueOnce(invalidDraft)
-    await expect(generateDetailedReviewerReport({ transcript, baseReport, facts }))
-      .rejects.toThrow("invalid opinion")
+    createMock
+      .mockResolvedValueOnce(invalidDraft)
+      .mockResolvedValueOnce(response({ supported: true, issues: [] }))
+    const reportWithInvalidReservation = await generateDetailedReviewerReport({ transcript, baseReport, facts })
+    expect(reportWithInvalidReservation.detailed_opinion?.reservations).toEqual([])
     expect(createMock).toHaveBeenCalledTimes(2)
   })
 

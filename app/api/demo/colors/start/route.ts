@@ -8,6 +8,7 @@ import {
 } from "@/lib/colors-demo-token"
 import { startGatekeeperSession } from "@/lib/start-gatekeeper-session"
 import { getOrCreateRequestId } from "@/lib/request-trace"
+import { COLORS_THIN_PILOT_MARKER } from "@/lib/colors-thin-conversation"
 
 export async function POST(req: NextRequest) {
   const tester = await demoTester(req)
@@ -29,6 +30,10 @@ export async function POST(req: NextRequest) {
     requestId: getOrCreateRequestId(req),
     context: project.context,
     projectSettings: project.context.settings,
+    conversationEngine:
+      process.env.GROUCHO_COLORS_THIN_PILOT === "1"
+        ? COLORS_THIN_PILOT_MARKER
+        : undefined,
   })
   if (!response.ok) return response
   const token = await issueDemoToken({

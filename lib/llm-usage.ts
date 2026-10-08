@@ -29,6 +29,12 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
     cacheWritePerMillion: 3.75,
     cacheReadPerMillion: 0.3,
   },
+  "claude-sonnet-5-5": {
+    inputPerMillion: 2,
+    outputPerMillion: 10,
+    cacheWritePerMillion: 2.5,
+    cacheReadPerMillion: 0.2,
+  },
   "claude-opus-4-6": {
     inputPerMillion: 5,
     outputPerMillion: 25,

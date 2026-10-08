@@ -226,6 +226,12 @@ describe("startGatekeeperSession", () => {
     )
     expect(body.ui).toMatchObject({ inputType: "text" })
     expect(body.ui).not.toHaveProperty("options")
+    const supa = await import("@/lib/supabase")
+    const state = (supa as unknown as { __state: { messages: FakeRow[] } }).__state
+    expect(state.messages[0]?.metadata).toMatchObject({
+      application_rubric_version: "colors_forum_v1",
+      application_next_signal: { key: "forum_hopes", label: "Forum hopes" },
+    })
   })
 
   it("uses client openingMessage over project default for new sessions", async () => {

@@ -1,13 +1,16 @@
-import type {
-  ApplicationSignalAnswer,
-  ApplicationSignalDefinition,
-  ApplicationSignalMessage,
+import {
+  COLORS_FORUM_V1_RUBRIC,
+  type ApplicationSignalAnswer,
+  type ApplicationSignalDefinition,
+  type ApplicationSignalMessage,
 } from "@/lib/application-signal-state"
 import { isApplicationProcessFeedback } from "@/lib/application-facts"
 import {
   normaliseMediaChoiceAnswer,
   normaliseMediaChoiceInteraction,
+  normaliseReferenceCards,
   type MediaChoiceMode,
+  type ReferenceCard,
 } from "@/lib/gatekeeper-interaction-spec"
 
 export type AdvisoryRecommendation = "recommend" | "human_review" | "decline"
@@ -18,7 +21,7 @@ export type ReviewerEvidenceReference = {
   source_message_id: string
   excerpt: string
   preceding_question?: string
-  interaction?: ReviewerMediaChoiceEvidence
+  interaction?: ReviewerMediaChoiceEvidence | ReviewerReferenceEvidence
 }
 
 export type ReviewerMediaChoiceEvidence = {
@@ -31,6 +34,11 @@ export type ReviewerMediaChoiceEvidence = {
     position?: number
   }>
   rationale: string
+}
+
+export type ReviewerReferenceEvidence = {
+  type: "references"
+  cards: ReferenceCard[]
 }
 
 export const REVIEWER_CURATION_DIMENSIONS = [
@@ -55,6 +63,10 @@ export type ReviewerCuratorialApproach = {
 
 export const REVIEWER_SNAPSHOT_TAGS = [
   "community_participation",
+  "reciprocal_contribution",
+  "forum_hopes",
+  "artist_engagement",
+  "colors_relationship",
   "active_listening",
   "collaboration",
   "connective_thinking",
@@ -110,6 +122,8 @@ export type DetailedReviewerOpinion = {
 }
 
 export type ReviewerReport = {
+  report_version?: string
+  evidence_state?: ReviewerEvidenceStateEntry[]
   applicant_bio: string
   advisory_recommendation: AdvisoryRecommendation
   confidence_score: number
@@ -119,6 +133,16 @@ export type ReviewerReport = {
   safety_or_integrity_flags: string[]
   reviewer_focus: string
   detailed_opinion?: DetailedReviewerOpinion
+}
+
+export const COLORS_DETAILED_REPORT_VERSION = "colors_forum_report_v2"
+
+export type ReviewerEvidenceStateEntry = {
+  signal_key: string
+  coverage: "supported" | "partial" | "unverified"
+  source_message_ids: string[]
+  material_gap: boolean
+  gap_reason: string
 }
 
 type ScoreLike = {
@@ -134,6 +158,7 @@ const RECOMMENDATIONS = new Set<AdvisoryRecommendation>([
 const MAX_TEXT_LENGTH = 800
 const MAX_EVIDENCE_LENGTH = 4000
 const MAX_ITEMS = 8
+const MAX_EVIDENCE_REFERENCES = 64
 
 const CLAIM_ASSESSMENTS = new Set(["strength", "concern", "context"])
 const HUMAN_ACTIONS = new Set([
@@ -169,7 +194,8 @@ function cleanEvidenceReferences(raw: unknown): ReviewerEvidenceReference[] {
     const excerpt = typeof value.excerpt === "string"
       ? value.excerpt.trim().slice(0, MAX_EVIDENCE_LENGTH) : ""
     const precedingQuestion = cleanText(value.preceding_question)
-    const interaction = cleanMediaChoiceEvidence(value.interaction)
+    const interaction = cleanMediaChoiceEvidence(value.interaction) ??
+      cleanReferenceEvidence(value.interaction)
     return signalKey && signalLabel && sourceMessageId && excerpt
       ? [{
           signal_key: signalKey,
@@ -180,7 +206,7 @@ function cleanEvidenceReferences(raw: unknown): ReviewerEvidenceReference[] {
           ...(interaction ? { interaction } : {}),
         }]
       : []
-  }).slice(0, MAX_ITEMS * 2)
+  }).slice(0, MAX_EVIDENCE_REFERENCES)
 }
 
 function cleanMediaChoiceEvidence(raw: unknown): ReviewerMediaChoiceEvidence | null {
@@ -221,6 +247,17 @@ function cleanMediaChoiceEvidence(raw: unknown): ReviewerMediaChoiceEvidence | n
     selected_options: selectedOptions,
     rationale,
   }
+}
+
+function cleanReferenceEvidence(raw: unknown): ReviewerReferenceEvidence | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
+  const value = raw as Record<string, unknown>
+  if (value.type !== "references") return null
+  const cards = normaliseReferenceCards(value.cards)
+  return cards ? {
+    type: "references",
+    cards,
+  } : null
 }
 
 function cleanConfidence(raw: unknown): number | null {
@@ -399,6 +436,23 @@ export function normaliseReviewerReport(raw: unknown): ReviewerReport | null {
   }
 
   return {
+    ...(typeof data.report_version === "string" ? { report_version: data.report_version } : {}),
+    ...(Array.isArray(data.evidence_state) ? {
+      evidence_state: data.evidence_state.flatMap((item): ReviewerEvidenceStateEntry[] => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) return []
+        const state = item as Record<string, unknown>
+        if (typeof state.signal_key !== "string" ||
+          !["supported", "partial", "unverified"].includes(String(state.coverage)) ||
+          !Array.isArray(state.source_message_ids)) return []
+        return [{
+          signal_key: state.signal_key,
+          coverage: state.coverage as ReviewerEvidenceStateEntry["coverage"],
+          source_message_ids: state.source_message_ids.filter((id): id is string => typeof id === "string"),
+          material_gap: state.material_gap === true,
+          gap_reason: cleanText(state.gap_reason),
+        }]
+      }),
+    } : {}),
     applicant_bio: applicantBio,
     advisory_recommendation: recommendation as AdvisoryRecommendation,
     confidence_score: confidenceScore,
@@ -474,6 +528,7 @@ function transcriptEvidence(
     if (message.role !== "user" || !message.id || !message.content.trim()) return []
     const metadata = metadataRecord(message.metadata)
     if (isApplicationProcessFeedback(message.metadata)) return []
+    if (metadata?.application_media_request) return []
     const signal = metadataRecord(metadata?.application_signal)
     const assessment = metadataRecord(metadata?.answer_assessment)
     return [{
@@ -538,6 +593,22 @@ function mediaChoiceEvidenceByMessageId(
   return result
 }
 
+function referenceEvidenceByMessageId(
+  messages: ApplicationSignalMessage[],
+): Map<string, ReviewerReferenceEvidence> {
+  const result = new Map<string, ReviewerReferenceEvidence>()
+  let activeCards: ReferenceCard[] | undefined
+  for (const message of messages) {
+    if (message.role === "assistant") {
+      const ui = metadataRecord(metadataRecord(message.metadata)?.ui)
+      activeCards = normaliseReferenceCards(ui?.referenceCards)
+    } else if (message.id && activeCards) {
+      result.set(message.id, { type: "references", cards: activeCards })
+    }
+  }
+  return result
+}
+
 /**
  * Repairs missing or evidence-free model reports from the application state
  * already persisted in message metadata. It never invents applicant evidence.
@@ -554,36 +625,78 @@ export function ensureEvidenceBackedReviewerReport(input: {
   serverControlledFieldsOnly?: boolean
 }): ReviewerReport {
   const answerByKey = new Map(input.answers.map((answer) => [answer.key, answer]))
+  const versionedForumReport = (input.messages ?? []).some((message) =>
+    metadataRecord(message.metadata)?.application_rubric_version === COLORS_FORUM_V1_RUBRIC,
+  )
+  const definitionsByKey = new Map(input.definitions.map((signal) => [signal.key, signal]))
+  const quotedEvidence = (versionedForumReport ? [] : input.messages ?? []).flatMap((message) => {
+    if (message.role !== "user" || !message.id || isApplicationProcessFeedback(message.metadata)) return []
+    const metadata = metadataRecord(message.metadata)
+    const quotes = metadata?.application_evidence_quotes
+    if (!Array.isArray(quotes)) return []
+    return quotes.flatMap((item) => {
+      const evidence = metadataRecord(item)
+      const key = typeof evidence?.key === "string" ? evidence.key : ""
+      const quote = typeof evidence?.quote === "string" ? evidence.quote.trim() : ""
+      const signal = definitionsByKey.get(key)
+      if (!signal || !quote || !message.content.toLocaleLowerCase().includes(quote.toLocaleLowerCase())) return []
+      return [{
+        signal_key: key,
+        signal_label: signal.evidenceLabel,
+        source_message_id: message.id as string,
+        excerpt: quote,
+      }]
+    })
+  })
+  const latestQuoteByKey = new Map(quotedEvidence.map((reference) => [
+    reference.signal_key,
+    reference.excerpt,
+  ]))
+  const quoteBySourceAndSignal = new Map(quotedEvidence.map((reference) => [
+    `${reference.source_message_id}:${reference.signal_key}`,
+    reference.excerpt,
+  ]))
   const coveredEvidenceSummary = input.definitions.flatMap((signal) => {
     const answer = answerByKey.get(signal.key)
+    if (versionedForumReport) return []
     return answer?.covered !== false && answer?.answer.trim()
-      ? [`${signal.label}: ${evidenceExcerpt(answer.answer)}`]
+      ? [`${signal.evidenceLabel}: ${latestQuoteByKey.get(signal.key) ?? evidenceExcerpt(answer.answer)}`]
       : []
   })
   const coveredEvidenceReferences = input.definitions.flatMap((signal) => {
+    if (versionedForumReport) return []
     const answer = answerByKey.get(signal.key)
     if (!answer || answer.covered === false) return []
     return (answer?.sources ?? []).map((source) => ({
       signal_key: signal.key,
-      signal_label: signal.label,
+      signal_label: signal.evidenceLabel,
       source_message_id: source.messageId,
       excerpt: source.excerpt,
     }))
   })
   const coveredSourceIds = new Set(
-    coveredEvidenceReferences.map((reference) => reference.source_message_id),
+    [...coveredEvidenceReferences, ...quotedEvidence].map((reference) => reference.source_message_id),
   )
-  const additionalTranscriptEvidence = transcriptEvidence(input.messages ?? [])
+  const transcriptItems = transcriptEvidence(input.messages ?? [])
+  const additionalTranscriptEvidence = transcriptItems
     .filter((item) => !coveredSourceIds.has(item.id))
-  const evidenceSummary = [
-    ...coveredEvidenceSummary,
-    ...additionalTranscriptEvidence.map((item) =>
-      `${item.quality === "thin" ? "Context needing follow-up" : "Additional transcript evidence"}: ${item.excerpt}`,
-    ),
-  ].slice(0, MAX_ITEMS)
+    .map((item) => versionedForumReport
+      ? { ...item, signalKey: "conversation_context", signalLabel: "Conversation context" }
+      : item)
+  const preliminaryTranscriptEvidence = versionedForumReport
+    ? transcriptItems.map((item) => ({ ...item, signalKey: "conversation_context", signalLabel: "Conversation context" }))
+    : additionalTranscriptEvidence
+  const evidenceSummary = versionedForumReport
+    ? preliminaryTranscriptEvidence.map((item) => `Transcript excerpt: ${item.excerpt}`).slice(0, MAX_ITEMS)
+    : [
+        ...coveredEvidenceSummary,
+        ...additionalTranscriptEvidence.map((item) =>
+          `${item.quality === "thin" ? "Context needing follow-up" : "Additional transcript evidence"}: ${item.excerpt}`,
+        ),
+      ].slice(0, MAX_ITEMS)
   const candidateReferences = [
-    ...coveredEvidenceReferences,
-    ...additionalTranscriptEvidence.map((item) => ({
+    ...(versionedForumReport ? [] : [...coveredEvidenceReferences, ...quotedEvidence]),
+    ...preliminaryTranscriptEvidence.map((item) => ({
       signal_key: item.signalKey,
       signal_label: item.signalLabel,
       source_message_id: item.id,
@@ -594,6 +707,7 @@ export function ensureEvidenceBackedReviewerReport(input: {
     .filter((message) => message.role === "user" && message.id)
     .map((message) => [message.id as string, message]))
   const mediaChoiceEvidence = mediaChoiceEvidenceByMessageId(input.messages ?? [])
+  const referenceEvidence = referenceEvidenceByMessageId(input.messages ?? [])
   const precedingQuestionById = new Map<string, string>()
   let precedingQuestion = ""
   for (const message of input.messages ?? []) {
@@ -605,12 +719,14 @@ export function ensureEvidenceBackedReviewerReport(input: {
       const messageId = reference.source_message_id
       const answer = messageById.get(messageId)
       const question = precedingQuestionById.get(messageId)
-      return [messageId, {
+      const referenceKey = `${messageId}:${reference.signal_key}`
+      return [referenceKey, {
         ...reference,
-        excerpt: answer?.content.trim().slice(0, MAX_EVIDENCE_LENGTH) ?? reference.excerpt,
+        excerpt: quoteBySourceAndSignal.get(referenceKey) ??
+          answer?.content.trim().slice(0, MAX_EVIDENCE_LENGTH) ?? reference.excerpt,
         ...(question ? { preceding_question: question } : {}),
-        ...(mediaChoiceEvidence.get(messageId)
-          ? { interaction: mediaChoiceEvidence.get(messageId) }
+        ...(mediaChoiceEvidence.get(messageId) || referenceEvidence.get(messageId)
+          ? { interaction: mediaChoiceEvidence.get(messageId) ?? referenceEvidence.get(messageId) }
           : {}),
       }]
     })).values()].slice(0, MAX_ITEMS * 2)
@@ -619,17 +735,19 @@ export function ensureEvidenceBackedReviewerReport(input: {
     const next = metadataRecord(metadataRecord(message.metadata)?.application_next_signal)
     return typeof next?.key === "string" ? [next.key] : []
   }))
-  const weakOrMissingSignals = input.definitions.flatMap((signal) => {
+  // A missed turn-level quote is not evidence that the full conversation lacks a signal.
+  // The detailed V1 report reconciles all applicant turns before naming material gaps.
+  const weakOrMissingSignals = (versionedForumReport ? [] : input.definitions.flatMap((signal) => {
     const answer = answerByKey.get(signal.key)
     if (answer && answer.covered !== false) return []
     return [
       input.insufficientEvidenceKeys?.has(signal.key) || askedKeys.has(signal.key) || Boolean(answer)
-        ? `${signal.label}: insufficient evidence after the available follow-ups.`
-        : `${signal.label}: not explored in this conversation.`,
+        ? `${signal.evidenceLabel}: insufficient evidence in this conversation.`
+        : `${signal.evidenceLabel}: not explored in this conversation.`,
     ]
-  }).slice(0, MAX_ITEMS)
+  })).slice(0, MAX_ITEMS)
   const usableCount = coveredEvidenceSummary.length
-  const contextualCount = additionalTranscriptEvidence.length
+  const contextualCount = preliminaryTranscriptEvidence.length
   const fallback = fallbackReviewerReport({
     terminalStatus: input.terminalStatus,
     scores: input.scores,
@@ -643,9 +761,11 @@ export function ensureEvidenceBackedReviewerReport(input: {
 
   return {
     applicant_bio:
-      safeSuppliedBio ||
+      (versionedForumReport ? "Preliminary transcript snapshot; detailed evidence review is pending." : safeSuppliedBio) ||
       `Applicant shared ${usableCount} established evidence ${usableCount === 1 ? "area" : "areas"} and ${contextualCount} additional transcript ${contextualCount === 1 ? "statement" : "statements"} that may need reviewer context.`,
-    advisory_recommendation: recommendationForStatus(input.terminalStatus),
+    advisory_recommendation: versionedForumReport
+      ? "human_review"
+      : recommendationForStatus(input.terminalStatus),
     confidence_score: Number(confidence.toFixed(2)),
     evidence_summary: evidenceSummary,
     evidence_references: evidenceReferences,
@@ -657,6 +777,7 @@ export function ensureEvidenceBackedReviewerReport(input: {
       ...(input.integrityFlags ?? []),
     ])].slice(0, MAX_ITEMS),
     reviewer_focus:
+      (versionedForumReport ? "Complete the full-transcript evidence review before making a decision." : "") ||
       (!input.serverControlledFieldsOnly ? input.report?.reviewer_focus : "") ||
       (weakOrMissingSignals.length
         ? "Review the concrete evidence alongside the unresolved areas before making the community decision."
