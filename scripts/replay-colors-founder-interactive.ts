@@ -21,6 +21,7 @@ const PROJECT_ID = "e9e6aa45-5ef3-4ec3-9451-1703d32abed3"
 const BASE_URL = process.env.FOUNDER_REPLAY_BASE_URL ?? "http://127.0.0.1:3000"
 const USE_DEMO = process.env.FOUNDER_REPLAY_DEMO === "1"
 const USE_DEMO_REPORT = process.env.PILOT_REPLAY_DEMO_REPORT === "1"
+const CONVERSATION_ONLY = process.env.PILOT_REPLAY_CONVERSATION_ONLY === "1"
 const REPORT_SESSION_ID = process.env.PILOT_REPLAY_REPORT_SESSION_ID?.trim()
 const ANALYZE_UNCLOSED = process.env.PILOT_REPLAY_ANALYZE_UNCLOSED === "1"
 const PERSONA_SLUG = process.env.PILOT_REPLAY_PERSONA_SLUG?.trim() || "founder-replay"
@@ -158,6 +159,7 @@ async function main() {
         uiType: ((row.metadata as Record<string, unknown> | null)?.ui as Record<string, unknown> | undefined)?.inputType,
       })))}\n`)
     }
+    if (CONVERSATION_ONLY) return
     if (!["passed", "redirected", "rejected", "completed"].includes(session.status) && !ANALYZE_UNCLOSED) return
     const lastAssistant = [...rows].reverse().find((row) => row.role === "assistant")
     const metadata = lastAssistant?.metadata as Record<string, unknown> | undefined

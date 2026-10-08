@@ -5,6 +5,7 @@ const { createMock, state } = vi.hoisted(() => ({
   state: {
     inserted: [] as Array<{ role: string; content: string }>,
     sessionUpdates: [] as Array<{ status: string }>,
+    history: [] as Array<{ id: string; role: string; content: string; metadata: Record<string, unknown> }>,
   },
 }))
 
@@ -22,10 +23,7 @@ vi.mock("@/lib/supabase", () => ({
       const chain = {
         select() { return chain },
         eq() { return chain },
-        order: async () => ({ data: [{
-          id: "opening-1", role: "assistant", content: "Why would you join?",
-          metadata: { conversation_engine: "colors_thin_pilot_v1" },
-        }], error: null }),
+        order: async () => ({ data: state.history, error: null }),
         maybeSingle: async () => ({ data: {
           id: "row-1", status: "active", applicant_email: "tester@example.com",
         }, error: null }),
@@ -47,7 +45,11 @@ vi.mock("@/lib/supabase", () => ({
   },
 }))
 
-import { postColorsThinConversation } from "@/lib/colors-thin-conversation"
+import {
+  colorsThinConversationPrompt,
+  conversationalClosing,
+  postColorsThinConversation,
+} from "@/lib/colors-thin-conversation"
 import type { ProjectContext } from "@/lib/project-resolution"
 import type { ApplicantIdentity } from "@/lib/applicant-identity"
 
@@ -73,6 +75,10 @@ describe("thin pilot close after an applicant question", () => {
     createMock.mockReset()
     state.inserted = []
     state.sessionUpdates = []
+    state.history = [{
+      id: "opening-1", role: "assistant", content: "Why would you join?",
+      metadata: { conversation_engine: "colors_thin_pilot_v1" },
+    }]
   })
 
   it("answers a final question and keeps the session active even at the turn limit", async () => {
@@ -121,14 +127,118 @@ describe("thin pilot close after an applicant question", () => {
     expect(state.sessionUpdates).toEqual([])
   })
 
-  it("still closes after an ordinary answer without a question", async () => {
-    createMock.mockResolvedValueOnce(toolReply("It was good talking with you.", true))
+  it("adds a specific acknowledgment before the neutral closing line", async () => {
+    createMock.mockResolvedValueOnce(toolReply("Your idea of trading discoveries with other listeners sounds lively.", true))
     const response = await postColorsThinConversation({
       context, sessionId: "session-1", message: "I would like to talk about music here.", applicant,
     })
     const body = await response.json()
     expect(body.status).toBe("completed")
-    expect(body.message).toBe("Thanks for talking.")
+    expect(body.message).toBe(
+      "Your idea of trading discoveries with other listeners sounds lively.\n\nThanks for talking.",
+    )
     expect(state.sessionUpdates).toEqual([{ status: "completed" }])
+  })
+
+  it("repairs a closing process claim before showing the final line", async () => {
+    createMock
+      .mockResolvedValueOnce(toolReply("I think we have enough to move forward.", true))
+      .mockResolvedValueOnce(toolReply(
+        "You were clear that you would use the Forum to direct readers to your promotion service.",
+        true,
+      ))
+    const response = await postColorsThinConversation({
+      context, sessionId: "session-1",
+      message: "I would use the Forum to promote my paid service.", applicant,
+    })
+    const body = await response.json()
+    expect(body.status).toBe("completed")
+    expect(body.message).toBe(
+      "You were clear that you would use the Forum to direct readers to your promotion service.\n\nThanks for talking.",
+    )
+    expect(createMock).toHaveBeenCalledTimes(2)
+  })
+
+  it("repairs a questionless active reply instead of ending the conversation", async () => {
+    createMock
+      .mockResolvedValueOnce(toolReply("That sounds like a thoughtful way to share music.", false))
+      .mockResolvedValueOnce(toolReply(
+        "That sounds like a thoughtful way to share music. What kind of exchanges would you enjoy there?",
+        false,
+      ))
+    const response = await postColorsThinConversation({
+      context, sessionId: "session-1", message: "I share playlists with friends.", applicant,
+    })
+    const body = await response.json()
+    expect(body.status).toBe("active")
+    expect(body.message).toContain("What kind of exchanges would you enjoy there?")
+    expect(state.sessionUpdates).toEqual([])
+    expect(createMock).toHaveBeenCalledTimes(2)
+  })
+
+  it("does not save or close if questionless-reply repair fails", async () => {
+    createMock
+      .mockResolvedValueOnce(toolReply("That sounds interesting.", false))
+      .mockResolvedValueOnce(toolReply("That sounds interesting.", false))
+    const response = await postColorsThinConversation({
+      context, sessionId: "session-1", message: "I share playlists with friends.", applicant,
+    })
+    expect(response.status).toBe(503)
+    expect(state.inserted).toEqual([])
+    expect(state.sessionUpdates).toEqual([])
+  })
+
+  it("does not treat the configured nine-answer target as a forced close", async () => {
+    state.history.push(...Array.from({ length: 8 }, (_, index) => ({
+      id: `user-${index}`, role: "user", content: "I enjoy sharing music.", metadata: {},
+    })))
+    createMock.mockResolvedValueOnce(toolReply("That community sounds close. What keeps you involved?", false))
+    const response = await postColorsThinConversation({
+      context: { ...context, settings: { applicationExperience: { max_turns: 9 } } } as ProjectContext,
+      sessionId: "session-1", message: "We still meet to hear new music.", applicant,
+    })
+    expect((await response.json()).status).toBe("active")
+    expect(state.sessionUpdates).toEqual([])
+  })
+
+  it("repairs a question at the emergency limit into a conversational close", async () => {
+    state.history.push(...Array.from({ length: 11 }, (_, index) => ({
+      id: `user-${index}`, role: "user", content: "I enjoy sharing music.", metadata: {},
+    })))
+    createMock
+      .mockResolvedValueOnce(toolReply("What would you share next?", false))
+      .mockResolvedValueOnce(toolReply("You have built a generous ritual around sharing music.", true))
+    const response = await postColorsThinConversation({
+      context: { ...context, settings: { applicationExperience: { max_turns: 9 } } } as ProjectContext,
+      sessionId: "session-1", message: "We still meet to hear new music.", applicant,
+    })
+    const body = await response.json()
+    expect(body.status).toBe("completed")
+    expect(body.message).toContain("You have built a generous ritual")
+    expect(createMock).toHaveBeenCalledTimes(2)
+  })
+
+  it("keeps decision language out of the closing acknowledgment", () => {
+    expect(conversationalClosing("You would be a great fit here.", "Thanks for talking."))
+      .toBe("Thanks for talking.")
+    expect(conversationalClosing(
+      "Sharing songs with friends sounds like a good way to stay connected. I think we have enough to move forward.",
+      "Thanks for talking.",
+    )).toBe("Sharing songs with friends sounds like a good way to stay connected.\n\nThanks for talking.")
+    expect(conversationalClosing(
+      "I hear you—you're looking for access to an audience. There's no space for that kind of outreach.",
+      "Thanks for talking.",
+    )).toBe("I hear you—you're looking for access to an audience.\n\nThanks for talking.")
+    expect(conversationalClosing(
+      "I appreciate the directness. You plan to use Forum replies to bring people to your service.",
+      "Thanks for talking.",
+    )).toBe("You plan to use Forum replies to bring people to your service.\n\nThanks for talking.")
+  })
+
+  it("does not present report readiness or a five-answer target as a reason to stop", () => {
+    const prompt = colorsThinConversationPrompt({ objective: "Forum membership", turnCount: 5, mediaCatalog: [] })
+    expect(prompt).toContain("Having enough material for a useful report means you may close")
+    expect(prompt).not.toContain("approximate 5-answer")
+    expect(prompt).not.toContain("prefer a warm close")
   })
 })

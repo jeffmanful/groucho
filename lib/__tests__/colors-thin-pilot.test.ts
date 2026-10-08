@@ -10,7 +10,6 @@ describe("COLORS thin conversation pilot", () => {
     const prompt = colorsThinConversationPrompt({
       objective: COLORS_FORUM_MEMBERSHIP_OBJECTIVE,
       turnCount: 3,
-      softTarget: 8,
       mediaCatalog: [],
     })
     expect(prompt).toContain("purposes, not required questions or a fixed order")
@@ -28,6 +27,9 @@ describe("COLORS thin conversation pilot", () => {
     expect(prompt).toContain("Never ask for artist permission because someone shares or recommends music")
     expect(prompt).toContain("without staging a disagreement test")
     expect(prompt).toContain("Every non-closing text turn must end with one direct question")
+    expect(prompt).toContain("Turn-routing priority: a favourite COLORS SHOW is a recorded performance")
+    expect(prompt).toContain("Do not suggest live attendance as an alternative")
+    expect(prompt.indexOf("Turn-routing priority:")).toBeGreaterThan(prompt.indexOf("Approved media catalog:"))
     expect(prompt).toContain("initial Forum is for discussion and sharing external links")
     expect(prompt).not.toContain("Make a private advisory judgment")
     expect(Object.keys(colorsThinResponseTool.input_schema.properties)).toEqual([
