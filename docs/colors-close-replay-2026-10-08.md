@@ -25,3 +25,16 @@ Three fresh minimal-fan conversations used the local demo API with the updated p
 | `abdeba93-6e5c-4452-b3fa-70165d8b7e3e` | 7 | “What stood out to you in that one?” | Gave an unsolicited TONES explanation before asking whether the applicant wanted that topic. The final acknowledgment was generic. |
 
 All three completed under `colors_thin_pilot_v1`, and none asked about live attendance. This is encouraging but remains a small qualitative sample; a runtime repair for this specific route is not warranted yet. The optional TONES branch remains a separate naturalness issue. These sessions have pending reports by design; the replay was for conversation routing, not report accuracy.
+
+## Conversation style prompt pass
+
+The live prompt now reserves TONES for a genuine connection to live events or local scenes; it no longer invites a TONES check merely because another question would fit. Ordinary turns ask for one brief reflection and one open question, without suggested answers, membership endorsement or predictions about future Forum exchanges. Direct answers and requested explanations can be longer.
+
+Two completed conversation-only runs on the final wording gave a mixed qualitative result:
+
+| Persona | Session | Result |
+| --- | --- | --- |
+| Minimal fan | `5ff1d425-1145-4d5c-a2c9-697629e904be` | Six answers, no TONES closing beat, and mostly brief reflections. Two questions still offered either/or alternatives. |
+| Enthusiastic curator | `17870551-e7d2-43f8-952e-410eefeafe71` | Four answers, no TONES closing beat, and no unsupported promise about future Forum members. One question still offered alternatives and another steered toward a yes/no answer. |
+
+An intermediate, longer style instruction caused one retryable 503 when an active-question repair was malformed. That wording was replaced with the shorter instruction above before the two completed runs. The final prompt has not eliminated leading question forms; the human pilot should judge whether they are actually bothersome in context. No report was generated for these conversation-only runs.
