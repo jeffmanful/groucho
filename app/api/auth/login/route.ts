@@ -1,3 +1,5 @@
+import { createSupabaseServerClient, isSupabaseServerConfigured } from "@/lib/supabase-server"
+import { checkRateLimit } from "@/lib/rate-limit"
 import { NextRequest, NextResponse } from "next/server"
 import {
   DEMO_AUTH_COOKIE,
@@ -25,9 +27,11 @@ async function signToken(payload: string, secret: string): Promise<string> {
 }
 
 export async function POST(req: NextRequest) {
-  const { email, password } = await req.json()
+  const body = await req.json().catch(() => null)
+  const email = body?.email
+  const password = body?.password
 
-  if (!email || !password) {
+  if (typeof email !== "string" || typeof password !== "string" || !email.trim() || !password || email.length > 320 || password.length > 1024) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 })
   }
 
@@ -36,6 +40,9 @@ export async function POST(req: NextRequest) {
     .map((e) => e.trim().toLowerCase())
 
   const emailLower = email.trim().toLowerCase()
+
+  const limit = checkRateLimit({ namespace: "login", key: emailLower, limit: 10, windowMs: 60_000 })
+  if (!limit.ok) return NextResponse.json({ error: "Too many attempts. Please try again shortly." }, { status: 429, headers: { "Retry-After": String(Math.ceil(limit.retryAfterMs / 1000)) } })
 
   if (demoPasswordMatches(emailLower, password)) {
     const token = await issueDemoToken({
@@ -57,6 +64,17 @@ export async function POST(req: NextRequest) {
 
   if (isDemoTesterEmail(emailLower)) {
     return NextResponse.json({ error: "Access denied" }, { status: 401 })
+  }
+
+  if (isSupabaseServerConfigured()) {
+    const client = await createSupabaseServerClient()
+    const { data, error } = await client.auth.signInWithPassword({ email: emailLower, password })
+    if (!error && data.user) {
+      const response = NextResponse.json({ ok: true })
+      response.cookies.delete("pe_auth")
+      response.cookies.delete(DEMO_AUTH_COOKIE)
+      return response
+    }
   }
 
   if (!allowed.includes(emailLower) || password !== process.env.ADMIN_PASSWORD) {
