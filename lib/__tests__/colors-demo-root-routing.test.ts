@@ -11,7 +11,7 @@ afterEach(() => {
 })
 
 describe("COLORS demo root routing", () => {
-  it("sends a signed-in demo tester from the root link to the demo", async () => {
+  it("keeps the root admin-first even for a signed-in demo tester", async () => {
     process.env.AUTH_SECRET = "test-only-secret"
     const token = await issueDemoToken({
       kind: "tester",
@@ -24,6 +24,6 @@ describe("COLORS demo root routing", () => {
 
     const response = await proxy(request)
     expect(response.status).toBe(307)
-    expect(response.headers.get("location")).toBe("https://example.test/demo/colors")
+    expect(response.headers.get("location")).toBe("https://example.test/login?next=%2Fadmin")
   })
 })

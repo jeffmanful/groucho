@@ -12,7 +12,7 @@ vi.mock("@anthropic-ai/sdk", () => ({
 }))
 
 vi.mock("@/lib/logger", () => ({
-  log: { info: vi.fn(), error: vi.fn() },
+  log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 
 vi.mock("@/lib/supabase", () => ({
