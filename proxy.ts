@@ -30,7 +30,11 @@ function authFailure(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
   const loginUrl = new URL("/login", req.url)
-  loginUrl.searchParams.set("next", `${pathname}${search}`)
+  loginUrl.searchParams.set(
+    "next",
+    pathname === "/" ? "/admin" : `${pathname}${search}`,
+  )
+  if (pathname === "/demo/colors") loginUrl.searchParams.set("demo", "colors")
   return NextResponse.redirect(loginUrl)
 }
 
@@ -99,6 +103,18 @@ function isAllowedPlatformEmail(email: string): boolean {
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl
 
+  if (pathname === "/demos") return NextResponse.next()
+  if (pathname.startsWith("/demos/")) {
+    const tester = await verifyDemoToken(
+      req.cookies.get(DEMO_AUTH_COOKIE)?.value,
+      "tester",
+    )
+    if (tester) return nextWithRequestId(req)
+    const login = new URL("/demos", req.url)
+    login.searchParams.set("next", `${pathname}${req.nextUrl.search}`)
+    return NextResponse.redirect(login)
+  }
+
   if (STATIC_PREFIXES.some((p) => pathname.startsWith(p)))
     return NextResponse.next()
 
@@ -114,14 +130,6 @@ export async function proxy(req: NextRequest) {
 
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p)))
     return NextResponse.next()
-
-  if (pathname === "/") {
-    const tester = await verifyDemoToken(
-      req.cookies.get(DEMO_AUTH_COOKIE)?.value,
-      "tester",
-    )
-    if (tester) return NextResponse.redirect(new URL("/demo/colors", req.url))
-  }
 
   if (pathname === "/demo/colors" || pathname.startsWith("/api/demo/colors/")) {
     const tester = await verifyDemoToken(

@@ -8,9 +8,11 @@ import { useRouter } from "next/navigation"
 export default function LoginForm({
   initialError,
   nextPath,
+  demoLogin = false,
 }: {
   initialError: string
   nextPath: string
+  demoLogin?: boolean
 }) {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -35,9 +37,15 @@ export default function LoginForm({
         const requestedPath = new URLSearchParams(window.location.search).get(
           "next",
         )
-        const safePath = safeAuthPath(requestedPath)
+        const safePath = safeAuthPath(requestedPath ?? nextPath)
         router.push(
-          data.role === "colors_demo_tester" ? "/demo/colors" : safePath,
+          data.role === "colors_demo_tester"
+            ? safePath === "/demo/colors" ||
+              safePath === "/demos" ||
+              safePath.startsWith("/demos/")
+              ? safePath
+              : "/demos"
+            : safePath,
         )
         router.refresh()
       } else {
@@ -51,7 +59,7 @@ export default function LoginForm({
   }
 
   return (
-    <div className="flex flex-col h-screen items-center justify-center">
+    <div className="flex flex-col min-h-screen py-12 items-center justify-center">
       <div className="w-[80%] max-w-[400px]">
         <div
           style={{
@@ -63,14 +71,26 @@ export default function LoginForm({
         >
           GROUCHO
         </div>
-        <a
-          href={`/api/auth/google?next=${encodeURIComponent(nextPath)}`}
-          className="block w-full rounded-lg border border-white/30 px-4 py-3 text-center text-white hover:bg-white/10 mb-6"
-        >
-          Continue with Google
-        </a>
+        <h1 className="text-3xl mb-3">
+          {demoLogin ? "Demo sign in" : "Admin sign in"}
+        </h1>
+        <p className="text-sm text-white/60 mb-8">
+          {demoLogin
+            ? "Use your demo tester account."
+            : "Sign in to manage your Groucho dashboard."}
+        </p>
+        {!demoLogin && (
+          <a
+            href={`/api/auth/google?next=${encodeURIComponent(nextPath)}`}
+            className="block w-full rounded-lg border border-white/30 px-4 py-3 text-center text-white hover:bg-white/10 mb-6"
+          >
+            Continue with Google
+          </a>
+        )}
         <p className="text-sm opacity-60 mb-6">
-          Or sign in with your email and password.
+          {demoLogin
+            ? "Enter your demo email and password."
+            : "Or sign in with your email and password."}
         </p>
         <form onSubmit={handleSubmit} className="flex flex-col gap-[1.5rem]">
           <input
@@ -106,34 +126,56 @@ export default function LoginForm({
             disabled={loading}
             className="self-start text-white text-md py-[0.5rem] opacity-60 hover:opacity-100 transition-opacity disabled:opacity-30 bg-transparent border-none cursor-pointer font-inherit"
           >
-            {loading ? "..." : "Enter"}
+            {loading
+              ? "Signing in…"
+              : demoLogin
+              ? "Open demo"
+              : "Sign in to dashboard"}
           </button>
         </form>
-        <p className="mt-8 text-center text-sm opacity-40 space-y-2 flex flex-col">
+        {!demoLogin && (
           <Link
-            href="/signup/organisation"
-            className="text-white/50 hover:text-white/70 underline-offset-4 hover:underline"
+            href="/demos"
+            className="block w-full mt-8 rounded-lg border border-white/25 px-4 py-3 text-center text-white/80 hover:text-white hover:bg-white/10"
           >
-            Create an organisation (email code, no invite)
+            Access public demos
           </Link>
-          <span className="text-white/35 text-xs">
-            Organisation members: complete the email code on your invite or{" "}
+        )}
+        {demoLogin && (
+          <Link
+            href="/login"
+            className="block mt-5 text-center text-sm text-white/60 hover:text-white"
+          >
+            Back to admin sign in
+          </Link>
+        )}
+        {!demoLogin && (
+          <p className="mt-8 text-center text-sm opacity-40 space-y-2 flex flex-col">
             <Link
               href="/signup/organisation"
-              className="text-white/45 hover:text-white/65"
+              className="text-white/50 hover:text-white/70 underline-offset-4 hover:underline"
             >
-              /signup/organisation
+              Create an organisation (email code, no invite)
             </Link>
-            , then open{" "}
-            <Link
-              href="/admin/organisations"
-              className="text-white/45 hover:text-white/65"
-            >
-              /admin/organisations
-            </Link>
-            .
-          </span>
-        </p>
+            <span className="text-white/35 text-xs">
+              Organisation members: complete the email code on your invite or{" "}
+              <Link
+                href="/signup/organisation"
+                className="text-white/45 hover:text-white/65"
+              >
+                /signup/organisation
+              </Link>
+              , then open{" "}
+              <Link
+                href="/admin/organisations"
+                className="text-white/45 hover:text-white/65"
+              >
+                /admin/organisations
+              </Link>
+              .
+            </span>
+          </p>
+        )}
       </div>
     </div>
   )
