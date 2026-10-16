@@ -13,7 +13,7 @@ import {
   type MediaChoiceInteraction,
 } from "@/lib/gatekeeper-interaction-spec"
 
-export type ProjectType = "gatekeeper" | "onboarding"
+export type ProjectType = "gatekeeper" | "onboarding" | "ticket_access"
 
 export const DEFAULT_APPLICATION_OPENING_MESSAGE =
   "What brings you here, and what do you think you would add?"
@@ -412,7 +412,7 @@ export function parseProjectType(settings: unknown): ProjectType {
     return "gatekeeper"
   }
   const t = (settings as Record<string, unknown>).project_type
-  return t === "onboarding" ? "onboarding" : "gatekeeper"
+  return t === "ticket_access" ? "ticket_access" : t === "onboarding" ? "onboarding" : "gatekeeper"
 }
 
 export function parseFlowConfig(settings: unknown): OnboardingFlowConfig | null {
@@ -549,11 +549,19 @@ function serializeStep(s: OnboardingFlowStep): Record<string, unknown> {
 export function validateProjectSettings(
   settings: Record<string, unknown>,
 ): ValidateSettingsResult {
-  const projectTypeRaw = settings.project_type
-  const projectType: ProjectType =
-    projectTypeRaw === "onboarding" ? "onboarding" : "gatekeeper"
+  const projectType: ProjectType = parseProjectType(settings)
 
   const out: Record<string, unknown> = { ...settings, project_type: projectType }
+  if (projectType === "ticket_access") {
+    // A separate simulation workspace; never run live conversation or approval policy.
+    return { ok: true, settings: {
+      project_type: "ticket_access", use_case: "event_access",
+      environment: "test", session_mode: "dry-run",
+      ticket_access: { simulation: true },
+      decision_policy: serializeClientDecisionPolicy(parseClientDecisionPolicy({})),
+    } }
+  }
+
   const decisionPolicy = parseClientDecisionPolicy(settings)
   const decisionPolicyError = validateClientDecisionPolicy(decisionPolicy)
   if (decisionPolicyError) return { ok: false, error: decisionPolicyError }

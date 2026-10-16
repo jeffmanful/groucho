@@ -9,6 +9,11 @@ function createMockSupabase() {
     ],
     projects: [
       {
+        id: "ticket-demo", name: "Ticket Demo", slug: "ticket-demo",
+        organisation_id: "org-a",
+        settings: { project_type: "ticket_access", environment: "test" },
+      },
+      {
         id: "proj-a",
         name: "Alpha Gate",
         slug: "alpha-gate",

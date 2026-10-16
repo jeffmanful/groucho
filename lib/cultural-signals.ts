@@ -119,11 +119,12 @@ export async function extractCompletedSessionCulturalSignals(input: {
         },
       ],
     })
-    logLlmUsage({
+    await logLlmUsage({
       operation: "cultural_signal_extraction",
       provider: "anthropic",
       model,
       usage: response.usage,
+      providerResponseId: response.id,
       organisationId: input.organisationId,
       projectId: input.projectId,
       sessionId: input.sessionId,

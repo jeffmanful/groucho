@@ -21,6 +21,7 @@ export function validateWizardStep1(name: string, slug: string): string | null {
 }
 
 export function validateWizardStep2(form: ProjectSetupFormState): string | null {
+  if (form.projectType === "ticket_access") return null
   if (!form.personaId) {
     return "Select a persona before continuing."
   }

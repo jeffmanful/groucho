@@ -24,6 +24,7 @@ export async function POST(
   }
 
   const settings = projectResolved.context.settings
+  if (settings.projectType === "ticket_access") return tracedJson(req, { error: "Ticket access is simulation-only. Open the admin ticket workspace." }, { status: 409 })
 
   const { sessionId: rawId } = await params
   const sessionId = decodeURIComponent(rawId).trim()

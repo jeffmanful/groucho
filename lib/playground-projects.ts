@@ -54,26 +54,28 @@ export async function listPlaygroundProjects(
 
   if (projErr) throw projErr
 
-  return (projects ?? []).map((p) => {
+  return (projects ?? []).flatMap((p) => {
+    const projectType = parseProjectType(p.settings)
+    if (projectType === "ticket_access") return []
     const env = settingsField(p.settings, "environment")
     const mode = settingsField(p.settings, "session_mode")
     const flow = parseFlowConfig(p.settings)
     const welcomeMessage = flow?.welcome_message?.trim() || null
     const applicationOpeningMessage =
       parseApplicationExperience(p.settings).opening_message
-    return {
+    return [{
       id: p.id,
       name: p.name,
       slug: p.slug,
       organisationId: p.organisation_id,
       organisationName: orgNameById.get(p.organisation_id) ?? "",
-      projectType: parseProjectType(p.settings),
+      projectType,
       environment: env === "live" ? "live" : env === "test" ? "test" : null,
       sessionMode:
         mode === "dry-run" ? "dry-run" : mode === "live" ? "live" : null,
       applicationOpeningMessage,
       welcomeMessage,
-    }
+    }]
   })
 }
 

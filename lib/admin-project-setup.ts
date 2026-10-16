@@ -234,6 +234,11 @@ export function buildProjectSettingsPayload(
   form: ProjectSetupFormState,
 ): Record<string, unknown> {
   const base = { ...(existing ?? {}) }
+  if (form.projectType === "ticket_access") return {
+    project_type: "ticket_access", use_case: "event_access",
+    environment: "test", session_mode: "dry-run", ticket_access: { simulation: true },
+  }
+
 
   const settings: Record<string, unknown> = {
     ...base,

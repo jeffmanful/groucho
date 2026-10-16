@@ -338,6 +338,8 @@ export default function EditProjectPage() {
     )
   }
 
+  if (form.projectType === "ticket_access") return <div style={{ padding: "2rem" }}><h1>{form.name}</h1><p>Ticket access projects use the isolated synthetic workspace.</p><Link href={`/admin/ticket-access?project=${projectId}&org=${orgId}`}>Open ticket workspace</Link></div>
+
   return (
     <div
       ref={formTopRef}

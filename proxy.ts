@@ -1,3 +1,4 @@
+import { legacyPlatformEnabled } from "@/lib/platform-admin-access"
 import { createServerClient, type CookieOptions } from "@supabase/ssr"
 import { NextRequest, NextResponse } from "next/server"
 import {
@@ -29,7 +30,11 @@ function authFailure(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
   const loginUrl = new URL("/login", req.url)
-  loginUrl.searchParams.set("next", `${pathname}${search}`)
+  loginUrl.searchParams.set(
+    "next",
+    pathname === "/" ? "/admin" : `${pathname}${search}`,
+  )
+  if (pathname === "/demo/colors") loginUrl.searchParams.set("demo", "colors")
   return NextResponse.redirect(loginUrl)
 }
 
@@ -98,7 +103,20 @@ function isAllowedPlatformEmail(email: string): boolean {
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl
 
-  if (STATIC_PREFIXES.some((p) => pathname.startsWith(p))) return NextResponse.next()
+  if (pathname === "/demos") return NextResponse.next()
+  if (pathname.startsWith("/demos/")) {
+    const tester = await verifyDemoToken(
+      req.cookies.get(DEMO_AUTH_COOKIE)?.value,
+      "tester",
+    )
+    if (tester) return nextWithRequestId(req)
+    const login = new URL("/demos", req.url)
+    login.searchParams.set("next", `${pathname}${req.nextUrl.search}`)
+    return NextResponse.redirect(login)
+  }
+
+  if (STATIC_PREFIXES.some((p) => pathname.startsWith(p)))
+    return NextResponse.next()
 
   /** Public API + legacy chat/access: trace id + auth only via route (API key), not session cookie. */
   if (
@@ -110,15 +128,14 @@ export async function proxy(req: NextRequest) {
     return nextWithRequestId(req)
   }
 
-  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) return NextResponse.next()
-
-  if (pathname === "/") {
-    const tester = await verifyDemoToken(req.cookies.get(DEMO_AUTH_COOKIE)?.value, "tester")
-    if (tester) return NextResponse.redirect(new URL("/demo/colors", req.url))
-  }
+  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p)))
+    return NextResponse.next()
 
   if (pathname === "/demo/colors" || pathname.startsWith("/api/demo/colors/")) {
-    const tester = await verifyDemoToken(req.cookies.get(DEMO_AUTH_COOKIE)?.value, "tester")
+    const tester = await verifyDemoToken(
+      req.cookies.get(DEMO_AUTH_COOKIE)?.value,
+      "tester",
+    )
     if (tester) return nextWithRequestId(req)
     return authFailure(req)
   }
@@ -132,7 +149,11 @@ export async function proxy(req: NextRequest) {
   const token = req.cookies.get("pe_auth")?.value
   if (token) {
     const email = await verifyPeAuthEmail(token, secret)
-    if (email && isAllowedPlatformEmail(email)) {
+    if (
+      email &&
+      isAllowedPlatformEmail(email) &&
+      (await legacyPlatformEnabled(email))
+    ) {
       return NextResponse.next()
     }
   }
@@ -146,8 +167,16 @@ export async function proxy(req: NextRequest) {
         getAll() {
           return req.cookies.getAll()
         },
-        setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
-          cookiesToSet.forEach(({ name, value, options }) => res.cookies.set(name, value, options))
+        setAll(
+          cookiesToSet: {
+            name: string
+            value: string
+            options: CookieOptions
+          }[],
+        ) {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            res.cookies.set(name, value, options),
+          )
         },
       },
     })

@@ -89,6 +89,9 @@ export async function startGatekeeperSession(
     applicantIdentity,
     allowMissingApplicantIdentity,
   } = input
+  if (projectSettings.projectType === "ticket_access") {
+    return traceJson(input, { error: "Ticket access is simulation-only. Open the admin ticket workspace." }, { status: 409 })
+  }
   const { organisationId, projectId, apiKeyId } = context
   const configuredSignals = applicationSignalDefinitions(
     projectSettings.applicationExperience.required_signals,

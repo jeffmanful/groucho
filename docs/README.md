@@ -1,7 +1,11 @@
 # Groucho documentation index
 
+Proposed experiments live in [../pilots/](../pilots/README.md), including
+[fair ticket access with World ID](../pilots/fair-ticket-access-world-id.md).
+
 | Document | Description |
 |----------|-------------|
+| [dashboard-uiarc.md](./dashboard-uiarc.md) | UIArc admin shell, overview and ticket-review experience, scope and verification |
 | [groucho-state-of-play-2026-08-20.md](./groucho-state-of-play-2026-08-20.md) | Historical end-of-day COLORS status and verification snapshot; its human-only decision boundary is superseded |
 | [groucho-latency-improvements-2026-08-21.md](./groucho-latency-improvements-2026-08-21.md) | Implemented response-time architecture, operational requirements, measurements, and retained quality safeguards |
 | [PRD.md](./PRD.md) | v1.1 product requirements (gatekeeper + onboarding flows, structured `profile`), personas, FR/NFR, acceptance criteria |
@@ -30,3 +34,5 @@
 | [roadmap-github-issues.md](./roadmap-github-issues.md) | Phased issues for GitHub or Linear |
 
 Product prompts live under [../prompts/](../prompts/).
+
+- [Dashboard admin access](admin-access.md) — Invitations, acceptance, revocation and platform permissions.

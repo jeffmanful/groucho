@@ -455,3 +455,11 @@ POST /v1/sessions/{sessionId}/access
 - Link the right persona with `persona_id`; use one persona for application and another for onboarding when the tone or job differs.
 - Issue separate API keys for test and live integrations.
 - Use `session_mode: "dry-run"` until the host app is ready to act on outcomes.
+
+## Ticket access demo projects
+
+The `ticket_access` project type opens an isolated synthetic registration/review/lottery
+workspace. Create it through the organisation project wizard; it requires no persona
+or API key. Server validation forces test/dry-run settings and removes live integrations.
+Project identity is saved normally; demo activity resets on refresh. See the
+[implementation and rehearsal guide](../pilots/fi-demo-implementation.md).

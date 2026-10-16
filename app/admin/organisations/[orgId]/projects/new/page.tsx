@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import TicketProjectSetup from "@/components/ticket-access/TicketProjectSetup"
 import { useParams, useRouter } from "next/navigation"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
@@ -44,7 +45,7 @@ const USE_CASES = [
 ] as const
 
 type UseCaseId = (typeof USE_CASES)[number]["id"]
-type ProjectType = "gatekeeper" | "onboarding"
+type ProjectType = "gatekeeper" | "onboarding" | "ticket_access"
 
 function slugify(str: string) {
   return str
@@ -427,6 +428,8 @@ export default function NewProjectWizardPage() {
     router.push(`/admin/organisations/${orgId}`)
   }
 
+  if (projectType === "ticket_access" && step > 1) return <TicketProjectSetup orgId={orgId} name={name} slug={slug} onBack={() => setStep(1)} />
+
   return (
     <div
       ref={formTopRef}
@@ -511,8 +514,8 @@ export default function NewProjectWizardPage() {
             </select>
           </div>
           <div style={{ marginBottom: "1.5rem" }}>
-            <label style={label}>Conversation type</label>
-            <div style={{ display: "flex", gap: "1.25rem", fontSize: "0.82rem" }}>
+            <label style={label}>Project type</label>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "1.25rem", fontSize: "0.82rem" }}>
               <label style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
                 <input
                   type="radio"
@@ -528,6 +531,10 @@ export default function NewProjectWizardPage() {
                   onChange={() => setProjectType("onboarding")}
                 />
                 Onboarding (guided steps)
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                <input type="radio" checked={projectType === "ticket_access"} onChange={() => setProjectType("ticket_access")} />
+                Ticket access (synthetic demo)
               </label>
             </div>
           </div>
@@ -548,7 +555,7 @@ export default function NewProjectWizardPage() {
           </h2>
           <div style={{ marginBottom: "1rem" }}>
             <label style={label}>Environment</label>
-            <div style={{ display: "flex", gap: "1.25rem", fontSize: "0.82rem" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "1.25rem", fontSize: "0.82rem" }}>
               <label style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
                 <input
                   type="radio"
@@ -569,7 +576,7 @@ export default function NewProjectWizardPage() {
           </div>
           <div style={{ marginBottom: "1rem" }}>
             <label style={label}>Default session mode</label>
-            <div style={{ display: "flex", gap: "1.25rem", fontSize: "0.82rem" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "1.25rem", fontSize: "0.82rem" }}>
               <label style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
                 <input
                   type="radio"

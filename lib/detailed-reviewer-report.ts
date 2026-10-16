@@ -774,11 +774,12 @@ async function reconcileEvidenceState(
         ...(repairFeedback ? { repairFeedback } : {}),
       }) }],
     })
-    logLlmUsage({
+    await logLlmUsage({
       operation: "colors_demo_reviewer_evidence_reconciliation",
       provider: "anthropic",
       model,
       usage: response.usage,
+      providerResponseId: response.id,
       requestId: input.requestId,
       organisationId: input.organisationId,
       projectId: input.projectId,
@@ -876,11 +877,12 @@ async function verifyReviewerEvaluation(input: {
       content: `${reviewerVerificationInput(input.reportInput, input.report)}\n\nSource-linked integrity observations (do not attach a later named artist to an earlier disclosure):\n${JSON.stringify(input.reportInput.integrityObservations ?? [])}`,
     }],
   })
-  logLlmUsage({
+  await logLlmUsage({
     operation: "colors_demo_reviewer_verification",
     provider: "anthropic",
     model: input.model,
     usage: response.usage,
+    providerResponseId: response.id,
     requestId: input.reportInput.requestId,
     organisationId: input.reportInput.organisationId,
     projectId: input.reportInput.projectId,
@@ -944,11 +946,12 @@ async function supportedReviewerQuestions(input: {
         }),
       }],
     })
-    logLlmUsage({
+    await logLlmUsage({
       operation: "colors_demo_reviewer_question_verification",
       provider: "anthropic",
       model: input.model,
       usage: response.usage,
+      providerResponseId: response.id,
       requestId: input.reportInput.requestId,
       organisationId: input.reportInput.organisationId,
       projectId: input.reportInput.projectId,
@@ -1055,11 +1058,12 @@ export async function generateDetailedReviewerReport(
             : `${reviewerInput(input)}\n\nSource-linked integrity observations (do not attach a later named artist to an earlier disclosure):\n${JSON.stringify(input.integrityObservations ?? [])}`,
         }],
       })
-      logLlmUsage({
+      await logLlmUsage({
         operation: "colors_demo_reviewer_report",
         provider: "anthropic",
         model,
         usage: response.usage,
+        providerResponseId: response.id,
         requestId: input.requestId,
         organisationId: input.organisationId,
         projectId: input.projectId,

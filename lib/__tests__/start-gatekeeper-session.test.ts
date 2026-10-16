@@ -124,6 +124,19 @@ describe("startGatekeeperSession", () => {
     raw: {},
   }
 
+  it("rejects ticket-access demo projects without creating live sessions", async () => {
+    const { startGatekeeperSession } = await import("@/lib/start-gatekeeper-session")
+    const settings = { ...projectSettings, projectType: "ticket_access" as const }
+    const res = await startGatekeeperSession({
+      sessionId: "ticket_demo_session", projectSettings: settings,
+      context: { organisationId: "org1", projectId: "proj1", apiKeyId: null, settings },
+    })
+    expect(res.status).toBe(409)
+    const supa = await import("@/lib/supabase")
+    const state = (supa as unknown as { __state: { sessions: FakeRow[] } }).__state
+    expect(state.sessions).toHaveLength(0)
+  })
+
   it("creates session with configured application opener", async () => {
     const { startGatekeeperSession } = await import("@/lib/start-gatekeeper-session")
     const res = await startGatekeeperSession({

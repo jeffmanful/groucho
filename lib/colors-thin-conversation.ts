@@ -217,11 +217,12 @@ export async function postColorsThinConversation(input: {
       tools: [colorsThinResponseTool],
       tool_choice: { type: "tool", name: colorsThinResponseTool.name },
     })
-    logLlmUsage({
+    await logLlmUsage({
       operation: "colors_thin_conversation",
       provider: "anthropic",
       model,
       usage: response.usage,
+      providerResponseId: response.id,
       requestId: input.requestId,
       organisationId,
       projectId,
@@ -272,13 +273,14 @@ export async function postColorsThinConversation(input: {
         tools: [colorsThinResponseTool],
         tool_choice: { type: "tool", name: colorsThinResponseTool.name },
       })
-      logLlmUsage({
+      await logLlmUsage({
         operation: applicantQuestion
           ? "colors_thin_question_reply_repair"
           : "colors_thin_active_question_repair",
         provider: "anthropic",
         model,
         usage: repair.usage,
+        providerResponseId: repair.id,
         requestId: input.requestId,
         organisationId,
         projectId,
@@ -322,11 +324,12 @@ export async function postColorsThinConversation(input: {
         tools: [colorsThinResponseTool],
         tool_choice: { type: "tool", name: colorsThinResponseTool.name },
       })
-      logLlmUsage({
+      await logLlmUsage({
         operation: "colors_thin_emergency_close_repair",
         provider: "anthropic",
         model,
         usage: repair.usage,
+        providerResponseId: repair.id,
         requestId: input.requestId,
         organisationId,
         projectId,
@@ -364,11 +367,12 @@ export async function postColorsThinConversation(input: {
         tools: [colorsThinResponseTool],
         tool_choice: { type: "tool", name: colorsThinResponseTool.name },
       })
-      logLlmUsage({
+      await logLlmUsage({
         operation: "colors_thin_closing_acknowledgment_repair",
         provider: "anthropic",
         model,
         usage: repair.usage,
+        providerResponseId: repair.id,
         requestId: input.requestId,
         organisationId,
         projectId,

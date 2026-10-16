@@ -33,6 +33,7 @@ pnpm run example:groucho
 
 ## Docs and releases
 
+- Proposed pilots: [`pilots/README.md`](./pilots/README.md)
 - Client-owned suitability thresholds and automatic actions: [`docs/client-decision-policy.md`](./docs/client-decision-policy.md)
 - Historical COLORS state snapshot: [`docs/groucho-state-of-play-2026-08-20.md`](./docs/groucho-state-of-play-2026-08-20.md)
 - Response-time implementation: [`docs/groucho-latency-improvements-2026-08-21.md`](./docs/groucho-latency-improvements-2026-08-21.md)

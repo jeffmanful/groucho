@@ -135,11 +135,12 @@ export async function runOnboardingTurnIntelligence(
       tool_choice: { type: "tool", name: ONBOARDING_RESPONSE_TOOL_NAME },
       messages: [{ role: "user", content: buildUserPayload(ctx) }],
     })
-    logLlmUsage({
+    await logLlmUsage({
       operation: "onboarding_turn_intelligence",
       provider: "anthropic",
       model,
       usage: response.usage,
+      providerResponseId: response.id,
       requestId: ctx.requestId,
       organisationId: ctx.organisationId,
       projectId: ctx.projectId,

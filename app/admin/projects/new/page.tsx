@@ -123,7 +123,7 @@ export default function NewProjectPickerPage() {
       </h1>
       <p style={{ fontSize: "0.78rem", opacity: 0.4, marginBottom: "1.5rem", lineHeight: 1.5 }}>
         Choose which organisation this project belongs to. The guided wizard
-        configures gatekeeper or onboarding flow, persona, and integrations.
+        configures gatekeeper, onboarding, or a synthetic ticket access demo.
       </p>
 
       {err && (

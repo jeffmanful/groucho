@@ -43,3 +43,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local browser checks and package-manager cache
+/.playwright-cli/
+/.pnpm-store/

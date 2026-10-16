@@ -58,11 +58,12 @@ ${NATURAL_LANGUAGE_REPLY_GUIDANCE}`,
         },
       ],
     })
-    logLlmUsage({
+    await logLlmUsage({
       operation: "onboarding_completion",
       provider: "anthropic",
       model,
       usage: response.usage,
+      providerResponseId: response.id,
       requestId: logContext?.requestId,
       organisationId: logContext?.organisationId,
       projectId: logContext?.projectId,

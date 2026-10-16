@@ -1,452 +1,369 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
-import type { AdminOverviewPayload } from "@/lib/admin-overview"
+import { useState } from "react"
+import { ArrowRight, ArrowUpRight, Tickets } from "lucide-react"
+import { MetricCard } from "@/components/arc/metric-card/metric-card"
+import { SortableDataTable } from "@/components/arc/sortable-data-table/sortable-data-table"
+import { SearchField } from "@/components/arc/search-field/search-field"
+import { Badge } from "@/components/arc/badge/badge"
+import { Skeleton } from "@/components/arc/skeleton/skeleton"
+import { Button } from "@/components/arc/button/button"
+import { useAdminWorkspace } from "@/components/admin/AdminWorkspace"
+import styles from "./admin-workspace.module.css"
 
-const label: React.CSSProperties = {
-  display: "block",
-  fontSize: "0.65rem",
-  letterSpacing: "0.1em",
-  opacity: 0.4,
-  marginBottom: "0.35rem",
+const projectType = {
+  gatekeeper: "Gatekeeper",
+  onboarding: "Onboarding",
+  ticket_access: "Ticket access",
 }
-
-function btn(primary: boolean): React.CSSProperties {
-  return {
-    background: primary ? "rgba(255,255,255,0.08)" : "transparent",
-    border: primary
-      ? "1px solid rgba(255,255,255,0.45)"
-      : "1px solid rgba(255,255,255,0.15)",
-    color: primary ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.35)",
-    padding: "0.45rem 0.9rem",
-    cursor: "pointer",
-    fontSize: "0.72rem",
-    letterSpacing: "0.06em",
-    fontFamily: "inherit",
-    textDecoration: "none",
-    display: "inline-block",
-  }
+function dateLabel(iso: string) {
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime())
+    ? "Time unavailable"
+    : date.toLocaleString("en-GB", {
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: "Europe/London",
+      })
 }
-
-function Chip({ children }: { children: React.ReactNode }) {
-  return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "0.12rem 0.45rem",
-        fontSize: "0.62rem",
-        letterSpacing: "0.04em",
-        border: "1px solid rgba(255,255,255,0.12)",
-        borderRadius: "999px",
-        opacity: 0.65,
-        marginRight: "0.35rem",
-      }}
-    >
-      {children}
-    </span>
-  )
-}
-
-function statusColor(status: string): string {
-  if (status === "passed") return "#4ade80"
-  if (status === "redirected") return "#fb923c"
-  if (status === "rejected" || status === "failed") return "#f87171"
-  return "rgba(255,255,255,0.45)"
-}
-
-function relativeTime(iso: string): string {
-  const d = Date.now() - new Date(iso).getTime()
-  const m = Math.floor(d / 60000)
-  if (m < 1) return "just now"
-  if (m < 60) return `${m}m ago`
-  const h = Math.floor(m / 60)
-  if (h < 24) return `${h}h ago`
-  return `${Math.floor(h / 24)}d ago`
-}
-
-function StatCard({
-  title,
-  value,
-}: {
-  title: string
-  value: number | string
-}) {
-  return (
-    <div
-      style={{
-        flex: "1 1 8rem",
-        padding: "1rem 1.1rem",
-        border: "1px solid rgba(255,255,255,0.08)",
-        background: "rgba(255,255,255,0.02)",
-      }}
-    >
-      <div style={{ ...label, marginBottom: "0.5rem" }}>{title}</div>
-      <div style={{ fontSize: "1.5rem", fontWeight: 300, opacity: 0.9 }}>{value}</div>
-    </div>
-  )
-}
-
 export default function AdminDashboard() {
-  const [data, setData] = useState<AdminOverviewPayload | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [err, setErr] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    void fetch("/api/admin/overview")
-      .then(async (res) => {
-        if (!res.ok) throw new Error("Could not load overview")
-        const payload = await res.json() as AdminOverviewPayload
-        if (cancelled) return
-        setData(payload)
-        setLoading(false)
-      })
-      .catch(() => {
-        if (cancelled) return
-        setErr("Could not load overview")
-        setData(null)
-        setLoading(false)
-      })
-    return () => { cancelled = true }
-  }, [])
-
-  const canCreateAny =
-    data?.organisations.some((o) => o.canCreateProject) ?? false
-
-  const flatProjects =
+  const { data, loading, error, retry } = useAdminWorkspace()
+  const [query, setQuery] = useState("")
+  const [organisation, setOrganisation] = useState("all")
+  const allProjects =
     data?.organisations.flatMap((o) =>
       o.projects.map((p) => ({
         ...p,
         orgName: o.name,
-        orgSlug: o.slug,
         canEdit: o.canCreateProject,
       })),
     ) ?? []
-
+  const projects = allProjects.filter(
+    (p) =>
+      (organisation === "all" || organisation === p.organisationId) &&
+      `${p.name} ${p.slug} ${p.orgName} ${projectType[p.projectType]}`
+        .toLowerCase()
+        .includes(query.toLowerCase()),
+  )
+  const workspaceHref = (p: (typeof projects)[number]) =>
+    p.projectType === "ticket_access"
+      ? `/admin/ticket-access?project=${p.id}&org=${p.organisationId}`
+      : `/admin/organisations/${p.organisationId}?project=${p.id}`
   return (
-    <div style={{ padding: "2rem", fontFamily: "system-ui, sans-serif", maxWidth: "56rem" }}>
-      <header
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: "1.25rem",
-          marginBottom: "2rem",
-        }}
-      >
+    <main className={styles.page}>
+      <header className={styles.pageHeader}>
         <div>
-          <h1
-            style={{
-              fontSize: "0.75rem",
-              letterSpacing: "0.14em",
-              fontWeight: 400,
-              opacity: 0.45,
-              margin: "0 0 0.35rem",
-            }}
-          >
-            OVERVIEW
-          </h1>
-          <p style={{ fontSize: "0.85rem", opacity: 0.55, margin: 0 }}>
-            {data?.actor.email
-              ? `Signed in as ${data.actor.email}`
-              : "Groucho admin"}
-          </p>
+          <h1>Workspace overview</h1>
+          <p>Manage projects and review recent conversations.</p>
         </div>
-        <div style={{ display: "flex", gap: "0.65rem", flexWrap: "wrap" }}>
-          {canCreateAny && (
-            <Link href="/admin/projects/new" style={btn(true)}>
-              New project
-            </Link>
-          )}
-          <Link href="/admin/sessions?view=report" style={btn(false)}>
-            Reports
-          </Link>
-          <Link href="/admin/sessions" style={btn(false)}>
-            Live sessions
-          </Link>
-          <Link href="/admin/organisations" style={btn(false)}>
-            Organisations
-          </Link>
-          {data?.actor.isPlatform && (
-            <Link href="/admin/personas" style={btn(false)}>
-              Personas
-            </Link>
-          )}
-        </div>
+        <Link href="/admin/sessions?view=report">
+          Open reports{" "}
+          <ArrowUpRight size={16} aria-hidden="true" strokeWidth={1.75} />
+        </Link>
       </header>
-
-      {err && (
-        <p style={{ color: "#f87171", fontSize: "0.85rem", marginBottom: "1.5rem" }}>
-          {err}
-        </p>
+      {error && (
+        <section className={styles.error} role="alert">
+          <h2>We could not load your workspace</h2>
+          <p>{error}</p>
+          <Button variant="secondary" loading={loading} onClick={retry}>
+            Try again
+          </Button>
+        </section>
       )}
-
-      {loading && (
-        <p style={{ opacity: 0.35, fontSize: "0.85rem" }}>Loading overview…</p>
-      )}
-
-      {!loading && data && (
-        <>
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: "0.75rem",
-              marginBottom: "2rem",
-            }}
-          >
-            <StatCard title="ORGANISATIONS" value={data.stats.organisations} />
-            <StatCard title="PROJECTS" value={data.stats.projects} />
-            <StatCard title="ACTIVE SESSIONS" value={data.stats.activeSessions} />
-            <StatCard
-              title="SESSIONS TODAY"
-              value={data.stats.sessionsToday}
-            />
-            <StatCard
-              title="COMPLETED TODAY"
-              value={data.stats.completedSessionsToday}
-            />
+      {loading && !data && !error && (
+        <section aria-label="Loading workspace" aria-busy="true">
+          <div className={styles.metrics}>
+            {[0, 1, 2, 3].map((n) => (
+              <div className={styles.loading} key={n}>
+                <Skeleton label="Loading workspace totals" lines={3} />
+              </div>
+            ))}
           </div>
-
-          {data.organisations.length === 0 && (
-            <section
-              style={{
-                padding: "1.5rem",
-                border: "1px solid rgba(255,255,255,0.1)",
-                marginBottom: "2rem",
-              }}
-            >
-              <h2 style={{ ...label, fontSize: "0.8rem", opacity: 0.55 }}>
-                No organisations
-              </h2>
-              <p style={{ fontSize: "0.82rem", opacity: 0.45, lineHeight: 1.5 }}>
-                {data.actor.isPlatform ? (
-                  <>
-                    Create an organisation from{" "}
-                    <Link
-                      href="/admin/organisations"
-                      style={{ color: "rgba(255,255,255,0.7)" }}
-                    >
-                      Organisations
-                    </Link>
-                    .
-                  </>
-                ) : (
-                  <>
-                    You are not a member of any organisation yet. Accept an invite
-                    or{" "}
-                    <Link
-                      href="/signup/organisation"
-                      style={{ color: "rgba(255,255,255,0.7)" }}
-                    >
-                      create one
-                    </Link>
-                    .
-                  </>
-                )}
-              </p>
-            </section>
-          )}
-
-          {data.organisations.length > 0 && flatProjects.length === 0 && (
-            <section
-              style={{
-                padding: "1.5rem",
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(255,255,255,0.03)",
-                marginBottom: "2rem",
-              }}
-            >
-              <h2 style={{ ...label, fontSize: "0.8rem", opacity: 0.55 }}>
-                Create your first project
-              </h2>
-              <p
-                style={{
-                  fontSize: "0.82rem",
-                  opacity: 0.45,
-                  marginBottom: "1rem",
-                  lineHeight: 1.5,
-                }}
-              >
-                Projects power gatekeeper and onboarding conversations. Use the
-                guided wizard to configure flow type, persona, and integration
-                settings.
-              </p>
-              {canCreateAny && (
-                <Link href="/admin/projects/new" style={btn(true)}>
-                  New project
-                </Link>
-              )}
-            </section>
-          )}
-
-          {flatProjects.length > 0 && (
-            <section style={{ marginBottom: "2.5rem" }}>
-              <h2 style={{ ...label, marginBottom: "0.75rem" }}>PROJECTS</h2>
-              <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                {flatProjects.map((p) => (
-                  <li
-                    key={p.id}
-                    style={{
-                      padding: "0.85rem 0",
-                      borderBottom: "1px solid rgba(255,255,255,0.06)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        flexWrap: "wrap",
-                        alignItems: "center",
-                        gap: "0.5rem",
-                      }}
-                    >
-                      <span style={{ fontSize: "0.9rem", opacity: 0.9 }}>
-                        {p.name}
-                      </span>
-                      <span
-                        style={{
-                          fontFamily: "monospace",
-                          fontSize: "0.68rem",
-                          opacity: 0.35,
-                        }}
-                      >
-                        {p.slug}
-                      </span>
-                      <span style={{ fontSize: "0.72rem", opacity: 0.4 }}>
-                        {p.orgName}
-                      </span>
-                    </div>
-                    <div style={{ marginTop: "0.45rem" }}>
-                      <Chip>{p.projectType}</Chip>
-                      {p.environment && <Chip>{p.environment}</Chip>}
-                      {p.sessionMode && <Chip>{p.sessionMode}</Chip>}
-                      {p.activeSessions > 0 && (
-                        <Chip>{p.activeSessions} active</Chip>
-                      )}
-                    </div>
-                    <div
-                      style={{
-                        marginTop: "0.65rem",
-                        display: "flex",
-                        gap: "0.5rem",
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <Link
-                        href={`/admin/organisations/${p.organisationId}?project=${p.id}`}
-                        style={{ ...btn(false), fontSize: "0.62rem" }}
-                      >
-                        Open org
-                      </Link>
-                      {p.canEdit && (
-                        <Link
-                          href={`/admin/organisations/${p.organisationId}/projects/${p.id}/edit`}
-                          style={{ ...btn(false), fontSize: "0.62rem" }}
-                        >
-                          Edit project
-                        </Link>
-                      )}
-                      <Link
-                        href={`/admin/sessions?project=${p.id}`}
-                        style={{ ...btn(false), fontSize: "0.62rem" }}
-                      >
-                        Sessions & reports
-                      </Link>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          <section>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "baseline",
-                justifyContent: "space-between",
-                marginBottom: "0.75rem",
-              }}
-            >
-              <h2 style={{ ...label, marginBottom: 0 }}>RECENT ACTIVITY</h2>
-              <Link
-                href="/admin/sessions"
-                style={{
-                  fontSize: "0.65rem",
-                  opacity: 0.4,
-                  color: "#fff",
-                  textDecoration: "none",
-                }}
-              >
-                View all →
+          <div className={styles.loading}>
+            <Skeleton label="Loading projects" lines={6} />
+          </div>
+        </section>
+      )}
+      {data && (
+        <>
+          <section className={styles.metrics} aria-label="Workspace totals">
+            <MetricCard
+              label="Projects"
+              value={data.stats.projects}
+              context={`${data.stats.organisations} organisations`}
+            />
+            <MetricCard
+              label="Active sessions"
+              value={data.stats.activeSessions}
+              context="Conversations in progress"
+            />
+            <MetricCard
+              label="Sessions today"
+              value={data.stats.sessionsToday}
+              context="Started since midnight"
+            />
+            <MetricCard
+              label="Completed today"
+              value={data.stats.completedSessionsToday}
+              context="Conversation completions"
+            />
+          </section>
+          <section
+            className={styles.projectSection}
+            aria-labelledby="projects-heading"
+          >
+            <div className={styles.sectionHeader}>
+              <div>
+                <h2 id="projects-heading">Projects</h2>
+                <Badge tone="neutral" size="sm">
+                  {allProjects.length}
+                </Badge>
+              </div>
+              <Link href="/admin/organisations" className={styles.textLink}>
+                Manage organisations{" "}
+                <ArrowUpRight size={16} aria-hidden="true" strokeWidth={1.75} />
               </Link>
             </div>
-            {data.recentSessions.length === 0 ? (
-              <p style={{ opacity: 0.35, fontSize: "0.8rem" }}>
-                No sessions yet.
-              </p>
+            {allProjects.length ? (
+              <>
+                <div className={styles.filters}>
+                  <SearchField
+                    label="Search projects"
+                    placeholder="Project, organisation or type"
+                    value={query}
+                    onValueChange={setQuery}
+                  />
+                  <label>
+                    Organisation
+                    <select
+                      value={organisation}
+                      onChange={(e) => setOrganisation(e.target.value)}
+                    >
+                      <option value="all">All organisations</option>
+                      {data.organisations.map((o) => (
+                        <option value={o.id} key={o.id}>
+                          {o.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <SortableDataTable
+                  rows={projects}
+                  rowKey="id"
+                  caption="Workspace projects"
+                  emptyMessage="No projects match. Clear your search or choose another organisation."
+                  defaultSort={{ key: "name", direction: "asc" }}
+                  itemName={{ one: "project", other: "projects" }}
+                  columns={[
+                    {
+                      key: "name",
+                      label: "Project",
+                      render: (_, p) => (
+                        <div className={styles.cell}>
+                          <Link
+                            className={styles.projectName}
+                            href={workspaceHref(p)}
+                          >
+                            {p.name}
+                            <ArrowUpRight
+                              size={14}
+                              aria-hidden="true"
+                              strokeWidth={1.75}
+                            />
+                          </Link>
+                          <small>{p.slug}</small>
+                        </div>
+                      ),
+                    },
+                    { key: "orgName", label: "Organisation" },
+                    {
+                      key: "projectType",
+                      label: "Type",
+                      render: (_, p) => (
+                        <Badge tone="neutral" size="sm">
+                          {projectType[p.projectType]}
+                        </Badge>
+                      ),
+                    },
+                    {
+                      key: "environment",
+                      label: "Environment",
+                      render: (_, p) => (
+                        <Badge tone="neutral" size="sm">
+                          {p.projectType === "ticket_access"
+                            ? "Simulation"
+                            : p.environment === "live"
+                            ? "Live"
+                            : p.environment === "test"
+                            ? "Test"
+                            : "Not set"}
+                        </Badge>
+                      ),
+                    },
+                    {
+                      key: "activeSessions",
+                      label: "Active",
+                      numeric: true,
+                      render: (_, p) =>
+                        p.projectType === "ticket_access" ? (
+                          <span className={styles.muted}>Demo only</span>
+                        ) : (
+                          p.activeSessions
+                        ),
+                    },
+                    {
+                      key: "actions",
+                      label: "Actions",
+                      sortable: false,
+                      render: (_, p) => (
+                        <div className={styles.tableActions}>
+                          <Link
+                            href={workspaceHref(p)}
+                            aria-label={`Open ${p.name}`}
+                          >
+                            Open
+                          </Link>
+                          {p.canEdit && (
+                            <Link
+                              href={`/admin/organisations/${p.organisationId}/projects/${p.id}/edit`}
+                              aria-label={`Configure ${p.name}`}
+                            >
+                              Configure
+                            </Link>
+                          )}
+                        </div>
+                      ),
+                    },
+                  ]}
+                />
+              </>
             ) : (
-              <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                {data.recentSessions.map((s) => (
-                  <li
-                    key={s.id}
-                    style={{
-                      padding: "0.65rem 0",
-                      borderBottom: "1px solid rgba(255,255,255,0.06)",
-                      display: "flex",
-                      flexWrap: "wrap",
-                      alignItems: "center",
-                      gap: "0.75rem",
-                      fontSize: "0.78rem",
-                    }}
+              <div className={styles.empty}>
+                <h2>
+                  {data.organisations.length
+                    ? "Build your first project"
+                    : "Your workspace starts with an organisation"}
+                </h2>
+                <p>
+                  {data.organisations.length
+                    ? "Create a conversation experience or a synthetic ticket-access pilot."
+                    : "Create an organisation or accept an invitation to get started."}
+                </p>
+                {data.organisations.some((o) => o.canCreateProject) ? (
+                  <Link
+                    className={styles.secondaryLink}
+                    href="/admin/projects/new"
                   >
-                    <span
-                      style={{
-                        fontFamily: "monospace",
-                        opacity: 0.45,
-                        minWidth: "7rem",
-                      }}
-                    >
-                      {s.clientSessionKey.slice(0, 10)}…
-                    </span>
-                    <span style={{ color: statusColor(s.status) }}>
-                      {s.status}
-                    </span>
-                    <span style={{ opacity: 0.55 }}>
-                      {s.projectName}
-                      <span style={{ opacity: 0.35 }}> · {s.orgName}</span>
-                    </span>
-                    <span style={{ opacity: 0.3, marginLeft: "auto" }}>
-                      {relativeTime(s.updatedAt)}
-                    </span>
-                    <Link
-                      href={`/admin/organisations/${s.orgId}?project=${s.projectId}&session=${s.id}`}
-                      style={{
-                        fontSize: "0.62rem",
-                        opacity: 0.45,
-                        color: "#fff",
-                        textDecoration: "none",
-                      }}
-                    >
-                      Transcript
-                    </Link>
-                    {["passed", "redirected", "rejected"].includes(s.status) ? (
+                    Create a project
+                  </Link>
+                ) : (
+                  <Link
+                    className={styles.secondaryLink}
+                    href={
+                      data.actor.isPlatform
+                        ? "/admin/organisations"
+                        : "/signup/organisation"
+                    }
+                  >
+                    {data.actor.isPlatform
+                      ? "Manage organisations"
+                      : "Create an organisation"}
+                  </Link>
+                )}
+              </div>
+            )}
+          </section>
+          <section className={styles.pilot} aria-labelledby="pilot-heading">
+            <Tickets size={24} strokeWidth={1.75} aria-hidden="true" />
+            <div>
+              <h2 id="pilot-heading">Ticket access pilot</h2>
+              <p>
+                Explore the ticket-access pilot with synthetic registrations,
+                evidence review and a cohort lottery.
+              </p>
+            </div>
+            <Link href="/admin/ticket-access" className={styles.secondaryLink}>
+              Explore the demo{" "}
+              <ArrowRight size={16} aria-hidden="true" strokeWidth={1.75} />
+            </Link>
+          </section>
+          <section
+            className={styles.activity}
+            aria-labelledby="activity-heading"
+          >
+            <div className={styles.sectionHeader}>
+              <div>
+                <h2 id="activity-heading">Recent conversations</h2>
+              </div>
+              <Link href="/admin/sessions">
+                View all{" "}
+                <ArrowRight size={16} aria-hidden="true" strokeWidth={1.75} />
+              </Link>
+            </div>
+            <p className={styles.muted}>
+              Conversation outcomes are advisory. Recorded approval decisions
+              are available in each project’s review.
+            </p>
+            {data.recentSessions.length ? (
+              <ul className={styles.activityList}>
+                {data.recentSessions.map((s) => (
+                  <li key={s.id}>
+                    <div>
                       <Link
-                        href={`/admin/sessions?project=${s.projectId}&session=${s.id}&view=report`}
-                        style={{ ...btn(false), minHeight: "2.5rem", display: "inline-flex", alignItems: "center" }}
+                        href={`/admin/organisations/${s.orgId}?project=${s.projectId}&session=${s.id}`}
                       >
-                        View report
+                        {s.projectName}
                       </Link>
-                    ) : null}
+                      <p>
+                        {s.orgName} · {s.clientSessionKey.slice(0, 12)}
+                      </p>
+                    </div>
+                    <Badge tone="neutral" size="sm">
+                      {s.status === "active"
+                        ? "In progress"
+                        : s.status === "passed"
+                        ? "Passed · advisory"
+                        : s.status === "rejected"
+                        ? "Rejected · advisory"
+                        : s.status === "redirected"
+                        ? "Redirected · advisory"
+                        : s.status}
+                    </Badge>
+                    <time dateTime={s.updatedAt}>{dateLabel(s.updatedAt)}</time>
+                    <Link
+                      href={`/admin/sessions?project=${s.projectId}&session=${s.id}&view=report`}
+                      className={styles.textLink}
+                      aria-label={`Review conversation ${s.clientSessionKey}`}
+                    >
+                      Review{" "}
+                      <ArrowUpRight
+                        size={14}
+                        aria-hidden="true"
+                        strokeWidth={1.75}
+                      />
+                    </Link>
                   </li>
                 ))}
               </ul>
+            ) : (
+              <div className={styles.empty}>
+                <h2>No conversations yet</h2>
+                <p>
+                  When people engage with a project, their latest conversations
+                  will appear here.
+                </p>
+                <Link className={styles.secondaryLink} href="/admin/sessions">
+                  Open sessions
+                </Link>
+              </div>
             )}
           </section>
         </>
       )}
-    </div>
+    </main>
   )
 }

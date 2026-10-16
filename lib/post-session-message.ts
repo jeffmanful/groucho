@@ -229,11 +229,12 @@ async function colorsForumV1ConversationIsSufficient(input: {
       }),
     }],
   })
-  logLlmUsage({
+  await logLlmUsage({
     operation: "colors_forum_v1_sufficiency_review",
     provider: "anthropic",
     model,
     usage: response.usage,
+    providerResponseId: response.id,
     requestId: input.requestId,
     organisationId: input.organisationId,
     projectId: input.projectId,
@@ -276,11 +277,12 @@ async function classifyColorsForumMediaRequest(input: {
     },
     messages: [{ role: "user", content: input.answer }],
   })
-  logLlmUsage({
+  await logLlmUsage({
     operation: "colors_forum_v1_media_request",
     provider: "anthropic",
     model,
     usage: response.usage,
+    providerResponseId: response.id,
     requestId: input.requestId,
     organisationId: input.organisationId,
     projectId: input.projectId,
@@ -351,11 +353,12 @@ async function findPriorApplicationEvidence(input: {
       }),
     }],
   })
-  logLlmUsage({
+  await logLlmUsage({
     operation: "gatekeeper_prior_signal_audit",
     provider: "anthropic",
     model,
     usage: response.usage,
+    providerResponseId: response.id,
     requestId: input.requestId,
     organisationId: input.organisationId,
     projectId: input.projectId,
@@ -435,11 +438,12 @@ async function recommendationQuestionMatchesGoal(input: {
       content: JSON.stringify({ reply: input.reply, goal: input.goal }),
     }],
   })
-  logLlmUsage({
+  await logLlmUsage({
     operation: "gatekeeper_recommendation_question_alignment",
     provider: "anthropic",
     model,
     usage: response.usage,
+    providerResponseId: response.id,
     requestId: input.requestId,
     organisationId: input.organisationId,
     projectId: input.projectId,
@@ -491,11 +495,12 @@ async function repairApplicationInvitationFromContext(input: {
       }),
     }],
   })
-  logLlmUsage({
+  await logLlmUsage({
     operation: "gatekeeper_invitation_repair",
     provider: "anthropic",
     model,
     usage: response.usage,
+    providerResponseId: response.id,
     requestId: input.requestId,
     organisationId: input.organisationId,
     projectId: input.projectId,
@@ -818,6 +823,8 @@ export async function postSessionMessage(
       },
     )
   }
+
+  if (settings.projectType === "ticket_access") return traceJson(input, { error: "Ticket access is simulation-only. Open the admin ticket workspace." }, { status: 409 })
 
   if (settings.projectType === "onboarding") {
     return postOnboardingMessage({
@@ -1282,11 +1289,12 @@ export async function postSessionMessage(
         tools: [gatekeeperResponseTool],
         tool_choice: { type: "tool", name: gatekeeperResponseTool.name },
       }))
-      logLlmUsage({
+      await logLlmUsage({
         operation: "gatekeeper_turn",
         provider: "anthropic",
         model,
         usage: response.usage,
+        providerResponseId: response.id,
         requestId: input.requestId,
         organisationId,
         projectId,
@@ -2053,11 +2061,12 @@ export async function postSessionMessage(
             }],
           }),
         )
-        logLlmUsage({
+        await logLlmUsage({
           operation: "gatekeeper_clarification_repair",
           provider: "anthropic",
           model,
           usage: repairResponse.usage,
+          providerResponseId: repairResponse.id,
           requestId: input.requestId,
           organisationId,
           projectId,
@@ -2172,11 +2181,12 @@ export async function postSessionMessage(
             }],
           }),
         )
-        logLlmUsage({
+        await logLlmUsage({
           operation: "gatekeeper_repeated_question_repair",
           provider: "anthropic",
           model,
           usage: repairResponse.usage,
+          providerResponseId: repairResponse.id,
           requestId: input.requestId,
           organisationId,
           projectId,
@@ -2373,11 +2383,12 @@ export async function postSessionMessage(
             }],
           }),
         )
-        logLlmUsage({
+        await logLlmUsage({
           operation: "gatekeeper_topic_change_repair",
           provider: "anthropic",
           model,
           usage: response.usage,
+          providerResponseId: response.id,
           requestId: input.requestId,
           organisationId,
           projectId,
@@ -2492,11 +2503,12 @@ export async function postSessionMessage(
           }],
         }),
       )
-      logLlmUsage({
+      await logLlmUsage({
         operation: "gatekeeper_rich_interaction_planner",
         provider: "anthropic",
         model,
         usage: response.usage,
+        providerResponseId: response.id,
         requestId: input.requestId,
         organisationId,
         projectId,

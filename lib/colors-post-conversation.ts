@@ -169,11 +169,12 @@ export async function auditColorsConversationIntegrity(input: {
       content: message.content,
     }))) }],
   })
-  logLlmUsage({
+  await logLlmUsage({
     operation: "colors_post_conversation_integrity",
     provider: "anthropic",
     model,
     usage: response.usage,
+    providerResponseId: response.id,
     requestId: input.requestId,
     organisationId: input.organisationId,
     projectId: input.projectId,

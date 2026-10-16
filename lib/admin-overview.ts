@@ -12,7 +12,7 @@ export type OverviewProject = {
   name: string
   slug: string
   organisationId: string
-  projectType: "gatekeeper" | "onboarding"
+  projectType: "gatekeeper" | "onboarding" | "ticket_access"
   environment: "test" | "live" | null
   sessionMode: "live" | "dry-run" | null
   activeSessions: number

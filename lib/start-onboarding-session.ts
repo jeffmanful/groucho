@@ -59,6 +59,9 @@ export async function startOnboardingSession(
     applicantIdentity,
     allowMissingApplicantIdentity,
   } = input
+  if (projectSettings.projectType === "ticket_access") {
+    return traceJson(input, { error: "Ticket access is simulation-only. Open the admin ticket workspace." }, { status: 409 })
+  }
   const { organisationId, projectId, apiKeyId } = context
   const flow = resolveRuntimeFlowConfig(projectSettings)
 

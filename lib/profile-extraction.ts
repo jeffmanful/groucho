@@ -354,11 +354,12 @@ export async function extractProfile(opts: ExtractProfileOpts): Promise<Profile>
         },
       ],
     })
-    logLlmUsage({
+    await logLlmUsage({
       operation: "profile_extraction",
       provider: "anthropic",
       model,
       usage: response.usage,
+      providerResponseId: response.id,
       requestId: opts.requestId,
       organisationId: opts.organisationId,
       projectId: opts.projectId,
