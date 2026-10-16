@@ -30,3 +30,5 @@
 | [roadmap-github-issues.md](./roadmap-github-issues.md) | Phased issues for GitHub or Linear |
 
 Product prompts live under [../prompts/](../prompts/).
+
+- [Dashboard admin access](admin-access.md) — Invitations, acceptance, revocation and platform permissions.

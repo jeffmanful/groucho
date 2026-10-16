@@ -5,7 +5,13 @@ import Link from "next/link"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 
-export default function LoginForm({ initialError }: { initialError: string }) {
+export default function LoginForm({
+  initialError,
+  nextPath,
+}: {
+  initialError: string
+  nextPath: string
+}) {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState(initialError)
@@ -26,9 +32,13 @@ export default function LoginForm({ initialError }: { initialError: string }) {
 
       if (res.ok) {
         const data = await res.json().catch(() => ({}))
-        const requestedPath = new URLSearchParams(window.location.search).get("next")
+        const requestedPath = new URLSearchParams(window.location.search).get(
+          "next",
+        )
         const safePath = safeAuthPath(requestedPath)
-        router.push(data.role === "colors_demo_tester" ? "/demo/colors" : safePath)
+        router.push(
+          data.role === "colors_demo_tester" ? "/demo/colors" : safePath,
+        )
         router.refresh()
       } else {
         setError("Email or password was not recognised.")
@@ -53,10 +63,15 @@ export default function LoginForm({ initialError }: { initialError: string }) {
         >
           GROUCHO
         </div>
-        <a href="/api/auth/google?next=/admin" className="block w-full rounded-lg border border-white/30 px-4 py-3 text-center text-white hover:bg-white/10 mb-6">
+        <a
+          href={`/api/auth/google?next=${encodeURIComponent(nextPath)}`}
+          className="block w-full rounded-lg border border-white/30 px-4 py-3 text-center text-white hover:bg-white/10 mb-6"
+        >
           Continue with Google
         </a>
-        <p className="text-sm opacity-60 mb-6">Or sign in with your email and password.</p>
+        <p className="text-sm opacity-60 mb-6">
+          Or sign in with your email and password.
+        </p>
         <form onSubmit={handleSubmit} className="flex flex-col gap-[1.5rem]">
           <input
             type="email"
@@ -82,7 +97,9 @@ export default function LoginForm({ initialError }: { initialError: string }) {
             className="w-full font-inherit text-white text-md py-[0.5rem] outline-none border-b border-b-white/40 focus:border-b-white/60 bg-transparent disabled:opacity-30"
           />
           {error && (
-            <div role="alert" style={{ fontSize: "0.85rem", opacity: 0.8 }}>{error}</div>
+            <div role="alert" style={{ fontSize: "0.85rem", opacity: 0.8 }}>
+              {error}
+            </div>
           )}
           <button
             type="submit"
@@ -93,16 +110,25 @@ export default function LoginForm({ initialError }: { initialError: string }) {
           </button>
         </form>
         <p className="mt-8 text-center text-sm opacity-40 space-y-2 flex flex-col">
-          <Link href="/signup/organisation" className="text-white/50 hover:text-white/70 underline-offset-4 hover:underline">
+          <Link
+            href="/signup/organisation"
+            className="text-white/50 hover:text-white/70 underline-offset-4 hover:underline"
+          >
             Create an organisation (email code, no invite)
           </Link>
           <span className="text-white/35 text-xs">
             Organisation members: complete the email code on your invite or{" "}
-            <Link href="/signup/organisation" className="text-white/45 hover:text-white/65">
+            <Link
+              href="/signup/organisation"
+              className="text-white/45 hover:text-white/65"
+            >
               /signup/organisation
             </Link>
             , then open{" "}
-            <Link href="/admin/organisations" className="text-white/45 hover:text-white/65">
+            <Link
+              href="/admin/organisations"
+              className="text-white/45 hover:text-white/65"
+            >
               /admin/organisations
             </Link>
             .

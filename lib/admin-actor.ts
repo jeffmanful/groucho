@@ -1,3 +1,7 @@
+import {
+  hasManagedPlatformAccess,
+  legacyPlatformEnabled,
+} from "@/lib/platform-admin-access"
 import { cookies } from "next/headers"
 import { verifyPeAuthEmail, isAllowedPlatformEmail } from "@/lib/pe-auth"
 import {
@@ -19,7 +23,11 @@ export async function resolveAdminActor(): Promise<AdminActor | null> {
   const secret = process.env.AUTH_SECRET
   if (token && secret) {
     const email = await verifyPeAuthEmail(token, secret)
-    if (email && isAllowedPlatformEmail(email)) {
+    if (
+      email &&
+      isAllowedPlatformEmail(email) &&
+      (await legacyPlatformEnabled(email))
+    ) {
       return { kind: "platform", email }
     }
   }
@@ -33,7 +41,18 @@ export async function resolveAdminActor(): Promise<AdminActor | null> {
     data: { user },
   } = await supabase.auth.getUser()
   if (user?.id) {
-    if (user.email && user.email_confirmed_at && user.app_metadata?.groucho_role === "platform_admin") {
+    if (
+      user.email &&
+      user.email_confirmed_at &&
+      user.app_metadata?.groucho_role === "platform_admin"
+    ) {
+      return { kind: "platform", email: user.email }
+    }
+    if (
+      user.email &&
+      user.email_confirmed_at &&
+      (await hasManagedPlatformAccess(user.id, user.email))
+    ) {
       return { kind: "platform", email: user.email }
     }
     return { kind: "member", userId: user.id, email: user.email ?? null }
