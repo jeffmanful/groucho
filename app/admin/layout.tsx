@@ -128,6 +128,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               Personas
             </Link>
           ) : null}
+          {sessionKind === "platform" && <Link href="/admin/access" style={navLinkStyle(pathname.startsWith("/admin/access"))}>Admin access</Link>}
           {canCreateProject && (
             <Link
               href="/admin/projects/new"

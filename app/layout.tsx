@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import "./globals.css"
+import "@/components/arc/foundation.css"
 
 export const metadata: Metadata = {
   title: "Groucho Demo",
@@ -12,7 +13,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" data-theme="dark" data-accent="neutral">
       <body>{children}</body>
     </html>
   )
