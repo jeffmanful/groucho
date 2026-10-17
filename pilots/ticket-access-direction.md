@@ -26,24 +26,55 @@ The product connects four stages:
 Groucho's value is the coherent workflow. Email checks, Instagram and World ID are
 potential evidence adapters within it, rather than the entire product.
 
-## What the founders' discussion establishes
+## What the further founders' discussion establishes
 
-The supplied Postern export records Dan asking for a demo instance he can operate,
-Jeff proposing combined checks and cohort lotteries in a sensible dashboard, and
-Jacob supporting a short prototype sprint and a clear business/fan proposition.
+The Postern chat exported on 16 October at 23:31 adds an explicit product debate,
+not just enthusiasm for an anti-bot concept:
 
-The screenshots show a warm request for feedback to Fi and willingness to meet.
-Her supplied LinkedIn screenshot describes her as Director of Touring at AEG
-Presents. Next Friday was proposed, but she needed to resolve a scheduling conflict.
-Plan for **Friday 23 October 2026, Europe/London**, with time and attendance still
-to be confirmed. No AEG endorsement, pilot agreement or artist commitment exists
-in the supplied material. The Ezra Collective website screenshot is context, not
-evidence of an artist-specific pilot.
+- **Jeff:** separate the decision layer from access controls; combine evidence,
+  cohort actions and ballots. Legitimate assistive automation should not itself
+  disqualify applicants. Early paid bespoke work can create useful case studies.
+- **Dan:** validate acute customer value and implementation/support cost; avoid
+  becoming primarily an identity-provider integrator or taking on payment and
+  legacy infrastructure by default. He agrees with bounded bespoke early work
+  and offers a semi-structured discovery interview followed by an Ezra Collective
+  interactive demo. He supports diversified friction rather than one check.
+- **Jacob:** articulate benefit to fans and businesses together. His specific
+  enthusiasm for the synthetic cluster view is a promising presentation signal,
+  not evidence of real-world detection accuracy or customer demand.
 
-The founders' ambition to benefit fans, artists, venues and promoters is a product
-hypothesis. Discovery must establish the operational benefit, who pays and who
-controls the required ticketing integrations. The mention of Departmnt's screening
-layer is a discovery lead, not a verified competitor capability comparison.
+The shared direction is an intelligence and operator-control workflow, with
+identity checks as optional inputs. Ticketing remains a commercial hypothesis;
+consumer goods and other scarce-access contexts remain possible. Claims that
+particular ticketing companies do not care about scalping are founder opinions,
+not established market evidence.
+
+Fi's warm response establishes a discovery opportunity, not an AEG or artist
+commitment. Plan for **Friday 23 October 2026, Europe/London**, with logistics still
+to confirm. Ezra Collective is now the founders' chosen illustrative demo scenario;
+there is no evidence of artist permission, partnership or real event inventory.
+The source is the supplied WhatsApp export; linked external material was not
+independently verified for this synthesis.
+
+## Positioning and sequencing
+
+Lead with **investigate suspicious clusters → review applicants → allocate fairly**.
+Do not sell an LLM detector. Fast answers, polished prose, slang or purported text
+watermarks are not sufficient grounds for an adverse decision. Surface contextual
+facts for review, preserve alternative routes and distinguish abuse from assistance.
+
+**Now:** an operator-led synthetic Ezra Collective demonstration and problem
+interview. **Next:** one bounded, potentially paid workflow with permissioned data,
+a named owner, a baseline and a manageable export/handoff. **Later:** integrate
+identity providers, inventory, communications or resale controls only where value
+and implementation economics justify them. World ID is not a prerequisite.
+
+The decision layer covers evidence, clusters, review and cohort eligibility. The
+access layer covers what happens to the cohort: ballots, invitations and ultimately
+partner-controlled entitlements. A demo can show the first allocation action
+without claiming production control of ticket checkout. Bespoke delivery should
+have a scope, price/support model and explicit reusable versus customer-specific
+parts; avoid a universal SaaS commitment before learning from pilots.
 
 ## Product boundaries
 

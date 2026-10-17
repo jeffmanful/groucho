@@ -49,6 +49,20 @@ export default async function DemosPage({
           </Link>
         </article>
         <article className={styles.card}>
+          <h2>Fair product drops</h2>
+          <p>
+            Register for an illustrative Vans drop, review suspicious clusters,
+            and run a ballot by shoe size.
+          </p>
+          <small>
+            Synthetic inventory, verification and reserved purchase windows. No
+            brand affiliation or payments.
+          </small>
+          <Link className={styles.button} href="/demos/consumer-drop">
+            Open drop demo
+          </Link>
+        </article>
+        <article className={styles.card}>
           <h2>COLORS Forum</h2>
           <p>
             Try the conversation-led application experience for the COLORS

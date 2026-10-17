@@ -3,9 +3,22 @@
 Implemented 16 October 2026 as the first simulation slice of the
 [demo plan](./fi-demo-2026-10-23.md).
 
+## Current scope and next presentation task
+
+The 16 October follow-up discussion changes the presentation priority to
+**suspicious clusters → applicant review → fair ballot**, using an illustrative
+Ezra Collective scenario. The current seed still says “Example Artist · intimate
+show”; Ezra framing is planned, not yet implemented. Keep 24 synthetic entries,
+six purchase opportunities and the existing fixture cases. No artist-approved
+inventory or relationship is implied. Follow the revised [meeting plan](./fi-demo-2026-10-23.md).
+
 ## Open it
 
-- Sign in with an existing platform or organisation-member account.
+- The main entrance defaults to admin sign-in. Sign in with an existing platform
+  or organisation-member account for the admin workspace.
+- **Access public demos** opens `/demos`, which requires a separate demo tester
+  login. Its chooser opens `/demos/ticket-access` or the existing COLORS demo.
+  Admin login does not bypass demo login; demo login does not grant admin access.
 - Choose **Ticket access demo** in the admin navigation for the standalone sandbox.
 - To save a project identity, use **New project**, choose an organisation, enter
   the project name/slug and select **Ticket access (synthetic demo)**. Continue
@@ -30,13 +43,20 @@ accounts are provisioned by this work.
    Alex Morgan becomes eligible when the conflict is resolved.
 4. Clear Remy Cole's weak flag with a reason. Filtering alone never excludes
    anyone. Confirming eligibility cannot override incomplete checks or shared IDs.
-5. In Event setup, change the welcome; save and show it in Fan preview.
-6. Register a fictional listener, simulate email and either account-control route,
+5. Optional after the core operator walkthrough: in Event setup, change the welcome; save and show it in Fan preview.
+6. Optional fan journey: register a fictional listener, simulate email and either account-control route,
    optionally answer the two scripted prompts, and return to their dashboard card.
 7. Preview Allocation, inspect exclusions, freeze the cohort and draw. Six distinct
    eligible registrations receive simulated purchase opportunities; the remainder
    appear on a ranked waitlist. The draw cannot run twice.
 8. Reset explicitly to begin a fresh run.
+
+For Friday, present steps 1–4 followed by 7–8. Keep fan registration/configuration
+as optional supporting screens. Inspect what the cluster actually shows; do not
+invent submission timings or other telemetry. A held cluster is unresolved risk,
+not a finding that its members are bots. Explain the equal-chance policy and the
+exclusions before freezing. The result is a simulated opportunity and waitlist,
+with an export/partner handoff to validate with Fi, not an implemented checkout.
 
 ## Deliberate limits
 
@@ -68,7 +88,8 @@ reset, configuration changes, filtering and the mobile layout. The project wizar
 was checked through the dedicated setup screen; no project was saved during the
 browser rehearsal.
 
-The wider suite reported two failures in cultural-signal extraction caused by a
-`log.warn` mock mismatch in the pre-existing LLM-usage work. Existing effect lint
-errors remain in the admin layout and project wizard/edit pages; the new demo
-files pass lint. This record does not claim those unrelated failures were fixed.
+The subsequent main-branch merge on 16 October passed all 478 tests and a
+production build. It updated the obsolete root-routing test and the `log.warn`
+mock. Those checks validate the merged code, not an Ezra-specific browser rehearsal
+or production anti-abuse efficacy. Existing effect lint findings noted in the
+initial implementation were not addressed by these documentation updates.
