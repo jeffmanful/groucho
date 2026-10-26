@@ -28,7 +28,7 @@ The current thin pilot reconciles six post-conversation membership lenses:
 joining motivation, COLORS connection, music relationship, community
 participation, intended Forum participation, and optional TONES connection.
 Unasked lenses stay unverified; lack of TONES familiarity or attendance cannot
-create a material gap. Reports use `colors_forum_membership_report_v1`; older
+create a material gap. Reports use `colors_forum_membership_report_v7`; older
 thin reports are marked outdated and can be regenerated without another
 conversation. The legacy five-lens rubric remains on older sessions.
 Profile risk flags are limited to source-linked concerns from the post-conversation
@@ -37,6 +37,14 @@ The pilot report uses `claude-sonnet-5-5` by default, with
 `GROUCHO_COLORS_THIN_REVIEWER_MODEL` as an override. Legacy reports keep their
 existing model selection. The profile and report must both succeed before the
 report is marked ready.
+
+## Stopping, retries and evidence limits
+
+The conversation tool records whether an answer adds relevant new context. After at least three answers, two consecutive answers with no new context end the settled exchange neutrally; a genuine applicant question or concrete boundary is handled first, and a new detail resets this guard. This is a pacing control, not an applicant score or a minimum interview length. Existing emergency limits still bound longer exchanges.
+
+Rhetorical tags and declarative clauses such as “you know?” and “When there is less arrangement…” do not count as direct questions. Active-reply repairs have two bounded attempts with corrective feedback. A settled ordinary reply may repair into a natural close. Optional closing-acknowledgment failures fall back to a neutral close; genuine-question repair exhaustion remains explicitly retryable and persists no answer or session close. No client-side retry is needed for a successful internal repair.
+
+Evidence reconciliation now receives preceding questions as context for elliptical applicant answers. Only applicant quotes can supply evidence. Reports expose `evidence_limits` for neutral unknowns separately from source-linked decision gaps in `weak_or_missing_signals`. Both review screens show this distinction before expanding the full assessment. Empty reviewer questions mean there is no decision-relevant follow-up, not that every subject is known. Profile engagement describes stated participation rather than response count; extraction confidence is distinct from suitability.
 
 ## Activation order
 

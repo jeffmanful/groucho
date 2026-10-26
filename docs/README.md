@@ -8,6 +8,7 @@ Proposed experiments live in [../pilots/](../pilots/README.md), including
 | [artist-forum-application.md](./artist-forum-application.md) | Shared community/artist intake, conversation modes, SDK adoption and deployment gates |
 | [shared-intake-replay-review-2026-10-26.md](./shared-intake-replay-review-2026-10-26.md) | Historical mixed-engine diagnostics; not a comparable evaluation of the two flows |
 | [paired-new-engine-review-2026-10-26.md](./paired-new-engine-review-2026-10-26.md) | Matched applicant runs through community and artist entries using the same newer engine and assessment pipeline |
+| [stopping-retry-evidence-review-2026-10-26.md](./stopping-retry-evidence-review-2026-10-26.md) | Local stopping/retry fixes, explicit neutral unknowns and verified matched-applicant rerun |
 | [dashboard-uiarc.md](./dashboard-uiarc.md) | UIArc admin shell, overview and ticket-review experience, scope and verification |
 | [groucho-state-of-play-2026-08-20.md](./groucho-state-of-play-2026-08-20.md) | Historical end-of-day COLORS status and verification snapshot; its human-only decision boundary is superseded |
 | [groucho-latency-improvements-2026-08-21.md](./groucho-latency-improvements-2026-08-21.md) | Implemented response-time architecture, operational requirements, measurements, and retained quality safeguards |

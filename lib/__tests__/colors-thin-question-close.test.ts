@@ -4,7 +4,7 @@ const { createMock, state } = vi.hoisted(() => ({
   createMock: vi.fn(),
   state: {
     audience: "community",
-    inserted: [] as Array<{ role: string; content: string }>,
+    inserted: [] as Array<{ role: string; content: string; metadata?: Record<string, unknown> }>,
     sessionUpdates: [] as Array<{ status: string }>,
     history: [] as Array<{ id: string; role: string; content: string; metadata: Record<string, unknown> }>,
   },
@@ -62,12 +62,12 @@ const context = {
 } as unknown as ProjectContext
 const applicant = { email: "tester@example.com" } as ApplicantIdentity
 
-function toolReply(reply: string, close: boolean) {
+function toolReply(reply: string, close: boolean, addsNewContext?: boolean) {
   return {
     stop_reason: "tool_use",
     usage: {},
     content: [{ type: "tool_use", name: "groucho_converse", input: {
-      reply, close, boundary: "none", boundaryQuestion: "",
+      reply, close, boundary: "none", boundaryQuestion: "", ...(addsNewContext === undefined ? {} : { addsNewContext }),
     } }],
   }
 }
@@ -82,6 +82,106 @@ describe("thin pilot close after an applicant question", () => {
       id: "opening-1", role: "assistant", content: "Why would you join?",
       metadata: { conversation_engine: "colors_thin_pilot_v1" },
     }]
+  })
+
+  function priorSettledAnswers() {
+    state.history.push(
+      { id: "answer-1", role: "user", content: "I want feedback.", metadata: {} },
+      { id: "reply-1", role: "assistant", content: "What would make that useful?", metadata: { conversation_progress: { adds_new_context: false } } },
+      { id: "answer-2", role: "user", content: "Just feedback really.", metadata: {} },
+      { id: "reply-2", role: "assistant", content: "What are you hoping to hear?", metadata: { conversation_progress: { adds_new_context: false } } },
+    )
+  }
+
+  it("closes repeated no-progress answers instead of persisting another probe", async () => {
+    priorSettledAnswers()
+    createMock.mockResolvedValueOnce(toolReply("What would make feedback useful?", false, false))
+      .mockResolvedValueOnce(toolReply("You are looking for other people to hear what you make.", true))
+    const response = await postColorsThinConversation({ context, sessionId: "session-1", message: "I do not know. Just honest feedback.", applicant })
+    const body = await response.json()
+    expect(body.status).toBe("completed")
+    expect(body.message).not.toContain("?")
+    expect(state.inserted.at(-1)?.metadata).toMatchObject({ conversation_progress: { adds_new_context: false, stop_reason: "no_new_context" } })
+  })
+
+  it("lets a genuinely new detail continue even after earlier stalled answers", async () => {
+    priorSettledAnswers()
+    createMock.mockResolvedValueOnce(toolReply("What changed when you tried the dry vocal?", false, true))
+    const response = await postColorsThinConversation({ context, sessionId: "session-1", message: "Actually a friend noticed the reverb hid my vocal, and I tried a dry version.", applicant })
+    expect((await response.json()).status).toBe("active")
+    expect(state.sessionUpdates).toEqual([])
+  })
+
+  it("answers a real applicant question despite the no-progress guard", async () => {
+    priorSettledAnswers()
+    createMock.mockResolvedValueOnce(toolReply("You can share public music links. What would you like to discuss?", false, false))
+    const response = await postColorsThinConversation({ context, sessionId: "session-1", message: "Can I share a public music link?", applicant })
+    expect((await response.json()).status).toBe("active")
+    expect(state.inserted.at(-1)?.metadata).toMatchObject({ conversation_progress: { adds_new_context: true } })
+  })
+
+  it("keeps a concrete consent boundary open rather than applying the no-progress close", async () => {
+    priorSettledAnswers()
+    const response = toolReply("Ask permission before sharing someone else's private demo. Would you ask first?", false, false)
+    response.content[0].input.boundary = "consent"
+    response.content[0].input.boundaryQuestion = "Would you ask permission first?"
+    createMock.mockResolvedValueOnce(response)
+    const result = await postColorsThinConversation({ context, sessionId: "session-1", message: "I would share someone else's private demo without asking.", applicant })
+    expect((await result.json()).status).toBe("active")
+    expect(state.sessionUpdates).toEqual([])
+  })
+
+  it("allows a statement beginning with when to close without spurious question repairs", async () => {
+    createMock.mockResolvedValueOnce(toolReply("You notice how vocal detail carries a stripped-back performance.", true, true))
+    const response = await postColorsThinConversation({ context, sessionId: "session-1", message: "The small choices matter. When there's less arrangement to hide behind, those details become the performance itself.", applicant })
+    expect((await response.json()).status).toBe("completed")
+    expect(createMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not turn a rhetorical you-know tag into a question-repair failure", async () => {
+    createMock.mockResolvedValueOnce(toolReply("You are still exploring what you want to make.", true, false))
+    const response = await postColorsThinConversation({ context, sessionId: "session-1", message: "I'm not totally sure yet. Just feels off sometimes, you know?", applicant })
+    expect((await response.json()).status).toBe("completed")
+    expect(createMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("allows an ordinary questionless-reply repair to produce a valid natural close", async () => {
+    createMock.mockResolvedValueOnce(toolReply("You want people to exchange listening notes with.", false))
+      .mockResolvedValueOnce(toolReply("You want people to exchange listening notes with.", true))
+    const response = await postColorsThinConversation({ context, sessionId: "session-1", message: "I'd like to exchange notes about music.", applicant })
+    expect((await response.json()).status).toBe("completed")
+    expect(state.inserted.map(entry => entry.role)).toEqual(["user", "assistant"])
+  })
+
+  it("repairs malformed answers internally with corrective feedback and saves the answer once", async () => {
+    createMock.mockResolvedValueOnce(toolReply("Thanks for talking.", true))
+      .mockResolvedValueOnce(toolReply("Thanks for talking.", true))
+      .mockResolvedValueOnce(toolReply("The Forum is for discussing music and sharing public links. What would you like to explore?", false))
+    const response = await postColorsThinConversation({ context, sessionId: "session-1", message: "Can I share public links?", applicant })
+    expect((await response.json()).status).toBe("active")
+    expect(createMock).toHaveBeenCalledTimes(3)
+    expect(createMock.mock.calls[2][0].system).toContain("last repair was unusable")
+    expect(state.inserted.map(entry => entry.role)).toEqual(["user", "assistant"])
+  })
+
+  it("keeps a usable close when the optional acknowledgment request fails", async () => {
+    createMock.mockResolvedValueOnce(toolReply("We have enough to move forward.", true))
+      .mockRejectedValueOnce(new Error("Synthetic provider timeout"))
+    const response = await postColorsThinConversation({ context, sessionId: "session-1", message: "I'd like to exchange listening notes.", applicant })
+    const body = await response.json()
+    expect(response.status).toBe(200)
+    expect(body).toMatchObject({ status: "completed", message: "Thanks for talking." })
+    expect(state.inserted.map(entry => entry.role)).toEqual(["user", "assistant"])
+  })
+
+  it("leaves an exhausted genuine-question repair retryable without persisting the answer", async () => {
+    createMock.mockResolvedValue(toolReply("Thanks for talking.", true))
+    const response = await postColorsThinConversation({ context, sessionId: "session-1", message: "Can I share public links?", applicant })
+    expect(response.status).toBe(503)
+    expect(await response.json()).toMatchObject({ retryable: true })
+    expect(createMock).toHaveBeenCalledTimes(3)
+    expect(state.inserted).toEqual([])
+    expect(state.sessionUpdates).toEqual([])
   })
 
   it.each(["artist", "community"])("keeps saved %s guidance through a question repair, regardless of submitted audience", async audience => {

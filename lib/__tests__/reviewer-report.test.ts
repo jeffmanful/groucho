@@ -4,9 +4,22 @@ import {
   fallbackReviewerReport,
   normaliseReviewerReport,
   normaliseDetailedReviewerOpinion,
+  reviewerEvidenceLimits,
 } from "@/lib/reviewer-report"
 
 describe("reviewer report helpers", () => {
+  it("shows neutral unknowns separately from source-linked decision gaps", () => {
+    const limits = reviewerEvidenceLimits([
+      { signal_key: "joining_motivation", coverage: "supported", source_message_ids: ["a1"], material_gap: false, gap_reason: "" },
+      { signal_key: "tones_connection", coverage: "unverified", source_message_ids: [], material_gap: false, gap_reason: "" },
+      { signal_key: "forum_participation", coverage: "partial", source_message_ids: ["a2"], material_gap: true, gap_reason: "An explicitly conflicting plan needs clarification." },
+    ])
+    expect(limits).toEqual([
+      expect.objectContaining({ signal_key: "tones_connection", material_gap: false, explanation: expect.stringContaining("neutral context") }),
+      expect.objectContaining({ signal_key: "forum_participation", material_gap: true, explanation: "An explicitly conflicting plan needs clarification." }),
+    ])
+  })
+
   it("normalises a valid reviewer report", () => {
     const report = normaliseReviewerReport({
       applicant_bio: "Runs a small listening night.",

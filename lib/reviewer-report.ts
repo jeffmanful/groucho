@@ -1,5 +1,7 @@
 import {
   COLORS_FORUM_V1_RUBRIC,
+  colorsForumMembershipSignalDefinitions,
+  colorsForumV1SignalDefinitions,
   type ApplicationSignalAnswer,
   type ApplicationSignalDefinition,
   type ApplicationSignalMessage,
@@ -129,6 +131,7 @@ export type DetailedReviewerOpinion = {
 export type ReviewerReport = {
   report_version?: string
   evidence_state?: ReviewerEvidenceStateEntry[]
+  evidence_limits?: ReviewerEvidenceLimit[]
   applicant_bio: string
   advisory_recommendation: AdvisoryRecommendation
   confidence_score: number
@@ -141,7 +144,7 @@ export type ReviewerReport = {
 }
 
 export const COLORS_DETAILED_REPORT_VERSION = "colors_forum_report_v2"
-export const COLORS_FORUM_MEMBERSHIP_REPORT_VERSION = "colors_forum_membership_report_v6"
+export const COLORS_FORUM_MEMBERSHIP_REPORT_VERSION = "colors_forum_membership_report_v7"
 
 export type ReviewerEvidenceStateEntry = {
   signal_key: string
@@ -149,6 +152,41 @@ export type ReviewerEvidenceStateEntry = {
   source_message_ids: string[]
   material_gap: boolean
   gap_reason: string
+}
+
+export type ReviewerEvidenceLimit = {
+  signal_key: string
+  label: string
+  coverage: "partial" | "unverified"
+  material_gap: boolean
+  explanation: string
+}
+
+/** Neutral unknowns are visible without becoming reasons to penalise an applicant. */
+export function reviewerEvidenceLimits(state: ReviewerEvidenceStateEntry[]): ReviewerEvidenceLimit[] {
+  const labels = new Map([...colorsForumV1SignalDefinitions(), ...colorsForumMembershipSignalDefinitions()]
+    .map(signal => [signal.key, signal.evidenceLabel]))
+  return state.flatMap(entry => entry.coverage === "supported" ? [] : [{
+    signal_key: entry.signal_key,
+    label: labels.get(entry.signal_key) ?? entry.signal_key.replaceAll("_", " "),
+    coverage: entry.coverage,
+    material_gap: entry.material_gap,
+    explanation: entry.material_gap && entry.gap_reason
+      ? entry.gap_reason
+      : "Not established in this conversation. This is neutral context, not an applicant concern.",
+  }])
+}
+
+function cleanEvidenceState(raw: unknown): ReviewerEvidenceStateEntry[] {
+  if (!Array.isArray(raw)) return []
+  return raw.flatMap((item): ReviewerEvidenceStateEntry[] => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return []
+    const state = item as Record<string, unknown>
+    if (typeof state.signal_key !== "string" || !["supported", "partial", "unverified"].includes(String(state.coverage)) || !Array.isArray(state.source_message_ids)) return []
+    return [{ signal_key: state.signal_key, coverage: state.coverage as ReviewerEvidenceStateEntry["coverage"],
+      source_message_ids: state.source_message_ids.filter((id): id is string => typeof id === "string"),
+      material_gap: state.coverage === "partial" && state.material_gap === true && Boolean(cleanText(state.gap_reason)), gap_reason: cleanText(state.gap_reason) }]
+  })
 }
 
 type ScoreLike = {
@@ -444,20 +482,8 @@ export function normaliseReviewerReport(raw: unknown): ReviewerReport | null {
   return {
     ...(typeof data.report_version === "string" ? { report_version: data.report_version } : {}),
     ...(Array.isArray(data.evidence_state) ? {
-      evidence_state: data.evidence_state.flatMap((item): ReviewerEvidenceStateEntry[] => {
-        if (!item || typeof item !== "object" || Array.isArray(item)) return []
-        const state = item as Record<string, unknown>
-        if (typeof state.signal_key !== "string" ||
-          !["supported", "partial", "unverified"].includes(String(state.coverage)) ||
-          !Array.isArray(state.source_message_ids)) return []
-        return [{
-          signal_key: state.signal_key,
-          coverage: state.coverage as ReviewerEvidenceStateEntry["coverage"],
-          source_message_ids: state.source_message_ids.filter((id): id is string => typeof id === "string"),
-          material_gap: state.material_gap === true,
-          gap_reason: cleanText(state.gap_reason),
-        }]
-      }),
+      evidence_state: cleanEvidenceState(data.evidence_state),
+      evidence_limits: reviewerEvidenceLimits(cleanEvidenceState(data.evidence_state)),
     } : {}),
     applicant_bio: applicantBio,
     advisory_recommendation: recommendation as AdvisoryRecommendation,

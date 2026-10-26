@@ -30,6 +30,7 @@ type ConversationReply = {
   boundary: "none" | "consent" | "safety"
   boundaryQuestion: string
   interactionProposal?: unknown
+  addsNewContext?: boolean
 }
 
 export const colorsThinResponseTool = {
@@ -38,6 +39,7 @@ export const colorsThinResponseTool = {
   input_schema: {
     type: "object",
     properties: {
+      addsNewContext: { type: "boolean", description: "Whether this applicant answer adds a relevant fact, preference, example, correction or question not already understood. Repeating the same hope or saying they do not know adds no new context. This is conversational progress, never an applicant score." },
       reply: { type: "string" },
       close: { type: "boolean" },
       boundary: { type: "string", enum: ["none", "consent", "safety"] },
@@ -56,7 +58,7 @@ export const colorsThinResponseTool = {
         required: ["kind", "format", "assetIds", "mode", "question", "rationalePrompt", "purpose"],
       },
     },
-    required: ["reply", "close", "boundary", "boundaryQuestion"],
+    required: ["reply", "close", "boundary", "boundaryQuestion", "addsNewContext"],
   },
 } as const satisfies Anthropic.Tool
 
@@ -79,6 +81,8 @@ Give this conversation a loose arc: learn why the person wants to join; hear one
 TONES is an optional branch when the person mentions it or their story naturally turns to COLORS live events, local scenes or gathering people in a city. Follow what they actually know or experienced. Do not introduce TONES as a final check, after signaling that the conversation is wrapping up, or just because there is room for another question. If it does not come up naturally, leave familiarity unknown. If you ask about it, first find out whether they know it; explain it only if they say no or ask. Use only the approved TONES description above, without embellishment. Do not treat recognition or attendance as proof of fit, require a favourite show, or invent event details.
 
 Speak as Groucho, not as a reviewer. Respond to a specific detail, then ask one clear question at most. Every non-closing text turn must end with one direct question ending in ?. If there is no question worth asking and the exchange has naturally reached an end, set close=true. Vary the wording and route with the person. Do not announce stages, score, classify evidence, or mention an application checklist. A request to clarify or change topic deserves a direct response. Sharing public music links and discussing artists are ordinary Forum activity. Never ask for artist permission because someone shares or recommends music, and never introduce a copyright, remixing or reposting test. If the applicant independently proposes exposing someone else's private material, state the privacy boundary plainly; do not generalise that situation into a test for everyone. Set boundary to consent or safety only for a concrete concern raised in the applicant's own words. Otherwise boundaryQuestion must be empty.
+
+Mark addsNewContext from what this answer actually adds to the conversation, not its length or fluency. A concise new fact counts. Rewording a hope already understood, another vague preference, or saying they do not know is not new context. After one useful clarification, accept remaining uncertainty: switch to a genuinely different useful topic or close. Do not ask another version of what makes feedback useful or what the person wants if they already answered. Do not ask questions merely to make a brief applicant become articulate.
 
 This is answer ${input.turnCount}. Having enough material for a useful report means you may close, not that you should. Continue when the person is developing an interesting thread, offering a revealing detail, or raising something worth responding to. Do not prolong a settled exchange with routine clarifications, repeat a covered purpose, or ask questions only to reach a turn count. Close when the exchange has reached a natural stopping point. On close, write a brief acknowledgment of the person's actual point, not their directness or honesty, with no question, verdict, promise, generic farewell, or comment about having enough information or moving forward. The runtime will add the neutral final line. A higher emergency limit stops genuine loops.
 
@@ -112,8 +116,9 @@ export function oneQuestion(reply: string): string {
 
 /** A direct applicant question must receive a live reply before the session can close. */
 export function applicantAsksQuestion(message: string): boolean {
-  return message.includes("?") ||
-    /(?:^|[.!]\s+)(?:is|are|can|could|would|will|do|does|did|should|what|how|why|where|when|who)\b/i.test(message.trim())
+  const question = message.replace(/(?:,?\s*\b(?:you know|right|you see|you get me|know what I mean))\?\s*$/i, "").trim()
+  return question.includes("?") ||
+    /(?:^|[.!]\s+)(?:(?:is|are|can|could|would|will|do|does|did|should|may|might|have|has)\b|(?:what|how|why|where|when|who)\s+(?:is|are|was|were|do|does|did|can|could|would|will|should|have|has)\b)/i.test(question)
 }
 
 /** A close may acknowledge the last answer, but must never imply a decision. */
@@ -203,214 +208,98 @@ export async function postColorsThinConversation(input: {
       content: entry.content as string,
     }))
   const model = gatekeeperConversationModel()
-  let proposal: ConversationReply
-  try {
-    const response = await new Anthropic().messages.create({
-      model,
-      max_tokens: 600,
-      system: colorsThinConversationPrompt({
-        applicationAudience: session.application_audience === "artist" ? "artist" : "community",
-        hasApplicantDetails: Boolean(session.applicant_details),
-        objective: COLORS_FORUM_MEMBERSHIP_OBJECTIVE,
-        turnCount,
-        mediaCatalog: colorsInteractionCatalog(shows),
-      }) + (applicantQuestion
-        ? "\n\nThe applicant's latest message asks you a direct question. Answer it in your own words using only the approved Forum context. If the answer is uncertain, say what is known and what is not. Do not restate their question as a question. Do not close on this turn; end with one relevant question that lets them respond."
-        : turnCount >= emergencyLimit
-          ? "\n\nThe emergency conversation limit has been reached. Respond to the person's latest point, then close with a brief, specific acknowledgment. Do not ask another question or imply a membership decision."
-          : ""),
+  const neutralClosingLine = settings.applicationExperience.closing_message?.trim() || DEFAULT_APPLICATION_CLOSING_MESSAGE
+  const previousProgress = [...history].reverse().filter(entry => entry.role === "assistant")
+  let quietTurns = 0
+  for (const entry of previousProgress) {
+    if (record(record(entry.metadata).conversation_progress).adds_new_context !== false) break
+    quietTurns += 1
+  }
+  const system = colorsThinConversationPrompt({
+    applicationAudience: session.application_audience === "artist" ? "artist" : "community",
+    hasApplicantDetails: Boolean(session.applicant_details),
+    objective: COLORS_FORUM_MEMBERSHIP_OBJECTIVE,
+    turnCount,
+    mediaCatalog: colorsInteractionCatalog(shows),
+  }) + `\n\nPrevious consecutive answers without new context: ${quietTurns}. A genuine applicant question always deserves an answer. Do not re-probe something they have already said they cannot explain.`
+
+  async function requestReply(operation: string, instruction: string, maxTokens = 600): Promise<ConversationReply> {
+    const response = await new Anthropic({ maxRetries: 1, timeout: 45000 }).messages.create({
+      model, max_tokens: maxTokens, system: system + "\n\n" + instruction,
       messages: [...conversation, { role: "user", content: currentAnswer }],
       tools: [colorsThinResponseTool],
       tool_choice: { type: "tool", name: colorsThinResponseTool.name },
     })
-    await logLlmUsage({
-      operation: "colors_thin_conversation",
-      provider: "anthropic",
-      model,
-      usage: response.usage,
-      providerResponseId: response.id,
-      requestId: input.requestId,
-      organisationId,
-      projectId,
-      sessionId: input.sessionId,
-    })
-    if (response.stop_reason === "max_tokens" || response.stop_reason === "refusal") {
-      throw new Error(`Conversation model stopped: ${response.stop_reason}`)
-    }
-    const call = response.content.find((block) => block.type === "tool_use" && block.name === colorsThinResponseTool.name)
+    await logLlmUsage({ operation, provider: "anthropic", model, usage: response.usage,
+      providerResponseId: response.id, requestId: input.requestId, organisationId, projectId, sessionId: input.sessionId })
+    if (response.stop_reason === "max_tokens" || response.stop_reason === "refusal") throw new Error(`Conversation model stopped: ${response.stop_reason}`)
+    const call = response.content.find(block => block.type === "tool_use" && block.name === colorsThinResponseTool.name)
     if (!call || call.type !== "tool_use") throw new Error("Conversation tool response missing")
     const value = record(call.input)
-    if (typeof value.reply !== "string" || !value.reply.trim() ||
-      typeof value.close !== "boolean" ||
-      !["none", "consent", "safety"].includes(String(value.boundary)) ||
-      typeof value.boundaryQuestion !== "string") {
+    if (typeof value.reply !== "string" || !value.reply.trim() || typeof value.close !== "boolean" ||
+      !["none", "consent", "safety"].includes(String(value.boundary)) || typeof value.boundaryQuestion !== "string") {
       throw new Error("Conversation tool response malformed")
     }
-    proposal = {
-      reply: value.reply.trim(),
-      close: value.close,
-      boundary: value.boundary as ConversationReply["boundary"],
-      boundaryQuestion: value.boundaryQuestion.trim(),
-      interactionProposal: value.interactionProposal,
+    return { reply: value.reply.trim(), close: value.close, boundary: value.boundary as ConversationReply["boundary"],
+      boundaryQuestion: value.boundaryQuestion.trim(), interactionProposal: value.interactionProposal,
+      ...(typeof value.addsNewContext === "boolean" ? { addsNewContext: value.addsNewContext } : {}) }
+  }
+  function hasQuestion(reply: ConversationReply): boolean {
+    const rich = reply.boundary === "none" ? resolveApplicationRichInteraction(reply.interactionProposal, shows) : null
+    return reply.boundary === "consent" && reply.boundaryQuestion.endsWith("?") ||
+      oneQuestion(rich?.question ?? reply.reply).includes("?")
+  }
+  const questionInstruction = "The applicant asked a direct question. Answer it using only approved Forum context, saying what is unknown when needed. Do not restate their question. Set close=false and finish with one relevant open question."
+  let proposal: ConversationReply
+  let addsNewContext: boolean | undefined
+  let stopReason: "no_new_context" | "emergency_limit" | undefined
+  try {
+    proposal = await requestReply("colors_thin_conversation", applicantQuestion ? questionInstruction :
+      turnCount >= emergencyLimit ? "The emergency conversation limit is reached. Acknowledge the latest point and close neutrally without a question or decision." : "Continue only if a useful thread remains; otherwise close naturally.")
+    addsNewContext = applicantQuestion ? true : proposal.addsNewContext
+    const stalled = turnCount >= 3 && addsNewContext === false && quietTurns >= 1
+    if (!applicantQuestion && proposal.boundary === "none" && (stalled || turnCount >= emergencyLimit)) {
+      stopReason = stalled ? "no_new_context" : "emergency_limit"
+      // Formatting repairs must not turn a settled exchange into another interview.
+      proposal = { ...proposal, close: true, interactionProposal: undefined }
     }
-    const proposedRich = proposal.boundary === "none"
-      ? resolveApplicationRichInteraction(proposal.interactionProposal, shows)
-      : null
-    const hasActiveQuestion = proposal.boundary === "consent" && proposal.boundaryQuestion.endsWith("?") ||
-      oneQuestion(proposedRich?.question ?? proposal.reply).includes("?")
-    const needsQuestionRepair = applicantQuestion && (proposal.close || !hasActiveQuestion) ||
-      !applicantQuestion && !proposal.close && proposal.boundary === "none" &&
-      turnCount < emergencyLimit && !hasActiveQuestion
-    if (needsQuestionRepair) {
-      log.warn("colors_thin_active_reply_repair", {
-        requestId: input.requestId, sessionId: input.sessionId, turnCount,
-      })
-      const repair = await new Anthropic().messages.create({
-        model,
-        max_tokens: 600,
-        system: colorsThinConversationPrompt({
-          applicationAudience: session.application_audience === "artist" ? "artist" : "community",
-          hasApplicantDetails: Boolean(session.applicant_details),
-          objective: COLORS_FORUM_MEMBERSHIP_OBJECTIVE,
-          turnCount,
-          mediaCatalog: colorsInteractionCatalog(shows),
-        }) + (applicantQuestion
-          ? "\n\nThe applicant asked a direct question. The previous proposal tried to close or did not leave a clear invitation. Answer their question directly using only the approved Forum context, then ask one relevant question. Do not restate their question as a question. Set close=false. If the answer is uncertain, say what is known and what is not. Do not end the conversation on this turn."
-          : "\n\nThe previous proposal left an active conversation without a question. Respond to the person's latest point, then ask one relevant, natural question that lets them continue. Set close=false. Do not end the conversation on this turn."),
-        messages: [...conversation, { role: "user", content: currentAnswer }],
-        tools: [colorsThinResponseTool],
-        tool_choice: { type: "tool", name: colorsThinResponseTool.name },
-      })
-      await logLlmUsage({
-        operation: applicantQuestion
-          ? "colors_thin_question_reply_repair"
-          : "colors_thin_active_question_repair",
-        provider: "anthropic",
-        model,
-        usage: repair.usage,
-        providerResponseId: repair.id,
-        requestId: input.requestId,
-        organisationId,
-        projectId,
-        sessionId: input.sessionId,
-      })
-      if (repair.stop_reason === "max_tokens" || repair.stop_reason === "refusal") {
-        throw new Error(`Question reply repair stopped: ${repair.stop_reason}`)
-      }
-      const repairedCall = repair.content.find((block) =>
-        block.type === "tool_use" && block.name === colorsThinResponseTool.name)
-      if (!repairedCall || repairedCall.type !== "tool_use") {
-        throw new Error("Question reply repair missing")
-      }
-      const repaired = record(repairedCall.input)
-      if (typeof repaired.reply !== "string" || !repaired.reply.trim() || repaired.close !== false ||
-        !["none", "consent", "safety"].includes(String(repaired.boundary)) ||
-        typeof repaired.boundaryQuestion !== "string" ||
-        !oneQuestion(repaired.reply).includes("?")) {
-        throw new Error("Question reply repair malformed")
-      }
-      proposal = {
-        reply: repaired.reply.trim(),
-        close: false,
-        boundary: repaired.boundary as ConversationReply["boundary"],
-        boundaryQuestion: repaired.boundaryQuestion.trim(),
-        interactionProposal: repaired.interactionProposal,
-      }
-    }
-    if (!applicantQuestion && turnCount >= emergencyLimit &&
-      proposal.boundary !== "consent" &&
-      (!proposal.close || proposal.reply.includes("?"))) {
-      const repair = await new Anthropic().messages.create({
-        model,
-        max_tokens: 300,
-        system: colorsThinConversationPrompt({
-          applicationAudience: session.application_audience === "artist" ? "artist" : "community",
-          hasApplicantDetails: Boolean(session.applicant_details),
-          objective: COLORS_FORUM_MEMBERSHIP_OBJECTIVE,
-          turnCount,
-          mediaCatalog: colorsInteractionCatalog(shows),
-        }) + "\n\nThe emergency limit is reached. The previous proposal did not provide a usable close. Set close=true and write only a brief, specific acknowledgment of the applicant's latest point. No question, verdict, promise, or generic farewell; the runtime adds the neutral final line.",
-        messages: [...conversation, { role: "user", content: currentAnswer }],
-        tools: [colorsThinResponseTool],
-        tool_choice: { type: "tool", name: colorsThinResponseTool.name },
-      })
-      await logLlmUsage({
-        operation: "colors_thin_emergency_close_repair",
-        provider: "anthropic",
-        model,
-        usage: repair.usage,
-        providerResponseId: repair.id,
-        requestId: input.requestId,
-        organisationId,
-        projectId,
-        sessionId: input.sessionId,
-      })
-      const repairedCall = repair.content.find((block) =>
-        block.type === "tool_use" && block.name === colorsThinResponseTool.name)
-      if (repair.stop_reason === "max_tokens" || repair.stop_reason === "refusal" ||
-        !repairedCall || repairedCall.type !== "tool_use") {
-        throw new Error("Emergency close repair missing")
-      }
-      const repaired = record(repairedCall.input)
-      if (typeof repaired.reply !== "string" || !repaired.reply.trim() ||
-        repaired.close !== true || repaired.reply.includes("?") ||
-        repaired.boundary !== "none" || repaired.boundaryQuestion !== "") {
-        throw new Error("Emergency close repair malformed")
-      }
-      proposal = {
-        reply: repaired.reply.trim(), close: true, boundary: "none", boundaryQuestion: "",
-      }
-    }
-    const neutralClosingLine = settings.applicationExperience.closing_message?.trim() ||
-      DEFAULT_APPLICATION_CLOSING_MESSAGE
-    if (!applicantQuestion && proposal.close && proposal.boundary === "none" &&
-      conversationalClosing(proposal.reply, neutralClosingLine) === neutralClosingLine) {
-      const repair = await new Anthropic().messages.create({
-        model,
-        max_tokens: 300,
-        system: colorsThinConversationPrompt({
-          applicationAudience: session.application_audience === "artist" ? "artist" : "community",
-          hasApplicantDetails: Boolean(session.applicant_details),
-          objective: COLORS_FORUM_MEMBERSHIP_OBJECTIVE,
-          turnCount,
-          mediaCatalog: colorsInteractionCatalog(shows),
-        }) + "\n\nThe previous closing acknowledgment could not be shown because it contained a question, a decision or process claim, or no specific acknowledgment. Set close=true. In one short sentence, reflect a concrete point the applicant just made without endorsing it. Do not mention a review, next step, membership decision, or promise. The runtime adds the neutral final line.",
-        messages: [...conversation, { role: "user", content: currentAnswer }],
-        tools: [colorsThinResponseTool],
-        tool_choice: { type: "tool", name: colorsThinResponseTool.name },
-      })
-      await logLlmUsage({
-        operation: "colors_thin_closing_acknowledgment_repair",
-        provider: "anthropic",
-        model,
-        usage: repair.usage,
-        providerResponseId: repair.id,
-        requestId: input.requestId,
-        organisationId,
-        projectId,
-        sessionId: input.sessionId,
-      })
-      const repairedCall = repair.content.find((block) =>
-        block.type === "tool_use" && block.name === colorsThinResponseTool.name)
-      if (repair.stop_reason !== "max_tokens" && repair.stop_reason !== "refusal" &&
-        repairedCall?.type === "tool_use") {
-        const repaired = record(repairedCall.input)
-        if (typeof repaired.reply === "string" && repaired.close === true &&
-          repaired.boundary === "none" && repaired.boundaryQuestion === "" &&
-          conversationalClosing(repaired.reply, neutralClosingLine) !== neutralClosingLine) {
-          proposal = {
-            reply: repaired.reply.trim(), close: true, boundary: "none", boundaryQuestion: "",
+    const needsRepair = !stopReason && (applicantQuestion && (proposal.close || !hasQuestion(proposal)) ||
+      !applicantQuestion && !proposal.close && proposal.boundary === "none" && !hasQuestion(proposal))
+    if (needsRepair) {
+      let usable = false
+      let feedback = ""
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const repaired = await requestReply(applicantQuestion ? "colors_thin_question_reply_repair" : "colors_thin_active_question_repair",
+            (applicantQuestion ? questionInstruction : "The previous active reply had no question. Ask one useful open question if a real thread remains, or set close=true if the exchange is settled. Do not continue for formatting alone.") + feedback)
+          if (applicantQuestion ? repaired.close || !hasQuestion(repaired) : !repaired.close && !hasQuestion(repaired)) {
+            feedback = "\nThe last repair was unusable. " + (applicantQuestion ? "It must answer the question, set close=false, and include one direct question ending in ?." : "Set close=true for a settled exchange; otherwise include one direct question ending in ?.")
+            continue
           }
+          proposal = repaired
+          usable = true
+          break
+        } catch (error) {
+          feedback = `\nThe last repair could not be used (${error instanceof Error ? error.message : "invalid response"}). Return the complete required tool with a usable reply.`
         }
+      }
+      if (!usable) throw new Error("Conversation repair exhausted")
+    }
+    // A closing acknowledgment is cosmetic: a failure must never discard a usable close.
+    if (!applicantQuestion && proposal.close && proposal.boundary === "none" &&
+      (stopReason || conversationalClosing(proposal.reply, neutralClosingLine) === neutralClosingLine)) {
+      try {
+        const repaired = await requestReply(stopReason === "emergency_limit" ? "colors_thin_emergency_close_repair" : "colors_thin_closing_acknowledgment_repair",
+          "Close now. Set close=true and boundary=none. Reflect one concrete point from the latest answer in one short sentence. No question, verdict, promise, process claim or generic farewell; the runtime adds the neutral final line.", 300)
+        if (repaired.close && repaired.boundary === "none" && repaired.boundaryQuestion === "" && !repaired.reply.includes("?") &&
+          conversationalClosing(repaired.reply, neutralClosingLine) !== neutralClosingLine) proposal = repaired
+      } catch (error) {
+        log.warn("colors_thin_optional_close_repair_failed", { sessionId: input.sessionId, detail: error instanceof Error ? error.message : String(error) })
       }
     }
   } catch (error) {
-    log.error("colors_thin_conversation_failed", {
-      requestId: input.requestId,
-      sessionId: input.sessionId,
-      detail: error instanceof Error ? error.message : String(error),
-    })
-    return json({ error: "Groucho could not respond. Please try again." }, input.requestId, 503)
+    log.error("colors_thin_conversation_failed", { requestId: input.requestId, sessionId: input.sessionId, detail: error instanceof Error ? error.message : String(error) })
+    return json({ error: "Groucho could not respond. Please try again.", retryable: true }, input.requestId, 503)
   }
 
   const previousBoundary = record(lastAssistant?.metadata).boundary
@@ -491,6 +380,7 @@ export async function postColorsThinConversation(input: {
       conversation_engine: COLORS_THIN_PILOT_MARKER,
       ui,
       boundary: proposal.boundary,
+      conversation_progress: { ...(addsNewContext === undefined ? {} : { adds_new_context: addsNewContext }), ...(stopReason ? { stop_reason: stopReason } : {}) },
       ...(rich ? { application_rich_interaction: {
         kind: rich.kind,
         purpose: rich.purpose,

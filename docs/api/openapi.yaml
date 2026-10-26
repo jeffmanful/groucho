@@ -343,11 +343,29 @@ components:
                 type: string
               excerpt:
                 type: string
+        evidence_limits:
+          type: array
+          description: Neutral unknowns and unresolved evidence, separate from decision-relevant gaps. Derived from reconciled coverage; unknowns alone are not concerns.
+          items:
+            type: object
+            required: [signal_key, label, coverage, material_gap, explanation]
+            properties:
+              signal_key:
+                type: string
+              label:
+                type: string
+              coverage:
+                type: string
+                enum: [partial, unverified]
+              material_gap:
+                type: boolean
+              explanation:
+                type: string
         weak_or_missing_signals:
           type: array
           items:
             type: string
-          description: Signals that remain vague, unresolved, contradictory, or insufficient.
+          description: Source-linked decision-relevant gaps. Neutral unknowns are listed separately in evidence_limits.
         safety_or_integrity_flags:
           type: array
           items:

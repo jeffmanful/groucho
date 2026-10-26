@@ -37,7 +37,7 @@ vi.mock("@/lib/session-completion-jobs", () => ({ enqueueSessionCompletionJob: a
 vi.mock("@/lib/automatic-application-decision", () => ({ recordAutomaticApplicationDecision: async () => null }))
 vi.mock("@/lib/colors-youtube-feed", async original => ({...await original<typeof import("@/lib/colors-youtube-feed")>(),fetchLatestColorsShows:async()=>[]}))
 vi.mock("@/lib/logger", () => ({log:{info:()=>{},warn:()=>{},error:(...args:unknown[])=>process.stdout.write(`HANDLER_ERROR ${JSON.stringify(args)}\n`)}}))
-vi.mock("@/lib/llm-usage", async original => ({...await original<typeof import("@/lib/llm-usage")>(),logLlmUsage:()=>{}}))
+vi.mock("@/lib/llm-usage", async original => ({...await original<typeof import("@/lib/llm-usage")>(),logLlmUsage:(usage: { operation: string })=>{ const call=harness.calls.at(-1); if(call) call.operation=usage.operation }}))
 vi.mock("@anthropic-ai/sdk", async original => {
   const actual = await original<typeof import("@anthropic-ai/sdk")>()
   return { default: class { messages={create:async(request:any)=>{
@@ -73,7 +73,7 @@ describe.skipIf(!live)("live shared intake qualitative review", () => {
     const {applicantIdentityFromRow}=await import("@/lib/applicant-identity")
     const {COLORS_FORUM_MEMBERSHIP_PROFILE_SCHEMA,COLORS_FORUM_MEMBERSHIP_PROFILE_HINT,COLORS_THIN_PROFILE_EVIDENCE_HINT}=await import("@/lib/onboarding-persona-template")
     const selectedCase=process.env.GROUCHO_SHARED_INTAKE_CASE
-    const output=process.env.GROUCHO_SHARED_INTAKE_OUTPUT ?? "docs/replays/paired-new-engine-intake-2026-10-26.json"
+    const output=process.env.GROUCHO_SHARED_INTAKE_OUTPUT ?? "docs/replays/paired-stopping-evidence-verified-2026-10-26.json"
     const prior:Row[]=selectedCase ? JSON.parse(readFileSync(output,"utf8")).results : []
     const results:Row[]=prior.filter(r=>r.id!==selectedCase)
     const save=()=>writeFileSync(output,JSON.stringify({date:"2026-10-26",design:"Matched pairs: each applicant appears in both audiences with identical intake, fictional facts and fixed opening answer. Both use the same engine, model, turn budget, membership rubric and reviewer model. Adaptive follow-up wording remains variable; this is qualitative, not a causal performance benchmark.",scope:"Live models; synthetic applicants; real local start/turn/report/profile functions; in-memory storage; no database, webhooks, decisions or invitations; repo-defined COLORS configuration, not a hosted deployment; media feed disabled",results},null,2)+"\n")
@@ -140,7 +140,13 @@ describe.skipIf(!live)("live shared intake qualitative review", () => {
     for(const result of results.filter(r=>!selectedCase || r.id===selectedCase)){
       expect(result.error, result.id).toBeUndefined()
       expect(result.closed, result.id).toBe(true)
-      expect(Boolean(result.report || result.reportError), result.id).toBe(true)
+      expect(result.reportError, result.id).toBeUndefined()
+      expect(result.profileError, result.id).toBeUndefined()
+      expect(result.report, result.id).toBeTruthy()
+      expect(result.profile?.extraction.status, result.id).toBe("ok")
+      expect(result.retries ?? [], result.id).toHaveLength(0)
+      expect(result.report.evidence_limits?.map((entry: Row) => entry.signal_key).sort(), result.id)
+        .toEqual(result.report.evidence_state.filter((entry: Row) => entry.coverage !== "supported").map((entry: Row) => entry.signal_key).sort())
     }
   },1200000)
 })

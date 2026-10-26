@@ -1,5 +1,7 @@
+import { ReportEvidenceOverview } from "@/components/admin/ReportEvidenceOverview"
 import {
   COLORS_DETAILED_REPORT_VERSION,
+  COLORS_FORUM_MEMBERSHIP_REPORT_VERSION,
   type ReviewerReport,
 } from "@/lib/reviewer-report"
 
@@ -60,7 +62,7 @@ export function ReviewerReportView({
   const recommendation = report?.advisory_recommendation === "human_review"
     ? "needs discussion"
     : report?.advisory_recommendation ?? ""
-  const concluded = ["passed", "redirected", "rejected", "failed", "abandoned"].includes(sessionStatus)
+  const concluded = ["passed", "redirected", "rejected", "failed", "abandoned", "completed"].includes(sessionStatus)
 
   return (
     <section aria-label="Generated report" className="border border-white/10 bg-white/[0.025] p-4 sm:p-5">
@@ -85,7 +87,7 @@ export function ReviewerReportView({
         </p>
       ) : (
         <>
-          {detailed && report.report_version !== COLORS_DETAILED_REPORT_VERSION ? (
+          {detailed && ![COLORS_DETAILED_REPORT_VERSION, COLORS_FORUM_MEMBERSHIP_REPORT_VERSION].includes(report.report_version ?? "") ? (
             <p className="mb-4 border-l border-white/30 pl-3 text-xs leading-relaxed text-white/65">
               Earlier report version. Use a newly generated opinion before making a decision.
             </p>
@@ -113,6 +115,7 @@ export function ReviewerReportView({
             {detailed?.advisory_reason ?? report.reviewer_focus}
           </p>
 
+          <ReportEvidenceOverview state={report.evidence_state} />
           <details className="group mt-5 border-t border-white/10 pt-3">
             <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-xs text-white/75 marker:hidden hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70">
               <span>Full assessment and evidence</span>
@@ -180,7 +183,7 @@ export function ReviewerReportView({
                 </ReportSection>
               )}
               {report.weak_or_missing_signals.length ? (
-                <ReportSection title="Weak or missing signals">
+                <ReportSection title="Decision-relevant gaps">
                   <ul className="m-0 list-disc space-y-1 pl-5">
                     {report.weak_or_missing_signals.map((item, index) => <li key={index}>{item}</li>)}
                   </ul>

@@ -74,6 +74,36 @@ function response(value: unknown) {
 describe("detailed reviewer report verification", () => {
   beforeEach(() => createMock.mockReset())
 
+  it("reconciles elliptical participation answers using question context and exposes neutral unknowns", async () => {
+    const first = "I make beats and want feedback."
+    const second = "Probably both, a back-and-forth thing."
+    const draft = {
+      ...evaluation, applicant_bio: "Makes beats and hopes for two-way feedback.",
+      advisory_reason: "The applicant wants feedback and a two-way exchange.",
+      snapshot: { applicant_summary: "Makes beats and hopes for two-way feedback.", evidence_reference_ids: ["answer-1", "answer-2"], tags: [] },
+      advisory_evidence_reference_ids: ["answer-1", "answer-2"],
+      overall_assessment: "The applicant expresses a tentative intention for two-way feedback.",
+      decisive_reasons: ["They want a back-and-forth exchange."],
+      claim_assessments: [{ claim: "They would like a two-way exchange.", interpretation: "This is tentative future intention, not a demonstrated practice.", assessment: "context", evidence_reference_ids: ["answer-2"] }],
+      likely_contribution: "They hope for two-way feedback.",
+    }
+    createMock.mockResolvedValueOnce(response({ signals: ["joining_motivation", "colors_connection", "music_relationship", "community_participation", "forum_participation", "tones_connection"].map(key => ({
+      signal_key: key, coverage: ["joining_motivation", "music_relationship", "forum_participation"].includes(key) ? "supported" : "unverified",
+      sources: key === "forum_participation" ? [{ source_message_id: "answer-2", quote: second }] : ["joining_motivation", "music_relationship"].includes(key) ? [{ source_message_id: "answer-1", quote: first }] : [],
+      material_gap: false, gap_reason: "",
+    })) })).mockResolvedValueOnce(response(draft)).mockResolvedValueOnce(response({ supported: true, issues: [], repair_target: "report" }))
+    const report = await generateDetailedReviewerReport({
+      transcript: [{ id: "answer-1", role: "user", content: first }, { id: "question-2", role: "assistant", content: "In the Forum would you give feedback, receive it, or both?" }, { id: "answer-2", role: "user", content: second }],
+      baseReport, rubricVersion: COLORS_FORUM_MEMBERSHIP_RUBRIC, forumMembershipPilot: true,
+    })
+    const reconciliation = JSON.parse(createMock.mock.calls[0][0].messages[0].content)
+    expect(reconciliation.applicantTranscript[1]).toMatchObject({ id: "answer-2", content: second, preceding_question: "In the Forum would you give feedback, receive it, or both?" })
+    expect(report.evidence_state?.find(entry => entry.signal_key === "forum_participation")?.coverage).toBe("supported")
+    expect(report.evidence_limits?.map(entry => entry.signal_key)).toEqual(["colors_connection", "community_participation", "tones_connection"])
+    expect(report.weak_or_missing_signals).toEqual([])
+    expect(report.detailed_opinion?.reviewer_questions).toEqual([])
+  })
+
   it("attributes limited evidence to Groucho when it closed with an applicant question pending", async () => {
     const answer = "I want a space that feels more tapped in. Is this something the Forum can provide?"
     const supported = {

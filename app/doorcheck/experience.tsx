@@ -9,6 +9,8 @@ import {
   useCallback,
   useId,
 } from "react"
+import { ReportEvidenceOverview } from "@/components/admin/ReportEvidenceOverview"
+import { normaliseReviewerReport, type ReviewerEvidenceStateEntry } from "@/lib/reviewer-report"
 import { ApplicantIntakeForm } from "@/packages/sdk/src/react/ArtistIntakeForm"
 import type { ApplicantIdentity } from "@/lib/applicant-identity"
 import "@/packages/sdk/styles/groucho.css"
@@ -143,6 +145,7 @@ type ColorsMediaTestResponse = {
 const SLOW_RESPONSE_DELAY_MS = 6000
 
 type ReviewerReport = {
+  evidence_state?: ReviewerEvidenceStateEntry[]
   applicant_bio: string
   advisory_recommendation: "recommend" | "human_review" | "decline"
   confidence_score: number
@@ -719,6 +722,7 @@ function parseReviewerReport(raw: unknown): ReviewerReport | null {
         }
       : null
   return {
+    evidence_state: normaliseReviewerReport(data)?.evidence_state,
     applicant_bio: data.applicant_bio,
     advisory_recommendation: recommendation,
     confidence_score: Math.max(0, Math.min(1, data.confidence_score)),
@@ -820,6 +824,7 @@ function ReviewerReportPanel({
       <p className="text-sm leading-relaxed text-white/72">
         {snapshot?.applicant_summary ?? report.applicant_bio}
       </p>
+      <ReportEvidenceOverview state={report.evidence_state} />
       {detailed?.advisory_reason ? (
         <p className="mt-2 text-xs leading-relaxed text-white/48">
           Why: {detailed.advisory_reason}
@@ -1075,7 +1080,7 @@ function ReviewerReportPanel({
       {!detailed || detailsOpen ? (
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           {!detailed ? listSection("evidence", report.evidence_summary) : null}
-          {listSection("weak signals", report.weak_or_missing_signals)}
+          {listSection("decision-relevant gaps", report.weak_or_missing_signals)}
           {listSection("flags", report.safety_or_integrity_flags)}
           <div>
             <p className="mb-1 text-[0.62rem] uppercase tracking-[0.14em] text-white/32">

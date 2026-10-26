@@ -41,3 +41,5 @@ Ask about creative practice, current explorations, hopes for the Forum and reali
 ## Verification boundary
 
 Regression tests cover identity validation and storage round trips, artist startup/resume, demographic/link omission from model context and completion handoff. Browser checks use synthetic data and a mocked API. A production build is checked from an isolated copy without service credentials. Applying migrations, a live-model calibration, deployed SDK/Forum adoption, access-control clearance and actual invitations require separate verification before opening the pilot.
+
+Both demo audiences share the no-new-context stopping guard, bounded reply repairs and v7 evidence-limit reporting described in [the conversation pilot guide](./colors-thin-conversation-pilot.md). No admission policy or automatic access rule is changed.

@@ -54,7 +54,7 @@ describe("COLORS thin conversation pilot", () => {
     expect(prompt).toContain("initial Forum is for discussion and sharing external links")
     expect(prompt).not.toContain("Make a private advisory judgment")
     expect(Object.keys(colorsThinResponseTool.input_schema.properties)).toEqual([
-      "reply", "close", "boundary", "boundaryQuestion", "interactionProposal",
+      "addsNewContext", "reply", "close", "boundary", "boundaryQuestion", "interactionProposal",
     ])
   })
 
@@ -76,6 +76,14 @@ describe("COLORS thin conversation pilot", () => {
     expect(applicantAsksQuestion("I want a space that feels more tapped in. Is this something the Forum can provide?")).toBe(true)
     expect(applicantAsksQuestion("I want a space that feels more tapped in. Can the Forum provide that")).toBe(true)
     expect(applicantAsksQuestion("I usually share music on social media.")).toBe(false)
+    expect(applicantAsksQuestion("It feels off, you know?")).toBe(false)
+    expect(applicantAsksQuestion("The details matter. When there's less arrangement to hide behind, those details become the performance itself.")).toBe(false)
+    expect(applicantAsksQuestion("What I want is a regular exchange.")).toBe(false)
+    expect(applicantAsksQuestion("When I share music, I ask for honest thoughts.")).toBe(false)
+    expect(applicantAsksQuestion("What would sharing look like")).toBe(true)
+    expect(applicantAsksQuestion("How does the Forum work")).toBe(true)
+    expect(applicantAsksQuestion("I am still exploring, right?")).toBe(false)
+    expect(applicantAsksQuestion("Can I share a public link, you know?")).toBe(true)
   })
 
   it("keeps a media choice and its question attached to the applicant's answer for later analysis", () => {

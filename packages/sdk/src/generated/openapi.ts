@@ -152,7 +152,16 @@ export interface components {
                 source_message_id: string;
                 excerpt: string;
             }[];
-            /** @description Signals that remain vague, unresolved, contradictory, or insufficient. */
+            /** @description Neutral unknowns and unresolved evidence, separate from decision-relevant gaps. Derived from reconciled coverage; unknowns alone are not concerns. */
+            evidence_limits?: {
+                signal_key: string;
+                label: string;
+                /** @enum {string} */
+                coverage: "partial" | "unverified";
+                material_gap: boolean;
+                explanation: string;
+            }[];
+            /** @description Source-linked decision-relevant gaps. Neutral unknowns are listed separately in evidence_limits. */
             weak_or_missing_signals: string[];
             /** @description Contradictions, refusals, repeated avoidance, abusive/discriminatory language, or other reviewer concerns. */
             safety_or_integrity_flags: string[];
