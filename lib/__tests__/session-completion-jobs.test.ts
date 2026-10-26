@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   recordVerdict: vi.fn(),
   recordCulturalSignals: vi.fn(),
   projectSettings: {} as Record<string, unknown>,
+  artistProfile: null as unknown,
 }))
 
 vi.mock("next/server", () => ({ after: vi.fn() }))
@@ -52,6 +53,7 @@ vi.mock("@/lib/supabase", () => ({
             persona_id: "persona_1",
             applicant_email: "person@example.com",
             applicant_name: "Person",
+            applicant_artist_profile: mocks.artistProfile,
           })
         }
         if (table === "projects") {
@@ -131,6 +133,7 @@ import {
 describe("session completion jobs", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.artistProfile = null
     mocks.upsert.mockResolvedValue({ error: null })
     mocks.jobUpdate.mockResolvedValue({ error: null })
     mocks.recordVerdict.mockResolvedValue({ profile: null })
@@ -205,6 +208,14 @@ describe("session completion jobs", () => {
       "session_completion_jobs",
       expect.objectContaining({ status: "completed" }),
     )
+  })
+
+
+  it("carries the submitted artist snapshot into the completion webhook", async () => {
+    mocks.artistProfile = { city: "Example City", age: 24, artistName: "Example Stage Name", socialLinks: [], musicLinks: ["https://example.com/music"] }
+    mocks.rpc.mockResolvedValue({ data: [{ id: "artist-job", organisation_id: "org_1", project_id: "project_1", session_id: "session_internal", likely_bot: false, attempt_count: 1, max_attempts: 8 }], error: null })
+    await processPendingSessionCompletionJobs(1)
+    expect(mocks.recordVerdict).toHaveBeenCalledWith(expect.objectContaining({ applicant: { email: "person@example.com", name: "Person", artist: mocks.artistProfile } }))
   })
 
   it("builds the onboarding profile schema in the background", async () => {

@@ -4,6 +4,7 @@ Proposed experiments live in [../pilots/](../pilots/README.md), including
 [fair ticket access with World ID](../pilots/fair-ticket-access-world-id.md).
 
 | Document | Description |
+| [artist-forum-application.md](./artist-forum-application.md) | Structured artist intake, conversation mode, SDK adoption and deployment gates |
 |----------|-------------|
 | [dashboard-uiarc.md](./dashboard-uiarc.md) | UIArc admin shell, overview and ticket-review experience, scope and verification |
 | [groucho-state-of-play-2026-08-20.md](./groucho-state-of-play-2026-08-20.md) | Historical end-of-day COLORS status and verification snapshot; its human-only decision boundary is superseded |

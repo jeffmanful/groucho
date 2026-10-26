@@ -1,5 +1,7 @@
 "use client"
 
+import { ArtistIntakeForm } from "./ArtistIntakeForm.js"
+
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import type {
   ApplicantIdentity,
@@ -42,6 +44,8 @@ export type GatekeeperProps = {
   ) => void
   applicant?: ApplicantIdentity | null
   collectApplicant?: boolean
+  /** Artist intake collects structured facts before the conversation. */
+  intakeMode?: "email" | "artist"
   renderHeader?: () => ReactNode
   renderFooter?: () => ReactNode
   className?: string
@@ -52,7 +56,11 @@ export type GatekeeperProps = {
 
 type ChatLine = { id: string; role: "user" | "assistant"; content: string }
 
-export function Gatekeeper({
+export function Gatekeeper(props: GatekeeperProps) {
+  return <GatekeeperExperience key={props.intakeMode ?? "email"} {...props} />
+}
+
+function GatekeeperExperience({
   sessionId: sessionIdProp,
   onSessionId,
   personaId,
@@ -61,6 +69,7 @@ export function Gatekeeper({
   onOutcome,
   applicant: applicantProp,
   collectApplicant = true,
+  intakeMode = "email",
   renderHeader,
   renderFooter,
   className,
@@ -77,14 +86,15 @@ export function Gatekeeper({
   useEffect(() => {
     if (sessionIdProp) return
     if (typeof window === "undefined") return
-    const key = STORAGE_PREFIX + window.location.pathname
+    const key = STORAGE_PREFIX + window.location.pathname + (intakeMode === "artist" ? ":artist" : "")
     let id = sessionStorage.getItem(key)
     if (!id) {
       id = crypto.randomUUID()
       sessionStorage.setItem(key, id)
     }
-    setInternalId(id)
-  }, [sessionIdProp])
+    const frame = window.requestAnimationFrame(() => setInternalId(id))
+    return () => window.cancelAnimationFrame(frame)
+  }, [sessionIdProp, intakeMode])
 
   const replacementId =
     replacementSession && replacementSession.sourceSessionId === sessionIdProp
@@ -127,8 +137,10 @@ export function Gatekeeper({
     outcome === "redirected" ||
     outcome === "rejected"
 
-  const activeApplicant = applicantProp ?? submittedApplicant
-  const needsApplicant = collectApplicant && !activeApplicant
+  const activeApplicant = submittedApplicant?.artist && (!applicantProp || applicantProp.email === submittedApplicant.email)
+    ? submittedApplicant
+    : applicantProp ?? submittedApplicant
+  const needsApplicant = collectApplicant && (!activeApplicant || (intakeMode === "artist" && !activeApplicant.artist))
 
   const submitApplicant = useCallback(() => {
     const email = applicantEmail.trim().toLowerCase()
@@ -160,7 +172,7 @@ export function Gatekeeper({
   const startOver = useCallback(() => {
     const newId = crypto.randomUUID()
     if (typeof window !== "undefined" && !sessionIdProp) {
-      sessionStorage.setItem(STORAGE_PREFIX + window.location.pathname, newId)
+      sessionStorage.setItem(STORAGE_PREFIX + window.location.pathname + (intakeMode === "artist" ? ":artist" : ""), newId)
     }
     bootstrappedSessionRef.current = null
     setPendingResume(null)
@@ -171,7 +183,7 @@ export function Gatekeeper({
     setFailedAnswer(null)
     setShowSlowResponse(false)
     setOutcome("active")
-  }, [sessionIdProp])
+  }, [sessionIdProp, intakeMode])
 
   useEffect(() => {
     if (!sessionId || needsApplicant || terminal) return
@@ -204,7 +216,7 @@ export function Gatekeeper({
           setLines([])
           bootstrappedSessionRef.current = null
           if (typeof window !== "undefined") {
-            const key = STORAGE_PREFIX + window.location.pathname
+            const key = STORAGE_PREFIX + window.location.pathname + (intakeMode === "artist" ? ":artist" : "")
             if (!sessionIdProp) {
               const newId = crypto.randomUUID()
               sessionStorage.setItem(key, newId)
@@ -230,6 +242,7 @@ export function Gatekeeper({
     personaId,
     activeApplicant,
     sessionIdProp,
+    intakeMode,
     openingMessage,
     openingInteraction,
     confirmResume,
@@ -287,7 +300,7 @@ export function Gatekeeper({
         setOutcome("active")
         setLines([])
         if (typeof window !== "undefined") {
-          const key = STORAGE_PREFIX + window.location.pathname
+          const key = STORAGE_PREFIX + window.location.pathname + (intakeMode === "artist" ? ":artist" : "")
           if (!sessionIdProp) {
             const newId = crypto.randomUUID()
             sessionStorage.setItem(key, newId)
@@ -318,6 +331,7 @@ export function Gatekeeper({
     personaId,
     sessionId,
     sessionIdProp,
+    intakeMode,
     activeApplicant,
     needsApplicant,
     terminal,
@@ -357,7 +371,9 @@ export function Gatekeeper({
           ) : null}
         </div>
       ) : null}
-      {needsApplicant ? (
+      {needsApplicant && intakeMode === "artist" ? (
+        <ArtistIntakeForm initialEmail={applicantProp?.email} initialName={applicantProp?.name} disabled={bootstrapping} onSubmit={setSubmittedApplicant} />
+      ) : needsApplicant ? (
         <form
           className="groucho-applicant-form"
           onSubmit={(e) => {

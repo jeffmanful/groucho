@@ -910,3 +910,12 @@
     transition: none;
   }
 }
+
+.groucho-artist-intake { gap: 1rem; }
+.groucho-artist-intake__fields { display: grid; gap: 1rem; min-width: 0; border: 0; padding: 0; margin: 0; }
+.groucho-artist-intake__row { display: grid; grid-template-columns: minmax(0, 1fr) 6rem; gap: 1rem; }
+.groucho-artist-intake .groucho-field__input { width: 100%; min-width: 0; min-height: 44px; box-sizing: border-box; }
+.groucho-artist-intake textarea { resize: vertical; }
+.groucho-artist-intake p { margin: 0; line-height: 1.5; }
+.groucho-artist-intake button { min-height: 44px; justify-self: start; }
+.groucho-artist-intake :disabled { opacity: .6; cursor: wait; }

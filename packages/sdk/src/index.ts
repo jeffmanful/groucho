@@ -1,6 +1,7 @@
 export {
   createClient,
   type GrouchoClient,
+  type ApplicantIdentity,
   type GrouchoClientOptions,
   type PostMessageResponse,
   type GrouchoInteractionUi,

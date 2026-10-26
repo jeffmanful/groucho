@@ -1,3 +1,4 @@
+import { ARTIST_APPLICATION_OPENING } from "@/lib/artist-application"
 import { NextResponse } from "next/server"
 import {
   applicantIdentityPayload,
@@ -104,7 +105,7 @@ export async function startGatekeeperSession(
     input.openingMessage,
     projectSettings.applicationExperience.opening_message,
   )
-  const openingMessage = applicationOpeningMessageForSignals(
+  const openingMessage = applicantIdentity?.artist ? ARTIST_APPLICATION_OPENING : applicationOpeningMessageForSignals(
     configuredOpeningMessage,
     openingSignals,
   )
@@ -112,8 +113,9 @@ export async function startGatekeeperSession(
     input.openingInteraction,
     projectSettings.applicationExperience.opening_interaction,
   )
-  const openingInteraction =
-    isColorsForumSignalSet(openingSignals) &&
+  const openingInteraction = applicantIdentity?.artist
+    ? { ...DEFAULT_INTERACTION_SPEC, inputType: "text" as const }
+    : isColorsForumSignalSet(openingSignals) &&
     configuredOpeningInteraction.inputType !== "mediaChoice"
     ? {
         ...DEFAULT_INTERACTION_SPEC,
@@ -129,7 +131,7 @@ export async function startGatekeeperSession(
 
   const { data: existing } = await supabase
     .from("sessions")
-    .select("id, status, applicant_email, applicant_name")
+    .select("id, status, applicant_email, applicant_name, applicant_artist_profile")
     .eq("session_id", sessionId)
     .eq("project_id", projectId)
     .maybeSingle()
@@ -207,7 +209,7 @@ export async function startGatekeeperSession(
   if (createError?.code === "23505") {
     const { data: raced } = await supabase
       .from("sessions")
-      .select("id, status, applicant_email, applicant_name")
+      .select("id, status, applicant_email, applicant_name, applicant_artist_profile")
       .eq("session_id", sessionId)
       .eq("project_id", projectId)
       .maybeSingle()

@@ -326,6 +326,25 @@ describe("contract: postSessionMessage", () => {
     ]
   })
 
+
+  it("keeps the artist flow from the stored session without sending demographic fields to the model", async () => {
+    const { __state: state } = await import("@/lib/supabase") as unknown as { __state: FakeSupabaseState }
+    state.sessions.push({ id: "artist-internal", session_id: "artist-context-test", project_id: "proj1", status: "active", applicant_email: testApplicant.email, applicant_name: "Private Example Name", applicant_artist_profile: { city: "Private Example City", age: 37, socialLinks: ["https://example.com/private-profile"], musicLinks: [] } })
+    let capturedSystem = ""
+    anthropicCreateImpl = async (request) => {
+      const text = systemTextFromRequest(request)
+      if (text.includes("artist-focused COLORS Forum application")) capturedSystem = text
+      return { content: [{ type: "tool_use", id: "tool-artist", name: "groucho_respond", input: { reply: "What are you exploring in that sound?", terminal: "active", intent: "probe", inputType: "text", emotionalState: "neutral", visualState: "curious" } }] }
+    }
+    const { postSessionMessage } = await import("@/lib/post-session-message")
+    const response = await postSessionMessage({ authorization: "Bearer test", sessionId: "artist-context-test", message: "I am building a set of home-recorded songs.", applicantIdentity: testApplicant })
+    expect(response.status).toBe(200)
+    expect(capturedSystem).toContain("They may have no public links")
+    expect(capturedSystem).not.toContain("Private Example Name")
+    expect(capturedSystem).not.toContain("Private Example City")
+    expect(capturedSystem).not.toContain("https://example.com/private-profile")
+  })
+
   it("keeps a contextual reply without planning media on an ordinary text turn", async () => {
     const requiredSignals = [
       "What brought you here?",

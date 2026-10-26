@@ -18,3 +18,5 @@ export {
   isTerminalOutcome,
   type DecisionPhase,
 } from "./decision-moment.js"
+
+export { ArtistIntakeForm, type ArtistIntakeFormProps } from "./ArtistIntakeForm.js"

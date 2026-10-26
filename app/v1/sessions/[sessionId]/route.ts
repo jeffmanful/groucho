@@ -30,7 +30,7 @@ export async function GET(
   const { data: row, error } = await supabase
     .from("sessions")
     .select(
-      "id, session_id, status, created_at, updated_at, current_step_id, flow_version, profile, onboarding_state, applicant_email, applicant_name",
+      "id, session_id, status, created_at, updated_at, current_step_id, flow_version, profile, onboarding_state, applicant_email, applicant_name, applicant_artist_profile",
     )
     .eq("session_id", clientKey)
     .eq("project_id", projectId)

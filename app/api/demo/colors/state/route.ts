@@ -1,3 +1,4 @@
+import { applicantIdentityFromRow } from "@/lib/applicant-identity"
 import { NextRequest, NextResponse } from "next/server"
 import { colorsDemoProject } from "@/lib/colors-demo-access"
 import { demoSession } from "@/lib/colors-demo-token"
@@ -11,7 +12,7 @@ export async function GET(req: NextRequest) {
   const project = await colorsDemoProject()
   if (!project) return NextResponse.json({ error: "COLORS Forum demo is not configured" }, { status: 503 })
   const { data: session } = await supabase.from("sessions")
-    .select("id, status, applicant_email")
+    .select("id, status, applicant_email, applicant_name, applicant_artist_profile")
     .eq("session_id", sessionId)
     .eq("project_id", project.context.projectId)
     .maybeSingle()
@@ -28,6 +29,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     status: session.status,
     applicantEmail: session.applicant_email,
+    applicant: applicantIdentityFromRow(session),
     message: lastAssistant?.content ?? null,
     ui: metadata.ui ?? null,
   })

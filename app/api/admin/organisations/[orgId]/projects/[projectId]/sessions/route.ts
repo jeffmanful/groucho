@@ -23,6 +23,7 @@ type SessionListRow = {
   profile_extracted_at: string | null
   applicant_email: string | null
   applicant_name: string | null
+  applicant_artist_profile: unknown
   suitability_score: number | null
 }
 
@@ -73,7 +74,7 @@ export async function GET(
   const sessionResult = await supabase
     .from("sessions")
     .select(
-      "id, session_id, status, persona_id, created_at, updated_at, profile_extracted_at, applicant_email, applicant_name, suitability_score",
+      "id, session_id, status, persona_id, created_at, updated_at, profile_extracted_at, applicant_email, applicant_name, applicant_artist_profile, suitability_score",
       { count: "exact" },
     )
     .eq("project_id", projectId)
@@ -93,7 +94,7 @@ export async function GET(
     const legacyResult = await supabase
       .from("sessions")
       .select(
-        "id, session_id, status, persona_id, created_at, updated_at, profile_extracted_at, applicant_email, applicant_name",
+        "id, session_id, status, persona_id, created_at, updated_at, profile_extracted_at, applicant_email, applicant_name, applicant_artist_profile",
         { count: "exact" },
       )
       .eq("project_id", projectId)
@@ -121,8 +122,8 @@ export async function GET(
     const focusResult = await supabase
       .from("sessions")
       .select(legacySuitabilitySchema
-        ? "id, session_id, status, persona_id, created_at, updated_at, profile_extracted_at, applicant_email, applicant_name"
-        : "id, session_id, status, persona_id, created_at, updated_at, profile_extracted_at, applicant_email, applicant_name, suitability_score")
+        ? "id, session_id, status, persona_id, created_at, updated_at, profile_extracted_at, applicant_email, applicant_name, applicant_artist_profile"
+        : "id, session_id, status, persona_id, created_at, updated_at, profile_extracted_at, applicant_email, applicant_name, applicant_artist_profile, suitability_score")
       .eq("id", focusSessionId)
       .eq("project_id", projectId)
       .eq("organisation_id", orgId)

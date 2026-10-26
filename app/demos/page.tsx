@@ -72,6 +72,9 @@ export default async function DemosPage({
           <Link className={styles.button} href="/demo/colors">
             Open COLORS demo
           </Link>
+          <Link className={styles.button} href="/demo/colors?application=artist">
+            Try artist application
+          </Link>
         </article>
       </div>
     </main>

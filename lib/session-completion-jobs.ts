@@ -1,3 +1,4 @@
+import { applicantIdentityFromRow } from "@/lib/applicant-identity"
 import { recordCompletedSessionCulturalSignals } from "@/lib/cultural-signals"
 import { log } from "@/lib/logger"
 import { normaliseReviewerReport } from "@/lib/reviewer-report"
@@ -100,7 +101,7 @@ async function completeJob(job: CompletionJob): Promise<void> {
       supabase
         .from("sessions")
         .select(
-          "id, session_id, status, persona_id, applicant_email, applicant_name",
+          "id, session_id, status, persona_id, applicant_email, applicant_name, applicant_artist_profile",
         )
         .eq("id", job.session_id)
         .eq("project_id", job.project_id)
@@ -222,12 +223,7 @@ async function completeJob(job: CompletionJob): Promise<void> {
         role: message.role as "user" | "assistant",
         content: message.content,
       })),
-      applicant: session.applicant_email
-        ? {
-            email: session.applicant_email,
-            ...(session.applicant_name ? { name: session.applicant_name } : {}),
-          }
-        : null,
+      applicant: applicantIdentityFromRow(session),
       interactionAnswers,
     }),
     recordCompletedSessionCulturalSignals({

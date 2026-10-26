@@ -220,6 +220,39 @@ components:
         name:
           type: string
           maxLength: 160
+        artist:
+          $ref: "#/components/schemas/ArtistApplicantProfile"
+
+    ArtistApplicantProfile:
+      type: object
+      required: [city, age, socialLinks, musicLinks]
+      description: Applicant-supplied artist facts. Name is required on the parent applicant when this object is present. Empty link lists are valid.
+      properties:
+        city:
+          type: string
+          minLength: 1
+          maxLength: 120
+        age:
+          type: integer
+          minimum: 0
+          maximum: 120
+        artistName:
+          type: string
+          maxLength: 160
+        socialLinks:
+          type: array
+          maxItems: 8
+          items:
+            type: string
+            format: uri
+            maxLength: 2048
+        musicLinks:
+          type: array
+          maxItems: 8
+          items:
+            type: string
+            format: uri
+            maxLength: 2048
 
     PostMessageRequest:
       type: object

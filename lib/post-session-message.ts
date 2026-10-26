@@ -1,7 +1,9 @@
+import { ARTIST_APPLICATION_CONTEXT, ARTIST_APPLICATION_OPENING } from "@/lib/artist-application"
 import Anthropic from "@anthropic-ai/sdk"
 import { NextResponse } from "next/server"
 import {
   applicantIdentityPayload,
+  applicantIdentityFromRow,
   type ApplicantIdentity,
 } from "@/lib/applicant-identity"
 import type { ConversationMessage, Score } from "@/lib/scoring"
@@ -847,7 +849,7 @@ export async function postSessionMessage(
 
   const { data: existing } = await timings.measure("session_lookup", () => supabase
     .from("sessions")
-    .select("id, status, persona_id, applicant_email, applicant_name")
+    .select("id, status, persona_id, applicant_email, applicant_name, applicant_artist_profile")
     .eq("session_id", sessionId)
     .eq("project_id", projectId)
     .maybeSingle())
@@ -931,6 +933,8 @@ export async function postSessionMessage(
     resolveActiveGatekeeperPersona(personaCandidates),
   )
 
+  const storedApplicant = existing ? applicantIdentityFromRow(existing) : applicantIdentity
+  const artistApplication = Boolean(storedApplicant?.artist)
   const baseSystem = resolvedPersona
     ? withTerminalDecisionAppendix(resolvedPersona.prompt)
     : withTerminalDecisionAppendix(DOORMAN_SYSTEM_PROMPT_CORE)
@@ -1144,7 +1148,7 @@ export async function postSessionMessage(
     dbHistory.length > 0 && dbHistory[0].role === "assistant"
   const effectiveOpeningMessage = hasPersistedOpener
     ? dbHistory[0].content
-    : openingMessage
+    : artistApplication ? ARTIST_APPLICATION_OPENING : openingMessage
   const applicationAppendix = buildApplicationExperiencePromptAppendix(
     settings.applicationExperience,
     rubricVersion,
@@ -1152,7 +1156,7 @@ export async function postSessionMessage(
   const systemPrompt = `${withConfiguredOpeningContext(
     baseSystem,
     effectiveOpeningMessage,
-  )}${applicationAppendix}\n\n${GATEKEEPER_STRUCTURED_SYSTEM_SUFFIX}`
+  )}${applicationAppendix}${artistApplication ? ARTIST_APPLICATION_CONTEXT : ""}\n\n${GATEKEEPER_STRUCTURED_SYSTEM_SUFFIX}`
 
   const currentQuestion = previousAssistant?.content ?? effectiveOpeningMessage
   const claudeMessages: Anthropic.MessageParam[] = useCompactSignalState

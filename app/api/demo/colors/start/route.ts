@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
   }
   const applicant = parseApplicantIdentity(body?.applicant)
   if (!applicant.ok || !applicant.value) {
-    return NextResponse.json({ error: "Applicant email is required" }, { status: 400 })
+    return NextResponse.json({ error: !applicant.ok ? applicant.error : "Applicant email is required" }, { status: 400 })
   }
   const project = await colorsDemoProject()
   if (!project) return NextResponse.json({ error: "COLORS Forum demo is not configured" }, { status: 503 })
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     context: project.context,
     projectSettings: project.context.settings,
     conversationEngine:
-      process.env.GROUCHO_COLORS_THIN_PILOT === "1"
+      !applicant.value.artist && process.env.GROUCHO_COLORS_THIN_PILOT === "1"
         ? COLORS_THIN_PILOT_MARKER
         : undefined,
   })
