@@ -220,13 +220,18 @@ components:
         name:
           type: string
           maxLength: 160
+        details:
+          $ref: "#/components/schemas/ApplicantDetails"
         artist:
           $ref: "#/components/schemas/ArtistApplicantProfile"
 
     ArtistApplicantProfile:
+      $ref: "#/components/schemas/ApplicantDetails"
+
+    ApplicantDetails:
       type: object
       required: [city, age, socialLinks, musicLinks]
-      description: Applicant-supplied artist facts. Name is required on the parent applicant when this object is present. Empty link lists are valid.
+      description: Applicant-supplied facts for either application audience; use details for community or artist for artist applications, never both. Name is required on the parent applicant when this object is present. Empty link lists are valid.
       properties:
         city:
           type: string

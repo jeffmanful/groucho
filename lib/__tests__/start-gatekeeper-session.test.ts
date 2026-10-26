@@ -451,6 +451,17 @@ describe("startGatekeeperSession", () => {
     const body = await jsonFromResponse(res as Response)
     expect(body.error).toBe("applicant.email is required to start a session")
   })
+  it("stores the same details for a community application while keeping its normal opening", async () => {
+    const { startGatekeeperSession } = await import("@/lib/start-gatekeeper-session")
+    const applicant = { email: "member@example.com", name: "Example Member", details: { city: "Example City", age: 24, socialLinks: [], musicLinks: [] } }
+    const context = { organisationId: "org1", projectId: "proj1", apiKeyId: "key1", settings: projectSettings }
+    const response = await startGatekeeperSession({ sessionId: "community-session-1", applicantIdentity: applicant, context, projectSettings, openingMessage: "What brings you to the community?" })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ message: "What brings you to the community?" })
+    const supa = await import("@/lib/supabase") as unknown as { __state: { sessions: FakeRow[] } }
+    expect(supa.__state.sessions[0]).toMatchObject({ application_audience: "community", applicant_details: applicant.details })
+  })
+
   it("persists artist facts and starts an artist conversation without demanding links", async () => {
     const { startGatekeeperSession } = await import("@/lib/start-gatekeeper-session")
     const { ARTIST_APPLICATION_OPENING } = await import("@/lib/artist-application")
@@ -460,11 +471,11 @@ describe("startGatekeeperSession", () => {
     expect(response.status).toBe(200)
     expect(await response.json()).toMatchObject({ message: ARTIST_APPLICATION_OPENING, ui: { inputType: "text" } })
     const supa = await import("@/lib/supabase") as unknown as { __state: { sessions: FakeRow[] } }
-    expect(supa.__state.sessions[0]).toMatchObject({ applicant_name: applicant.name, applicant_artist_profile: applicant.artist })
+    expect(supa.__state.sessions[0]).toMatchObject({ applicant_name: applicant.name, applicant_details: applicant.artist })
     const resumed = await startGatekeeperSession({ sessionId: "artist-session-1", applicantIdentity: { email: applicant.email }, context, projectSettings })
     expect(await resumed.json()).toMatchObject({ resumed: true, message: ARTIST_APPLICATION_OPENING })
     expect(supa.__state.sessions).toHaveLength(1)
-    expect(supa.__state.sessions[0].applicant_artist_profile).toEqual(applicant.artist)
+    expect(supa.__state.sessions[0].applicant_details).toEqual(applicant.artist)
   })
 
 })

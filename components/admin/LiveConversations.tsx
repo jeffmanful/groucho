@@ -1,6 +1,6 @@
 "use client"
 
-import { applicantIdentityFromRow, type ArtistApplicantProfile } from "@/lib/applicant-identity"
+import { applicantIdentityFromRow, type ApplicantDetails } from "@/lib/applicant-identity"
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react"
 import { ReviewerReportView } from "@/components/admin/ReviewerReportView"
@@ -33,7 +33,7 @@ type LiveSession = {
   updated_at: string
   applicant_email: string | null
   applicant_name: string | null
-  applicant_artist_profile?: ArtistApplicantProfile | null
+  applicant_details?: ApplicantDetails | null
   messages: Message[]
   messagesLoaded: boolean
   reviewerReport: ReviewerReport | null
@@ -123,7 +123,7 @@ export default function LiveConversations() {
     setSessions((current) =>
       rows.map((row) => ({
         ...row,
-        applicant_artist_profile: applicantIdentityFromRow(row)?.artist ?? null,
+        applicant_details: applicantIdentityFromRow(row)?.details ?? applicantIdentityFromRow(row)?.artist ?? null,
         messages: current.find((session) => session.id === row.id)?.messages ?? [],
         messagesLoaded:
           current.find((session) => session.id === row.id)?.messagesLoaded ?? false,
@@ -723,11 +723,11 @@ export default function LiveConversations() {
               <dl className="details-list">
                 <div><dt>Applicant</dt><dd>{selectedSession.applicant_name || "Not provided"}</dd></div>
                 <div><dt>Email</dt><dd>{selectedSession.applicant_email || "Not provided"}</dd></div>
-                {selectedSession.applicant_artist_profile ? <>
-                  <div><dt>Artist name</dt><dd>{selectedSession.applicant_artist_profile.artistName || "Not provided"}</dd></div>
-                  <div><dt>City</dt><dd>{selectedSession.applicant_artist_profile.city}</dd></div>
-                  <div><dt>Age</dt><dd>{selectedSession.applicant_artist_profile.age}</dd></div>
-                  {([['Social links', selectedSession.applicant_artist_profile.socialLinks], ['Music links', selectedSession.applicant_artist_profile.musicLinks]] as const).map(([label, links]) => <div key={label}><dt>{label}</dt><dd>{links.length ? links.map((link) => <a key={link} href={link} target="_blank" rel="noopener noreferrer" style={{ display: "block", overflowWrap: "anywhere" }}>{link}</a>) : "Not provided"}</dd></div>)}
+                {selectedSession.applicant_details ? <>
+                  <div><dt>Artist name</dt><dd>{selectedSession.applicant_details.artistName || "Not provided"}</dd></div>
+                  <div><dt>City</dt><dd>{selectedSession.applicant_details.city}</dd></div>
+                  <div><dt>Age</dt><dd>{selectedSession.applicant_details.age}</dd></div>
+                  {([['Social links', selectedSession.applicant_details.socialLinks], ['Music links', selectedSession.applicant_details.musicLinks]] as const).map(([label, links]) => <div key={label}><dt>{label}</dt><dd>{links.length ? links.map((link) => <a key={link} href={link} target="_blank" rel="noopener noreferrer" style={{ display: "block", overflowWrap: "anywhere" }}>{link}</a>) : "Not provided"}</dd></div>)}
                 </> : null}
                 <div><dt>Started</dt><dd>{new Date(selectedSession.created_at).toLocaleString()}</dd></div>
                 <div><dt>Last activity</dt><dd>{new Date(selectedSession.updated_at).toLocaleString()}</dd></div>

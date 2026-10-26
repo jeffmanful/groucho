@@ -1,6 +1,6 @@
 "use client"
 
-import { ArtistIntakeForm } from "./ArtistIntakeForm.js"
+import { ApplicantIntakeForm } from "./ArtistIntakeForm.js"
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import type {
@@ -65,8 +65,8 @@ export type GatekeeperV2Props = {
   ) => void
   applicant?: ApplicantIdentity | null
   collectApplicant?: boolean
-  /** Artist intake collects structured facts before the conversation. */
-  intakeMode?: "email" | "artist"
+  /** Expanded community intake by default; artist mode changes the conversation, email retains legacy intake. */
+  intakeMode?: "email" | "community" | "artist"
   /** Show terminal outcome banner (default: hidden in V2) */
   showOutcome?: boolean
   /** Pause before revealing terminal copy (default: false) */
@@ -82,7 +82,7 @@ export type GatekeeperV2Props = {
 }
 
 export function GatekeeperV2(props: GatekeeperV2Props) {
-  return <GatekeeperV2Experience key={props.intakeMode ?? "email"} {...props} />
+  return <GatekeeperV2Experience key={props.intakeMode ?? "community"} {...props} />
 }
 
 function GatekeeperV2Experience({
@@ -94,7 +94,7 @@ function GatekeeperV2Experience({
   onOutcome,
   applicant: applicantProp,
   collectApplicant = true,
-  intakeMode = "email",
+  intakeMode = "community",
   showOutcome = false,
   decisionMoment = false,
   evaluatingDurationMs = DEFAULT_EVALUATING_DURATION_MS,
@@ -115,7 +115,7 @@ function GatekeeperV2Experience({
   useEffect(() => {
     if (sessionIdProp) return
     if (typeof window === "undefined") return
-    const key = STORAGE_PREFIX + window.location.pathname + (intakeMode === "artist" ? ":artist" : "")
+    const key = STORAGE_PREFIX + window.location.pathname + (intakeMode === "email" ? "" : `:${intakeMode}`)
     let id = sessionStorage.getItem(key)
     if (!id) {
       id = crypto.randomUUID()
@@ -166,10 +166,10 @@ function GatekeeperV2Experience({
 
   const terminal = isTerminalOutcome(outcome)
 
-  const activeApplicant = submittedApplicant?.artist && (!applicantProp || applicantProp.email === submittedApplicant.email)
+  const activeApplicant = (submittedApplicant?.artist || submittedApplicant?.details) && (!applicantProp || applicantProp.email === submittedApplicant.email)
     ? submittedApplicant
     : applicantProp ?? submittedApplicant
-  const needsApplicant = collectApplicant && (!activeApplicant || (intakeMode === "artist" && !activeApplicant.artist))
+  const needsApplicant = collectApplicant && (!activeApplicant || (intakeMode === "artist" ? !activeApplicant.artist : intakeMode === "community" && !activeApplicant.details))
 
   const presenceState = presenceForDecisionPhase({
     loading,
@@ -200,7 +200,7 @@ function GatekeeperV2Experience({
   const startOver = useCallback(() => {
     const newId = crypto.randomUUID()
     if (typeof window !== "undefined" && !sessionIdProp) {
-      sessionStorage.setItem(STORAGE_PREFIX + window.location.pathname + (intakeMode === "artist" ? ":artist" : ""), newId)
+      sessionStorage.setItem(STORAGE_PREFIX + window.location.pathname + (intakeMode === "email" ? "" : `:${intakeMode}`), newId)
     }
     bootstrappedSessionRef.current = null
     pendingTerminalTurnRef.current = null
@@ -265,7 +265,7 @@ function GatekeeperV2Experience({
           setDecisionPhase("none")
           bootstrappedSessionRef.current = null
           if (typeof window !== "undefined") {
-            const key = STORAGE_PREFIX + window.location.pathname + (intakeMode === "artist" ? ":artist" : "")
+            const key = STORAGE_PREFIX + window.location.pathname + (intakeMode === "email" ? "" : `:${intakeMode}`)
             if (!sessionIdProp) {
               const newId = crypto.randomUUID()
               sessionStorage.setItem(key, newId)
@@ -364,7 +364,7 @@ function GatekeeperV2Experience({
           setTurn(null)
           setDecisionPhase("none")
           if (typeof window !== "undefined") {
-            const key = STORAGE_PREFIX + window.location.pathname + (intakeMode === "artist" ? ":artist" : "")
+            const key = STORAGE_PREFIX + window.location.pathname + (intakeMode === "email" ? "" : `:${intakeMode}`)
             if (!sessionIdProp) {
               const newId = crypto.randomUUID()
               sessionStorage.setItem(key, newId)
@@ -453,8 +453,8 @@ function GatekeeperV2Experience({
           ) : null}
         </div>
       ) : null}
-      {needsApplicant && intakeMode === "artist" ? (
-        <ArtistIntakeForm initialEmail={applicantProp?.email} initialName={applicantProp?.name} disabled={bootstrapping} onSubmit={setSubmittedApplicant} />
+      {needsApplicant && intakeMode !== "email" ? (
+        <ApplicantIntakeForm audience={intakeMode} initialEmail={applicantProp?.email} initialName={applicantProp?.name} disabled={bootstrapping} onSubmit={setSubmittedApplicant} />
       ) : needsApplicant ? (
         <form
           className="groucho-applicant-form"

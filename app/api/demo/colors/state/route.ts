@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   const project = await colorsDemoProject()
   if (!project) return NextResponse.json({ error: "COLORS Forum demo is not configured" }, { status: 503 })
   const { data: session } = await supabase.from("sessions")
-    .select("id, status, applicant_email, applicant_name, applicant_artist_profile")
+    .select("id, status, applicant_email, applicant_name, applicant_details, application_audience")
     .eq("session_id", sessionId)
     .eq("project_id", project.context.projectId)
     .maybeSingle()

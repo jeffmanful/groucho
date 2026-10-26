@@ -19,4 +19,4 @@ export {
   type DecisionPhase,
 } from "./decision-moment.js"
 
-export { ArtistIntakeForm, type ArtistIntakeFormProps } from "./ArtistIntakeForm.js"
+export { ApplicantIntakeForm, type ApplicantIntakeFormProps, ArtistIntakeForm, type ArtistIntakeFormProps } from "./ArtistIntakeForm.js"

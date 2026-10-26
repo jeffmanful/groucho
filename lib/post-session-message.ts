@@ -1,4 +1,4 @@
-import { ARTIST_APPLICATION_CONTEXT, ARTIST_APPLICATION_OPENING } from "@/lib/artist-application"
+import { COMMUNITY_APPLICATION_CONTEXT, ARTIST_APPLICATION_CONTEXT, ARTIST_APPLICATION_OPENING } from "@/lib/artist-application"
 import Anthropic from "@anthropic-ai/sdk"
 import { NextResponse } from "next/server"
 import {
@@ -849,7 +849,7 @@ export async function postSessionMessage(
 
   const { data: existing } = await timings.measure("session_lookup", () => supabase
     .from("sessions")
-    .select("id, status, persona_id, applicant_email, applicant_name, applicant_artist_profile")
+    .select("id, status, persona_id, applicant_email, applicant_name, applicant_details, application_audience")
     .eq("session_id", sessionId)
     .eq("project_id", projectId)
     .maybeSingle())
@@ -1156,7 +1156,7 @@ export async function postSessionMessage(
   const systemPrompt = `${withConfiguredOpeningContext(
     baseSystem,
     effectiveOpeningMessage,
-  )}${applicationAppendix}${artistApplication ? ARTIST_APPLICATION_CONTEXT : ""}\n\n${GATEKEEPER_STRUCTURED_SYSTEM_SUFFIX}`
+  )}${applicationAppendix}${artistApplication ? ARTIST_APPLICATION_CONTEXT : storedApplicant?.details ? COMMUNITY_APPLICATION_CONTEXT : ""}\n\n${GATEKEEPER_STRUCTURED_SYSTEM_SUFFIX}`
 
   const currentQuestion = previousAssistant?.content ?? effectiveOpeningMessage
   const claudeMessages: Anthropic.MessageParam[] = useCompactSignalState

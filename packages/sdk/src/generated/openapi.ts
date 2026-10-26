@@ -103,10 +103,12 @@ export interface components {
             /** Format: email */
             email: string;
             name?: string;
+            details?: components["schemas"]["ApplicantDetails"];
             artist?: components["schemas"]["ArtistApplicantProfile"];
         };
-        /** @description Applicant-supplied artist facts. Name is required on the parent applicant when this object is present. Empty link lists are valid. */
-        ArtistApplicantProfile: {
+        ArtistApplicantProfile: components["schemas"]["ApplicantDetails"];
+        /** @description Applicant-supplied facts for either application audience; use details for community or artist for artist applications, never both. Name is required on the parent applicant when this object is present. Empty link lists are valid. */
+        ApplicantDetails: {
             city: string;
             age: number;
             artistName?: string;

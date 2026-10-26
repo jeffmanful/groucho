@@ -6,6 +6,13 @@ import { COLORS_FORUM_MEMBERSHIP_PROFILE_SCHEMA } from "@/lib/onboarding-persona
 import { COLORS_FORUM_MEMBERSHIP_REPORT_VERSION } from "@/lib/reviewer-report"
 
 describe("COLORS thin conversation pilot", () => {
+  it("recognises shared intake without turning the community interview into an artist application", () => {
+    const prompt = colorsThinConversationPrompt({ objective: "Forum membership", turnCount: 1, mediaCatalog: [], hasApplicantDetails: true })
+    expect(prompt).toContain("Do not ask for those details again")
+    expect(prompt).toContain("This is a general community application")
+    expect(prompt).not.toContain("artist-focused COLORS Forum application")
+  })
+
   it("sets a loose purpose arc without asking the live model to judge fit", () => {
     const prompt = colorsThinConversationPrompt({
       objective: COLORS_FORUM_MEMBERSHIP_OBJECTIVE,

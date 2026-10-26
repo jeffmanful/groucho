@@ -101,7 +101,7 @@ async function completeJob(job: CompletionJob): Promise<void> {
       supabase
         .from("sessions")
         .select(
-          "id, session_id, status, persona_id, applicant_email, applicant_name, applicant_artist_profile",
+          "id, session_id, status, persona_id, applicant_email, applicant_name, applicant_details, application_audience",
         )
         .eq("id", job.session_id)
         .eq("project_id", job.project_id)

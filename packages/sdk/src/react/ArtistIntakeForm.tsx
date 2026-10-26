@@ -3,7 +3,8 @@
 import { useId, useState, type FormEvent } from "react"
 import type { ApplicantIdentity } from "../client.js"
 
-export type ArtistIntakeFormProps = {
+export type ApplicantIntakeFormProps = {
+  audience?: "community" | "artist"
   initialEmail?: string
   initialName?: string
   disabled?: boolean
@@ -23,7 +24,7 @@ function linksFromText(raw: string, label: string): string[] {
   }))]
 }
 
-export function ArtistIntakeForm({ initialEmail = "", initialName = "", disabled, onSubmit }: ArtistIntakeFormProps) {
+export function ApplicantIntakeForm({ audience = "community", initialEmail = "", initialName = "", disabled, onSubmit }: ApplicantIntakeFormProps) {
   const id = useId()
   const [error, setError] = useState<string | null>(null)
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -42,7 +43,7 @@ export function ArtistIntakeForm({ initialEmail = "", initialName = "", disabled
       const applicant: ApplicantIdentity = {
         email: value("email").toLowerCase(),
         name,
-        artist: {
+        [audience === "artist" ? "artist" : "details"]: {
           city,
           age,
           ...(artistName ? { artistName } : {}),
@@ -56,7 +57,7 @@ export function ArtistIntakeForm({ initialEmail = "", initialName = "", disabled
   }
   return (
     <form className="groucho-applicant-form groucho-artist-intake" onSubmit={submit} aria-describedby={`${id}-help`}>
-      <p id={`${id}-help`} className="groucho-muted">Tell us a little about yourself. An artist name and links are optional, including if you haven’t released music yet.</p>
+      <p id={`${id}-help`} className="groucho-muted">Tell us a little about yourself. An artist name and links are optional, whether you make music or simply enjoy it.</p>
       <fieldset disabled={disabled} className="groucho-artist-intake__fields">
         <label className="groucho-field"><span className="groucho-field__label">Name</span><input className="groucho-field__input" name="name" autoComplete="name" defaultValue={initialName} maxLength={160} required /></label>
         <label className="groucho-field"><span className="groucho-field__label">Email</span><input className="groucho-field__input" name="email" type="email" autoComplete="email" defaultValue={initialEmail} maxLength={320} required /></label>
@@ -73,4 +74,10 @@ export function ArtistIntakeForm({ initialEmail = "", initialName = "", disabled
       </fieldset>
     </form>
   )
+}
+
+export type ArtistIntakeFormProps = Omit<ApplicantIntakeFormProps, "audience">
+
+export function ArtistIntakeForm(props: ArtistIntakeFormProps) {
+  return <ApplicantIntakeForm {...props} audience="artist" />
 }

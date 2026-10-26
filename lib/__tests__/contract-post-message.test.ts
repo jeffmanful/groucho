@@ -327,9 +327,28 @@ describe("contract: postSessionMessage", () => {
   })
 
 
+  it("keeps the community flow from the stored session without sending demographic fields to the model", async () => {
+    const { __state: state } = await import("@/lib/supabase") as unknown as { __state: FakeSupabaseState }
+    state.sessions.push({ id: "community-internal", session_id: "community-context-test", project_id: "proj1", status: "active", applicant_email: testApplicant.email, applicant_name: "Private Example Name", application_audience: "community", applicant_details: { city: "Private Example City", age: 37, socialLinks: ["https://example.com/private-profile"], musicLinks: [] } })
+    let capturedSystem = ""
+    anthropicCreateImpl = async (request) => {
+      const text = systemTextFromRequest(request)
+      if (text.includes("This is a general community application")) capturedSystem = text
+      return { content: [{ type: "tool_use", id: "tool-artist", name: "groucho_respond", input: { reply: "What are you exploring in that sound?", terminal: "active", intent: "probe", inputType: "text", emotionalState: "neutral", visualState: "curious" } }] }
+    }
+    const { postSessionMessage } = await import("@/lib/post-session-message")
+    const response = await postSessionMessage({ authorization: "Bearer test", sessionId: "community-context-test", message: "I am building a set of home-recorded songs.", applicantIdentity: testApplicant })
+    expect(response.status).toBe(200)
+    expect(capturedSystem).toContain("do not assume the applicant is an artist")
+    expect(capturedSystem).not.toContain("artist-focused COLORS Forum application")
+    expect(capturedSystem).not.toContain("Private Example Name")
+    expect(capturedSystem).not.toContain("Private Example City")
+    expect(capturedSystem).not.toContain("https://example.com/private-profile")
+  })
+
   it("keeps the artist flow from the stored session without sending demographic fields to the model", async () => {
     const { __state: state } = await import("@/lib/supabase") as unknown as { __state: FakeSupabaseState }
-    state.sessions.push({ id: "artist-internal", session_id: "artist-context-test", project_id: "proj1", status: "active", applicant_email: testApplicant.email, applicant_name: "Private Example Name", applicant_artist_profile: { city: "Private Example City", age: 37, socialLinks: ["https://example.com/private-profile"], musicLinks: [] } })
+    state.sessions.push({ id: "artist-internal", session_id: "artist-context-test", project_id: "proj1", status: "active", applicant_email: testApplicant.email, applicant_name: "Private Example Name", application_audience: "artist", applicant_details: { city: "Private Example City", age: 37, socialLinks: ["https://example.com/private-profile"], musicLinks: [] } })
     let capturedSystem = ""
     anthropicCreateImpl = async (request) => {
       const text = systemTextFromRequest(request)

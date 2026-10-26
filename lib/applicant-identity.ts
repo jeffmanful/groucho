@@ -1,4 +1,4 @@
-export type ArtistApplicantProfile = {
+export type ApplicantDetails = {
   city: string
   age: number
   artistName?: string
@@ -6,9 +6,12 @@ export type ArtistApplicantProfile = {
   musicLinks: string[]
 }
 
+export type ArtistApplicantProfile = ApplicantDetails
+
 export type ApplicantIdentity = {
   email: string
   name?: string
+  details?: ApplicantDetails
   artist?: ArtistApplicantProfile
 }
 
@@ -43,9 +46,9 @@ function parseLinks(raw: unknown, field: string): string[] {
   }))]
 }
 
-export function parseArtistApplicantProfile(raw: unknown): ArtistApplicantProfile {
+export function parseApplicantDetails(raw: unknown): ApplicantDetails {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new Error("applicant.artist must be an object")
+    throw new Error("Applicant details must be an object")
   }
   const value = raw as Record<string, unknown>
   const city = typeof value.city === "string" ? value.city.trim() : ""
@@ -67,6 +70,8 @@ export function parseArtistApplicantProfile(raw: unknown): ArtistApplicantProfil
   }
 }
 
+export const parseArtistApplicantProfile = parseApplicantDetails
+
 export function parseApplicantIdentity(raw: unknown): ParsedApplicantIdentity {
   if (raw === undefined || raw === null) return { ok: true, value: null }
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
@@ -78,14 +83,16 @@ export function parseApplicantIdentity(raw: unknown): ParsedApplicantIdentity {
   if (email.length > 320 || !EMAIL_RE.test(email)) return { ok: false, error: "applicant.email must be a valid email" }
   const rawName = typeof o.name === "string" ? o.name.trim() : ""
   const name = rawName.slice(0, 160)
-  let artist: ArtistApplicantProfile | undefined
-  if (o.artist !== undefined) {
+  if (o.artist !== undefined && o.details !== undefined) return { ok: false, error: "Provide either community details or artist details, not both" }
+  const key = o.artist !== undefined ? "artist" : "details"
+  let details: ApplicantDetails | undefined
+  if (o[key] !== undefined) {
     if (!rawName || rawName.length > 160) return { ok: false, error: "Name is required and must be 160 characters or fewer" }
-    try { artist = parseArtistApplicantProfile(o.artist) } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : "Invalid artist details" }
+    try { details = parseApplicantDetails(o[key]) } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : "Invalid applicant details" }
     }
   }
-  return { ok: true, value: { email, ...(name ? { name } : {}), ...(artist ? { artist } : {}) } }
+  return { ok: true, value: { email, ...(name ? { name } : {}), ...(details ? { [key]: details } : {}) } }
 }
 
 export function applicantIdentityPayload(identity: ApplicantIdentity | null | undefined): Record<string, unknown> {
@@ -93,23 +100,24 @@ export function applicantIdentityPayload(identity: ApplicantIdentity | null | un
   return {
     applicant_email: identity.email,
     ...(identity.name ? { applicant_name: identity.name } : {}),
-    ...(identity.artist ? { applicant_artist_profile: identity.artist } : {}),
+    ...((identity.artist || identity.details) ? { applicant_details: identity.artist ?? identity.details, application_audience: identity.artist ? "artist" : "community" } : {}),
   }
 }
 
 export function applicantIdentityFromRow(row: {
   applicant_email?: string | null
   applicant_name?: string | null
-  applicant_artist_profile?: unknown
+  applicant_details?: unknown
+  application_audience?: string | null
 }): ApplicantIdentity | null {
   if (!row.applicant_email) return null
-  let artist: ArtistApplicantProfile | undefined
-  if (row.applicant_artist_profile) {
-    try { artist = parseArtistApplicantProfile(row.applicant_artist_profile) } catch { /* Legacy invalid details are not promoted to artist mode. */ }
+  let details: ApplicantDetails | undefined
+  if (row.applicant_details) {
+    try { details = parseApplicantDetails(row.applicant_details) } catch { /* Invalid stored details are omitted. */ }
   }
   return {
     email: row.applicant_email,
     ...(row.applicant_name ? { name: row.applicant_name } : {}),
-    ...(artist ? { artist } : {}),
+    ...(details ? (row.application_audience === "artist" ? { artist: details } : { details }) : {}),
   }
 }

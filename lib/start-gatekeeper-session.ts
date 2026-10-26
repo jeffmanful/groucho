@@ -131,7 +131,7 @@ export async function startGatekeeperSession(
 
   const { data: existing } = await supabase
     .from("sessions")
-    .select("id, status, applicant_email, applicant_name, applicant_artist_profile")
+    .select("id, status, applicant_email, applicant_name, applicant_details, application_audience")
     .eq("session_id", sessionId)
     .eq("project_id", projectId)
     .maybeSingle()
@@ -209,7 +209,7 @@ export async function startGatekeeperSession(
   if (createError?.code === "23505") {
     const { data: raced } = await supabase
       .from("sessions")
-      .select("id, status, applicant_email, applicant_name, applicant_artist_profile")
+      .select("id, status, applicant_email, applicant_name, applicant_details, application_audience")
       .eq("session_id", sessionId)
       .eq("project_id", projectId)
       .maybeSingle()

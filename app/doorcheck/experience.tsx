@@ -9,7 +9,7 @@ import {
   useCallback,
   useId,
 } from "react"
-import { ArtistIntakeForm } from "@/packages/sdk/src/react/ArtistIntakeForm"
+import { ApplicantIntakeForm } from "@/packages/sdk/src/react/ArtistIntakeForm"
 import type { ApplicantIdentity } from "@/lib/applicant-identity"
 import "@/packages/sdk/styles/groucho.css"
 import { useRouter } from "next/navigation"
@@ -1299,14 +1299,15 @@ function ColorsTranscript({
 
 export function DoorCheckExperience({
   demoMode,
-  intakeMode = "email",
+  intakeMode = "community",
 }: {
   demoMode?: "colors"
-  intakeMode?: "email" | "artist"
+  intakeMode?: "email" | "community" | "artist"
 }) {
   const isColorsDemo = demoMode === "colors"
-  const colorsSessionKey = intakeMode === "artist" ? `${COLORS_DEMO_SESSION_KEY}:artist` : COLORS_DEMO_SESSION_KEY
-  const [artistApplicant, setArtistApplicant] = useState<ApplicantIdentity | null>(null)
+  const applicationSessionKey = intakeMode === "email" ? SESSION_KEY : `${SESSION_KEY}:${intakeMode}`
+  const colorsSessionKey = intakeMode === "email" ? COLORS_DEMO_SESSION_KEY : `${COLORS_DEMO_SESSION_KEY}:${intakeMode}`
+  const [intakeApplicant, setIntakeApplicant] = useState<ApplicantIdentity | null>(null)
   const supabase = useMemo(() => createDoorcheckSupabase(), [])
   const [messages, setMessages] = useState<Message[]>(EMAIL_CAPTURE_MESSAGES)
   const [input, setInput] = useState("")
@@ -1490,7 +1491,7 @@ export function DoorCheckExperience({
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
-      const sid = getOrCreateSession(isColorsDemo ? colorsSessionKey : SESSION_KEY)
+      const sid = getOrCreateSession(isColorsDemo ? colorsSessionKey : applicationSessionKey)
       if (!isColorsDemo) {
         setSessionId(sid)
         return
@@ -1501,7 +1502,7 @@ export function DoorCheckExperience({
         if (!response.ok) return
         const state = await response.json()
         if (typeof state.applicantEmail === "string") setApplicantEmail(state.applicantEmail)
-        if (state.applicant?.artist) setArtistApplicant(state.applicant)
+        if ((state.applicant?.artist || state.applicant?.details)) setIntakeApplicant(state.applicant)
         if (["passed", "redirected", "rejected", "completed"].includes(state.status)) {
           setMessages([{
             id: crypto.randomUUID(), role: "bot",
@@ -1516,7 +1517,7 @@ export function DoorCheckExperience({
       }).catch(() => {}).finally(() => setSessionId(sid))
     })
     return () => window.cancelAnimationFrame(frame)
-  }, [isColorsDemo, colorsSessionKey])
+  }, [isColorsDemo, colorsSessionKey, applicationSessionKey])
 
   useEffect(() => {
     if (isColorsDemo) return
@@ -1635,7 +1636,7 @@ export function DoorCheckExperience({
             sessionId: sid,
             projectId,
             personaId: persona,
-            applicant: artistApplicant ?? { email },
+            applicant: intakeApplicant ?? { email },
             ...(opener?.trim() ? { openingMessage: opener.trim() } : {}),
             ...(openingInteraction
               ? { openingInteraction }
@@ -1702,14 +1703,14 @@ export function DoorCheckExperience({
         setBootstrapping(false)
       }
     },
-    [commitBootstrapResponse, isColorsDemo, artistApplicant],
+    [commitBootstrapResponse, isColorsDemo, intakeApplicant],
   )
 
   function applyProjectSelection(projectId: string) {
     setSelectedProjectId(projectId)
     localStorage.setItem(PROJECT_KEY, projectId)
     localStorage.removeItem(REVIEWER_REPORT_KEY)
-    const newId = resetSession(isColorsDemo ? colorsSessionKey : SESSION_KEY)
+    const newId = resetSession(isColorsDemo ? colorsSessionKey : applicationSessionKey)
     setSessionId(newId)
     assistantHandoffRef.current = null
     colorsHandoffRef.current = null
@@ -1775,7 +1776,7 @@ export function DoorCheckExperience({
         interaction: mediaChoice,
       }
 
-      const newId = resetSession(isColorsDemo ? colorsSessionKey : SESSION_KEY)
+      const newId = resetSession(isColorsDemo ? colorsSessionKey : applicationSessionKey)
       setSessionId(newId)
       assistantHandoffRef.current = null
       colorsHandoffRef.current = null
@@ -1938,13 +1939,13 @@ export function DoorCheckExperience({
           sessionId,
           personaId,
           projectId,
-          applicant: artistApplicant ?? { email: applicantEmail },
+          applicant: intakeApplicant ?? { email: applicantEmail },
           ...(interactionAnswer ? { interactionAnswer } : {}),
         }),
       })
 
       if (!isColorsDemo && res.status === 409 && !interactionAnswer) {
-        const freshId = resetSession(SESSION_KEY)
+        const freshId = resetSession(applicationSessionKey)
         setSessionId(freshId)
         res = await fetch("/api/chat", {
           method: "POST",
@@ -1955,7 +1956,7 @@ export function DoorCheckExperience({
             sessionId: freshId,
             personaId,
             projectId,
-            applicant: artistApplicant ?? { email: applicantEmail },
+            applicant: intakeApplicant ?? { email: applicantEmail },
             ...(interactionAnswer ? { interactionAnswer } : {}),
           }),
         })
@@ -2150,7 +2151,7 @@ export function DoorCheckExperience({
       return
     }
 
-    const newId = resetSession(isColorsDemo ? colorsSessionKey : SESSION_KEY)
+    const newId = resetSession(isColorsDemo ? colorsSessionKey : applicationSessionKey)
     localStorage.removeItem(REVIEWER_REPORT_KEY)
     setSessionId(newId)
     setApplicantEmail(email)
@@ -2166,7 +2167,7 @@ export function DoorCheckExperience({
   }
 
   function restart() {
-    const newId = resetSession(isColorsDemo ? colorsSessionKey : SESSION_KEY)
+    const newId = resetSession(isColorsDemo ? colorsSessionKey : applicationSessionKey)
     localStorage.removeItem(SECRET_KEY)
     localStorage.removeItem(PROFILE_KEY)
     localStorage.removeItem(REVIEWER_REPORT_KEY)
@@ -2175,7 +2176,7 @@ export function DoorCheckExperience({
     setSessionId(newId)
     setInput("")
     setApplicantEmail("")
-    setArtistApplicant(null)
+    setIntakeApplicant(null)
     setApplicantEmailError(null)
     setRevealedQuestionId(null)
     setColorsInteractionPhase("ready")
@@ -2201,7 +2202,7 @@ export function DoorCheckExperience({
   }
 
   function startOverFromResume() {
-    const newId = resetSession(isColorsDemo ? colorsSessionKey : SESSION_KEY)
+    const newId = resetSession(isColorsDemo ? colorsSessionKey : applicationSessionKey)
     localStorage.removeItem(SECRET_KEY)
     localStorage.removeItem(PROFILE_KEY)
     localStorage.removeItem(REVIEWER_REPORT_KEY)
@@ -2405,11 +2406,11 @@ export function DoorCheckExperience({
     return bits.join(" · ")
   }
 
-  if (intakeMode === "artist" && !applicantEmail) {
-    return <main className="min-h-dvh bg-black px-6 py-12 text-white"><section className="groucho-root mx-auto w-full"><h1 className="mb-3 text-2xl">Apply as an artist</h1><p className="groucho-muted mb-6">A few details first. Then we’ll talk about your music and what you’d like to find in the COLORS Forum.</p><ArtistIntakeForm disabled={bootstrapping} onSubmit={(applicant) => {
-      const sid = resetSession(isColorsDemo ? colorsSessionKey : SESSION_KEY)
+  if (intakeMode !== "email" && !applicantEmail) {
+    return <main className="min-h-dvh bg-black px-6 py-12 text-white"><section className="groucho-root mx-auto w-full"><h1 className="mb-3 text-2xl">{intakeMode === "artist" ? "Apply as an artist" : "Start your application"}</h1><p className="groucho-muted mb-6">{intakeMode === "artist" ? "A few details first. Then we’ll talk about your music and what you’d like to find in the COLORS Forum." : "A few details first, to help with future communication and onboarding. Then we’ll start the conversation."}</p><ApplicantIntakeForm audience={intakeMode} disabled={bootstrapping} onSubmit={(applicant) => {
+      const sid = resetSession(isColorsDemo ? colorsSessionKey : applicationSessionKey)
       setSessionId(sid)
-      setArtistApplicant(applicant)
+      setIntakeApplicant(applicant)
       setApplicantEmail(applicant.email)
       setMessages([])
       setInput("")

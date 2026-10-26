@@ -5,6 +5,17 @@ const artist = { city: "Example City", age: 24, socialLinks: [], musicLinks: [] 
 const applicant = { email: "artist@example.com", name: "Example Artist", artist }
 
 describe("structured artist intake", () => {
+  it("round trips community details without treating music links as an artist application", () => {
+    const identity = { email: "member@example.com", name: "Example Member", details: { ...artist, musicLinks: ["https://example.com/favourite"] } }
+    expect(parseApplicantIdentity(identity)).toEqual({ ok: true, value: identity })
+    const row = applicantIdentityPayload(identity)
+    expect(row).toMatchObject({ application_audience: "community", applicant_details: identity.details })
+    expect(applicantIdentityFromRow(row)).toEqual(identity)
+  })
+  it("requires a name for community intake and rejects conflicting audiences", () => {
+    expect(parseApplicantIdentity({ email: applicant.email, details: artist }).ok).toBe(false)
+    expect(parseApplicantIdentity({ ...applicant, details: artist }).ok).toBe(false)
+  })
   it("keeps email-only callers compatible", () => {
     expect(parseApplicantIdentity({ email: "  PERSON@EXAMPLE.COM " })).toEqual({ ok: true, value: { email: "person@example.com" } })
   })
@@ -40,6 +51,6 @@ describe("structured artist intake", () => {
     expect(parseApplicantIdentity({ ...applicant, artist: { ...artist, artistName: "x".repeat(161) } }).ok).toBe(false)
   })
   it("does not promote malformed stored data to artist mode", () => {
-    expect(applicantIdentityFromRow({ applicant_email: applicant.email, applicant_artist_profile: { city: "Test", age: "invalid" } })).toEqual({ email: applicant.email })
+    expect(applicantIdentityFromRow({ applicant_email: applicant.email, applicant_details: { city: "Test", age: "invalid" } })).toEqual({ email: applicant.email })
   })
 })
