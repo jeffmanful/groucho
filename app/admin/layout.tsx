@@ -8,7 +8,6 @@ import {
   LayoutDashboard,
   Tickets,
   MessagesSquare,
-  Building2,
   ContactRound,
   Plus,
   LogOut,
@@ -24,6 +23,7 @@ import {
   AdminWorkspaceProvider,
   useAdminWorkspace,
 } from "@/components/admin/AdminWorkspace"
+import { OrgSwitcher } from "@/components/admin/OrgSwitcher"
 import styles from "@/components/admin/admin-workspace.module.css"
 
 export default function AdminLayout({
@@ -83,31 +83,30 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     }
   }, [menu])
   const themeSupported =
-    pathname === "/admin" || pathname.startsWith("/admin/ticket-access") || pathname.startsWith("/admin/access")
+    pathname === "/admin" ||
+    pathname.startsWith("/admin/ticket-access") ||
+    pathname.startsWith("/admin/access")
   useEffect(() => {
     document.documentElement.dataset.theme = themeSupported ? theme : "dark"
     return () => {
       document.documentElement.dataset.theme = "dark"
     }
   }, [theme, themeSupported])
+  const currentOrgId =
+    pathname.match(/^\/admin\/organisations\/([^/]+)/)?.[1] ?? null
+  const currentOrg = currentOrgId
+    ? (data?.organisations.find((o) => o.id === currentOrgId) ?? null)
+    : null
   const links = [
     {
       href: "/admin",
       label: "Overview",
       icon: LayoutDashboard,
-      active: pathname === "/admin",
     },
     {
       href: "/admin/sessions",
       label: "Sessions & reports",
       icon: MessagesSquare,
-      active: pathname.startsWith("/admin/sessions"),
-    },
-    {
-      href: "/admin/organisations",
-      label: "Organisations",
-      icon: Building2,
-      active: pathname.startsWith("/admin/organisations"),
     },
     ...(data
       ? [
@@ -115,17 +114,26 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
             href: "/admin/personas",
             label: "Personas",
             icon: ContactRound,
-            active: pathname.startsWith("/admin/personas"),
           },
         ]
       : []),
   ]
-  if (data?.actor.isPlatform) links.push({ href: "/admin/access", label: "Admin access", icon: ShieldCheck, active: pathname.startsWith("/admin/access") })
+  if (data?.actor.isPlatform)
+    links.push({
+      href: "/admin/access",
+      label: "Admin access",
+      icon: ShieldCheck,
+    })
   const title = pathname.startsWith("/admin/ticket-access")
     ? "Ticket access"
     : pathname.startsWith("/admin/projects")
-    ? "New project"
-    : links.find((l) => l.active)?.label ?? "Workspace"
+      ? "New project"
+      : currentOrg
+        ? currentOrg.name
+        : pathname === "/admin/organisations"
+          ? "Organisations"
+          : (links.find((l) => pathname.startsWith(l.href))?.label ??
+            "Workspace")
   async function logout() {
     setLoggingOut(true)
     setError("")
@@ -166,31 +174,26 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
             <X size={20} strokeWidth={1.75} aria-hidden="true" />
           </button>
         </div>
-        <div className={styles.workspaceLabel}>
-          <span className={styles.workspaceInitial} aria-hidden="true">
-            G
-          </span>
-          <div>
-            Groucho workspace
-            <small>
-              {data?.actor.isPlatform
-                ? "Platform administrator"
-                : "Organisation workspace"}
-            </small>
-          </div>
-        </div>
+        <OrgSwitcher
+          organisations={data?.organisations ?? []}
+          isPlatform={data?.actor.isPlatform ?? false}
+          onNavigate={() => setMenu(false)}
+        />
         <nav aria-label="Main navigation" className={styles.nav}>
-          {links.map(({ href, label, icon: Icon, active }) => (
-            <Link
-              href={href}
-              key={href}
-              aria-current={active ? "page" : undefined}
-              onClick={() => setMenu(false)}
-            >
-              <Icon size={18} strokeWidth={1.75} aria-hidden="true" />
-              {label}
-            </Link>
-          ))}
+          {links.map(({ href, label, icon: Icon }) => {
+            const active = pathname.startsWith(href)
+            return (
+              <Link
+                href={href}
+                key={href}
+                aria-current={active ? "page" : undefined}
+                onClick={() => setMenu(false)}
+              >
+                <Icon size={18} strokeWidth={1.75} aria-hidden="true" />
+                {label}
+              </Link>
+            )
+          })}
         </nav>
         <Link
           className={styles.demoLink}

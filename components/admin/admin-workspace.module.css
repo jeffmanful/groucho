@@ -45,21 +45,12 @@
 .brandDot {
   color: var(--text-muted);
 }
-.workspaceLabel {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 32px 12px 24px;
-  font-size: var(--text-xs);
-}
-.workspaceLabel small,
 .identity small {
   display: block;
   margin-top: 4px;
   color: var(--text-muted);
   font-size: var(--text-xs);
 }
-.workspaceInitial,
 .avatar {
   width: 32px;
   height: 32px;
