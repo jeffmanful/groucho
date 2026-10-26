@@ -1,4 +1,4 @@
-import { COMMUNITY_APPLICATION_CONTEXT } from "@/lib/artist-application"
+import { ARTIST_APPLICATION_CONTEXT, COMMUNITY_APPLICATION_CONTEXT } from "@/lib/artist-application"
 import Anthropic from "@anthropic-ai/sdk"
 import { NextResponse } from "next/server"
 import type { ApplicantIdentity } from "@/lib/applicant-identity"
@@ -61,6 +61,7 @@ export const colorsThinResponseTool = {
 } as const satisfies Anthropic.Tool
 
 export function colorsThinConversationPrompt(input: {
+  applicationAudience?: "community" | "artist"
   hasApplicantDetails?: boolean
   objective: string
   turnCount: number
@@ -69,7 +70,7 @@ export function colorsThinConversationPrompt(input: {
   return `${COLORS_FORUM_PERSONA_PROMPT.split("\n\nMake a private advisory judgment for COLORS.")[0]}
 
 Current project objective: ${input.objective}
-${input.hasApplicantDetails ? COMMUNITY_APPLICATION_CONTEXT : ""}
+${input.applicationAudience === "artist" ? ARTIST_APPLICATION_CONTEXT : input.hasApplicantDetails ? COMMUNITY_APPLICATION_CONTEXT : ""}
 
 ${COLORS_FORUM_MEMBERSHIP_CONTEXT}
 
@@ -138,7 +139,7 @@ export async function postColorsThinConversation(input: {
 }): Promise<NextResponse> {
   const { organisationId, projectId, settings } = input.context
   const { data: session, error: sessionError } = await supabase.from("sessions")
-    .select("id, status, applicant_email, applicant_details")
+    .select("id, status, applicant_email, applicant_details, application_audience")
     .eq("session_id", input.sessionId)
     .eq("organisation_id", organisationId)
     .eq("project_id", projectId)
@@ -208,6 +209,7 @@ export async function postColorsThinConversation(input: {
       model,
       max_tokens: 600,
       system: colorsThinConversationPrompt({
+        applicationAudience: session.application_audience === "artist" ? "artist" : "community",
         hasApplicantDetails: Boolean(session.applicant_details),
         objective: COLORS_FORUM_MEMBERSHIP_OBJECTIVE,
         turnCount,
@@ -267,6 +269,7 @@ export async function postColorsThinConversation(input: {
         model,
         max_tokens: 600,
         system: colorsThinConversationPrompt({
+          applicationAudience: session.application_audience === "artist" ? "artist" : "community",
           hasApplicantDetails: Boolean(session.applicant_details),
           objective: COLORS_FORUM_MEMBERSHIP_OBJECTIVE,
           turnCount,
@@ -321,6 +324,7 @@ export async function postColorsThinConversation(input: {
         model,
         max_tokens: 300,
         system: colorsThinConversationPrompt({
+          applicationAudience: session.application_audience === "artist" ? "artist" : "community",
           hasApplicantDetails: Boolean(session.applicant_details),
           objective: COLORS_FORUM_MEMBERSHIP_OBJECTIVE,
           turnCount,
@@ -365,6 +369,7 @@ export async function postColorsThinConversation(input: {
         model,
         max_tokens: 300,
         system: colorsThinConversationPrompt({
+          applicationAudience: session.application_audience === "artist" ? "artist" : "community",
           hasApplicantDetails: Boolean(session.applicant_details),
           objective: COLORS_FORUM_MEMBERSHIP_OBJECTIVE,
           turnCount,

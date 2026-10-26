@@ -1,4 +1,7 @@
-# Shared intake: four applicant replays
+# Historical mixed-engine diagnostic runs
+
+**Correction:** These runs used different engines, rubrics, reviewer models and applicant briefs. They are separate diagnostic observations, not a valid comparison of flows or effort. The artist demo has since moved to the newer engine. No relative performance conclusion should be drawn from the table below.
+
 
 Date: 26 October 2026. Local implementation: `f7c7bcc`.
 
@@ -22,7 +25,7 @@ These runs reflect the local demo routing: normal community uses the thin engine
 ## Case-by-case assessment
 
 - **Normal, low effort:** Seven answers, final `recommend` at 0.50 confidence. Groucho was patient and neutral at close but spent several questions circling motivation. The summary accurately reflects curiosity and solitary listening; the headline and suggested `approve` need more visible uncertainty because actual participation remains unverified.
-- **Normal, high effort:** The first attempt failed at answer six with a response-repair error. A fresh attempt closed in four answers and returned `recommend` at 0.72. The successful conversation followed a concrete listening example, learned intended participation and heard the COLORS connection without demanding credentials. It was the strongest conversational result of the four, but only the second attempt succeeded.
+- **Normal, high effort:** The first attempt failed at answer six with a response-repair error. A fresh attempt closed in four answers and returned `recommend` at 0.72. The successful conversation followed a concrete listening example, learned intended participation and heard the COLORS connection without demanding credentials. The successful attempt was focused and coherent; the first attempt still failed.
 - **Artist, low effort:** Twelve answers, runtime `redirected`, suitability 0.30, and preliminary `human_review` at 0.27. The final detailed report failed verification; do not present the preliminary recommendation as a verified result. The profile still extracted successfully and describes an early-stage maker seeking community without inventing releases or public credentials. The long repetitive interview and implied acceptance are the clearest conversation failures.
 - **Artist, high effort:** Ten answers, runtime `passed`, final `recommend` at 0.82. The report identifies a concrete existing feedback practice and treats monthly Forum exchanges as a future intention. The applicant’s lack of releases and links did not prevent recognition of substance. Groucho nevertheless kept revisiting feedback, group needs and creative process after useful evidence was already available.
 

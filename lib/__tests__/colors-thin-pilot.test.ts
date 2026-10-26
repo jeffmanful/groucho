@@ -6,6 +6,13 @@ import { COLORS_FORUM_MEMBERSHIP_PROFILE_SCHEMA } from "@/lib/onboarding-persona
 import { COLORS_FORUM_MEMBERSHIP_REPORT_VERSION } from "@/lib/reviewer-report"
 
 describe("COLORS thin conversation pilot", () => {
+  it("supports an unreleased artist on the same conversation engine without community-only guidance", () => {
+    const prompt = colorsThinConversationPrompt({objective:"Forum membership",turnCount:1,mediaCatalog:[],hasApplicantDetails:true,applicationAudience:"artist"})
+    expect(prompt).toContain("artist-focused COLORS Forum application")
+    expect(prompt).toContain("no released music; none of those is a negative signal")
+    expect(prompt).not.toContain("This is a general community application")
+  })
+
   it("recognises shared intake without turning the community interview into an artist application", () => {
     const prompt = colorsThinConversationPrompt({ objective: "Forum membership", turnCount: 1, mediaCatalog: [], hasApplicantDetails: true })
     expect(prompt).toContain("Do not ask for those details again")

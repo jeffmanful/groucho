@@ -1,7 +1,9 @@
 # COLORS thin conversation pilot
 
-The new conversation path is limited to **new COLORS demo sessions** started with
-`GROUCHO_COLORS_THIN_PILOT=1`. A marker on the opening message keeps sessions
+The newer conversation path is used by **all new artist COLORS demo sessions**,
+and by new community demo sessions when `GROUCHO_COLORS_THIN_PILOT=1`. Artist
+guidance comes from the saved application audience, including on repair calls;
+submitted name, city, age and links are not included in the model prompt. A marker on the opening message keeps sessions
 already using the previous engine on that engine. The public `/v1` route and its
 required score fields are unchanged.
 

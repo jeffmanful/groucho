@@ -14,7 +14,7 @@ Submitted facts are stored in `sessions.applicant_details` with `application_aud
 
 ## Local and reviewer entry
 
-The protected COLORS demo has an artist entry at `/demo/colors?application=artist`, also linked from `/demos`. It uses existing demo permissions. Artist and community attempts use separate browser session keys. Artist sessions use the standard gatekeeper engine even if the experimental thin-demo switch is enabled.
+The protected COLORS demo has an artist entry at `/demo/colors?application=artist`, also linked from `/demos`. It uses existing demo permissions. Artist and community attempts use separate browser session keys. New artist demo sessions always use the newer conversation engine; community demo sessions use it when `GROUCHO_COLORS_THIN_PILOT=1`. Artist direction comes from the saved application audience on every turn and repair, while model, stopping rules and post-conversation membership assessment stay shared. The artist browser session key is versioned so the entry starts a fresh session rather than silently resuming a previous standard-engine attempt. Explicitly resumed historical sessions retain their recorded engine. The public SDK/API still uses the standard engine; this change concerns the COLORS demo entry being evaluated.
 
 Apply both local migrations in order: `20261026190110_artist_applicant_profile.sql` and `20261026192656_shared_applicant_intake.sql` to the intended test database before exercising the data path. Creating the migration file does not apply it. No live database is changed by this implementation branch.
 

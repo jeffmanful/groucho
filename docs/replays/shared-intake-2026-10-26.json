@@ -7180,5 +7180,7 @@
         }
       ]
     }
-  ]
+  ],
+  "comparisonValid": false,
+  "correction": "Historical separate diagnostics only: engines, rubrics, reviewer models and applicant inputs differ. Do not compare flow performance."
 }

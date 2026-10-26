@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const { createMock, state } = vi.hoisted(() => ({
   createMock: vi.fn(),
   state: {
+    audience: "community",
     inserted: [] as Array<{ role: string; content: string }>,
     sessionUpdates: [] as Array<{ status: string }>,
     history: [] as Array<{ id: string; role: string; content: string; metadata: Record<string, unknown> }>,
@@ -26,6 +27,7 @@ vi.mock("@/lib/supabase", () => ({
         order: async () => ({ data: state.history, error: null }),
         maybeSingle: async () => ({ data: {
           id: "row-1", status: "active", applicant_email: "tester@example.com",
+          application_audience: state.audience, applicant_details: { city: "Private Intake City", age: 27 },
         }, error: null }),
         update(value: { status: string }) {
           state.sessionUpdates.push(value)
@@ -73,12 +75,29 @@ function toolReply(reply: string, close: boolean) {
 describe("thin pilot close after an applicant question", () => {
   beforeEach(() => {
     createMock.mockReset()
+    state.audience = "community"
     state.inserted = []
     state.sessionUpdates = []
     state.history = [{
       id: "opening-1", role: "assistant", content: "Why would you join?",
       metadata: { conversation_engine: "colors_thin_pilot_v1" },
     }]
+  })
+
+  it.each(["artist", "community"])("keeps saved %s guidance through a question repair, regardless of submitted audience", async audience => {
+    state.audience = audience
+    createMock.mockResolvedValueOnce(toolReply("It was good talking with you.", true))
+      .mockResolvedValueOnce(toolReply("A small exchange can help. What would you like to explore?", false))
+    const response = await postColorsThinConversation({ context, sessionId: "session-1", message: "Could I take part without public releases?", applicant: { ...applicant, ...(audience === "community" ? { artist: { city: "Other City", age: 30, socialLinks: [], musicLinks: [] } } : {}) } })
+    expect(response.status).toBe(200)
+    expect((await response.json()).status).toBe("active")
+    expect(createMock).toHaveBeenCalledTimes(2)
+    for (const [request] of createMock.mock.calls) {
+      expect(request.system).toContain(audience === "artist" ? "artist-focused COLORS Forum application" : "general community application")
+      expect(request.system).not.toContain(audience === "artist" ? "general community application" : "artist-focused COLORS Forum application")
+      expect(request.system).not.toContain("Private Intake City")
+      expect(request.system).not.toContain("Other City")
+    }
   })
 
   it("answers a final question and keeps the session active even at the turn limit", async () => {

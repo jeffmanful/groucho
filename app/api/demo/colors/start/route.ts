@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     context: project.context,
     projectSettings: project.context.settings,
     conversationEngine:
-      !applicant.value.artist && process.env.GROUCHO_COLORS_THIN_PILOT === "1"
+      (applicant.value.artist || process.env.GROUCHO_COLORS_THIN_PILOT === "1")
         ? COLORS_THIN_PILOT_MARKER
         : undefined,
   })

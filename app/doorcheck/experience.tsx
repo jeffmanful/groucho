@@ -1306,7 +1306,7 @@ export function DoorCheckExperience({
 }) {
   const isColorsDemo = demoMode === "colors"
   const applicationSessionKey = intakeMode === "email" ? SESSION_KEY : `${SESSION_KEY}:${intakeMode}`
-  const colorsSessionKey = intakeMode === "email" ? COLORS_DEMO_SESSION_KEY : `${COLORS_DEMO_SESSION_KEY}:${intakeMode}`
+  const colorsSessionKey = intakeMode === "email" ? COLORS_DEMO_SESSION_KEY : `${COLORS_DEMO_SESSION_KEY}:${intakeMode}${intakeMode === "artist" ? ":thin-v1" : ""}`
   const [intakeApplicant, setIntakeApplicant] = useState<ApplicantIdentity | null>(null)
   const supabase = useMemo(() => createDoorcheckSupabase(), [])
   const [messages, setMessages] = useState<Message[]>(EMAIL_CAPTURE_MESSAGES)
