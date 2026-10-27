@@ -33,6 +33,11 @@ numbers from `0` to `1`, inclusive.
 
 ## Score bands and actions
 
+Projects on the newer COLORS conversation engine have no per-turn scores; their suitability score
+is derived from the private reviewer report's recommendation and confidence. See
+[colors-conversation-engine.md](./colors-conversation-engine.md#suitability-score).
+
+
 | Suitability score | Band | Default result | Optional automatic action |
 |---|---|---|---|
 | `score >= acceptance_threshold` | `recommended_acceptance` | Pending review | Approve when automatic acceptance is enabled |

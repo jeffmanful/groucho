@@ -169,10 +169,10 @@ export interface components {
             reviewer_focus: string;
         };
         /**
-         * @description Advisory conversation outcome. It does not approve or decline the application by itself.
+         * @description Advisory conversation outcome. It does not approve or decline the application by itself. `completed` is returned by the newer COLORS conversation engine, which finishes without an outcome of its own; its suitability score and reviewer report follow asynchronously.
          * @enum {string}
          */
-        SessionOutcome: "active" | "passed" | "redirected" | "rejected";
+        SessionOutcome: "active" | "passed" | "redirected" | "rejected" | "completed";
         /**
          * @description Client decision lifecycle. Approved or declined is created by a human action or an explicitly enabled deterministic client policy; this—not Groucho's advisory session outcome—controls access.
          * @enum {string}
@@ -290,6 +290,7 @@ export interface components {
             message: string;
             status: components["schemas"]["SessionOutcome"];
             reviewStatus?: components["schemas"]["ApplicationReviewStatus"];
+            /** @description Per-turn assessment. The newer COLORS engine does not score turns and returns a neutral 0.5 placeholder; read `suitabilityScore` from the completed session instead. */
             scores: components["schemas"]["ScoreBreakdown"];
             /** @description Groucho's overall suitability score, before the client decision policy is applied. */
             suitabilityScore?: number;

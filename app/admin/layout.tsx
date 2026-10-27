@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useRef, useState } from "react"
 import {
   ShieldCheck,
+  ClipboardCheck,
   LayoutDashboard,
   Tickets,
   MessagesSquare,
@@ -98,8 +99,14 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
       active: pathname === "/admin",
     },
     {
+      href: "/admin/applications",
+      label: "Applications",
+      icon: ClipboardCheck,
+      active: pathname.startsWith("/admin/applications"),
+    },
+    {
       href: "/admin/sessions",
-      label: "Sessions & reports",
+      label: "Live conversations",
       icon: MessagesSquare,
       active: pathname.startsWith("/admin/sessions"),
     },

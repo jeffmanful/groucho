@@ -1,5 +1,6 @@
 "use client"
 
+import { defaultPersonaOption, fetchPersonaOptions, type PersonaOption } from "@/lib/persona-options"
 import Link from "next/link"
 import TicketProjectSetup from "@/components/ticket-access/TicketProjectSetup"
 import { useParams, useRouter } from "next/navigation"
@@ -29,13 +30,7 @@ import { PersonaSetupNote } from "@/components/admin/PersonaSetupNote"
 import { ApplicationExperienceFields } from "@/components/admin/ApplicationExperienceFields"
 import { DecisionPolicyFields } from "@/components/admin/DecisionPolicyFields"
 
-type Persona = {
-  id: string
-  name: string
-  slug: string
-  is_active: boolean
-  is_default: boolean
-}
+type Persona = PersonaOption
 
 const USE_CASES = [
   { id: "community_gate", label: "Community gate" },
@@ -172,19 +167,12 @@ export default function NewProjectWizardPage() {
   }, [orgId])
 
   const loadPersonas = useCallback(async () => {
-    const res = await fetch("/api/admin/personas")
-    if (res.ok) {
-      const raw: unknown = await res.json()
-      const list = Array.isArray(raw) ? (raw as Persona[]) : []
-      const active = list.filter((p) => p.is_active)
-      setPersonas(active.length ? active : list)
-      const def =
-        list.find((p) => p.is_default && p.is_active) ??
-        list.find((p) => p.is_default) ??
-        list[0]
-      if (def) setPersonaId(def.id)
-    }
-  }, [])
+    const list = await fetchPersonaOptions(orgId)
+    const active = list.filter((p) => p.is_active)
+    setPersonas(active.length ? active : list)
+    const def = defaultPersonaOption(list)
+    if (def) setPersonaId(def.id)
+  }, [orgId])
 
   useEffect(() => {
     void loadMeta()
@@ -606,11 +594,22 @@ export default function NewProjectWizardPage() {
                 padding: "0.35rem 0.5rem",
               }}
             >
-              {personas.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({p.slug})
-                </option>
-              ))}
+              {personas.some((p) => p.kind === "own") && (
+                <optgroup label={`${orgName || "Organisation"} personas`}>
+                  {personas.filter((p) => p.kind === "own").map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              <optgroup label="Groucho personas, used as is">
+                {personas.filter((p) => p.kind === "groucho").map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </optgroup>
             </select>
           </div>
 
@@ -618,6 +617,7 @@ export default function NewProjectWizardPage() {
             projectType={projectType}
             personaId={personaId}
             personas={personas}
+            orgId={orgId}
           />
 
           {projectType === "gatekeeper" && (

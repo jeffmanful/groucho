@@ -43,6 +43,8 @@ export type VerdictPayload = {
   applicant?: ApplicantIdentity
   outcome: "PASS" | "REDIRECT" | "REJECT"
   scores?: Score
+  /** Overall suitability, 0 to 1, when the engine derives it from the reviewer report instead of turn scores. */
+  suitability_score?: number
   profile?: Profile
   reviewer_report?: ReviewerReport
   interaction_answers?: Array<{
@@ -87,8 +89,14 @@ export async function recordVerdictAndEnqueueWebhooks(opts: {
   projectId: string
   sessionInternalId: string
   clientSessionKey: string
-  terminalStatus: TerminalSessionStatus
-  scores: Score
+  /** `completed` is used by the newer COLORS engine, which ends without an outcome of its own. */
+  terminalStatus: TerminalSessionStatus | "completed"
+  /** Required for `completed`; otherwise derived from the terminal status. */
+  outcome?: "PASS" | "REDIRECT" | "REJECT"
+  scores?: Score
+  suitabilityScore?: number
+  /** An already extracted profile; skips extraction here. */
+  profile?: Profile | null
   reviewerReport?: ReviewerReport | null
   requestId?: string
   /** Persona row used to decide custom profile extraction. */
@@ -142,13 +150,16 @@ export async function recordVerdictAndEnqueueWebhooks(opts: {
     return { profile: null }
   }
 
-  const outcome = sessionStatusToOutcome(opts.terminalStatus)
+  const outcome = opts.outcome ??
+    (opts.terminalStatus === "completed" ? "REDIRECT" : sessionStatusToOutcome(opts.terminalStatus))
   const occurredAt = new Date().toISOString()
   const verdictId = randomUUID()
 
-  let profile: Profile | null = null
+  let profile: Profile | null = opts.profile ?? null
   const extractStatuses = resolveExtractStatuses(project?.settings, projectType)
   const shouldExtract =
+    opts.profile === undefined &&
+    opts.terminalStatus !== "completed" &&
     extractStatuses !== null &&
     extractStatuses.includes(opts.terminalStatus) &&
     Array.isArray(opts.transcript) &&
@@ -163,7 +174,7 @@ export async function recordVerdictAndEnqueueWebhooks(opts: {
         organisationId: opts.organisationId,
         projectId: opts.projectId,
         sessionId: opts.sessionInternalId,
-        terminalStatus: opts.terminalStatus,
+        terminalStatus: opts.terminalStatus as TerminalSessionStatus,
       })
       log.info("profile_extracted", {
         projectId: opts.projectId,
@@ -211,7 +222,8 @@ export async function recordVerdictAndEnqueueWebhooks(opts: {
     },
     ...(opts.applicant ? { applicant: opts.applicant } : {}),
     outcome,
-    scores: opts.scores,
+    ...(opts.scores ? { scores: opts.scores } : {}),
+    ...(opts.suitabilityScore !== undefined ? { suitability_score: opts.suitabilityScore } : {}),
     ...(profile ? { profile } : {}),
     ...(opts.reviewerReport ? { reviewer_report: opts.reviewerReport } : {}),
     ...(opts.interactionAnswers?.length

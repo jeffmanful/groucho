@@ -1,5 +1,6 @@
 "use client"
 
+import { defaultPersonaOption, fetchPersonaOptions, personaUpdateUrl, type PersonaOption } from "@/lib/persona-options"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -43,13 +44,7 @@ import {
   slugify,
 } from "@/components/admin/project-setup-ui"
 
-type Persona = {
-  id: string
-  name: string
-  slug: string
-  is_active: boolean
-  is_default: boolean
-}
+type Persona = PersonaOption
 
 type ProjectRow = {
   id: string
@@ -143,7 +138,7 @@ export default function EditProjectPage() {
 
       const [orgRes, personaRes, projectRes] = await Promise.all([
         fetch(`/api/admin/organisations/${orgId}`, { credentials: "same-origin" }),
-        fetch("/api/admin/personas", { credentials: "same-origin" }),
+        fetchPersonaOptions(orgId),
         fetch(
           `/api/admin/organisations/${orgId}/projects/${projectId}`,
           { credentials: "same-origin" },
@@ -157,11 +152,9 @@ export default function EditProjectPage() {
         setOrgName(o.name ?? "")
       }
 
-      if (personaRes.ok) {
-        const raw: unknown = await personaRes.json()
-        const list = Array.isArray(raw) ? (raw as Persona[]) : []
-        const active = list.filter((p) => p.is_active)
-        setPersonas(active.length ? active : list)
+      {
+        const active = personaRes.filter((p) => p.is_active)
+        setPersonas(active.length ? active : personaRes)
       }
 
       const body = await projectRes.json().catch(() => ({}))
@@ -201,10 +194,7 @@ export default function EditProjectPage() {
 
   useEffect(() => {
     if (!hydrated || !personas.length || form.personaId) return
-    const def =
-      personas.find((p) => p.is_default && p.is_active) ??
-      personas.find((p) => p.is_default) ??
-      personas[0]
+    const def = defaultPersonaOption(personas)
     if (def) patchForm({ personaId: def.id })
   }, [hydrated, personas, form.personaId, patchForm])
 
@@ -524,11 +514,22 @@ export default function EditProjectPage() {
             {!form.personaId && (
               <option value="">Select persona…</option>
             )}
-            {personas.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name} ({p.slug})
-              </option>
-            ))}
+            {personas.some((p) => p.kind === "own") && (
+              <optgroup label={`${orgName || "Organisation"} personas`}>
+                {personas.filter((p) => p.kind === "own").map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}{p.updateAvailable ? " (update available)" : ""}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            <optgroup label="Groucho personas, used as is">
+              {personas.filter((p) => p.kind === "groucho").map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </optgroup>
           </select>
         </div>
 
@@ -536,6 +537,7 @@ export default function EditProjectPage() {
           projectType={form.projectType}
           personaId={form.personaId}
           personas={personas}
+          orgId={orgId}
         />
 
         {form.projectType === "gatekeeper" && (
@@ -594,27 +596,21 @@ export default function EditProjectPage() {
                 if (!form.personaId) return
                 setApplyingTemplate(true)
                 try {
-                  const listRes = await fetch("/api/admin/personas", {
-                    credentials: "same-origin",
-                  })
-                  const list = (await listRes.json()) as Array<{
-                    id: string
-                    name: string
-                    slug: string
-                    prompt: string
-                    is_active: boolean
-                    is_default: boolean
-                    pass_threshold: number
-                    reject_threshold: number
-                    profile_schema?: unknown
-                    profile_extractor_hint?: string | null
-                  }>
-                  const persona = list.find((p) => p.id === form.personaId)
-                  if (!persona) {
+                  const option = personas.find((p) => p.id === form.personaId)
+                  const detailRes = option
+                    ? await fetch(`/api/admin/organisations/${orgId}/personas/${option.id}`, {
+                        credentials: "same-origin",
+                      })
+                    : null
+                  const detail = detailRes?.ok
+                    ? ((await detailRes.json()) as { persona?: Record<string, unknown> })
+                    : null
+                  const persona = detail?.persona
+                  if (!option || !persona) {
                     showError("Persona not found")
                     return
                   }
-                  const putRes = await fetch(`/api/admin/personas/${persona.id}`, {
+                  const putRes = await fetch(personaUpdateUrl(option, orgId), {
                     method: "PUT",
                     credentials: "same-origin",
                     headers: { "Content-Type": "application/json" },

@@ -20,10 +20,11 @@ describe("COLORS application engine selection", () => {
     expect(response.status).toBe(200)
     expect(start).toHaveBeenLastCalledWith(expect.objectContaining({conversationEngine:"colors_thin_pilot_v1",applicantIdentity:expect.objectContaining({artist})}))
   })
-  it("uses the same engine for community applicants when enabled", async () => {
-    process.env.GROUCHO_COLORS_THIN_PILOT = "1"
+  it.each(["1", "0", undefined])("starts community applicants on the newer engine whatever the old pilot flag (%s)", async value => {
+    if (value === undefined) delete process.env.GROUCHO_COLORS_THIN_PILOT
+    else process.env.GROUCHO_COLORS_THIN_PILOT = value
     start.mockResolvedValue(NextResponse.json({ status: "active" }))
     await POST(new NextRequest("https://example.test/api/demo/colors/start", {method:"POST",body:JSON.stringify({sessionId:"00000000-0000-4000-8000-000000000002",applicant:{email:"person@example.test",name:"Example Person",details:{city:"Example City",age:27,socialLinks:[],musicLinks:[]}}})}))
-    expect(start).toHaveBeenLastCalledWith(expect.objectContaining({conversationEngine:"colors_thin_pilot_v1"}))
+    expect(start).toHaveBeenLastCalledWith(expect.objectContaining({conversationEngine:"colors_thin_pilot_v1",demoSession:true}))
   })
 })

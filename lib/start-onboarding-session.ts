@@ -6,6 +6,7 @@ import {
 import { log } from "@/lib/logger"
 import { REQUEST_ID_HEADER } from "@/lib/request-trace"
 import { supabase } from "@/lib/supabase"
+import { resolveActivePersonaId } from "@/lib/persona-resolution"
 import type { ProjectContext } from "@/lib/project-resolution"
 import { touchApiKeyLastUsed } from "@/lib/project-resolution"
 import {
@@ -79,31 +80,14 @@ export async function startOnboardingSession(
 
   if (apiKeyId) touchApiKeyLastUsed(apiKeyId)
 
-  let resolvedPersonaId: string | null = null
   const settingsPersonaId =
     typeof projectSettings.raw.persona_id === "string"
       ? projectSettings.raw.persona_id
       : null
-  const personaLookupId = input.personaId?.trim() || settingsPersonaId
-
-  if (personaLookupId) {
-    const { data } = await supabase
-      .from("personas")
-      .select("id")
-      .eq("id", personaLookupId)
-      .eq("is_active", true)
-      .maybeSingle()
-    resolvedPersonaId = data?.id ?? null
-  }
-  if (!resolvedPersonaId) {
-    const { data } = await supabase
-      .from("personas")
-      .select("id")
-      .eq("is_active", true)
-      .eq("is_default", true)
-      .maybeSingle()
-    resolvedPersonaId = data?.id ?? null
-  }
+  const resolvedPersonaId = await resolveActivePersonaId(
+    [input.personaId, settingsPersonaId],
+    organisationId,
+  )
 
   const firstStep = steps[0]
   const bootstrapMessage = formatStepPrompt(firstStep, welcome)

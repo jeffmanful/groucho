@@ -3,6 +3,7 @@ import { resolveAdminActor } from "@/lib/admin-actor"
 import { normalizeAdminSlug } from "@/lib/admin-slug"
 import { requireOrgAdmin, requireOrgMember, unauthorized } from "@/lib/org-access"
 import { validateProjectSettings } from "@/lib/project-settings"
+import { projectPersonaChoiceError } from "@/lib/persona-ownership"
 import { supabase } from "@/lib/supabase"
 
 async function orgExists(orgId: string): Promise<boolean> {
@@ -85,6 +86,10 @@ export async function POST(
     )
     if (!validated.ok) {
       return NextResponse.json({ error: validated.error }, { status: 400 })
+    }
+    const personaError = await projectPersonaChoiceError(validated.settings, orgId)
+    if (personaError) {
+      return NextResponse.json({ error: personaError }, { status: 400 })
     }
     settings = validated.settings
   }

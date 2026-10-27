@@ -12,6 +12,7 @@ const COPY: Record<SessionOutcome, string> = {
   passed: "Application received.",
   redirected: "Application received.",
   rejected: "Application received.",
+  completed: "Application received.",
 }
 
 export function OutcomeBanner({ status, className }: OutcomeBannerProps) {

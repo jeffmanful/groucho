@@ -30,7 +30,7 @@ export async function GET(
   const { data: row, error } = await supabase
     .from("sessions")
     .select(
-      "id, session_id, status, created_at, updated_at, current_step_id, flow_version, profile, onboarding_state, applicant_email, applicant_name, applicant_details, application_audience",
+      "id, session_id, status, created_at, updated_at, current_step_id, flow_version, profile, onboarding_state, applicant_email, applicant_name, applicant_details, application_audience, suitability_score",
     )
     .eq("session_id", clientKey)
     .eq("project_id", projectId)
@@ -97,6 +97,12 @@ export async function GET(
         : null
     if (typeof payloadScores?.overall === "number") {
       suitabilityScore = payloadScores.overall
+    } else if (typeof payload?.suitability_score === "number") {
+      // The newer COLORS engine derives suitability from the reviewer report instead of turn scores.
+      suitabilityScore = payload.suitability_score
+    }
+    if (suitabilityScore === null && typeof row.suitability_score === "number") {
+      suitabilityScore = row.suitability_score
     }
   }
 

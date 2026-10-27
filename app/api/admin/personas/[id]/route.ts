@@ -7,6 +7,8 @@ import {
 } from "@/lib/persona-profile-schema"
 import { supabase } from "@/lib/supabase"
 import { invalidatePersonaCache } from "@/lib/persona-resolution"
+import { PERSONA_RECORD_COLUMNS } from "@/lib/persona-ownership"
+import { organisationsLosingPersona, parsePersonaAccessInput, replacePersonaAccess } from "@/lib/persona-access-input"
 
 export async function PUT(
   req: NextRequest,
@@ -29,6 +31,8 @@ export async function PUT(
     reject_threshold: number
     profile_schema?: unknown
     profile_extractor_hint?: unknown
+    visibility?: unknown
+    access_organisation_ids?: unknown
   }
   try {
     body = await req.json()
@@ -47,6 +51,54 @@ export async function PUT(
   const parsedSchema = parseProfileSchemaInput(body.profile_schema)
   if (!parsedSchema.ok) {
     return NextResponse.json({ error: parsedSchema.error }, { status: 400 })
+  }
+
+  const { data: existing, error: existingError } = await supabase
+    .from("personas")
+    .select("id, owner_organisation_id, visibility")
+    .eq("id", id)
+    .maybeSingle()
+  if (existingError) return NextResponse.json({ error: "Database error" }, { status: 500 })
+  if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 })
+  const groucho = existing.owner_organisation_id === null
+  if (is_default && !groucho) {
+    return NextResponse.json(
+      { error: "Only a Groucho persona can be the workspace default." },
+      { status: 400 },
+    )
+  }
+  // Visibility only applies to Groucho personas; an organisation's own persona is always private to it.
+  const access = groucho
+    ? parsePersonaAccessInput(body.visibility ?? existing.visibility, body.access_organisation_ids)
+    : ({ ok: true, visibility: "restricted", organisationIds: null } as const)
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: 400 })
+  }
+  if (groucho) {
+    let finalOrganisations = access.organisationIds
+    if (!finalOrganisations) {
+      const { data: grants, error: grantsError } = await supabase
+        .from("persona_organisation_access")
+        .select("organisation_id")
+        .eq("persona_id", id)
+      if (grantsError) return NextResponse.json({ error: "Database error" }, { status: 500 })
+      finalOrganisations = (grants ?? []).map((row) => row.organisation_id as string)
+    }
+    let losing: string[]
+    try {
+      losing = await organisationsLosingPersona(id, access.visibility, finalOrganisations)
+    } catch {
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
+    if (losing.length) {
+      const { data: names } = await supabase.from("organisations").select("name").in("id", losing)
+      return NextResponse.json(
+        {
+          error: `Projects in ${(names ?? []).map((row) => row.name).join(", ") || "another organisation"} use this persona as is. Keep access for them, or move those projects to another persona first.`,
+        },
+        { status: 409 },
+      )
+    }
   }
 
   if (is_default) {
@@ -69,10 +121,11 @@ export async function PUT(
       reject_threshold: reject_threshold ?? 0.25,
       profile_schema: parsedSchema.value,
       profile_extractor_hint: normaliseExtractorHint(body.profile_extractor_hint),
+      visibility: access.visibility,
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
-    .select()
+    .select(PERSONA_RECORD_COLUMNS)
     .single()
 
   if (error) {
@@ -83,6 +136,14 @@ export async function PUT(
       )
     }
     return NextResponse.json({ error: "Database error" }, { status: 500 })
+  }
+
+  if (access.organisationIds) {
+    try {
+      await replacePersonaAccess(id, access.organisationIds)
+    } catch {
+      return NextResponse.json({ error: "Persona saved, but its visibility could not be. Try saving again." }, { status: 500 })
+    }
   }
 
   invalidatePersonaCache(id)

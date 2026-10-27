@@ -7,6 +7,8 @@ import { postSessionMessage } from "@/lib/post-session-message"
 import { getOrCreateRequestId } from "@/lib/request-trace"
 import { COLORS_THIN_PILOT_MARKER, postColorsThinConversation } from "@/lib/colors-thin-conversation"
 import { supabase } from "@/lib/supabase"
+import { colorsThinEventStream, wantsColorsThinStream } from "@/lib/colors-thin-stream"
+import { selectableColorsThinModel } from "@/lib/colors-thin-model-options"
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
@@ -48,14 +50,25 @@ export async function POST(req: NextRequest) {
     const metadata = opening?.metadata && typeof opening.metadata === "object" && !Array.isArray(opening.metadata)
       ? opening.metadata as Record<string, unknown> : {}
     if (metadata.conversation_engine === COLORS_THIN_PILOT_MARKER) {
-      return postColorsThinConversation({
+      const turn = {
         context: project.context,
         sessionId,
         message,
         applicant: applicant.value,
         interactionAnswer,
         requestId: getOrCreateRequestId(req),
-      })
+        // Tester choice from the demo settings; anything outside the allowed list uses the default.
+        modelOverride: selectableColorsThinModel(body?.conversationModel),
+        // Demo sessions use the real Forum project, so its webhooks and decision policy stay out of it.
+        runCompletion: false,
+      }
+      // Streaming is opt-in by Accept header; the final event carries the same body and status.
+      if (wantsColorsThinStream(req.headers.get("accept"))) {
+        const applicantIdentity = applicant.value
+        return colorsThinEventStream((onReplyDelta) =>
+          postColorsThinConversation({ ...turn, applicant: applicantIdentity, onReplyDelta }))
+      }
+      return postColorsThinConversation(turn)
     }
   }
   return postSessionMessage({

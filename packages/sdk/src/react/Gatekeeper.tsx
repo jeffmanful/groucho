@@ -135,7 +135,8 @@ function GatekeeperExperience({
   const terminal =
     outcome === "passed" ||
     outcome === "redirected" ||
-    outcome === "rejected"
+    outcome === "rejected" ||
+    outcome === "completed"
 
   const activeApplicant = (submittedApplicant?.artist || submittedApplicant?.details) && (!applicantProp || applicantProp.email === submittedApplicant.email)
     ? submittedApplicant

@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const { createMock, state } = vi.hoisted(() => ({
+const { createMock, streamMock, queueMock, state } = vi.hoisted(() => ({
   createMock: vi.fn(),
+  streamMock: vi.fn(),
+  queueMock: vi.fn(async () => {}),
   state: {
     audience: "community",
     inserted: [] as Array<{ role: string; content: string; metadata?: Record<string, unknown> }>,
@@ -12,11 +14,12 @@ const { createMock, state } = vi.hoisted(() => ({
 
 vi.mock("@anthropic-ai/sdk", () => ({
   default: class Anthropic {
-    messages = { create: createMock }
+    messages = { create: createMock, stream: streamMock }
   },
 }))
-vi.mock("@/lib/gatekeeper-models", () => ({ gatekeeperConversationModel: () => "test-model" }))
+vi.mock("@/lib/gatekeeper-models", () => ({ gatekeeperConversationModel: () => "test-model", colorsThinConversationModel: () => "test-model", supportsForcedToolChoice: (model: string) => !model.startsWith("claude-sonnet-5") }))
 vi.mock("@/lib/llm-usage", () => ({ logLlmUsage: vi.fn() }))
+vi.mock("@/lib/session-completion-jobs", () => ({ queueSessionCompletion: queueMock }))
 vi.mock("@/lib/colors-youtube-feed", () => ({ fetchLatestColorsShows: vi.fn(async () => []) }))
 vi.mock("@/lib/supabase", () => ({
   supabase: {
@@ -50,7 +53,11 @@ vi.mock("@/lib/supabase", () => ({
 import {
   colorsThinConversationPrompt,
   conversationalClosing,
+  DEFAULT_CONSENT_QUESTION,
+  partialReplyFromJson,
   postColorsThinConversation,
+  SOFT_CLOSE_ANSWERS,
+  WRAP_UP_ANSWERS,
 } from "@/lib/colors-thin-conversation"
 import type { ProjectContext } from "@/lib/project-resolution"
 import type { ApplicantIdentity } from "@/lib/applicant-identity"
@@ -72,9 +79,53 @@ function toolReply(reply: string, close: boolean, addsNewContext?: boolean) {
   }
 }
 
+function jsonReply(reply: string, close: boolean) {
+  return {
+    stop_reason: "end_turn",
+    usage: {},
+    content: [{ type: "text", text: JSON.stringify({ reply, addsNewContext: true, close, boundary: "none", boundaryQuestion: "" }) }],
+  }
+}
+
+/** A MessageStream stand-in for structured JSON output: emits growing text snapshots. */
+function streamedJsonReply(reply: string, close: boolean) {
+  const listeners: Array<(delta: string, snapshot: string) => void> = []
+  const text = JSON.stringify({ reply, addsNewContext: true, close, boundary: "none", boundaryQuestion: "" })
+  return {
+    on(event: string, listener: (delta: string, snapshot: string) => void) {
+      if (event === "text") listeners.push(listener)
+      return this
+    },
+    async finalMessage() {
+      for (let end = 1; end <= text.length; end += 5) listeners.forEach(listener => listener("", text.slice(0, end)))
+      return jsonReply(reply, close)
+    },
+  }
+}
+
+/** A stand-in for the SDK's MessageStream: emits growing JSON snapshots, then the final message. */
+function streamedToolReply(reply: string, close: boolean) {
+  const listeners: Array<(partial: string, snapshot: unknown) => void> = []
+  return {
+    on(event: string, listener: (partial: string, snapshot: unknown) => void) {
+      if (event === "inputJson") listeners.push(listener)
+      return this
+    },
+    async finalMessage() {
+      for (let end = 1; end <= reply.length; end += 7) {
+        listeners.forEach(listener => listener("", { reply: reply.slice(0, end) }))
+      }
+      listeners.forEach(listener => listener("", { reply, close }))
+      return toolReply(reply, close, true)
+    },
+  }
+}
+
 describe("thin pilot close after an applicant question", () => {
   beforeEach(() => {
     createMock.mockReset()
+    streamMock.mockReset()
+    queueMock.mockClear()
     state.audience = "community"
     state.inserted = []
     state.sessionUpdates = []
@@ -129,6 +180,18 @@ describe("thin pilot close after an applicant question", () => {
     const result = await postColorsThinConversation({ context, sessionId: "session-1", message: "I would share someone else's private demo without asking.", applicant })
     expect((await result.json()).status).toBe("active")
     expect(state.sessionUpdates).toEqual([])
+  })
+
+  it("uses a fixed consent question instead of failing when the model's wording misses", async () => {
+    const response = toolReply("Sharing someone else's private demo without them knowing crosses a line. What else would you post?", false, true)
+    response.content[0].input.boundary = "consent"
+    response.content[0].input.boundaryQuestion = "What do you think about that?"
+    createMock.mockResolvedValueOnce(response)
+    const result = await postColorsThinConversation({ context, sessionId: "session-1", message: "I post other producers' unreleased demos I get sent privately.", applicant })
+    const body = await result.json()
+    expect(result.status).toBe(200)
+    expect(body.status).toBe("active")
+    expect(body.message).toBe(`Sharing someone else's private demo without them knowing crosses a line. ${DEFAULT_CONSENT_QUESTION}`)
   })
 
   it("allows a statement beginning with when to close without spurious question repairs", async () => {
@@ -259,23 +322,16 @@ describe("thin pilot close after an applicant question", () => {
     expect(state.sessionUpdates).toEqual([{ status: "completed" }])
   })
 
-  it("repairs a closing process claim before showing the final line", async () => {
-    createMock
-      .mockResolvedValueOnce(toolReply("I think we have enough to move forward.", true))
-      .mockResolvedValueOnce(toolReply(
-        "You were clear that you would use the Forum to direct readers to your promotion service.",
-        true,
-      ))
+  it("drops a closing process claim without a second model call", async () => {
+    createMock.mockResolvedValueOnce(toolReply("I think we have enough to move forward.", true))
     const response = await postColorsThinConversation({
       context, sessionId: "session-1",
       message: "I would use the Forum to promote my paid service.", applicant,
     })
     const body = await response.json()
     expect(body.status).toBe("completed")
-    expect(body.message).toBe(
-      "You were clear that you would use the Forum to direct readers to your promotion service.\n\nThanks for talking.",
-    )
-    expect(createMock).toHaveBeenCalledTimes(2)
+    expect(body.message).toBe("Thanks for talking.")
+    expect(createMock).toHaveBeenCalledTimes(1)
   })
 
   it("repairs a questionless active reply instead of ending the conversation", async () => {
@@ -307,34 +363,65 @@ describe("thin pilot close after an applicant question", () => {
     expect(state.sessionUpdates).toEqual([])
   })
 
-  it("does not treat the configured nine-answer target as a forced close", async () => {
-    state.history.push(...Array.from({ length: 8 }, (_, index) => ({
+  function priorAnswers(count: number) {
+    state.history.push(...Array.from({ length: count }, (_, index) => ({
       id: `user-${index}`, role: "user", content: "I enjoy sharing music.", metadata: {},
     })))
+  }
+  const nineTurnContext = { ...context, settings: { applicationExperience: { max_turns: 9 } } } as ProjectContext
+
+  it("keeps an ordinary conversation open before the soft close", async () => {
+    priorAnswers(SOFT_CLOSE_ANSWERS - 2)
     createMock.mockResolvedValueOnce(toolReply("That community sounds close. What keeps you involved?", false))
     const response = await postColorsThinConversation({
-      context: { ...context, settings: { applicationExperience: { max_turns: 9 } } } as ProjectContext,
-      sessionId: "session-1", message: "We still meet to hear new music.", applicant,
+      context: nineTurnContext, sessionId: "session-1", message: "We still meet to hear new music.", applicant,
     })
     expect((await response.json()).status).toBe("active")
     expect(state.sessionUpdates).toEqual([])
   })
 
-  it("repairs a question at the emergency limit into a conversational close", async () => {
-    state.history.push(...Array.from({ length: 11 }, (_, index) => ({
-      id: `user-${index}`, role: "user", content: "I enjoy sharing music.", metadata: {},
-    })))
-    createMock
-      .mockResolvedValueOnce(toolReply("What would you share next?", false))
-      .mockResolvedValueOnce(toolReply("You have built a generous ritual around sharing music.", true))
+  it("tells Groucho to wrap up from the wrap-up answer onwards", async () => {
+    priorAnswers(WRAP_UP_ANSWERS - 1)
+    createMock.mockResolvedValueOnce(toolReply("That community sounds close. What keeps you involved?", false))
+    await postColorsThinConversation({
+      context: nineTurnContext, sessionId: "session-1", message: "We still meet to hear new music.", applicant,
+    })
+    expect(createMock.mock.calls[0][0].system).toContain("The conversation is ready to wrap up.")
+  })
+
+  it("closes at the soft limit with the reply's own reflection and one model call", async () => {
+    priorAnswers(SOFT_CLOSE_ANSWERS - 1)
+    createMock.mockResolvedValueOnce(toolReply("You have built a generous ritual around sharing music. What would you share next?", false))
     const response = await postColorsThinConversation({
-      context: { ...context, settings: { applicationExperience: { max_turns: 9 } } } as ProjectContext,
-      sessionId: "session-1", message: "We still meet to hear new music.", applicant,
+      context: nineTurnContext, sessionId: "session-1", message: "We still meet to hear new music.", applicant,
     })
     const body = await response.json()
     expect(body.status).toBe("completed")
-    expect(body.message).toContain("You have built a generous ritual")
-    expect(createMock).toHaveBeenCalledTimes(2)
+    expect(body.message.startsWith("You have built a generous ritual around sharing music.\n\n")).toBe(true)
+    expect(body.message).not.toContain("?")
+    expect(createMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("answers an applicant question at the soft limit instead of closing", async () => {
+    priorAnswers(SOFT_CLOSE_ANSWERS - 1)
+    createMock.mockResolvedValueOnce(toolReply("Swaps can be shared as links. What would you share first?", false))
+    const response = await postColorsThinConversation({
+      context: nineTurnContext, sessionId: "session-1", message: "Can I share links to unreleased demos?", applicant,
+    })
+    expect((await response.json()).status).toBe("active")
+  })
+
+  it("closes at the emergency limit without a repair call", async () => {
+    priorAnswers(11)
+    createMock.mockResolvedValueOnce(toolReply("What would you share next?", false))
+    const response = await postColorsThinConversation({
+      context: nineTurnContext, sessionId: "session-1", message: "We still meet to hear new music.", applicant,
+    })
+    const body = await response.json()
+    expect(body.status).toBe("completed")
+    expect(body.message).not.toContain("?")
+    expect(body.message).not.toContain("What would you share next")
+    expect(createMock).toHaveBeenCalledTimes(1)
   })
 
   it("keeps decision language out of the closing acknowledgment", () => {
@@ -354,10 +441,117 @@ describe("thin pilot close after an applicant question", () => {
     )).toBe("You plan to use Forum replies to bring people to your service.\n\nThanks for talking.")
   })
 
-  it("does not present report readiness or a five-answer target as a reason to stop", () => {
+  it("gives a concrete closing rule without exposing the answer count", () => {
     const prompt = colorsThinConversationPrompt({ objective: "Forum membership", turnCount: 5, mediaCatalog: [] })
-    expect(prompt).toContain("Having enough material for a useful report means you may close")
-    expect(prompt).not.toContain("approximate 5-answer")
-    expect(prompt).not.toContain("prefer a warm close")
+    expect(prompt).toContain("Most conversations should close after 3 to 5 applicant answers")
+    expect(prompt).toContain("Never mention numbers, turns, stages")
+    expect(prompt).not.toContain("This is answer")
+    expect(prompt).not.toContain("Having enough material for a useful report means you may close, not that you should")
+  })
+
+  it("streams the reply, cut at its first question, when the turn cannot be force-closed", async () => {
+    const reply = "Sunday swaps sound like careful listening. What would you share first? Or something else?"
+    streamMock.mockReturnValueOnce(streamedToolReply(reply, false))
+    const deltas: string[] = []
+    const response = await postColorsThinConversation({
+      context, sessionId: "session-1", message: "I swap drafts with two friends.", applicant,
+      onReplyDelta: text => deltas.push(text),
+    })
+    const body = await response.json()
+    expect(body.status).toBe("active")
+    expect(createMock).not.toHaveBeenCalled()
+    expect(deltas.length).toBeGreaterThan(3)
+    expect(deltas.every((text, index) => index === 0 || text.startsWith(deltas[index - 1]))).toBe(true)
+    expect(deltas.at(-1)).toBe("Sunday swaps sound like careful listening. What would you share first?")
+    expect(body.message).toBe(deltas.at(-1))
+  })
+
+  it("does not stream a turn the runtime may force closed", async () => {
+    priorAnswers(SOFT_CLOSE_ANSWERS - 1)
+    createMock.mockResolvedValueOnce(toolReply("You have built a generous ritual around sharing music. What next?", false))
+    const deltas: string[] = []
+    const response = await postColorsThinConversation({
+      context: nineTurnContext, sessionId: "session-1", message: "We still meet to hear new music.", applicant,
+      onReplyDelta: text => deltas.push(text),
+    })
+    expect((await response.json()).status).toBe("completed")
+    expect(streamMock).not.toHaveBeenCalled()
+    expect(deltas).toEqual([])
+  })
+
+  it("uses a tester-selected model for the turn", async () => {
+    createMock.mockResolvedValueOnce(toolReply("Sharing playlists sounds sociable. Who do you share with?", false))
+    await postColorsThinConversation({
+      context, sessionId: "session-1", message: "I share playlists.", applicant, modelOverride: "claude-haiku-4-5-20251001",
+    })
+    expect(createMock.mock.calls[0][0].model).toBe("claude-haiku-4-5-20251001")
+    expect(createMock.mock.calls[0][0].tool_choice).toEqual({ type: "tool", name: "groucho_converse" })
+    expect(state.inserted.find(row => row.role === "assistant")?.metadata?.conversation_model).toBe("claude-haiku-4-5-20251001")
+  })
+
+  it("asks Sonnet 5.5 for structured JSON instead of a forced tool and reads it back", async () => {
+    createMock.mockResolvedValueOnce(jsonReply("Sharing playlists sounds sociable. Who do you share with?", false))
+    const response = await postColorsThinConversation({
+      context, sessionId: "session-1", message: "I share playlists.", applicant, modelOverride: "claude-sonnet-5-5",
+    })
+    const request = createMock.mock.calls[0][0]
+    expect(request.tools).toBeUndefined()
+    expect(request.tool_choice).toBeUndefined()
+    expect(request.output_config.format.type).toBe("json_schema")
+    expect(request.output_config.format.schema.additionalProperties).toBe(false)
+    expect(JSON.stringify(request.output_config.format.schema)).not.toContain("maxItems")
+    const body = await response.json()
+    expect(body.status).toBe("active")
+    expect(body.message).toBe("Sharing playlists sounds sociable. Who do you share with?")
+  })
+
+  it("streams structured JSON output from Sonnet 5.5", async () => {
+    streamMock.mockReturnValueOnce(streamedJsonReply("Sharing playlists sounds sociable. Who do you share with?", false))
+    const deltas: string[] = []
+    const response = await postColorsThinConversation({
+      context, sessionId: "session-1", message: "I share playlists.", applicant, modelOverride: "claude-sonnet-5-5",
+      onReplyDelta: text => deltas.push(text),
+    })
+    expect((await response.json()).status).toBe("active")
+    expect(deltas.length).toBeGreaterThan(3)
+    expect(deltas.at(-1)).toBe("Sharing playlists sounds sociable. Who do you share with?")
+  })
+
+  it("reads the reply out of partial JSON", () => {
+    expect(partialReplyFromJson('{"rep')).toBeUndefined()
+    expect(partialReplyFromJson('{"reply":"Sunday sw')).toBe("Sunday sw")
+    expect(partialReplyFromJson('{"reply":"She said \\"hi')).toBe('She said "hi')
+    expect(partialReplyFromJson('{"reply":"a\\')).toBe("a")
+    expect(partialReplyFromJson('{"reply":"done.","close":true}')).toBe("done.")
+  })
+
+  it("queues the completion pipeline when a conversation closes", async () => {
+    priorAnswers(SOFT_CLOSE_ANSWERS - 1)
+    createMock.mockResolvedValueOnce(toolReply("You have built a generous ritual around sharing music. What next?", false))
+    await postColorsThinConversation({
+      context: nineTurnContext, sessionId: "session-1", message: "We still meet to hear new music.", applicant, likelyBot: true,
+    })
+    expect(queueMock).toHaveBeenCalledWith(expect.objectContaining({ organisationId: "org-1", projectId: "project-1", likelyBot: true }))
+  })
+
+  it("leaves completion to the caller when it is switched off, as the demo does", async () => {
+    priorAnswers(SOFT_CLOSE_ANSWERS - 1)
+    createMock.mockResolvedValueOnce(toolReply("You have built a generous ritual around sharing music. What next?", false))
+    await postColorsThinConversation({
+      context: nineTurnContext, sessionId: "session-1", message: "We still meet to hear new music.", applicant, runCompletion: false,
+    })
+    expect(queueMock).not.toHaveBeenCalled()
+  })
+
+  it("does not queue completion while the conversation continues", async () => {
+    createMock.mockResolvedValueOnce(toolReply("Sharing playlists sounds sociable. Who do you share with?", false))
+    await postColorsThinConversation({ context, sessionId: "session-1", message: "I share playlists.", applicant })
+    expect(queueMock).not.toHaveBeenCalled()
+  })
+
+  it("accepts a later API turn that omits the applicant", async () => {
+    createMock.mockResolvedValueOnce(toolReply("Sharing playlists sounds sociable. Who do you share with?", false))
+    const response = await postColorsThinConversation({ context, sessionId: "session-1", message: "I share playlists." })
+    expect((await response.json()).status).toBe("active")
   })
 })

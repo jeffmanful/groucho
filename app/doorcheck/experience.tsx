@@ -37,6 +37,12 @@ import {
   type MediaChoiceMode,
   type ReferenceCard,
 } from "@/lib/gatekeeper-interaction-spec"
+import { COLORS_THIN_STREAM_CONTENT_TYPE, readColorsThinStream } from "@/lib/colors-thin-stream"
+import {
+  COLORS_THIN_CONVERSATION_MODEL_OPTIONS,
+  selectableColorsThinModel,
+  type ColorsThinConversationModelId,
+} from "@/lib/colors-thin-model-options"
 
 function createDoorcheckSupabase(): SupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
@@ -49,6 +55,8 @@ type Message = {
   id: string
   role: "bot" | "user"
   content: string
+  /** Already visible as streamed text, so it should appear without a second entrance. */
+  streamed?: boolean
 }
 
 type PersonaOption = {
@@ -240,6 +248,7 @@ const SESSION_KEY = "pe_session_id"
 const COLORS_DEMO_SESSION_KEY = "colors_demo_session_id"
 const SECRET_KEY = "pe_session_secret"
 const PROJECT_KEY = "pe_project_id"
+const CONVERSATION_MODEL_KEY = "groucho_colors_conversation_model"
 const PROFILE_KEY = "pe_session_profile"
 const REVIEWER_REPORT_KEY = "pe_session_reviewer_report"
 
@@ -1186,12 +1195,14 @@ function ColorsTranscript({
   commitHandoff,
   messages,
   showSlowResponse,
+  streamingReply,
 }: {
   applicantEmail: string
   colorsInteractionPhase: ColorsInteractionPhase
   commitHandoff: () => void
   messages: Message[]
   showSlowResponse: boolean
+  streamingReply: string | null
 }) {
   const firstApplicationMessageId = applicantEmail
     ? messages.find((message) => message.role === "bot")?.id
@@ -1215,7 +1226,7 @@ function ColorsTranscript({
           >
             <motion.div
               layout
-              initial={{ opacity: 0, y: 8, filter: "blur(3px)" }}
+              initial={message.streamed ? false : { opacity: 0, y: 8, filter: "blur(3px)" }}
               animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
               transition={{
                 layout: LAYOUT_SPRING,
@@ -1251,6 +1262,10 @@ function ColorsTranscript({
                     We are building a collective community that brings people
                     together to guide, understand and shape the culture.
                   </p>
+                  <p className="colors-chat-intro-expectations">
+                    It takes about five minutes and there are no right answers.
+                    The COLORS team reads every application.
+                  </p>
                 </div>
               ) : null}
               <p
@@ -1276,7 +1291,21 @@ function ColorsTranscript({
             mode="wait"
             onExitComplete={commitHandoff}
           >
-            {colorsInteractionPhase === "reading" ? (
+            {colorsInteractionPhase === "reading" && streamingReply ? (
+              // Groucho's reply as it is written. It leaves instantly so the committed message,
+              // which starts with the same text, takes its place without a second entrance.
+              <motion.div
+                key="streaming"
+                className="colors-chat-agent-message min-w-0 text-pretty"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 1, transition: { duration: 0 } }}
+                transition={{ duration: 0.12, ease: EASE_OUT }}
+                aria-busy="true"
+              >
+                <p className="colors-chat-message-copy">{streamingReply}</p>
+              </motion.div>
+            ) : colorsInteractionPhase === "reading" ? (
               <motion.div
                 key={showSlowResponse ? "slow" : "considering"}
                 className="colors-chat-status"
@@ -1361,6 +1390,28 @@ export function DoorCheckExperience({
   const [failedInteractionAnswer, setFailedInteractionAnswer] =
     useState<MediaChoiceAnswer | null>(null)
   const [showSlowResponse, setShowSlowResponse] = useState(false)
+  const [streamingReply, setStreamingReply] = useState<string | null>(null)
+  // Tester-selected conversation model for the COLORS demo, remembered in this browser only.
+  // Read once on the client; the select only renders once the settings panel is opened.
+  const [conversationModel, setConversationModel] = useState<ColorsThinConversationModelId>(() => {
+    const fallback = COLORS_THIN_CONVERSATION_MODEL_OPTIONS[0].id
+    if (typeof window === "undefined") return fallback
+    try {
+      return selectableColorsThinModel(localStorage.getItem(CONVERSATION_MODEL_KEY)) ?? fallback
+    } catch {
+      return fallback
+    }
+  })
+  const chooseConversationModel = useCallback((value: string) => {
+    const model = selectableColorsThinModel(value)
+    if (!model) return
+    setConversationModel(model)
+    try {
+      localStorage.setItem(CONVERSATION_MODEL_KEY, model)
+    } catch {
+      /* storage unavailable: the choice lasts for this page only */
+    }
+  }, [])
   const [questionDismissed, setQuestionDismissed] = useState(false)
   const [pendingResume, setPendingResume] =
     useState<DoorcheckStartResponse | null>(null)
@@ -1937,7 +1988,11 @@ export function DoorCheckExperience({
       const projectId = selectedProjectId || undefined
       let res = await fetch(isColorsDemo ? "/api/demo/colors/message" : "/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        // The COLORS demo accepts a streamed reply; the route only streams for the newer engine
+        // and otherwise answers with ordinary JSON, which is handled below as before.
+        headers: isColorsDemo
+          ? { "Content-Type": "application/json", Accept: `${COLORS_THIN_STREAM_CONTENT_TYPE}, application/json` }
+          : { "Content-Type": "application/json" },
         credentials: "same-origin",
         body: JSON.stringify({
           message: text,
@@ -1946,6 +2001,7 @@ export function DoorCheckExperience({
           projectId,
           applicant: intakeApplicant ?? { email: applicantEmail },
           ...(interactionAnswer ? { interactionAnswer } : {}),
+          ...(isColorsDemo ? { conversationModel } : {}),
         }),
       })
 
@@ -1967,22 +2023,33 @@ export function DoorCheckExperience({
         })
       }
 
-      if (!res.ok) {
-        let error = `Request failed with status ${res.status}.`
+      let streamedText = ""
+      let streamedFinal: { status: number; body: unknown } | null = null
+      if (res.headers.get("content-type")?.includes(COLORS_THIN_STREAM_CONTENT_TYPE)) {
+        streamedFinal = await readColorsThinStream(res, (partial) => {
+          streamedText = partial
+          setStreamingReply(partial)
+        })
+      }
+      const status = streamedFinal?.status ?? res.status
+
+      if (status < 200 || status >= 300) {
+        let error = `Request failed with status ${status}.`
         try {
-          const errorBody = await res.json()
-          if (typeof errorBody.error === "string") error = errorBody.error
+          const errorBody = streamedFinal ? streamedFinal.body as Record<string, unknown> : await res.json()
+          if (typeof errorBody?.error === "string") error = errorBody.error
         } catch {
           /* keep fallback error */
         }
         throw new Error(error)
       }
 
-      const data = await res.json()
+      const data = streamedFinal ? streamedFinal.body as Awaited<ReturnType<typeof res.json>> : await res.json()
       const nextMessage: Message = {
         id: crypto.randomUUID(),
         role: "bot",
         content: data.message,
+        streamed: Boolean(streamedText) && typeof data.message === "string" && data.message.startsWith(streamedText),
       }
       const nextStep = (data.currentStep as OnboardingCurrentStep) ?? null
       const nextReviewerReport = parseReviewerReport(data.reviewerReport)
@@ -2130,6 +2197,9 @@ export function DoorCheckExperience({
         setColorsInteractionPhase("ready")
       }
     } finally {
+      // Safe on success too: the reading row has already left with its last streamed text,
+      // and the handoff message replaces it.
+      setStreamingReply(null)
       if (slowResponseTimerRef.current) {
         clearTimeout(slowResponseTimerRef.current)
         slowResponseTimerRef.current = null
@@ -2528,7 +2598,7 @@ export function DoorCheckExperience({
                 <span className="hidden sm:inline">{isSpeaking ? "Stop" : "Listen"}</span>
               </button>
             ) : null}
-            {isColorsProject && !isColorsDemo ? (
+            {isColorsProject ? (
               <div ref={settingsRef} className="pointer-events-auto relative">
                 <button
                   ref={settingsTriggerRef}
@@ -2570,6 +2640,28 @@ export function DoorCheckExperience({
                       exit="closed"
                       className="colors-settings-panel"
                     >
+                      {isColorsDemo ? (
+                        <div className="colors-settings-model">
+                          <label className="colors-settings-field">
+                            <span>Conversation model</span>
+                            <select
+                              value={conversationModel}
+                              onChange={(event) => chooseConversationModel(event.target.value)}
+                            >
+                              {COLORS_THIN_CONVERSATION_MODEL_OPTIONS.map((option) => (
+                                <option key={option.id} value={option.id}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <p>
+                            {COLORS_THIN_CONVERSATION_MODEL_OPTIONS.find((option) => option.id === conversationModel)?.note}{" "}
+                            Applies from your next answer, on the newer conversation engine.
+                          </p>
+                        </div>
+                      ) : (
+                        <>
                       <label className="colors-settings-field">
                         <span>Project</span>
                         <select
@@ -2630,6 +2722,8 @@ export function DoorCheckExperience({
                         <div><dt>Environment</dt><dd>{selectedProject?.environment ?? "Not set"}</dd></div>
                         <div><dt>Session</dt><dd>{selectedProject?.sessionMode ?? "Not set"}</dd></div>
                       </dl>
+                        </>
+                      )}
                     </motion.div>
                   ) : null}
                 </AnimatePresence>
@@ -2758,6 +2852,7 @@ export function DoorCheckExperience({
                 commitHandoff={commitColorsHandoff}
                 messages={messages}
                 showSlowResponse={showSlowResponse}
+                streamingReply={streamingReply}
               />
             ) : isGatekeeperPreview ? (
               <MessageScroller.Item messageId="gatekeeper-preview">
@@ -3696,6 +3791,12 @@ export function DoorCheckExperience({
           cursor: not-allowed;
           opacity: 0.38;
         }
+        .colors-settings-model > p {
+          margin: 0.55rem 0 0;
+          font-size: 0.65rem;
+          line-height: 1.45;
+          color: rgb(255 255 255 / 0.56);
+        }
         .colors-settings-media-test > p {
           margin: 0.55rem 0 0;
           font-size: 0.65rem;
@@ -3945,6 +4046,9 @@ export function DoorCheckExperience({
           gap: 1rem;
           margin-bottom: 1.4rem;
           color: rgb(255 255 255 / 0.78);
+        }
+        .colors-chat-intro-copy .colors-chat-intro-expectations {
+          color: rgb(255 255 255 / 0.6);
         }
         .colors-chat-intro-copy p {
           margin: 0;

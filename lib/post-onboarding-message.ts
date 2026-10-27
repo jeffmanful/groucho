@@ -7,6 +7,7 @@ import type { ConversationMessage } from "@/lib/scoring"
 import { log } from "@/lib/logger"
 import { REQUEST_ID_HEADER } from "@/lib/request-trace"
 import { supabase } from "@/lib/supabase"
+import { resolveActiveGatekeeperPersona } from "@/lib/persona-resolution"
 import { isConcludedSessionStatus } from "@/lib/session-status"
 import {
   formatStepPrompt,
@@ -114,42 +115,17 @@ export async function postOnboardingMessage(
 
   if (apiKeyId) touchApiKeyLastUsed(apiKeyId)
 
-  let resolvedPersonaId: string | null = null
   const settingsPersonaId =
     typeof input.projectSettings.raw.persona_id === "string"
       ? input.projectSettings.raw.persona_id
       : null
-  const personaLookupId = personaId?.trim() || settingsPersonaId
 
-  type PersonaRow = {
-    id: string
-    prompt: string
-  }
-
-  let personaForExtraction: PersonaRow | null = null
-  const personaCols = "id, prompt"
-
-  if (personaLookupId) {
-    const { data } = await supabase
-      .from("personas")
-      .select(personaCols)
-      .eq("id", personaLookupId)
-      .eq("is_active", true)
-      .maybeSingle()
-    personaForExtraction = data as PersonaRow | null
-    resolvedPersonaId = personaForExtraction?.id ?? null
-  }
-
-  if (!personaForExtraction) {
-    const { data } = await supabase
-      .from("personas")
-      .select(personaCols)
-      .eq("is_active", true)
-      .eq("is_default", true)
-      .maybeSingle()
-    personaForExtraction = data as PersonaRow | null
-    resolvedPersonaId = personaForExtraction?.id ?? null
-  }
+  // A caller-supplied persona only counts if this organisation may use it; then the project's, then the default.
+  const personaForExtraction = await resolveActiveGatekeeperPersona(
+    [personaId, settingsPersonaId],
+    organisationId,
+  )
+  const resolvedPersonaId = personaForExtraction?.id ?? null
 
   const personaPrompt =
     personaForExtraction?.prompt?.trim() ||

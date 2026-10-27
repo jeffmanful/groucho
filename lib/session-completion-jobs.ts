@@ -1,7 +1,7 @@
 import { applicantIdentityFromRow } from "@/lib/applicant-identity"
 import { recordCompletedSessionCulturalSignals } from "@/lib/cultural-signals"
 import { log } from "@/lib/logger"
-import { normaliseReviewerReport } from "@/lib/reviewer-report"
+import { COLORS_FORUM_MEMBERSHIP_REPORT_VERSION, normaliseReviewerReport } from "@/lib/reviewer-report"
 import {
   buildOnboardingProfileSchema,
   normalizeProjectSettings,
@@ -16,6 +16,12 @@ import {
 } from "@/lib/verdict-webhook"
 import { recordAutomaticApplicationDecision } from "@/lib/automatic-application-decision"
 import { normaliseMediaChoiceAnswer } from "@/lib/gatekeeper-interaction-spec"
+import { isColorsThinSession } from "@/lib/colors-engine"
+import { ColorsAssessmentError, generateColorsThinAssessment } from "@/lib/colors-thin-assessment"
+import { pendingColorsReport } from "@/lib/colors-post-conversation"
+import { alignSuitabilityWithPolicy, compatibilityOutcomeFromReport, suitabilityFromReviewerReport } from "@/lib/colors-suitability"
+import { parseClientDecisionPolicy } from "@/lib/decision-policy"
+import type { Profile } from "@/lib/profile-extraction"
 
 type CompletionJob = {
   id: string
@@ -101,7 +107,7 @@ async function completeJob(job: CompletionJob): Promise<void> {
       supabase
         .from("sessions")
         .select(
-          "id, session_id, status, persona_id, applicant_email, applicant_name, applicant_details, application_audience",
+          "id, session_id, status, persona_id, applicant_email, applicant_name, applicant_details, application_audience, profile",
         )
         .eq("id", job.session_id)
         .eq("project_id", job.project_id)
@@ -120,7 +126,7 @@ async function completeJob(job: CompletionJob): Promise<void> {
   if (projectError || !project) {
     throw projectError ?? new Error("Completion project not found")
   }
-  if (!["passed", "redirected", "rejected"].includes(session.status)) {
+  if (!["passed", "redirected", "rejected", "completed"].includes(session.status)) {
     throw new Error(`Session is not terminal: ${session.status}`)
   }
 
@@ -143,6 +149,13 @@ async function completeJob(job: CompletionJob): Promise<void> {
   if (personaError) throw personaError
 
   const rows = messages ?? []
+  if (isColorsThinSession(rows)) {
+    await completeColorsThinJob(job, session, project.settings, rows)
+    return
+  }
+  if (session.status === "completed") {
+    throw new Error("Only the newer COLORS engine completes sessions without an outcome")
+  }
   const interactionAnswers = rows.flatMap((message) => {
     if (
       message.role !== "user" ||
@@ -242,6 +255,154 @@ async function completeJob(job: CompletionJob): Promise<void> {
   ])
 }
 
+type CompletionMessage = { id: string; role: string; content: string; metadata: unknown }
+
+function metadataRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+/** How long a report started elsewhere (for example by the demo page) is left to finish. */
+const ASSESSMENT_IN_PROGRESS_MS = 90_000
+
+/**
+ * Completion for the newer COLORS engine: reuse or produce the reviewer report and grounded
+ * profile, derive suitability from the report, then run the same decision, verdict, webhook and
+ * cultural-signal steps as every other gatekeeper session.
+ */
+async function completeColorsThinJob(
+  job: CompletionJob,
+  session: {
+    id: string
+    session_id: string
+    status: string
+    applicant_email: string | null
+    applicant_name: string | null
+    applicant_details: unknown
+    application_audience: string | null
+    profile: unknown
+  },
+  projectSettings: unknown,
+  rows: CompletionMessage[],
+): Promise<void> {
+  const closing = [...rows].reverse().find((message) => message.role === "assistant")
+  if (!closing) throw new Error("Closing message unavailable")
+  const closingMetadata = metadataRecord(closing.metadata)
+  let report = normaliseReviewerReport(closingMetadata.reviewer_report)
+  let profile = (session.profile ?? null) as Profile | null
+  const reportReady = closingMetadata.colors_demo_report_status === "ready" &&
+    Boolean(report?.detailed_opinion) &&
+    report?.report_version === COLORS_FORUM_MEMBERSHIP_REPORT_VERSION &&
+    profile !== null
+
+  if (!reportReady) {
+    const startedAt = typeof closingMetadata.colors_demo_report_started_at === "number"
+      ? closingMetadata.colors_demo_report_started_at : 0
+    if (closingMetadata.colors_demo_report_status === "generating" &&
+      Date.now() - startedAt < ASSESSMENT_IN_PROGRESS_MS) {
+      throw new Error("COLORS assessment is already being generated; retrying later")
+    }
+    const generating = {
+      ...closingMetadata,
+      colors_demo_report_status: "generating",
+      colors_demo_report_started_at: Date.now(),
+      colors_demo_report_failure_stage: null,
+    }
+    const { error: generatingError } = await supabase.from("messages")
+      .update({ metadata: generating }).eq("id", closing.id)
+    if (generatingError) throw generatingError
+    try {
+      const assessment = await generateColorsThinAssessment({
+        rows,
+        baseReport: pendingColorsReport(rows as Parameters<typeof pendingColorsReport>[0]),
+        terminalStatus: session.status,
+        organisationId: job.organisation_id,
+        projectId: job.project_id,
+        sessionKey: session.session_id,
+      })
+      report = assessment.report
+      profile = assessment.profile
+      const { error: profileError } = await supabase.from("sessions")
+        .update({ profile, profile_extracted_at: new Date().toISOString() })
+        .eq("id", job.session_id)
+        .eq("project_id", job.project_id)
+        .eq("organisation_id", job.organisation_id)
+      if (profileError) throw profileError
+      const { error: reportError } = await supabase.from("messages")
+        .update({ metadata: { ...generating, reviewer_report: report, colors_demo_report_status: "ready" } })
+        .eq("id", closing.id)
+      if (reportError) throw reportError
+    } catch (error) {
+      await supabase.from("messages").update({ metadata: {
+        ...generating,
+        colors_demo_report_status: "failed",
+        colors_demo_report_failure_stage: error instanceof ColorsAssessmentError ? error.stage : "report_persistence",
+      } }).eq("id", closing.id)
+      throw error
+    }
+  }
+
+  const derivedScore = suitabilityFromReviewerReport(report)
+  if (derivedScore === null || !report) throw new Error("Reviewer report has no usable recommendation")
+  const suitabilityScore = alignSuitabilityWithPolicy(
+    derivedScore, report.advisory_recommendation, parseClientDecisionPolicy(projectSettings),
+  )
+  const { error: scoreWriteError } = await supabase
+    .from("sessions")
+    .update({ suitability_score: suitabilityScore })
+    .eq("id", job.session_id)
+    .eq("project_id", job.project_id)
+    .eq("organisation_id", job.organisation_id)
+  if (scoreWriteError) throw scoreWriteError
+
+  await recordAutomaticApplicationDecision({
+    organisationId: job.organisation_id,
+    projectId: job.project_id,
+    sessionId: job.session_id,
+    suitabilityScore,
+    projectSettings,
+    advisoryRecommendation: report.advisory_recommendation,
+  })
+
+  const interactionAnswers = rows.flatMap((message) => {
+    if (message.role !== "user") return []
+    const answer = normaliseMediaChoiceAnswer(metadataRecord(message.metadata).interaction_answer)
+    return answer ? [answer] : []
+  })
+  await Promise.all([
+    recordVerdictAndEnqueueWebhooks({
+      organisationId: job.organisation_id,
+      projectId: job.project_id,
+      sessionInternalId: job.session_id,
+      clientSessionKey: session.session_id,
+      terminalStatus: "completed",
+      outcome: compatibilityOutcomeFromReport(report),
+      suitabilityScore,
+      reviewerReport: report,
+      profile,
+      transcript: rows
+        .filter((message) => message.role === "user" || message.role === "assistant")
+        .map((message) => ({ role: message.role as "user" | "assistant", content: message.content })),
+      applicant: applicantIdentityFromRow(session),
+      interactionAnswers,
+    }),
+    recordCompletedSessionCulturalSignals({
+      organisationId: job.organisation_id,
+      projectId: job.project_id,
+      sessionId: job.session_id,
+      settings: projectSettings,
+      likelyBot: job.likely_bot,
+      messages: rows.map((message) => ({
+        id: message.id,
+        role: message.role as "user" | "assistant",
+        content: message.content,
+        metadata: message.metadata,
+      })),
+    }),
+  ])
+}
+
 export async function completeSessionImmediately(input: {
   organisationId: string
   projectId: string
@@ -257,6 +418,43 @@ export async function completeSessionImmediately(input: {
     attempt_count: 1,
     max_attempts: 1,
   })
+}
+
+/**
+ * Queue completion and drain it after the response; if queueing fails, complete in the
+ * background instead. Never delays or fails the applicant's reply.
+ */
+export async function queueSessionCompletion(input: {
+  organisationId: string
+  projectId: string
+  sessionId: string
+  likelyBot: boolean
+  requestId?: string
+}): Promise<void> {
+  try {
+    await enqueueSessionCompletionJob(input)
+    scheduleSessionCompletionDrain()
+  } catch (error) {
+    log.error("session_completion_enqueue_failed", {
+      requestId: input.requestId,
+      projectId: input.projectId,
+      sessionId: input.sessionId,
+      detail: error instanceof Error ? error.message : String(error),
+    })
+    if (process.env.NODE_ENV === "test") return
+    after(async () => {
+      try {
+        await completeSessionImmediately(input)
+      } catch (fallbackError) {
+        log.error("session_completion_fallback_failed", {
+          requestId: input.requestId,
+          projectId: input.projectId,
+          sessionId: input.sessionId,
+          detail: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+        })
+      }
+    })
+  }
 }
 
 async function markJobFailed(job: CompletionJob, error: unknown): Promise<void> {

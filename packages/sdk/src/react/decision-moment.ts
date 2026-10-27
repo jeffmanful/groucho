@@ -8,7 +8,7 @@ export const DEFAULT_EVALUATING_DURATION_MS = 1400
 export const DEFAULT_DECISION_DURATION_MS = 900
 
 export function isTerminalOutcome(status: SessionOutcome): boolean {
-  return status === "passed" || status === "redirected" || status === "rejected"
+  return status === "passed" || status === "redirected" || status === "rejected" || status === "completed"
 }
 
 export function presenceForDecisionPhase(input: {

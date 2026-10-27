@@ -20,7 +20,14 @@ type Persona = {
   profile_schema: unknown
   profile_extractor_hint: string | null
   created_at: string
+  owner_organisation_id?: string | null
+  source_persona_id?: string | null
+  version?: number
+  visibility?: "all" | "restricted"
+  access_organisation_ids?: string[]
 }
+
+type OrganisationOption = { id: string; name: string }
 
 type FormState = {
   name: string
@@ -32,6 +39,8 @@ type FormState = {
   reject_threshold: number
   profile_schema_text: string
   profile_extractor_hint: string
+  visibility: "all" | "restricted"
+  access_organisation_ids: string[]
 }
 
 const DEFAULT_FORM: FormState = {
@@ -44,6 +53,8 @@ const DEFAULT_FORM: FormState = {
   reject_threshold: 0.25,
   profile_schema_text: "",
   profile_extractor_hint: "",
+  visibility: "all",
+  access_organisation_ids: [],
 }
 
 const PROFILE_SCHEMA_PLACEHOLDER = `{
@@ -116,6 +127,7 @@ export default function PersonasPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [schemaError, setSchemaError] = useState<string | null>(null)
+  const [organisations, setOrganisations] = useState<OrganisationOption[]>([])
 
   const loadSession = useCallback(async () => {
     const res = await fetch("/api/admin/session")
@@ -139,7 +151,18 @@ export default function PersonasPage() {
   useEffect(() => {
     void loadSession()
     load()
+    fetch("/api/admin/organisations")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((rows: unknown) => {
+        if (Array.isArray(rows)) setOrganisations(rows as OrganisationOption[])
+      })
+      .catch(() => {})
   }, [load, loadSession])
+
+  const organisationName = (id: string | null | undefined) =>
+    organisations.find((organisation) => organisation.id === id)?.name ?? "an organisation"
+  const editingPersona = editingId ? personas.find((p) => p.id === editingId) ?? null : null
+  const editingGroucho = !editingPersona || !editingPersona.owner_organisation_id
 
   useEffect(() => {
     if (sessionKind === "member" && view === "form") setView("list")
@@ -195,6 +218,8 @@ export default function PersonasPage() {
         ? JSON.stringify(p.profile_schema, null, 2)
         : "",
       profile_extractor_hint: p.profile_extractor_hint ?? "",
+      visibility: p.visibility ?? "all",
+      access_organisation_ids: p.access_organisation_ids ?? [],
     })
     setSlugManuallyEdited(true)
     setSchemaError(null)
@@ -266,6 +291,9 @@ export default function PersonasPage() {
       reject_threshold: form.reject_threshold,
       profile_schema,
       profile_extractor_hint: form.profile_extractor_hint.trim() || null,
+      ...(editingGroucho
+        ? { visibility: form.visibility, access_organisation_ids: form.access_organisation_ids }
+        : {}),
     }
 
     const res = await fetch(url, {
@@ -690,6 +718,57 @@ export default function PersonasPage() {
             </label>
           </div>
 
+          {editingGroucho ? (
+            <fieldset style={{ border: 0, margin: 0, padding: 0, display: "grid", gap: "0.6rem" }}>
+              <legend style={{ fontSize: "0.75rem", opacity: 0.6, marginBottom: "0.5rem" }}>
+                Who can use or clone this Groucho persona
+              </legend>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.8rem" }}>
+                <input
+                  type="radio"
+                  name="visibility"
+                  checked={form.visibility === "all"}
+                  onChange={() => setForm((prev) => ({ ...prev, visibility: "all" }))}
+                />
+                Every organisation
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.8rem" }}>
+                <input
+                  type="radio"
+                  name="visibility"
+                  checked={form.visibility === "restricted"}
+                  onChange={() => setForm((prev) => ({ ...prev, visibility: "restricted" }))}
+                />
+                Only these organisations
+              </label>
+              {form.visibility === "restricted" ? (
+                <div style={{ display: "grid", gap: "0.4rem", paddingLeft: "1.5rem" }}>
+                  {organisations.map((organisation) => (
+                    <label key={organisation.id} style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.8rem", opacity: 0.8 }}>
+                      <input
+                        type="checkbox"
+                        checked={form.access_organisation_ids.includes(organisation.id)}
+                        onChange={(e) =>
+                          setForm((prev) => ({
+                            ...prev,
+                            access_organisation_ids: e.target.checked
+                              ? [...prev.access_organisation_ids, organisation.id]
+                              : prev.access_organisation_ids.filter((id) => id !== organisation.id),
+                          }))
+                        }
+                      />
+                      {organisation.name}
+                    </label>
+                  ))}
+                </div>
+              ) : null}
+            </fieldset>
+          ) : (
+            <p style={{ fontSize: "0.75rem", opacity: 0.55, margin: 0 }}>
+              Owned by {organisationName(editingPersona?.owner_organisation_id)}. Only that organisation can use it.
+            </p>
+          )}
+
           <div>
             <button type="submit" disabled={saving} style={btnStyle(true)}>
               {saving
@@ -756,7 +835,9 @@ export default function PersonasPage() {
           <div style={{ opacity: 0.2, fontSize: "0.8rem" }}>No personas.</div>
         )}
 
-        {personas.map((p) => (
+        {[...personas]
+          .sort((a, b) => Number(Boolean(a.owner_organisation_id)) - Number(Boolean(b.owner_organisation_id)))
+          .map((p) => (
           <div
             key={p.id}
             style={{
@@ -767,7 +848,17 @@ export default function PersonasPage() {
               gap: "1.25rem",
             }}
           >
-            <span style={{ flex: 1, fontSize: "0.875rem" }}>{p.name}</span>
+            <span style={{ flex: 1, fontSize: "0.875rem" }}>
+              {p.name}
+              <span style={{ display: "block", fontSize: "0.7rem", opacity: 0.45, marginTop: "0.2rem" }}>
+                {p.owner_organisation_id
+                  ? `${organisationName(p.owner_organisation_id)}${p.source_persona_id ? " · clone" : ""}`
+                  : `Groucho · ${p.visibility === "restricted"
+                      ? `only ${(p.access_organisation_ids ?? []).map(organisationName).join(", ") || "no organisations yet"}`
+                      : "every organisation"}`}
+                {p.version ? ` · v${p.version}` : ""}
+              </span>
+            </span>
 
             {p.is_default && (
               <span

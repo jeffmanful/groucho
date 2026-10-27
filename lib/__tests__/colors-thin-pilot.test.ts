@@ -47,14 +47,14 @@ describe("COLORS thin conversation pilot", () => {
     expect(prompt).toContain("Turn-routing priority: a favourite COLORS SHOW is a recorded performance")
     expect(prompt).toContain("Do not suggest live attendance as an alternative")
     expect(prompt.indexOf("Turn-routing priority:")).toBeGreaterThan(prompt.indexOf("Approved media catalog:"))
-    expect(prompt).toContain("Conversation style priority: on an ordinary live turn")
-    expect(prompt).toContain("one brief, open question ending in ?")
-    expect(prompt).toContain("Do not append suggested answers, either/or alternatives")
-    expect(prompt).toContain("without endorsing the person as right for the Forum")
+    expect(prompt).toContain("Reply format (highest priority on every ordinary turn)")
+    expect(prompt).toContain("At most two sentences and at most 40 words in total")
+    expect(prompt).toContain("Never put options inside the question")
+    expect(prompt).toContain("not by endorsing the person as right for the Forum")
     expect(prompt).toContain("initial Forum is for discussion and sharing external links")
     expect(prompt).not.toContain("Make a private advisory judgment")
     expect(Object.keys(colorsThinResponseTool.input_schema.properties)).toEqual([
-      "addsNewContext", "reply", "close", "boundary", "boundaryQuestion", "interactionProposal",
+      "reply", "addsNewContext", "close", "boundary", "boundaryQuestion", "interactionProposal",
     ])
   })
 

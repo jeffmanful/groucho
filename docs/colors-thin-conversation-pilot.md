@@ -1,5 +1,10 @@
 # COLORS thin conversation pilot
 
+> **Superseded on 26 October 2026:** every COLORS application now uses this engine and
+> `GROUCHO_COLORS_THIN_PILOT` is no longer read. Routing, completion, the derived suitability
+> score and the API rollout are in [colors-conversation-engine.md](./colors-conversation-engine.md).
+> The notes below are kept as the pilot's history.
+
 The newer conversation path is used by **all new artist COLORS demo sessions**,
 and by new community demo sessions when `GROUCHO_COLORS_THIN_PILOT=1`. Artist
 guidance comes from the saved application audience, including on repair calls;

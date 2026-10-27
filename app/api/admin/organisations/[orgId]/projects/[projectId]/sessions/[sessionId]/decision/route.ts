@@ -82,11 +82,9 @@ export async function POST(
   if (sessionError || !session) {
     return NextResponse.json({ error: "Not found" }, { status: 404 })
   }
-  if (
-    !isConcludedSessionStatus(session.status) ||
-    session.status === "abandoned" ||
-    session.status === "completed"
-  ) {
+  // Finished applications from either engine can be decided; the newer COLORS engine ends
+  // conversations as `completed`. Active and abandoned sessions cannot.
+  if (!isConcludedSessionStatus(session.status) || session.status === "abandoned") {
     return NextResponse.json(
       { error: "Only completed applications can be reviewed" },
       { status: 409 },
@@ -117,9 +115,19 @@ export async function POST(
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle()
-  const advisoryRecommendation = advisoryRecommendationFromPayload(
-    verdict?.payload,
-  )
+  let advisoryRecommendation = advisoryRecommendationFromPayload(verdict?.payload)
+  if (!advisoryRecommendation) {
+    // Demo and not-yet-delivered applications keep their report on the closing message.
+    const { data: closing } = await supabase
+      .from("messages")
+      .select("metadata")
+      .eq("session_id", sessionId)
+      .eq("role", "assistant")
+      .order("sent_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    advisoryRecommendation = advisoryRecommendationFromPayload(closing?.metadata)
+  }
   const accessSecret = decision === "approved" ? randomUUID() : null
 
   const { data: recorded, error: insertError } = await supabase

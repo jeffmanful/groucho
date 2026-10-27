@@ -377,12 +377,16 @@ components:
 
     SessionOutcome:
       type: string
-      description: Advisory conversation outcome. It does not approve or decline the application by itself.
+      description: >-
+        Advisory conversation outcome. It does not approve or decline the application by itself.
+        `completed` is returned by the newer COLORS conversation engine, which finishes without an
+        outcome of its own; its suitability score and reviewer report follow asynchronously.
       enum:
         - active
         - passed
         - redirected
         - rejected
+        - completed
 
     ApplicationReviewStatus:
       type: string
@@ -653,7 +657,11 @@ components:
         reviewStatus:
           $ref: "#/components/schemas/ApplicationReviewStatus"
         scores:
-          $ref: "#/components/schemas/ScoreBreakdown"
+          allOf:
+            - $ref: "#/components/schemas/ScoreBreakdown"
+          description: >-
+            Per-turn assessment. The newer COLORS engine does not score turns and returns a neutral
+            0.5 placeholder; read `suitabilityScore` from the completed session instead.
         suitabilityScore:
           type: number
           minimum: 0

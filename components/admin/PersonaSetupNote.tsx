@@ -14,10 +14,13 @@ type Props = {
   projectType: ProjectType
   personaId: string
   personas: PersonaOption[]
+  /** When set, persona links go to this organisation's personas. */
+  orgId?: string
 }
 
-export function PersonaSetupNote({ projectType, personaId, personas }: Props) {
+export function PersonaSetupNote({ projectType, personaId, personas, orgId }: Props) {
   const selected = personas.find((p) => p.id === personaId)
+  const personasHref = orgId ? `/admin/organisations/${orgId}/personas` : "/admin/personas"
 
   return (
     <div
@@ -48,14 +51,14 @@ export function PersonaSetupNote({ projectType, personaId, personas }: Props) {
       )}
       {selected ? (
         <Link
-          href="/admin/personas"
+          href={personasHref}
           style={{ color: "rgba(255,255,255,0.65)", textDecoration: "underline" }}
         >
           Edit prompt for {selected.name} →
         </Link>
       ) : (
         <Link
-          href="/admin/personas"
+          href={personasHref}
           style={{ color: "rgba(255,255,255,0.65)", textDecoration: "underline" }}
         >
           Edit personas →

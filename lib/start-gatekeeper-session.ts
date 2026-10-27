@@ -1,3 +1,4 @@
+import { COLORS_THIN_PILOT_MARKER, projectUsesColorsEngine } from "@/lib/colors-engine"
 import { ARTIST_APPLICATION_OPENING } from "@/lib/artist-application"
 import { NextResponse } from "next/server"
 import {
@@ -7,6 +8,7 @@ import {
 import { log } from "@/lib/logger"
 import { REQUEST_ID_HEADER } from "@/lib/request-trace"
 import { supabase } from "@/lib/supabase"
+import { resolveActivePersonaId } from "@/lib/persona-resolution"
 import type { ProjectContext } from "@/lib/project-resolution"
 import { touchApiKeyLastUsed } from "@/lib/project-resolution"
 import type { NormalizedProjectSettings } from "@/lib/project-settings"
@@ -50,6 +52,8 @@ export type StartGatekeeperSessionInput = {
   context: ProjectContext
   projectSettings: NormalizedProjectSettings
   conversationEngine?: string
+  /** Recorded on the opening message so API turns on demo sessions never run completion. */
+  demoSession?: boolean
 }
 
 async function resolvePersonaId(
@@ -59,25 +63,11 @@ async function resolvePersonaId(
     typeof input.projectSettings.raw.persona_id === "string"
       ? input.projectSettings.raw.persona_id
       : null
-  const personaLookupId = input.personaId?.trim() || settingsPersonaId
-
-  if (personaLookupId) {
-    const { data } = await supabase
-      .from("personas")
-      .select("id")
-      .eq("id", personaLookupId)
-      .eq("is_active", true)
-      .maybeSingle()
-    if (data?.id) return data.id
-  }
-
-  const { data } = await supabase
-    .from("personas")
-    .select("id")
-    .eq("is_active", true)
-    .eq("is_default", true)
-    .maybeSingle()
-  return data?.id ?? null
+  // A caller-supplied persona only counts if this organisation may use it; then the project's, then the default.
+  return resolveActivePersonaId(
+    [input.personaId, settingsPersonaId],
+    input.context.organisationId,
+  )
 }
 
 export async function startGatekeeperSession(
@@ -94,6 +84,9 @@ export async function startGatekeeperSession(
     return traceJson(input, { error: "Ticket access is simulation-only. Open the admin ticket workspace." }, { status: 409 })
   }
   const { organisationId, projectId, apiKeyId } = context
+  // Projects configured for the newer COLORS engine start every new session on it.
+  const conversationEngine = input.conversationEngine ??
+    (projectUsesColorsEngine(projectSettings.raw) ? COLORS_THIN_PILOT_MARKER : undefined)
   const configuredSignals = applicationSignalDefinitions(
     projectSettings.applicationExperience.required_signals,
   )
@@ -269,7 +262,8 @@ export async function startGatekeeperSession(
     content: openingMessage,
     metadata: {
       gatekeeper_bootstrap: true,
-      ...(input.conversationEngine ? { conversation_engine: input.conversationEngine } : {}),
+      ...(conversationEngine ? { conversation_engine: conversationEngine } : {}),
+      ...(input.demoSession ? { colors_demo_session: true } : {}),
       ...(colorsForumV1 ? { application_rubric_version: COLORS_FORUM_V1_RUBRIC } : {}),
       ui: openingInteraction,
       ...(openingSignal

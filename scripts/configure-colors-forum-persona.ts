@@ -20,7 +20,7 @@ async function main() {
   if (!settings || !oldPersonaId) throw new Error("Project persona is missing")
 
   const { data: oldPersona, error: oldError } = await db.from("personas")
-    .select("id, pass_threshold, reject_threshold, profile_extractor_hint")
+    .select("id, pass_threshold, reject_threshold, profile_extractor_hint, source_persona_id")
     .eq("id", oldPersonaId)
     .single()
   if (oldError || !oldPersona) throw oldError ?? new Error("Current persona not found")
@@ -29,10 +29,13 @@ async function main() {
     .eq("slug", PERSONA_SLUG)
     .maybeSingle()
   if (existingError) throw existingError
+  // Since persona ownership (docs/persona-ownership.md) the project runs on COLORS's clone of this
+  // Groucho persona. Update the original only; COLORS accepts the change from its personas page.
+  const projectUsesClone = Boolean(existing && oldPersona.source_persona_id === existing.id)
   const willUpdate = Boolean(existing &&
     (existing.prompt !== COLORS_FORUM_PERSONA_PROMPT || !existing.is_active))
   if (!process.argv.includes("--apply")) {
-    console.log(JSON.stringify({ mode: "dry-run", projectId: PROJECT_ID, oldPersonaId, newPersonaId: existing?.id ?? null, willCreate: !existing, willUpdate }))
+    console.log(JSON.stringify({ mode: "dry-run", projectId: PROJECT_ID, oldPersonaId, newPersonaId: projectUsesClone ? oldPersonaId : existing?.id ?? null, willCreate: !existing, willUpdate, projectUsesClone }))
     return
   }
 
@@ -57,6 +60,10 @@ async function main() {
     }).select("id").single()
     if (error || !created) throw error ?? new Error("Could not create pilot persona")
     newPersonaId = created.id
+  }
+  if (projectUsesClone) {
+    console.log(JSON.stringify({ mode: "applied", projectId: PROJECT_ID, grouchoPersonaId: newPersonaId, updated: willUpdate, note: "Project keeps its COLORS clone; accept the update on the COLORS personas page." }))
+    return
   }
   const { error: updateError } = await db.from("projects")
     .update({ settings: { ...settings, persona_id: newPersonaId } })

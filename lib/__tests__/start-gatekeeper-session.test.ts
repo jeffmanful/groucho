@@ -247,6 +247,34 @@ describe("startGatekeeperSession", () => {
     })
   })
 
+  it("starts projects configured for the newer COLORS engine on that engine", async () => {
+    const { startGatekeeperSession } = await import("@/lib/start-gatekeeper-session")
+    const colorsSettings = { ...projectSettings, raw: { ...projectSettings.raw, conversation_engine: "colors_forum" } }
+    const res = await startGatekeeperSession({
+      sessionId: "gk_start_colors_12345678",
+      applicantIdentity: { email: "applicant@example.com" },
+      context: { organisationId: "org1", projectId: "proj1", apiKeyId: null, settings: colorsSettings },
+      projectSettings: colorsSettings,
+    })
+    expect(res.status).toBe(200)
+    const supa = await import("@/lib/supabase")
+    const s = (supa as unknown as { __state: { messages: FakeRow[] } }).__state
+    expect(s.messages[0]?.metadata).toMatchObject({ conversation_engine: "colors_thin_pilot_v1" })
+  })
+
+  it("leaves other projects on the standard engine", async () => {
+    const { startGatekeeperSession } = await import("@/lib/start-gatekeeper-session")
+    await startGatekeeperSession({
+      sessionId: "gk_start_standard_12345678",
+      applicantIdentity: { email: "applicant@example.com" },
+      context: { organisationId: "org1", projectId: "proj1", apiKeyId: null, settings: projectSettings },
+      projectSettings,
+    })
+    const supa = await import("@/lib/supabase")
+    const s = (supa as unknown as { __state: { messages: FakeRow[] } }).__state
+    expect((s.messages[0]?.metadata as Record<string, unknown>).conversation_engine).toBeUndefined()
+  })
+
   it("uses client openingMessage over project default for new sessions", async () => {
     const { startGatekeeperSession } = await import("@/lib/start-gatekeeper-session")
     const res = await startGatekeeperSession({

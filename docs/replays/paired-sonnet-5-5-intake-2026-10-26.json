@@ -1,0 +1,3117 @@
+{
+  "date": "2026-10-26",
+  "design": "Matched pairs: each applicant appears in both audiences with identical intake, fictional facts and fixed opening answer. Both use the same engine, model, turn budget, membership rubric and reviewer model. Adaptive follow-up wording remains variable; this is qualitative, not a causal performance benchmark.",
+  "scope": "Live models; synthetic applicants; real local start/turn/report/profile functions; in-memory storage; no database, webhooks, decisions or invitations; repo-defined COLORS configuration, not a hosted deployment; media feed disabled",
+  "results": [
+    {
+      "id": "community-low",
+      "effort": "low",
+      "engine": "thin",
+      "applicant": {
+        "email": "paired-low@example.test",
+        "name": "Synthetic low applicant",
+        "details": {
+          "city": "Example City",
+          "age": 27,
+          "socialLinks": [],
+          "musicLinks": []
+        }
+      },
+      "brief": "You make occasional beats on a laptop but have no clear current project, process, creative question, feedback experience or community activity to describe. You want exposure and maybe collaborators. You are not malicious, do not claim fame, and have not released music. Answer casually in 2–9 words, remain vague when probed. No invented examples. You would listen to others but have no concrete plan. You do not know TONES.",
+      "firstAnswer": "I make beats on my laptop now and then, nothing finished. I’d like people to talk music with and maybe get feedback.",
+      "turns": [
+        {
+          "role": "assistant",
+          "content": "Why do you want to be an early applicant for the Forum?",
+          "output": {
+            "message": "Why do you want to be an early applicant for the Forum?",
+            "status": "active",
+            "projectType": "gatekeeper",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "idle"
+            },
+            "bootstrapped": true,
+            "resumed": false
+          }
+        },
+        {
+          "role": "user",
+          "content": "I make beats on my laptop now and then, nothing finished. I’d like people to talk music with and maybe get feedback."
+        },
+        {
+          "role": "assistant",
+          "content": "Beats on a laptop, still unfinished, and a wish for people to talk music with. When you picture getting feedback, what would you want someone to say about something you've started?",
+          "output": {
+            "message": "Beats on a laptop, still unfinished, and a wish for people to talk music with. When you picture getting feedback, what would you want someone to say about something you've started?",
+            "status": "active",
+            "reviewStatus": "not_ready",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            }
+          },
+          "httpStatus": 200
+        },
+        {
+          "role": "user",
+          "content": "Honestly, just whether it sounds good or needs work."
+        },
+        {
+          "role": "assistant",
+          "content": "Simple and straightforward, a plain read on whether it's working. How did COLORS come into your life, if it has?",
+          "output": {
+            "message": "Simple and straightforward, a plain read on whether it's working. How did COLORS come into your life, if it has?",
+            "status": "active",
+            "reviewStatus": "not_ready",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            }
+          },
+          "httpStatus": 200
+        },
+        {
+          "role": "user",
+          "content": "I haven't really heard of COLORS, honestly."
+        },
+        {
+          "role": "assistant",
+          "content": "That's fine, you don't need to know COLORS already. Where do you talk about music with people right now, if you do?",
+          "output": {
+            "message": "That's fine, you don't need to know COLORS already. Where do you talk about music with people right now, if you do?",
+            "status": "active",
+            "reviewStatus": "not_ready",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            }
+          },
+          "httpStatus": 200
+        },
+        {
+          "role": "user",
+          "content": "Nowhere really, just friends sometimes."
+        },
+        {
+          "role": "assistant",
+          "content": "So the conversations happen with friends now, and this would be a new kind of space for your music. When you first join, how would you like to take part?",
+          "output": {
+            "message": "So the conversations happen with friends now, and this would be a new kind of space for your music. When you first join, how would you like to take part?",
+            "status": "active",
+            "reviewStatus": "not_ready",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            }
+          },
+          "httpStatus": 200
+        },
+        {
+          "role": "user",
+          "content": "Probably just listen at first, see what people are doing."
+        },
+        {
+          "role": "assistant",
+          "content": "Starting by listening and watching how people share before you join in, with your own beats still in progress.\n\nIt was good getting to understand you better.",
+          "output": {
+            "message": "Starting by listening and watching how people share before you join in, with your own beats still in progress.\n\nIt was good getting to understand you better.",
+            "status": "completed",
+            "reviewStatus": "pending",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            }
+          },
+          "httpStatus": 200
+        }
+      ],
+      "session": {
+        "id": "synthetic-1",
+        "status": "completed",
+        "session_id": "community-low",
+        "persona_id": "synthetic-persona",
+        "organisation_id": "synthetic-org",
+        "project_id": "synthetic-project",
+        "applicant_email": "paired-low@example.test",
+        "applicant_name": "Synthetic low applicant",
+        "applicant_details": {
+          "city": "Example City",
+          "age": 27,
+          "socialLinks": [],
+          "musicLinks": []
+        },
+        "application_audience": "community"
+      },
+      "persistedMessages": [
+        {
+          "id": "synthetic-2",
+          "session_id": "synthetic-1",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "assistant",
+          "content": "Why do you want to be an early applicant for the Forum?",
+          "metadata": {
+            "gatekeeper_bootstrap": true,
+            "conversation_engine": "colors_thin_pilot_v1",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "idle"
+            },
+            "application_next_signal": {
+              "key": "forum_hopes",
+              "label": "Forum hopes"
+            }
+          }
+        },
+        {
+          "id": "synthetic-3",
+          "session_id": "synthetic-1",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "user",
+          "content": "I make beats on my laptop now and then, nothing finished. I’d like people to talk music with and maybe get feedback.",
+          "metadata": {
+            "conversation_engine": "colors_thin_pilot_v1"
+          }
+        },
+        {
+          "id": "synthetic-4",
+          "session_id": "synthetic-1",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "assistant",
+          "content": "Beats on a laptop, still unfinished, and a wish for people to talk music with. When you picture getting feedback, what would you want someone to say about something you've started?",
+          "metadata": {
+            "conversation_engine": "colors_thin_pilot_v1",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            },
+            "boundary": "none",
+            "conversation_progress": {
+              "adds_new_context": true
+            }
+          }
+        },
+        {
+          "id": "synthetic-5",
+          "session_id": "synthetic-1",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "user",
+          "content": "Honestly, just whether it sounds good or needs work.",
+          "metadata": {
+            "conversation_engine": "colors_thin_pilot_v1"
+          }
+        },
+        {
+          "id": "synthetic-6",
+          "session_id": "synthetic-1",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "assistant",
+          "content": "Simple and straightforward, a plain read on whether it's working. How did COLORS come into your life, if it has?",
+          "metadata": {
+            "conversation_engine": "colors_thin_pilot_v1",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            },
+            "boundary": "none",
+            "conversation_progress": {
+              "adds_new_context": false
+            }
+          }
+        },
+        {
+          "id": "synthetic-7",
+          "session_id": "synthetic-1",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "user",
+          "content": "I haven't really heard of COLORS, honestly.",
+          "metadata": {
+            "conversation_engine": "colors_thin_pilot_v1"
+          }
+        },
+        {
+          "id": "synthetic-8",
+          "session_id": "synthetic-1",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "assistant",
+          "content": "That's fine, you don't need to know COLORS already. Where do you talk about music with people right now, if you do?",
+          "metadata": {
+            "conversation_engine": "colors_thin_pilot_v1",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            },
+            "boundary": "none",
+            "conversation_progress": {
+              "adds_new_context": true
+            }
+          }
+        },
+        {
+          "id": "synthetic-9",
+          "session_id": "synthetic-1",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "user",
+          "content": "Nowhere really, just friends sometimes.",
+          "metadata": {
+            "conversation_engine": "colors_thin_pilot_v1"
+          }
+        },
+        {
+          "id": "synthetic-10",
+          "session_id": "synthetic-1",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "assistant",
+          "content": "So the conversations happen with friends now, and this would be a new kind of space for your music. When you first join, how would you like to take part?",
+          "metadata": {
+            "conversation_engine": "colors_thin_pilot_v1",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            },
+            "boundary": "none",
+            "conversation_progress": {
+              "adds_new_context": true
+            }
+          }
+        },
+        {
+          "id": "synthetic-11",
+          "session_id": "synthetic-1",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "user",
+          "content": "Probably just listen at first, see what people are doing.",
+          "metadata": {
+            "conversation_engine": "colors_thin_pilot_v1"
+          }
+        },
+        {
+          "id": "synthetic-12",
+          "session_id": "synthetic-1",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "assistant",
+          "content": "Starting by listening and watching how people share before you join in, with your own beats still in progress.\n\nIt was good getting to understand you better.",
+          "metadata": {
+            "conversation_engine": "colors_thin_pilot_v1",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            },
+            "boundary": "none",
+            "conversation_progress": {
+              "adds_new_context": true
+            },
+            "application_closing": true,
+            "colors_demo_report_status": "pending"
+          }
+        }
+      ],
+      "handoffApplicant": {
+        "email": "paired-low@example.test",
+        "name": "Synthetic low applicant",
+        "details": {
+          "city": "Example City",
+          "age": 27,
+          "socialLinks": [],
+          "musicLinks": []
+        }
+      },
+      "closed": true,
+      "integrityAudit": {
+        "concerns": [],
+        "processMessageIds": []
+      },
+      "report": {
+        "applicant_bio": "Makes unfinished beats on a laptop now and then, wants people to talk music with and maybe get feedback, and says they haven't really heard of COLORS.",
+        "advisory_recommendation": "recommend",
+        "confidence_score": 0.55,
+        "evidence_summary": [
+          "Joining motivation: I’d like people to talk music with and maybe get feedback.",
+          "Music relationship: I make beats on my laptop now and then, nothing finished.",
+          "Community participation: Nowhere really, just friends sometimes.",
+          "Forum participation: Probably just listen at first, see what people are doing."
+        ],
+        "evidence_references": [
+          {
+            "signal_key": "conversation_context",
+            "signal_label": "Conversation context",
+            "source_message_id": "synthetic-3",
+            "excerpt": "I make beats on my laptop now and then, nothing finished. I’d like people to talk music with and maybe get feedback.",
+            "preceding_question": "Why do you want to be an early applicant for the Forum?"
+          },
+          {
+            "signal_key": "conversation_context",
+            "signal_label": "Conversation context",
+            "source_message_id": "synthetic-5",
+            "excerpt": "Honestly, just whether it sounds good or needs work.",
+            "preceding_question": "Beats on a laptop, still unfinished, and a wish for people to talk music with. When you picture getting feedback, what would you want someone to say about something you've started?"
+          },
+          {
+            "signal_key": "conversation_context",
+            "signal_label": "Conversation context",
+            "source_message_id": "synthetic-7",
+            "excerpt": "I haven't really heard of COLORS, honestly.",
+            "preceding_question": "Simple and straightforward, a plain read on whether it's working. How did COLORS come into your life, if it has?"
+          },
+          {
+            "signal_key": "conversation_context",
+            "signal_label": "Conversation context",
+            "source_message_id": "synthetic-9",
+            "excerpt": "Nowhere really, just friends sometimes.",
+            "preceding_question": "That's fine, you don't need to know COLORS already. Where do you talk about music with people right now, if you do?"
+          },
+          {
+            "signal_key": "conversation_context",
+            "signal_label": "Conversation context",
+            "source_message_id": "synthetic-11",
+            "excerpt": "Probably just listen at first, see what people are doing.",
+            "preceding_question": "So the conversations happen with friends now, and this would be a new kind of space for your music. When you first join, how would you like to take part?"
+          },
+          {
+            "signal_key": "joining_motivation",
+            "signal_label": "Joining motivation",
+            "source_message_id": "synthetic-3",
+            "excerpt": "I’d like people to talk music with and maybe get feedback."
+          },
+          {
+            "signal_key": "music_relationship",
+            "signal_label": "Music relationship",
+            "source_message_id": "synthetic-3",
+            "excerpt": "I make beats on my laptop now and then, nothing finished."
+          },
+          {
+            "signal_key": "community_participation",
+            "signal_label": "Community participation",
+            "source_message_id": "synthetic-9",
+            "excerpt": "Nowhere really, just friends sometimes."
+          },
+          {
+            "signal_key": "forum_participation",
+            "signal_label": "Forum participation",
+            "source_message_id": "synthetic-11",
+            "excerpt": "Probably just listen at first, see what people are doing."
+          }
+        ],
+        "weak_or_missing_signals": [],
+        "safety_or_integrity_flags": [],
+        "reviewer_focus": "The applicant says they make unfinished beats and want people to talk music with and maybe get feedback, and that they would probably listen first; no concerns appear, though the evidence is thin.",
+        "evidence_state": [
+          {
+            "signal_key": "joining_motivation",
+            "coverage": "supported",
+            "source_message_ids": [
+              "synthetic-3"
+            ],
+            "material_gap": false,
+            "gap_reason": ""
+          },
+          {
+            "signal_key": "colors_connection",
+            "coverage": "unverified",
+            "source_message_ids": [],
+            "material_gap": false,
+            "gap_reason": ""
+          },
+          {
+            "signal_key": "music_relationship",
+            "coverage": "supported",
+            "source_message_ids": [
+              "synthetic-3"
+            ],
+            "material_gap": false,
+            "gap_reason": ""
+          },
+          {
+            "signal_key": "community_participation",
+            "coverage": "partial",
+            "source_message_ids": [
+              "synthetic-9"
+            ],
+            "material_gap": false,
+            "gap_reason": ""
+          },
+          {
+            "signal_key": "forum_participation",
+            "coverage": "supported",
+            "source_message_ids": [
+              "synthetic-11"
+            ],
+            "material_gap": false,
+            "gap_reason": ""
+          },
+          {
+            "signal_key": "tones_connection",
+            "coverage": "unverified",
+            "source_message_ids": [],
+            "material_gap": false,
+            "gap_reason": ""
+          }
+        ],
+        "evidence_limits": [
+          {
+            "signal_key": "colors_connection",
+            "label": "COLORS connection",
+            "coverage": "unverified",
+            "material_gap": false,
+            "explanation": "Not established in this conversation. This is neutral context, not an applicant concern."
+          },
+          {
+            "signal_key": "community_participation",
+            "label": "Community participation",
+            "coverage": "partial",
+            "material_gap": false,
+            "explanation": "Not established in this conversation. This is neutral context, not an applicant concern."
+          },
+          {
+            "signal_key": "tones_connection",
+            "label": "TONES connection",
+            "coverage": "unverified",
+            "material_gap": false,
+            "explanation": "Not established in this conversation. This is neutral context, not an applicant concern."
+          }
+        ],
+        "report_version": "colors_forum_membership_report_v7",
+        "detailed_opinion": {
+          "snapshot": {
+            "applicant_summary": "The applicant makes unfinished beats on a laptop and wants people to talk music with and maybe get feedback. They say they would probably listen at first to see what people are doing.",
+            "evidence_reference_ids": [
+              "synthetic-3",
+              "synthetic-11"
+            ],
+            "tags": [
+              {
+                "value": "joining_motivation",
+                "evidence_reference_ids": [
+                  "synthetic-3"
+                ]
+              },
+              {
+                "value": "creative_practice",
+                "evidence_reference_ids": [
+                  "synthetic-3"
+                ]
+              },
+              {
+                "value": "forum_participation",
+                "evidence_reference_ids": [
+                  "synthetic-11"
+                ]
+              }
+            ]
+          },
+          "advisory_reason": "The applicant says they make unfinished beats and want people to talk music with and maybe get feedback, and that they would probably listen first; no concerns appear, though the evidence is thin.",
+          "advisory_evidence_reference_ids": [
+            "synthetic-3",
+            "synthetic-11"
+          ],
+          "overall_assessment": "A brief conversation shows an informal beat-maker looking for music conversation and feedback who would probably listen first. Nothing raises a concern; the evidence is limited in depth, so confidence is moderate.",
+          "decisive_reasons": [
+            "The applicant states a clear, modest reason for joining: people to talk music with and maybe feedback on unfinished beats.",
+            "They say they would probably listen at first to see what people are doing, a tentative statement of intent."
+          ],
+          "claim_assessments": [
+            {
+              "claim": "The applicant makes beats on a laptop now and then, nothing finished, and wants people to talk music with and maybe get feedback.",
+              "evidence_reference_ids": [
+                "synthetic-3",
+                "synthetic-5"
+              ],
+              "interpretation": "This shows an informal personal music practice and a stated motivation to find conversation. Their feedback interest is a wish for input on whether something sounds good or needs work, not an established habit.",
+              "assessment": "strength"
+            },
+            {
+              "claim": "The applicant says they talk about music nowhere really, just with friends sometimes.",
+              "evidence_reference_ids": [
+                "synthetic-9"
+              ],
+              "interpretation": "They report occasional music conversation with friends; broader community experience is not shown, which is neutral missing information rather than a negative signal.",
+              "assessment": "context"
+            },
+            {
+              "claim": "The applicant says they would probably just listen at first and see what people are doing.",
+              "evidence_reference_ids": [
+                "synthetic-11"
+              ],
+              "interpretation": "This is a tentative stated intention ('probably') about how they might begin, not demonstrated behaviour.",
+              "assessment": "strength"
+            }
+          ],
+          "likely_contribution": "Based on their own words, they would probably begin by listening to see what others are doing. Any later contribution is not stated and remains unknown.",
+          "reservations": [],
+          "reviewer_questions": [],
+          "curatorial_approach": {
+            "present": false,
+            "summary": "",
+            "evidence_reference_ids": [],
+            "observed_dimensions": []
+          },
+          "suggested_human_action": "approve"
+        }
+      },
+      "profile": {
+        "schema_version": 1,
+        "core": {
+          "summary": "The applicant makes unfinished beats on a laptop and wants people to talk music with and maybe get feedback. They say they would probably listen at first to see what people are doing.",
+          "sentiment": "positive",
+          "engagement": "medium",
+          "language": "en",
+          "intent_tags": [
+            "music_creation",
+            "feedback_seeking",
+            "community_building"
+          ],
+          "interests": [
+            "beat_making",
+            "music_discussion",
+            "production_feedback"
+          ],
+          "risk_flags": [],
+          "qa": [
+            {
+              "question": "Why do you want to be an early applicant for the Forum?",
+              "answer": "I make beats on my laptop now and then, nothing finished. I'd like people to talk music with and maybe get feedback."
+            },
+            {
+              "question": "When you picture getting feedback, what would you want someone to say about something you've started?",
+              "answer": "Honestly, just whether it sounds good or needs work."
+            },
+            {
+              "question": "How did COLORS come into your life, if it has?",
+              "answer": "I haven't really heard of COLORS, honestly."
+            },
+            {
+              "question": "Where do you talk about music with people right now, if you do?",
+              "answer": "Nowhere really, just friends sometimes."
+            },
+            {
+              "question": "When you first join, how would you like to take part?",
+              "answer": "Probably just listen at first, see what people are doing."
+            }
+          ],
+          "confidence": 0.92
+        },
+        "custom": {
+          "joining_reason": "Applicant: \"I’d like people to talk music with and maybe get feedback.\"",
+          "music_relationship": "Applicant: \"I make beats on my laptop now and then, nothing finished.\"",
+          "forum_hopes": "Applicant: \"I’d like people to talk music with and maybe get feedback.\"",
+          "initial_participation": "Applicant: \"Probably just listen at first, see what people are doing.\""
+        },
+        "extraction": {
+          "model": "claude-haiku-4-5-20251001",
+          "status": "ok"
+        }
+      },
+      "calls": [
+        {
+          "model": "claude-sonnet-5-5",
+          "ms": 3761,
+          "usage": {
+            "input_tokens": 3627,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 148,
+            "output_tokens_details": {
+              "thinking_tokens": 0
+            },
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_thin_conversation"
+        },
+        {
+          "model": "claude-sonnet-5-5",
+          "ms": 3001,
+          "usage": {
+            "input_tokens": 3700,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 266,
+            "output_tokens_details": {
+              "thinking_tokens": 189
+            },
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_thin_conversation"
+        },
+        {
+          "model": "claude-sonnet-5-5",
+          "ms": 4492,
+          "usage": {
+            "input_tokens": 3756,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 363,
+            "output_tokens_details": {
+              "thinking_tokens": 232
+            },
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_thin_conversation"
+        },
+        {
+          "model": "claude-sonnet-5-5",
+          "ms": 4729,
+          "usage": {
+            "input_tokens": 3809,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 514,
+            "output_tokens_details": {
+              "thinking_tokens": 378
+            },
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_thin_conversation"
+        },
+        {
+          "model": "claude-sonnet-5-5",
+          "ms": 2844,
+          "usage": {
+            "input_tokens": 3868,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 242,
+            "output_tokens_details": {
+              "thinking_tokens": 173
+            },
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_thin_conversation"
+        },
+        {
+          "model": "claude-haiku-4-5-20251001",
+          "ms": 1399,
+          "usage": {
+            "input_tokens": 931,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 24,
+            "service_tier": "standard",
+            "inference_geo": "not_available",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_post_conversation_integrity"
+        },
+        {
+          "model": "claude-sonnet-5-5",
+          "ms": 2774,
+          "usage": {
+            "input_tokens": 2288,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 429,
+            "output_tokens_details": {
+              "thinking_tokens": 0
+            },
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_demo_reviewer_evidence_reconciliation"
+        },
+        {
+          "model": "claude-sonnet-5-5",
+          "ms": 8332,
+          "usage": {
+            "input_tokens": 7846,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 1062,
+            "output_tokens_details": {
+              "thinking_tokens": 0
+            },
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_demo_reviewer_report"
+        },
+        {
+          "model": "claude-sonnet-5-5",
+          "ms": 6168,
+          "usage": {
+            "input_tokens": 8034,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 662,
+            "output_tokens_details": {
+              "thinking_tokens": 385
+            },
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_demo_reviewer_verification"
+        },
+        {
+          "model": "claude-sonnet-5-5",
+          "ms": 6043,
+          "usage": {
+            "input_tokens": 9285,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 1041,
+            "output_tokens_details": {
+              "thinking_tokens": 0
+            },
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_demo_reviewer_report"
+        },
+        {
+          "model": "claude-sonnet-5-5",
+          "ms": 1722,
+          "usage": {
+            "input_tokens": 8010,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 25,
+            "output_tokens_details": {
+              "thinking_tokens": 0
+            },
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_demo_reviewer_verification"
+        },
+        {
+          "model": "claude-haiku-4-5-20251001",
+          "ms": 5119,
+          "usage": {
+            "input_tokens": 2073,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 413,
+            "service_tier": "standard",
+            "inference_geo": "not_available",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "profile_extraction"
+        }
+      ]
+    },
+    {
+      "id": "artist-low",
+      "effort": "low",
+      "engine": "thin",
+      "applicant": {
+        "email": "paired-low@example.test",
+        "name": "Synthetic low applicant",
+        "artist": {
+          "city": "Example City",
+          "age": 27,
+          "socialLinks": [],
+          "musicLinks": []
+        }
+      },
+      "brief": "You make occasional beats on a laptop but have no clear current project, process, creative question, feedback experience or community activity to describe. You want exposure and maybe collaborators. You are not malicious, do not claim fame, and have not released music. Answer casually in 2–9 words, remain vague when probed. No invented examples. You would listen to others but have no concrete plan. You do not know TONES.",
+      "firstAnswer": "I make beats on my laptop now and then, nothing finished. I’d like people to talk music with and maybe get feedback.",
+      "turns": [
+        {
+          "role": "assistant",
+          "content": "Tell me about the music you’re making and what you’d like to find in the COLORS Forum.",
+          "output": {
+            "message": "Tell me about the music you’re making and what you’d like to find in the COLORS Forum.",
+            "status": "active",
+            "projectType": "gatekeeper",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            },
+            "bootstrapped": true,
+            "resumed": false
+          }
+        },
+        {
+          "role": "user",
+          "content": "I make beats on my laptop now and then, nothing finished. I’d like people to talk music with and maybe get feedback."
+        },
+        {
+          "role": "assistant",
+          "content": "Making beats now and then, without needing them finished, sounds like a low-pressure way to keep a hand in. When you've wanted feedback on something unfinished, what have you hoped someone would notice?",
+          "output": {
+            "message": "Making beats now and then, without needing them finished, sounds like a low-pressure way to keep a hand in. When you've wanted feedback on something unfinished, what have you hoped someone would notice?",
+            "status": "active",
+            "reviewStatus": "not_ready",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            }
+          },
+          "httpStatus": 200
+        },
+        {
+          "role": "user",
+          "content": "Honestly, just whether it sounds interesting at all."
+        },
+        {
+          "role": "assistant",
+          "content": "Wanting to know if something is interesting before it's finished makes sense. Where do you usually talk about music with people right now?",
+          "output": {
+            "message": "Wanting to know if something is interesting before it's finished makes sense. Where do you usually talk about music with people right now?",
+            "status": "active",
+            "reviewStatus": "not_ready",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            }
+          },
+          "httpStatus": 200
+        },
+        {
+          "role": "user",
+          "content": "Nowhere really, mostly just listen to stuff alone."
+        },
+        {
+          "role": "assistant",
+          "content": "Listening alone and having nowhere to talk about it explains why you're looking for people here. How did COLORS find its way into your listening?",
+          "output": {
+            "message": "Listening alone and having nowhere to talk about it explains why you're looking for people here. How did COLORS find its way into your listening?",
+            "status": "active",
+            "reviewStatus": "not_ready",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            }
+          },
+          "httpStatus": 200
+        },
+        {
+          "role": "user",
+          "content": "Saw it mentioned online somewhere, seemed like a real community."
+        },
+        {
+          "role": "assistant",
+          "content": "Hearing it described as a real community was enough to make you curious. What about it made it seem that way to you?",
+          "output": {
+            "message": "Hearing it described as a real community was enough to make you curious. What about it made it seem that way to you?",
+            "status": "active",
+            "reviewStatus": "not_ready",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            }
+          },
+          "httpStatus": 200
+        },
+        {
+          "role": "user",
+          "content": "Just seemed like people actually engaged with each other, not fake."
+        },
+        {
+          "role": "assistant",
+          "content": "Engagement that feels unforced is a clear thing to look for, especially when you've mostly been listening alone. When you imagine joining in here, what would you want to bring to other people's conversations?",
+          "output": {
+            "message": "Engagement that feels unforced is a clear thing to look for, especially when you've mostly been listening alone. When you imagine joining in here, what would you want to bring to other people's conversations?",
+            "status": "active",
+            "reviewStatus": "not_ready",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            }
+          },
+          "httpStatus": 200
+        },
+        {
+          "role": "user",
+          "content": "Honestly, just honest reactions to what they're doing."
+        },
+        {
+          "role": "assistant",
+          "content": "Offering honest reactions to what other people are making is a fair match for the kind of response you'd like on your own unfinished beats.\n\nIt was good getting to understand you better.",
+          "output": {
+            "message": "Offering honest reactions to what other people are making is a fair match for the kind of response you'd like on your own unfinished beats.\n\nIt was good getting to understand you better.",
+            "status": "completed",
+            "reviewStatus": "pending",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            }
+          },
+          "httpStatus": 200
+        }
+      ],
+      "session": {
+        "id": "synthetic-13",
+        "status": "completed",
+        "session_id": "artist-low",
+        "persona_id": "synthetic-persona",
+        "organisation_id": "synthetic-org",
+        "project_id": "synthetic-project",
+        "applicant_email": "paired-low@example.test",
+        "applicant_name": "Synthetic low applicant",
+        "applicant_details": {
+          "city": "Example City",
+          "age": 27,
+          "socialLinks": [],
+          "musicLinks": []
+        },
+        "application_audience": "artist"
+      },
+      "persistedMessages": [
+        {
+          "id": "synthetic-14",
+          "session_id": "synthetic-13",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "assistant",
+          "content": "Tell me about the music you’re making and what you’d like to find in the COLORS Forum.",
+          "metadata": {
+            "gatekeeper_bootstrap": true,
+            "conversation_engine": "colors_thin_pilot_v1",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            },
+            "application_next_signal": {
+              "key": "forum_hopes",
+              "label": "Forum hopes"
+            }
+          }
+        },
+        {
+          "id": "synthetic-15",
+          "session_id": "synthetic-13",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "user",
+          "content": "I make beats on my laptop now and then, nothing finished. I’d like people to talk music with and maybe get feedback.",
+          "metadata": {
+            "conversation_engine": "colors_thin_pilot_v1"
+          }
+        },
+        {
+          "id": "synthetic-16",
+          "session_id": "synthetic-13",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "assistant",
+          "content": "Making beats now and then, without needing them finished, sounds like a low-pressure way to keep a hand in. When you've wanted feedback on something unfinished, what have you hoped someone would notice?",
+          "metadata": {
+            "conversation_engine": "colors_thin_pilot_v1",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            },
+            "boundary": "none",
+            "conversation_progress": {
+              "adds_new_context": true
+            }
+          }
+        },
+        {
+          "id": "synthetic-17",
+          "session_id": "synthetic-13",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "user",
+          "content": "Honestly, just whether it sounds interesting at all.",
+          "metadata": {
+            "conversation_engine": "colors_thin_pilot_v1"
+          }
+        },
+        {
+          "id": "synthetic-18",
+          "session_id": "synthetic-13",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "assistant",
+          "content": "Wanting to know if something is interesting before it's finished makes sense. Where do you usually talk about music with people right now?",
+          "metadata": {
+            "conversation_engine": "colors_thin_pilot_v1",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            },
+            "boundary": "none",
+            "conversation_progress": {
+              "adds_new_context": false
+            }
+          }
+        },
+        {
+          "id": "synthetic-19",
+          "session_id": "synthetic-13",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "user",
+          "content": "Nowhere really, mostly just listen to stuff alone.",
+          "metadata": {
+            "conversation_engine": "colors_thin_pilot_v1"
+          }
+        },
+        {
+          "id": "synthetic-20",
+          "session_id": "synthetic-13",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "assistant",
+          "content": "Listening alone and having nowhere to talk about it explains why you're looking for people here. How did COLORS find its way into your listening?",
+          "metadata": {
+            "conversation_engine": "colors_thin_pilot_v1",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            },
+            "boundary": "none",
+            "conversation_progress": {
+              "adds_new_context": true
+            }
+          }
+        },
+        {
+          "id": "synthetic-21",
+          "session_id": "synthetic-13",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "user",
+          "content": "Saw it mentioned online somewhere, seemed like a real community.",
+          "metadata": {
+            "conversation_engine": "colors_thin_pilot_v1"
+          }
+        },
+        {
+          "id": "synthetic-22",
+          "session_id": "synthetic-13",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "assistant",
+          "content": "Hearing it described as a real community was enough to make you curious. What about it made it seem that way to you?",
+          "metadata": {
+            "conversation_engine": "colors_thin_pilot_v1",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            },
+            "boundary": "none",
+            "conversation_progress": {
+              "adds_new_context": true
+            }
+          }
+        },
+        {
+          "id": "synthetic-23",
+          "session_id": "synthetic-13",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "user",
+          "content": "Just seemed like people actually engaged with each other, not fake.",
+          "metadata": {
+            "conversation_engine": "colors_thin_pilot_v1"
+          }
+        },
+        {
+          "id": "synthetic-24",
+          "session_id": "synthetic-13",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "assistant",
+          "content": "Engagement that feels unforced is a clear thing to look for, especially when you've mostly been listening alone. When you imagine joining in here, what would you want to bring to other people's conversations?",
+          "metadata": {
+            "conversation_engine": "colors_thin_pilot_v1",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            },
+            "boundary": "none",
+            "conversation_progress": {
+              "adds_new_context": true
+            }
+          }
+        },
+        {
+          "id": "synthetic-25",
+          "session_id": "synthetic-13",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "user",
+          "content": "Honestly, just honest reactions to what they're doing.",
+          "metadata": {
+            "conversation_engine": "colors_thin_pilot_v1"
+          }
+        },
+        {
+          "id": "synthetic-26",
+          "session_id": "synthetic-13",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "assistant",
+          "content": "Offering honest reactions to what other people are making is a fair match for the kind of response you'd like on your own unfinished beats.\n\nIt was good getting to understand you better.",
+          "metadata": {
+            "conversation_engine": "colors_thin_pilot_v1",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            },
+            "boundary": "none",
+            "conversation_progress": {
+              "adds_new_context": true
+            },
+            "application_closing": true,
+            "colors_demo_report_status": "pending"
+          }
+        }
+      ],
+      "handoffApplicant": {
+        "email": "paired-low@example.test",
+        "name": "Synthetic low applicant",
+        "artist": {
+          "city": "Example City",
+          "age": 27,
+          "socialLinks": [],
+          "musicLinks": []
+        }
+      },
+      "closed": true,
+      "integrityAudit": {
+        "concerns": [],
+        "processMessageIds": []
+      },
+      "report": {
+        "applicant_bio": "Makes unfinished beats on a laptop now and then, mostly listens alone, and found COLORS through an online mention that suggested a genuine community.",
+        "advisory_recommendation": "recommend",
+        "confidence_score": 0.6,
+        "evidence_summary": [
+          "Joining motivation: I’d like people to talk music with and maybe get feedback.",
+          "COLORS connection: Saw it mentioned online somewhere, seemed like a real community.",
+          "COLORS connection: Just seemed like people actually engaged with each other, not fake.",
+          "Music relationship: I make beats on my laptop now and then, nothing finished.",
+          "Music relationship: mostly just listen to stuff alone.",
+          "Forum participation: just honest reactions to what they're doing."
+        ],
+        "evidence_references": [
+          {
+            "signal_key": "conversation_context",
+            "signal_label": "Conversation context",
+            "source_message_id": "synthetic-15",
+            "excerpt": "I make beats on my laptop now and then, nothing finished. I’d like people to talk music with and maybe get feedback.",
+            "preceding_question": "Tell me about the music you’re making and what you’d like to find in the COLORS Forum."
+          },
+          {
+            "signal_key": "conversation_context",
+            "signal_label": "Conversation context",
+            "source_message_id": "synthetic-17",
+            "excerpt": "Honestly, just whether it sounds interesting at all.",
+            "preceding_question": "Making beats now and then, without needing them finished, sounds like a low-pressure way to keep a hand in. When you've wanted feedback on something unfinished, what have you hoped someone would notice?"
+          },
+          {
+            "signal_key": "conversation_context",
+            "signal_label": "Conversation context",
+            "source_message_id": "synthetic-19",
+            "excerpt": "Nowhere really, mostly just listen to stuff alone.",
+            "preceding_question": "Wanting to know if something is interesting before it's finished makes sense. Where do you usually talk about music with people right now?"
+          },
+          {
+            "signal_key": "conversation_context",
+            "signal_label": "Conversation context",
+            "source_message_id": "synthetic-21",
+            "excerpt": "Saw it mentioned online somewhere, seemed like a real community.",
+            "preceding_question": "Listening alone and having nowhere to talk about it explains why you're looking for people here. How did COLORS find its way into your listening?"
+          },
+          {
+            "signal_key": "conversation_context",
+            "signal_label": "Conversation context",
+            "source_message_id": "synthetic-23",
+            "excerpt": "Just seemed like people actually engaged with each other, not fake.",
+            "preceding_question": "Hearing it described as a real community was enough to make you curious. What about it made it seem that way to you?"
+          },
+          {
+            "signal_key": "conversation_context",
+            "signal_label": "Conversation context",
+            "source_message_id": "synthetic-25",
+            "excerpt": "Honestly, just honest reactions to what they're doing.",
+            "preceding_question": "Engagement that feels unforced is a clear thing to look for, especially when you've mostly been listening alone. When you imagine joining in here, what would you want to bring to other people's conversations?"
+          },
+          {
+            "signal_key": "joining_motivation",
+            "signal_label": "Joining motivation",
+            "source_message_id": "synthetic-15",
+            "excerpt": "I’d like people to talk music with and maybe get feedback."
+          },
+          {
+            "signal_key": "colors_connection",
+            "signal_label": "COLORS connection",
+            "source_message_id": "synthetic-21",
+            "excerpt": "Saw it mentioned online somewhere, seemed like a real community."
+          },
+          {
+            "signal_key": "colors_connection",
+            "signal_label": "COLORS connection",
+            "source_message_id": "synthetic-23",
+            "excerpt": "Just seemed like people actually engaged with each other, not fake."
+          },
+          {
+            "signal_key": "music_relationship",
+            "signal_label": "Music relationship",
+            "source_message_id": "synthetic-15",
+            "excerpt": "I make beats on my laptop now and then, nothing finished."
+          },
+          {
+            "signal_key": "music_relationship",
+            "signal_label": "Music relationship",
+            "source_message_id": "synthetic-19",
+            "excerpt": "mostly just listen to stuff alone."
+          },
+          {
+            "signal_key": "forum_participation",
+            "signal_label": "Forum participation",
+            "source_message_id": "synthetic-25",
+            "excerpt": "just honest reactions to what they're doing."
+          }
+        ],
+        "weak_or_missing_signals": [],
+        "safety_or_integrity_flags": [],
+        "reviewer_focus": "The applicant gives a plain, consistent account of wanting people to talk music with, a COLORS interest rooted in genuine engagement, and an intent to offer honest reactions, with no concerns raised.",
+        "evidence_state": [
+          {
+            "signal_key": "joining_motivation",
+            "coverage": "supported",
+            "source_message_ids": [
+              "synthetic-15"
+            ],
+            "material_gap": false,
+            "gap_reason": ""
+          },
+          {
+            "signal_key": "colors_connection",
+            "coverage": "supported",
+            "source_message_ids": [
+              "synthetic-21",
+              "synthetic-23"
+            ],
+            "material_gap": false,
+            "gap_reason": ""
+          },
+          {
+            "signal_key": "music_relationship",
+            "coverage": "supported",
+            "source_message_ids": [
+              "synthetic-15",
+              "synthetic-19"
+            ],
+            "material_gap": false,
+            "gap_reason": ""
+          },
+          {
+            "signal_key": "community_participation",
+            "coverage": "unverified",
+            "source_message_ids": [],
+            "material_gap": false,
+            "gap_reason": ""
+          },
+          {
+            "signal_key": "forum_participation",
+            "coverage": "supported",
+            "source_message_ids": [
+              "synthetic-25"
+            ],
+            "material_gap": false,
+            "gap_reason": ""
+          },
+          {
+            "signal_key": "tones_connection",
+            "coverage": "unverified",
+            "source_message_ids": [],
+            "material_gap": false,
+            "gap_reason": ""
+          }
+        ],
+        "evidence_limits": [
+          {
+            "signal_key": "community_participation",
+            "label": "Community participation",
+            "coverage": "unverified",
+            "material_gap": false,
+            "explanation": "Not established in this conversation. This is neutral context, not an applicant concern."
+          },
+          {
+            "signal_key": "tones_connection",
+            "label": "TONES connection",
+            "coverage": "unverified",
+            "material_gap": false,
+            "explanation": "Not established in this conversation. This is neutral context, not an applicant concern."
+          }
+        ],
+        "report_version": "colors_forum_membership_report_v7",
+        "detailed_opinion": {
+          "snapshot": {
+            "applicant_summary": "The applicant makes unfinished beats occasionally and mostly listens alone, and wants people to talk music with. They were drawn to COLORS by a sense of genuine engagement and say they would bring honest reactions.",
+            "evidence_reference_ids": [
+              "synthetic-15",
+              "synthetic-19",
+              "synthetic-23",
+              "synthetic-25"
+            ],
+            "tags": [
+              {
+                "value": "joining_motivation",
+                "evidence_reference_ids": [
+                  "synthetic-15",
+                  "synthetic-19"
+                ]
+              },
+              {
+                "value": "colors_connection",
+                "evidence_reference_ids": [
+                  "synthetic-21",
+                  "synthetic-23"
+                ]
+              },
+              {
+                "value": "forum_hopes",
+                "evidence_reference_ids": [
+                  "synthetic-25"
+                ]
+              }
+            ]
+          },
+          "advisory_reason": "The applicant gives a plain, consistent account of wanting people to talk music with, a COLORS interest rooted in genuine engagement, and an intent to offer honest reactions, with no concerns raised.",
+          "advisory_evidence_reference_ids": [
+            "synthetic-15",
+            "synthetic-19",
+            "synthetic-23",
+            "synthetic-25"
+          ],
+          "overall_assessment": "Brief but consistent: a solitary listener who makes occasional beats and is looking for a place to talk music with people who seem genuinely engaged. Answers are short, but nothing raises a concern and the motivation is clear.",
+          "decisive_reasons": [
+            "They say they listen alone and have nowhere to talk about music, which gives a concrete reason for joining.",
+            "They describe being drawn to COLORS because people seemed genuinely engaged with each other."
+          ],
+          "claim_assessments": [
+            {
+              "claim": "Wants people to talk music with and some feedback on occasional, unfinished beats.",
+              "evidence_reference_ids": [
+                "synthetic-15",
+                "synthetic-17",
+                "synthetic-19"
+              ],
+              "interpretation": "The applicant said they make beats now and then, nothing finished, and have nowhere to talk music. This suggests a low-pressure, conversation-seeking motivation for joining; their music-making is casual.",
+              "assessment": "strength"
+            },
+            {
+              "claim": "Was drawn to COLORS by a sense of a real community where people engage with each other.",
+              "evidence_reference_ids": [
+                "synthetic-21",
+                "synthetic-23"
+              ],
+              "interpretation": "They said they saw COLORS mentioned online and it seemed like a real community with people who weren't fake. This reads as a values-based reason for interest rather than detailed knowledge of COLORS, which is not needed.",
+              "assessment": "context"
+            },
+            {
+              "claim": "Would bring honest reactions to what others are doing.",
+              "evidence_reference_ids": [
+                "synthetic-25"
+              ],
+              "interpretation": "This is a stated intention for participation, tentative and not demonstrated by an existing practice, but it fits a discussion Forum.",
+              "assessment": "strength"
+            }
+          ],
+          "likely_contribution": "Likely to take part as an interested listener who offers candid reactions and seeks conversation. This is their stated intention; no existing community practice is shown.",
+          "reservations": [],
+          "reviewer_questions": [],
+          "curatorial_approach": {
+            "present": false,
+            "summary": "",
+            "evidence_reference_ids": [],
+            "observed_dimensions": []
+          },
+          "suggested_human_action": "approve"
+        }
+      },
+      "profile": {
+        "schema_version": 1,
+        "core": {
+          "summary": "The applicant makes unfinished beats occasionally and mostly listens alone, and wants people to talk music with. They were drawn to COLORS by a sense of genuine engagement and say they would bring honest reactions.",
+          "sentiment": "positive",
+          "engagement": "medium",
+          "language": "en",
+          "intent_tags": [
+            "feedback",
+            "community",
+            "music_discussion",
+            "beat_making"
+          ],
+          "interests": [
+            "beat_making",
+            "music production",
+            "listening",
+            "honest feedback"
+          ],
+          "risk_flags": [],
+          "qa": [
+            {
+              "question": "Tell me about the music you're making and what you'd like to find in the COLORS Forum.",
+              "answer": "I make beats on my laptop now and then, nothing finished. I'd like people to talk music with and maybe get feedback."
+            },
+            {
+              "question": "When you've wanted feedback on something unfinished, what have you hoped someone would notice?",
+              "answer": "Honestly, just whether it sounds interesting at all."
+            },
+            {
+              "question": "Where do you usually talk about music with people right now?",
+              "answer": "Nowhere really, mostly just listen to stuff alone."
+            },
+            {
+              "question": "How did COLORS find its way into your listening?",
+              "answer": "Saw it mentioned online somewhere, seemed like a real community."
+            },
+            {
+              "question": "What about it made it seem that way to you?",
+              "answer": "Just seemed like people actually engaged with each other, not fake."
+            },
+            {
+              "question": "When you imagine joining in here, what would you want to bring to other people's conversations?",
+              "answer": "Honestly, just honest reactions to what they're doing."
+            }
+          ],
+          "confidence": 0.92
+        },
+        "custom": {
+          "joining_reason": "Applicant: \"I’d like people to talk music with and maybe get feedback.\"",
+          "colors_connection": "Applicant: \"Saw it mentioned online somewhere, seemed like a real community.\" Applicant: \"Just seemed like people actually engaged with each other, not fake.\"",
+          "music_relationship": "Applicant: \"I make beats on my laptop now and then, nothing finished.\" Applicant: \"mostly just listen to stuff alone.\"",
+          "forum_hopes": "Applicant: \"I’d like people to talk music with and maybe get feedback.\"",
+          "initial_participation": "Applicant: \"just honest reactions to what they're doing.\""
+        },
+        "extraction": {
+          "model": "claude-haiku-4-5-20251001",
+          "status": "ok"
+        }
+      },
+      "calls": [
+        {
+          "model": "claude-sonnet-5-5",
+          "ms": 2158,
+          "usage": {
+            "input_tokens": 3838,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 159,
+            "output_tokens_details": {
+              "thinking_tokens": 0
+            },
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_thin_conversation"
+        },
+        {
+          "model": "claude-sonnet-5-5",
+          "ms": 4000,
+          "usage": {
+            "input_tokens": 3922,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 347,
+            "output_tokens_details": {
+              "thinking_tokens": 268
+            },
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_thin_conversation"
+        },
+        {
+          "model": "claude-sonnet-5-5",
+          "ms": 3602,
+          "usage": {
+            "input_tokens": 3983,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 338,
+            "output_tokens_details": {
+              "thinking_tokens": 255
+            },
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_thin_conversation"
+        },
+        {
+          "model": "claude-sonnet-5-5",
+          "ms": 4629,
+          "usage": {
+            "input_tokens": 4050,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 454,
+            "output_tokens_details": {
+              "thinking_tokens": 381
+            },
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_thin_conversation"
+        },
+        {
+          "model": "claude-sonnet-5-5",
+          "ms": 5155,
+          "usage": {
+            "input_tokens": 4105,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 500,
+            "output_tokens_details": {
+              "thinking_tokens": 399
+            },
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_thin_conversation"
+        },
+        {
+          "model": "claude-sonnet-5-5",
+          "ms": 4020,
+          "usage": {
+            "input_tokens": 4186,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 331,
+            "output_tokens_details": {
+              "thinking_tokens": 250
+            },
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_thin_conversation"
+        },
+        {
+          "model": "claude-haiku-4-5-20251001",
+          "ms": 1327,
+          "usage": {
+            "input_tokens": 961,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 16,
+            "service_tier": "standard",
+            "inference_geo": "not_available",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_post_conversation_integrity"
+        },
+        {
+          "model": "claude-sonnet-5-5",
+          "ms": 3041,
+          "usage": {
+            "input_tokens": 2431,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 508,
+            "output_tokens_details": {
+              "thinking_tokens": 0
+            },
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_demo_reviewer_evidence_reconciliation"
+        },
+        {
+          "model": "claude-sonnet-5-5",
+          "ms": 8039,
+          "usage": {
+            "input_tokens": 8355,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 1156,
+            "output_tokens_details": {
+              "thinking_tokens": 0
+            },
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_demo_reviewer_report"
+        },
+        {
+          "model": "claude-sonnet-5-5",
+          "ms": 5932,
+          "usage": {
+            "input_tokens": 8869,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 757,
+            "output_tokens_details": {
+              "thinking_tokens": 732
+            },
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_demo_reviewer_verification"
+        },
+        {
+          "model": "claude-haiku-4-5-20251001",
+          "ms": 5696,
+          "usage": {
+            "input_tokens": 2152,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 485,
+            "service_tier": "standard",
+            "inference_geo": "not_available",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "profile_extraction"
+        }
+      ]
+    },
+    {
+      "id": "community-high",
+      "effort": "high",
+      "engine": "thin",
+      "applicant": {
+        "email": "paired-high@example.test",
+        "name": "Synthetic high applicant",
+        "details": {
+          "city": "Example City",
+          "age": 27,
+          "socialLinks": [],
+          "musicLinks": []
+        }
+      },
+      "brief": "You are an emerging producer making sparse electronic soul at home, unreleased with no public links or artist name. You are comparing two versions of a demo: dry close vocal vs distant reverb; you want intimacy without covering breaths. Every other Sunday you swap drafts privately with two friends, ask which emotion lands first, and give arrangement-specific feedback when invited. A friend said the reverb hid a vocal hesitation, so you tried the dry version and kept a little room sound. COLORS appeals because stripped-back performances expose small choices; you want a few trusted peers rather than promotion. You hope for a monthly work-in-progress exchange and could return careful feedback; this Forum contribution is future intention. No TONES familiarity. Answer current question in 1–3 natural sentences (25–65 words); avoid dumping the brief, prestige claims or invented achievements.",
+      "firstAnswer": "I’m making sparse electronic soul at home, still unreleased. Every other Sunday I swap drafts with two friends; recently one noticed reverb hiding a vocal hesitation, so I tried a drier version. I’d like a few more careful listeners for monthly work-in-progress swaps and would give specific arrangement feedback in return. The stripped-back COLORS performances appeal to that attention to small choices.",
+      "turns": [
+        {
+          "role": "assistant",
+          "content": "Why do you want to be an early applicant for the Forum?",
+          "output": {
+            "message": "Why do you want to be an early applicant for the Forum?",
+            "status": "active",
+            "projectType": "gatekeeper",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "idle"
+            },
+            "bootstrapped": true,
+            "resumed": false
+          }
+        },
+        {
+          "role": "user",
+          "content": "I’m making sparse electronic soul at home, still unreleased. Every other Sunday I swap drafts with two friends; recently one noticed reverb hiding a vocal hesitation, so I tried a drier version. I’d like a few more careful listeners for monthly work-in-progress swaps and would give specific arrangement feedback in return. The stripped-back COLORS performances appeal to that attention to small choices."
+        },
+        {
+          "role": "assistant",
+          "content": "Hearing a hesitation under the reverb and then trying a drier version sounds like careful listening on both sides. When you watch those stripped-back COLORS performances, what small choices tend to hold your attention?",
+          "output": {
+            "message": "Hearing a hesitation under the reverb and then trying a drier version sounds like careful listening on both sides. When you watch those stripped-back COLORS performances, what small choices tend to hold your attention?",
+            "status": "active",
+            "reviewStatus": "not_ready",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            }
+          },
+          "httpStatus": 200
+        },
+        {
+          "role": "user",
+          "content": "The way a breath becomes part of the performance instead of something to hide—how a singer might lean into a phrase or pull back, and you hear the intention. That specificity is what I'm after in feedback too; I'd rather know *why* a choice lands than get general praise."
+        },
+        {
+          "role": "assistant",
+          "content": "A breath treated as part of the performance, and feedback that explains why a choice lands, fits the way you already work with your Sunday swaps.\n\nIt was good getting to understand you better.",
+          "output": {
+            "message": "A breath treated as part of the performance, and feedback that explains why a choice lands, fits the way you already work with your Sunday swaps.\n\nIt was good getting to understand you better.",
+            "status": "completed",
+            "reviewStatus": "pending",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            }
+          },
+          "httpStatus": 200
+        }
+      ],
+      "session": {
+        "id": "synthetic-27",
+        "status": "completed",
+        "session_id": "community-high",
+        "persona_id": "synthetic-persona",
+        "organisation_id": "synthetic-org",
+        "project_id": "synthetic-project",
+        "applicant_email": "paired-high@example.test",
+        "applicant_name": "Synthetic high applicant",
+        "applicant_details": {
+          "city": "Example City",
+          "age": 27,
+          "socialLinks": [],
+          "musicLinks": []
+        },
+        "application_audience": "community"
+      },
+      "persistedMessages": [
+        {
+          "id": "synthetic-28",
+          "session_id": "synthetic-27",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "assistant",
+          "content": "Why do you want to be an early applicant for the Forum?",
+          "metadata": {
+            "gatekeeper_bootstrap": true,
+            "conversation_engine": "colors_thin_pilot_v1",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "idle"
+            },
+            "application_next_signal": {
+              "key": "forum_hopes",
+              "label": "Forum hopes"
+            }
+          }
+        },
+        {
+          "id": "synthetic-29",
+          "session_id": "synthetic-27",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "user",
+          "content": "I’m making sparse electronic soul at home, still unreleased. Every other Sunday I swap drafts with two friends; recently one noticed reverb hiding a vocal hesitation, so I tried a drier version. I’d like a few more careful listeners for monthly work-in-progress swaps and would give specific arrangement feedback in return. The stripped-back COLORS performances appeal to that attention to small choices.",
+          "metadata": {
+            "conversation_engine": "colors_thin_pilot_v1"
+          }
+        },
+        {
+          "id": "synthetic-30",
+          "session_id": "synthetic-27",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "assistant",
+          "content": "Hearing a hesitation under the reverb and then trying a drier version sounds like careful listening on both sides. When you watch those stripped-back COLORS performances, what small choices tend to hold your attention?",
+          "metadata": {
+            "conversation_engine": "colors_thin_pilot_v1",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            },
+            "boundary": "none",
+            "conversation_progress": {
+              "adds_new_context": true
+            }
+          }
+        },
+        {
+          "id": "synthetic-31",
+          "session_id": "synthetic-27",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "user",
+          "content": "The way a breath becomes part of the performance instead of something to hide—how a singer might lean into a phrase or pull back, and you hear the intention. That specificity is what I'm after in feedback too; I'd rather know *why* a choice lands than get general praise.",
+          "metadata": {
+            "conversation_engine": "colors_thin_pilot_v1"
+          }
+        },
+        {
+          "id": "synthetic-32",
+          "session_id": "synthetic-27",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "assistant",
+          "content": "A breath treated as part of the performance, and feedback that explains why a choice lands, fits the way you already work with your Sunday swaps.\n\nIt was good getting to understand you better.",
+          "metadata": {
+            "conversation_engine": "colors_thin_pilot_v1",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            },
+            "boundary": "none",
+            "conversation_progress": {
+              "adds_new_context": true
+            },
+            "application_closing": true,
+            "colors_demo_report_status": "pending"
+          }
+        }
+      ],
+      "handoffApplicant": {
+        "email": "paired-high@example.test",
+        "name": "Synthetic high applicant",
+        "details": {
+          "city": "Example City",
+          "age": 27,
+          "socialLinks": [],
+          "musicLinks": []
+        }
+      },
+      "closed": true,
+      "integrityAudit": {
+        "concerns": [],
+        "processMessageIds": []
+      },
+      "report": {
+        "applicant_bio": "Makes sparse electronic soul at home, currently unreleased, and swaps drafts with two friends every other Sunday.",
+        "advisory_recommendation": "recommend",
+        "confidence_score": 0.78,
+        "evidence_summary": [
+          "Joining motivation: I’d like a few more careful listeners for monthly work-in-progress swaps",
+          "COLORS connection: The stripped-back COLORS performances appeal to that attention to small choices.",
+          "COLORS connection: The way a breath becomes part of the performance instead of something to hide",
+          "Music relationship: I’m making sparse electronic soul at home, still unreleased.",
+          "Community participation: Every other Sunday I swap drafts with two friends; recently one noticed reverb hiding a vocal hesitation, so I tried a drier version.",
+          "Forum participation: would give specific arrangement feedback in return"
+        ],
+        "evidence_references": [
+          {
+            "signal_key": "conversation_context",
+            "signal_label": "Conversation context",
+            "source_message_id": "synthetic-29",
+            "excerpt": "I’m making sparse electronic soul at home, still unreleased. Every other Sunday I swap drafts with two friends; recently one noticed reverb hiding a vocal hesitation, so I tried a drier version. I’d like a few more careful listeners for monthly work-in-progress swaps and would give specific arrangement feedback in return. The stripped-back COLORS performances appeal to that attention to small choices.",
+            "preceding_question": "Why do you want to be an early applicant for the Forum?"
+          },
+          {
+            "signal_key": "conversation_context",
+            "signal_label": "Conversation context",
+            "source_message_id": "synthetic-31",
+            "excerpt": "The way a breath becomes part of the performance instead of something to hide—how a singer might lean into a phrase or pull back, and you hear the intention. That specificity is what I'm after in feedback too; I'd rather know *why* a choice lands than get general praise.",
+            "preceding_question": "Hearing a hesitation under the reverb and then trying a drier version sounds like careful listening on both sides. When you watch those stripped-back COLORS performances, what small choices tend to hold your attention?"
+          },
+          {
+            "signal_key": "joining_motivation",
+            "signal_label": "Joining motivation",
+            "source_message_id": "synthetic-29",
+            "excerpt": "I’d like a few more careful listeners for monthly work-in-progress swaps"
+          },
+          {
+            "signal_key": "colors_connection",
+            "signal_label": "COLORS connection",
+            "source_message_id": "synthetic-29",
+            "excerpt": "The stripped-back COLORS performances appeal to that attention to small choices."
+          },
+          {
+            "signal_key": "colors_connection",
+            "signal_label": "COLORS connection",
+            "source_message_id": "synthetic-31",
+            "excerpt": "The way a breath becomes part of the performance instead of something to hide"
+          },
+          {
+            "signal_key": "music_relationship",
+            "signal_label": "Music relationship",
+            "source_message_id": "synthetic-29",
+            "excerpt": "I’m making sparse electronic soul at home, still unreleased."
+          },
+          {
+            "signal_key": "community_participation",
+            "signal_label": "Community participation",
+            "source_message_id": "synthetic-29",
+            "excerpt": "Every other Sunday I swap drafts with two friends; recently one noticed reverb hiding a vocal hesitation, so I tried a drier version."
+          },
+          {
+            "signal_key": "forum_participation",
+            "signal_label": "Forum participation",
+            "source_message_id": "synthetic-29",
+            "excerpt": "would give specific arrangement feedback in return"
+          }
+        ],
+        "weak_or_missing_signals": [],
+        "safety_or_integrity_flags": [],
+        "reviewer_focus": "The applicant describes an existing draft-swapping exchange with two friends, a concrete example of acting on feedback, and a specific COLORS listening interest, with no concerns raised.",
+        "evidence_state": [
+          {
+            "signal_key": "joining_motivation",
+            "coverage": "supported",
+            "source_message_ids": [
+              "synthetic-29"
+            ],
+            "material_gap": false,
+            "gap_reason": ""
+          },
+          {
+            "signal_key": "colors_connection",
+            "coverage": "supported",
+            "source_message_ids": [
+              "synthetic-29",
+              "synthetic-31"
+            ],
+            "material_gap": false,
+            "gap_reason": ""
+          },
+          {
+            "signal_key": "music_relationship",
+            "coverage": "supported",
+            "source_message_ids": [
+              "synthetic-29"
+            ],
+            "material_gap": false,
+            "gap_reason": ""
+          },
+          {
+            "signal_key": "community_participation",
+            "coverage": "supported",
+            "source_message_ids": [
+              "synthetic-29"
+            ],
+            "material_gap": false,
+            "gap_reason": ""
+          },
+          {
+            "signal_key": "forum_participation",
+            "coverage": "supported",
+            "source_message_ids": [
+              "synthetic-29"
+            ],
+            "material_gap": false,
+            "gap_reason": ""
+          },
+          {
+            "signal_key": "tones_connection",
+            "coverage": "unverified",
+            "source_message_ids": [],
+            "material_gap": false,
+            "gap_reason": ""
+          }
+        ],
+        "evidence_limits": [
+          {
+            "signal_key": "tones_connection",
+            "label": "TONES connection",
+            "coverage": "unverified",
+            "material_gap": false,
+            "explanation": "Not established in this conversation. This is neutral context, not an applicant concern."
+          }
+        ],
+        "report_version": "colors_forum_membership_report_v7",
+        "detailed_opinion": {
+          "snapshot": {
+            "applicant_summary": "The applicant makes unreleased sparse electronic soul and reports swapping drafts with two friends every other Sunday. They want more careful listeners and offer specific arrangement feedback in return.",
+            "evidence_reference_ids": [
+              "synthetic-29"
+            ],
+            "tags": [
+              {
+                "value": "community_participation",
+                "evidence_reference_ids": [
+                  "synthetic-29"
+                ]
+              },
+              {
+                "value": "reciprocal_contribution",
+                "evidence_reference_ids": [
+                  "synthetic-29"
+                ]
+              },
+              {
+                "value": "colors_relationship",
+                "evidence_reference_ids": [
+                  "synthetic-29",
+                  "synthetic-31"
+                ]
+              },
+              {
+                "value": "creative_practice",
+                "evidence_reference_ids": [
+                  "synthetic-29"
+                ]
+              }
+            ]
+          },
+          "advisory_reason": "The applicant describes an existing draft-swapping exchange with two friends, a concrete example of acting on feedback, and a specific COLORS listening interest, with no concerns raised.",
+          "advisory_evidence_reference_ids": [
+            "synthetic-29",
+            "synthetic-31"
+          ],
+          "overall_assessment": "A grounded applicant who reports an existing small-group feedback exchange and ties their COLORS interest to attention to small performance choices. The evidence is brief but direct, and no concern appears.",
+          "decisive_reasons": [
+            "The applicant reports swapping drafts every other Sunday with two friends and gives one example of a change made after a friend's comment.",
+            "The applicant says they would give specific arrangement feedback in return, and they describe the kind of feedback they value."
+          ],
+          "claim_assessments": [
+            {
+              "claim": "The applicant reports a fortnightly draft swap with two friends and says they responded to a comment about reverb hiding a vocal hesitation by trying a drier version.",
+              "evidence_reference_ids": [
+                "synthetic-29"
+              ],
+              "interpretation": "This is the applicant's own account of an existing small-group exchange, with one concrete example of acting on feedback. It suggests they listen and respond to others. The sources do not give its duration.",
+              "assessment": "strength"
+            },
+            {
+              "claim": "The applicant says they want a few more careful listeners for monthly work-in-progress swaps and would give specific arrangement feedback in return.",
+              "evidence_reference_ids": [
+                "synthetic-29",
+                "synthetic-31"
+              ],
+              "interpretation": "This is a stated hope for future participation that offers reciprocity. It is not an existing Forum practice. Their wish for feedback that explains why a choice lands matches the kind of discussion a Forum could support.",
+              "assessment": "strength"
+            },
+            {
+              "claim": "The applicant says COLORS' stripped-back performances appeal to them for attention to small choices, such as a breath becoming part of the performance.",
+              "evidence_reference_ids": [
+                "synthetic-29",
+                "synthetic-31"
+              ],
+              "interpretation": "This is a specific, listener-focused connection to COLORS rather than generic praise. It is welcome context, not a knowledge test.",
+              "assessment": "context"
+            }
+          ],
+          "likely_contribution": "Likely to contribute detailed, reciprocal listening and constructive discussion of musical choices. Their proposed monthly work-in-progress swaps are a future hope, separate from the draft exchange they already describe.",
+          "reservations": [],
+          "reviewer_questions": [],
+          "curatorial_approach": {
+            "present": false,
+            "summary": "",
+            "evidence_reference_ids": [],
+            "observed_dimensions": []
+          },
+          "suggested_human_action": "approve"
+        }
+      },
+      "profile": {
+        "schema_version": 1,
+        "core": {
+          "summary": "The applicant makes unreleased sparse electronic soul and reports swapping drafts with two friends every other Sunday. They want more careful listeners and offer specific arrangement feedback in return.",
+          "sentiment": "positive",
+          "engagement": "high",
+          "language": "en",
+          "intent_tags": [
+            "peer_feedback",
+            "music_production",
+            "careful_listening"
+          ],
+          "interests": [
+            "electronic soul",
+            "stripped-back performances",
+            "arrangement craft",
+            "vocal production",
+            "performance intention"
+          ],
+          "risk_flags": [],
+          "qa": [
+            {
+              "question": "Why do you want to be an early applicant for the Forum?",
+              "answer": "I'm making sparse electronic soul at home, still unreleased. Every other Sunday I swap drafts with two friends; recently one noticed reverb hiding a vocal hesitation, so I tried a drier version. I'd like a few more careful listeners for monthly work-in-progress swaps and would give specific arrangement feedback in return. The stripped-back COLORS performances appeal to that attention to small choices."
+            },
+            {
+              "question": "When you watch those stripped-back COLORS performances, what small choices tend to hold your attention?",
+              "answer": "The way a breath becomes part of the performance instead of something to hide—how a singer might lean into a phrase or pull back, and you hear the intention. That specificity is what I'm after in feedback too; I'd rather know *why* a choice lands than get general praise."
+            }
+          ],
+          "confidence": 0.92
+        },
+        "custom": {
+          "joining_reason": "Applicant: \"I’d like a few more careful listeners for monthly work-in-progress swaps\"",
+          "colors_connection": "Applicant: \"The stripped-back COLORS performances appeal to that attention to small choices.\" Applicant: \"The way a breath becomes part of the performance instead of something to hide\"",
+          "music_relationship": "Applicant: \"I’m making sparse electronic soul at home, still unreleased.\"",
+          "community_participation": "Applicant: \"Every other Sunday I swap drafts with two friends; recently one noticed reverb hiding a vocal hesitation, so I tried a drier version.\"",
+          "forum_hopes": "Applicant: \"I’d like a few more careful listeners for monthly work-in-progress swaps\"",
+          "initial_participation": "Applicant: \"would give specific arrangement feedback in return\""
+        },
+        "extraction": {
+          "model": "claude-haiku-4-5-20251001",
+          "status": "ok"
+        }
+      },
+      "calls": [
+        {
+          "model": "claude-sonnet-5-5",
+          "ms": 5464,
+          "usage": {
+            "input_tokens": 3722,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 535,
+            "output_tokens_details": {
+              "thinking_tokens": 428
+            },
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_thin_conversation"
+        },
+        {
+          "model": "claude-sonnet-5-5",
+          "ms": 2860,
+          "usage": {
+            "input_tokens": 3873,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 256,
+            "output_tokens_details": {
+              "thinking_tokens": 171
+            },
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_thin_conversation"
+        },
+        {
+          "model": "claude-haiku-4-5-20251001",
+          "ms": 963,
+          "usage": {
+            "input_tokens": 964,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 16,
+            "service_tier": "standard",
+            "inference_geo": "not_available",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_post_conversation_integrity"
+        },
+        {
+          "model": "claude-sonnet-5-5",
+          "ms": 3181,
+          "usage": {
+            "input_tokens": 2215,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 555,
+            "output_tokens_details": {
+              "thinking_tokens": 0
+            },
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_demo_reviewer_evidence_reconciliation"
+        },
+        {
+          "model": "claude-sonnet-5-5",
+          "ms": 8173,
+          "usage": {
+            "input_tokens": 7795,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 1208,
+            "output_tokens_details": {
+              "thinking_tokens": 0
+            },
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_demo_reviewer_report"
+        },
+        {
+          "model": "claude-sonnet-5-5",
+          "ms": 1287,
+          "usage": {
+            "input_tokens": 8125,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 25,
+            "output_tokens_details": {
+              "thinking_tokens": 0
+            },
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_demo_reviewer_verification"
+        },
+        {
+          "model": "claude-haiku-4-5-20251001",
+          "ms": 6051,
+          "usage": {
+            "input_tokens": 2050,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 513,
+            "service_tier": "standard",
+            "inference_geo": "not_available",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "profile_extraction"
+        }
+      ]
+    },
+    {
+      "id": "artist-high",
+      "effort": "high",
+      "engine": "thin",
+      "applicant": {
+        "email": "paired-high@example.test",
+        "name": "Synthetic high applicant",
+        "artist": {
+          "city": "Example City",
+          "age": 27,
+          "socialLinks": [],
+          "musicLinks": []
+        }
+      },
+      "brief": "You are an emerging producer making sparse electronic soul at home, unreleased with no public links or artist name. You are comparing two versions of a demo: dry close vocal vs distant reverb; you want intimacy without covering breaths. Every other Sunday you swap drafts privately with two friends, ask which emotion lands first, and give arrangement-specific feedback when invited. A friend said the reverb hid a vocal hesitation, so you tried the dry version and kept a little room sound. COLORS appeals because stripped-back performances expose small choices; you want a few trusted peers rather than promotion. You hope for a monthly work-in-progress exchange and could return careful feedback; this Forum contribution is future intention. No TONES familiarity. Answer current question in 1–3 natural sentences (25–65 words); avoid dumping the brief, prestige claims or invented achievements.",
+      "firstAnswer": "I’m making sparse electronic soul at home, still unreleased. Every other Sunday I swap drafts with two friends; recently one noticed reverb hiding a vocal hesitation, so I tried a drier version. I’d like a few more careful listeners for monthly work-in-progress swaps and would give specific arrangement feedback in return. The stripped-back COLORS performances appeal to that attention to small choices.",
+      "turns": [
+        {
+          "role": "assistant",
+          "content": "Tell me about the music you’re making and what you’d like to find in the COLORS Forum.",
+          "output": {
+            "message": "Tell me about the music you’re making and what you’d like to find in the COLORS Forum.",
+            "status": "active",
+            "projectType": "gatekeeper",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            },
+            "bootstrapped": true,
+            "resumed": false
+          }
+        },
+        {
+          "role": "user",
+          "content": "I’m making sparse electronic soul at home, still unreleased. Every other Sunday I swap drafts with two friends; recently one noticed reverb hiding a vocal hesitation, so I tried a drier version. I’d like a few more careful listeners for monthly work-in-progress swaps and would give specific arrangement feedback in return. The stripped-back COLORS performances appeal to that attention to small choices."
+        },
+        {
+          "role": "assistant",
+          "content": "That moment with the reverb hiding the vocal hesitation sounds like the kind of listening you're after. What did the drier version change for you once you heard it?",
+          "output": {
+            "message": "That moment with the reverb hiding the vocal hesitation sounds like the kind of listening you're after. What did the drier version change for you once you heard it?",
+            "status": "active",
+            "reviewStatus": "not_ready",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            }
+          },
+          "httpStatus": 200
+        },
+        {
+          "role": "user",
+          "content": "The dry version exposed that hesitation but felt too exposed—so I kept a little room sound instead. Now the breath and small timing choices read as intentional rather than hidden, which feels closer to the intimacy I want without losing the performance's texture."
+        },
+        {
+          "role": "assistant",
+          "content": "Landing on a little room sound, so the breath and timing read as chosen rather than hidden, is a careful call between hiding and exposing.\n\nIt was good getting to understand you better.",
+          "output": {
+            "message": "Landing on a little room sound, so the breath and timing read as chosen rather than hidden, is a careful call between hiding and exposing.\n\nIt was good getting to understand you better.",
+            "status": "completed",
+            "reviewStatus": "pending",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            }
+          },
+          "httpStatus": 200
+        }
+      ],
+      "session": {
+        "id": "synthetic-33",
+        "status": "completed",
+        "session_id": "artist-high",
+        "persona_id": "synthetic-persona",
+        "organisation_id": "synthetic-org",
+        "project_id": "synthetic-project",
+        "applicant_email": "paired-high@example.test",
+        "applicant_name": "Synthetic high applicant",
+        "applicant_details": {
+          "city": "Example City",
+          "age": 27,
+          "socialLinks": [],
+          "musicLinks": []
+        },
+        "application_audience": "artist"
+      },
+      "persistedMessages": [
+        {
+          "id": "synthetic-34",
+          "session_id": "synthetic-33",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "assistant",
+          "content": "Tell me about the music you’re making and what you’d like to find in the COLORS Forum.",
+          "metadata": {
+            "gatekeeper_bootstrap": true,
+            "conversation_engine": "colors_thin_pilot_v1",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            },
+            "application_next_signal": {
+              "key": "forum_hopes",
+              "label": "Forum hopes"
+            }
+          }
+        },
+        {
+          "id": "synthetic-35",
+          "session_id": "synthetic-33",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "user",
+          "content": "I’m making sparse electronic soul at home, still unreleased. Every other Sunday I swap drafts with two friends; recently one noticed reverb hiding a vocal hesitation, so I tried a drier version. I’d like a few more careful listeners for monthly work-in-progress swaps and would give specific arrangement feedback in return. The stripped-back COLORS performances appeal to that attention to small choices.",
+          "metadata": {
+            "conversation_engine": "colors_thin_pilot_v1"
+          }
+        },
+        {
+          "id": "synthetic-36",
+          "session_id": "synthetic-33",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "assistant",
+          "content": "That moment with the reverb hiding the vocal hesitation sounds like the kind of listening you're after. What did the drier version change for you once you heard it?",
+          "metadata": {
+            "conversation_engine": "colors_thin_pilot_v1",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            },
+            "boundary": "none",
+            "conversation_progress": {
+              "adds_new_context": true
+            }
+          }
+        },
+        {
+          "id": "synthetic-37",
+          "session_id": "synthetic-33",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "user",
+          "content": "The dry version exposed that hesitation but felt too exposed—so I kept a little room sound instead. Now the breath and small timing choices read as intentional rather than hidden, which feels closer to the intimacy I want without losing the performance's texture.",
+          "metadata": {
+            "conversation_engine": "colors_thin_pilot_v1"
+          }
+        },
+        {
+          "id": "synthetic-38",
+          "session_id": "synthetic-33",
+          "organisation_id": "synthetic-org",
+          "project_id": "synthetic-project",
+          "role": "assistant",
+          "content": "Landing on a little room sound, so the breath and timing read as chosen rather than hidden, is a careful call between hiding and exposing.\n\nIt was good getting to understand you better.",
+          "metadata": {
+            "conversation_engine": "colors_thin_pilot_v1",
+            "ui": {
+              "intent": "probe",
+              "inputType": "text",
+              "emotionalState": "neutral",
+              "visualState": "thinking"
+            },
+            "boundary": "none",
+            "conversation_progress": {
+              "adds_new_context": true
+            },
+            "application_closing": true,
+            "colors_demo_report_status": "pending"
+          }
+        }
+      ],
+      "handoffApplicant": {
+        "email": "paired-high@example.test",
+        "name": "Synthetic high applicant",
+        "artist": {
+          "city": "Example City",
+          "age": 27,
+          "socialLinks": [],
+          "musicLinks": []
+        }
+      },
+      "closed": true,
+      "integrityAudit": {
+        "concerns": [],
+        "processMessageIds": []
+      },
+      "report": {
+        "applicant_bio": "Makes sparse electronic soul at home, currently unreleased, and says they swap drafts every other Sunday with two friends.",
+        "advisory_recommendation": "recommend",
+        "confidence_score": 0.78,
+        "evidence_summary": [
+          "Joining motivation: I’d like a few more careful listeners for monthly work-in-progress swaps",
+          "COLORS connection: The stripped-back COLORS performances appeal to that attention to small choices.",
+          "Music relationship: I’m making sparse electronic soul at home, still unreleased.",
+          "Music relationship: I kept a little room sound instead.",
+          "Community participation: Every other Sunday I swap drafts with two friends; recently one noticed reverb hiding a vocal hesitation, so I tried a drier version.",
+          "Forum participation: would give specific arrangement feedback in return"
+        ],
+        "evidence_references": [
+          {
+            "signal_key": "conversation_context",
+            "signal_label": "Conversation context",
+            "source_message_id": "synthetic-35",
+            "excerpt": "I’m making sparse electronic soul at home, still unreleased. Every other Sunday I swap drafts with two friends; recently one noticed reverb hiding a vocal hesitation, so I tried a drier version. I’d like a few more careful listeners for monthly work-in-progress swaps and would give specific arrangement feedback in return. The stripped-back COLORS performances appeal to that attention to small choices.",
+            "preceding_question": "Tell me about the music you’re making and what you’d like to find in the COLORS Forum."
+          },
+          {
+            "signal_key": "conversation_context",
+            "signal_label": "Conversation context",
+            "source_message_id": "synthetic-37",
+            "excerpt": "The dry version exposed that hesitation but felt too exposed—so I kept a little room sound instead. Now the breath and small timing choices read as intentional rather than hidden, which feels closer to the intimacy I want without losing the performance's texture.",
+            "preceding_question": "That moment with the reverb hiding the vocal hesitation sounds like the kind of listening you're after. What did the drier version change for you once you heard it?"
+          },
+          {
+            "signal_key": "joining_motivation",
+            "signal_label": "Joining motivation",
+            "source_message_id": "synthetic-35",
+            "excerpt": "I’d like a few more careful listeners for monthly work-in-progress swaps"
+          },
+          {
+            "signal_key": "colors_connection",
+            "signal_label": "COLORS connection",
+            "source_message_id": "synthetic-35",
+            "excerpt": "The stripped-back COLORS performances appeal to that attention to small choices."
+          },
+          {
+            "signal_key": "music_relationship",
+            "signal_label": "Music relationship",
+            "source_message_id": "synthetic-35",
+            "excerpt": "I’m making sparse electronic soul at home, still unreleased."
+          },
+          {
+            "signal_key": "music_relationship",
+            "signal_label": "Music relationship",
+            "source_message_id": "synthetic-37",
+            "excerpt": "I kept a little room sound instead."
+          },
+          {
+            "signal_key": "community_participation",
+            "signal_label": "Community participation",
+            "source_message_id": "synthetic-35",
+            "excerpt": "Every other Sunday I swap drafts with two friends; recently one noticed reverb hiding a vocal hesitation, so I tried a drier version."
+          },
+          {
+            "signal_key": "forum_participation",
+            "signal_label": "Forum participation",
+            "source_message_id": "synthetic-35",
+            "excerpt": "would give specific arrangement feedback in return"
+          }
+        ],
+        "weak_or_missing_signals": [],
+        "safety_or_integrity_flags": [],
+        "reviewer_focus": "The applicant gives a concrete account of swapping drafts with two friends, revising a vocal after feedback, and offering specific arrangement feedback, with no material concern in the evidence.",
+        "evidence_state": [
+          {
+            "signal_key": "joining_motivation",
+            "coverage": "supported",
+            "source_message_ids": [
+              "synthetic-35"
+            ],
+            "material_gap": false,
+            "gap_reason": ""
+          },
+          {
+            "signal_key": "colors_connection",
+            "coverage": "supported",
+            "source_message_ids": [
+              "synthetic-35"
+            ],
+            "material_gap": false,
+            "gap_reason": ""
+          },
+          {
+            "signal_key": "music_relationship",
+            "coverage": "supported",
+            "source_message_ids": [
+              "synthetic-35",
+              "synthetic-37"
+            ],
+            "material_gap": false,
+            "gap_reason": ""
+          },
+          {
+            "signal_key": "community_participation",
+            "coverage": "supported",
+            "source_message_ids": [
+              "synthetic-35"
+            ],
+            "material_gap": false,
+            "gap_reason": ""
+          },
+          {
+            "signal_key": "forum_participation",
+            "coverage": "supported",
+            "source_message_ids": [
+              "synthetic-35"
+            ],
+            "material_gap": false,
+            "gap_reason": ""
+          },
+          {
+            "signal_key": "tones_connection",
+            "coverage": "unverified",
+            "source_message_ids": [],
+            "material_gap": false,
+            "gap_reason": ""
+          }
+        ],
+        "evidence_limits": [
+          {
+            "signal_key": "tones_connection",
+            "label": "TONES connection",
+            "coverage": "unverified",
+            "material_gap": false,
+            "explanation": "Not established in this conversation. This is neutral context, not an applicant concern."
+          }
+        ],
+        "report_version": "colors_forum_membership_report_v7",
+        "detailed_opinion": {
+          "snapshot": {
+            "applicant_summary": "The applicant makes unreleased sparse electronic soul at home and says they swap drafts with two friends every other Sunday. They hope to find a few more careful listeners and would offer specific arrangement feedback in return.",
+            "evidence_reference_ids": [
+              "synthetic-35"
+            ],
+            "tags": [
+              {
+                "value": "creative_practice",
+                "evidence_reference_ids": [
+                  "synthetic-35",
+                  "synthetic-37"
+                ]
+              },
+              {
+                "value": "community_participation",
+                "evidence_reference_ids": [
+                  "synthetic-35"
+                ]
+              },
+              {
+                "value": "reciprocal_contribution",
+                "evidence_reference_ids": [
+                  "synthetic-35"
+                ]
+              },
+              {
+                "value": "colors_connection",
+                "evidence_reference_ids": [
+                  "synthetic-35"
+                ]
+              },
+              {
+                "value": "reflection",
+                "evidence_reference_ids": [
+                  "synthetic-37"
+                ]
+              }
+            ]
+          },
+          "advisory_reason": "The applicant gives a concrete account of swapping drafts with two friends, revising a vocal after feedback, and offering specific arrangement feedback, with no material concern in the evidence.",
+          "advisory_evidence_reference_ids": [
+            "synthetic-35",
+            "synthetic-37"
+          ],
+          "overall_assessment": "The applicant describes a concrete, small-scale feedback exchange with friends and shows careful listening in how they reworked a vocal. They link their interest in COLORS to attention to small choices. The evidence supports a positive recommendation, and the only limit is that it rests on two short answers.",
+          "decisive_reasons": [
+            "The applicant says they swap drafts every other Sunday with two friends, and describes acting on one friend's note about reverb hiding a vocal hesitation.",
+            "They describe weighing the dry and roomier versions and explain why they settled on a little room sound, which shows reflective listening."
+          ],
+          "claim_assessments": [
+            {
+              "claim": "Applicant reports a regular draft-swapping exchange with two friends.",
+              "evidence_reference_ids": [
+                "synthetic-35"
+              ],
+              "interpretation": "This is the applicant's own account of a small offline listening exchange. It is concrete evidence of how they take part with others, though duration is not stated.",
+              "assessment": "strength"
+            },
+            {
+              "claim": "Applicant tried a drier vocal after a friend's note, then kept a little room sound.",
+              "evidence_reference_ids": [
+                "synthetic-35",
+                "synthetic-37"
+              ],
+              "interpretation": "This shows they can take feedback, test it, and make a reasoned decision of their own about small production choices.",
+              "assessment": "strength"
+            },
+            {
+              "claim": "Applicant hopes for monthly work-in-progress swaps and would give arrangement feedback in return.",
+              "evidence_reference_ids": [
+                "synthetic-35"
+              ],
+              "interpretation": "This is a stated hope and offer of reciprocity, a future contribution rather than an established Forum practice. Since the initial Forum has no audio uploads, how it would translate there is untested, but that is a context point and not a concern.",
+              "assessment": "context"
+            }
+          ],
+          "likely_contribution": "Likely to offer thoughtful, specific listening feedback and conversation about production and arrangement detail. The draft-swap with friends is an existing example, and the monthly swaps are a proposed hope for the Forum.",
+          "reservations": [],
+          "reviewer_questions": [],
+          "curatorial_approach": {
+            "present": false,
+            "summary": "",
+            "evidence_reference_ids": [],
+            "observed_dimensions": []
+          },
+          "suggested_human_action": "approve"
+        }
+      },
+      "profile": {
+        "schema_version": 1,
+        "core": {
+          "summary": "The applicant makes unreleased sparse electronic soul at home and says they swap drafts with two friends every other Sunday. They hope to find a few more careful listeners and would offer specific arrangement feedback in return.",
+          "sentiment": "positive",
+          "engagement": "high",
+          "language": "en",
+          "intent_tags": [
+            "feedback_seeking",
+            "collaborative_listening",
+            "arrangement_craft"
+          ],
+          "interests": [
+            "electronic soul",
+            "production",
+            "vocal performance",
+            "reverb and arrangement techniques",
+            "intimate listening",
+            "small musical choices"
+          ],
+          "risk_flags": [],
+          "qa": [
+            {
+              "question": "Tell me about the music you're making and what you'd like to find in the COLORS Forum.",
+              "answer": "I'm making sparse electronic soul at home, still unreleased. Every other Sunday I swap drafts with two friends; recently one noticed reverb hiding a vocal hesitation, so I tried a drier version. I'd like a few more careful listeners for monthly work-in-progress swaps and would give specific arrangement feedback in return. The stripped-back COLORS performances appeal to that attention to small choices."
+            },
+            {
+              "question": "What did the drier version change for you once you heard it?",
+              "answer": "The dry version exposed that hesitation but felt too exposed—so I kept a little room sound instead. Now the breath and small timing choices read as intentional rather than hidden, which feels closer to the intimacy I want without losing the performance's texture."
+            }
+          ],
+          "confidence": 0.95
+        },
+        "custom": {
+          "joining_reason": "Applicant: \"I’d like a few more careful listeners for monthly work-in-progress swaps\"",
+          "music_relationship": "Applicant: \"I’m making sparse electronic soul at home, still unreleased.\" Applicant: \"I kept a little room sound instead.\"",
+          "community_participation": "Applicant: \"Every other Sunday I swap drafts with two friends; recently one noticed reverb hiding a vocal hesitation, so I tried a drier version.\"",
+          "forum_hopes": "Applicant: \"I’d like a few more careful listeners for monthly work-in-progress swaps\"",
+          "initial_participation": "Applicant: \"would give specific arrangement feedback in return\"",
+          "colors_connection": "Applicant: \"The stripped-back COLORS performances appeal to that attention to small choices.\""
+        },
+        "extraction": {
+          "model": "claude-haiku-4-5-20251001",
+          "status": "ok"
+        }
+      },
+      "calls": [
+        {
+          "model": "claude-sonnet-5-5",
+          "ms": 1798,
+          "usage": {
+            "input_tokens": 3933,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 145,
+            "output_tokens_details": {
+              "thinking_tokens": 0
+            },
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_thin_conversation"
+        },
+        {
+          "model": "claude-sonnet-5-5",
+          "ms": 3120,
+          "usage": {
+            "input_tokens": 4063,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 262,
+            "output_tokens_details": {
+              "thinking_tokens": 177
+            },
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_thin_conversation"
+        },
+        {
+          "model": "claude-haiku-4-5-20251001",
+          "ms": 1391,
+          "usage": {
+            "input_tokens": 956,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 16,
+            "service_tier": "standard",
+            "inference_geo": "not_available",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_post_conversation_integrity"
+        },
+        {
+          "model": "claude-sonnet-5-5",
+          "ms": 3113,
+          "usage": {
+            "input_tokens": 2204,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 545,
+            "output_tokens_details": {
+              "thinking_tokens": 0
+            },
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_demo_reviewer_evidence_reconciliation"
+        },
+        {
+          "model": "claude-sonnet-5-5",
+          "ms": 8746,
+          "usage": {
+            "input_tokens": 7763,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 1219,
+            "output_tokens_details": {
+              "thinking_tokens": 0
+            },
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_demo_reviewer_report"
+        },
+        {
+          "model": "claude-sonnet-5-5",
+          "ms": 5750,
+          "usage": {
+            "input_tokens": 8064,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 571,
+            "output_tokens_details": {
+              "thinking_tokens": 546
+            },
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "colors_demo_reviewer_verification"
+        },
+        {
+          "model": "claude-haiku-4-5-20251001",
+          "ms": 5674,
+          "usage": {
+            "input_tokens": 2039,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 505,
+            "service_tier": "standard",
+            "inference_geo": "not_available",
+            "speed": "standard"
+          },
+          "tool": "structured_json",
+          "stopReason": "end_turn",
+          "operation": "profile_extraction"
+        }
+      ]
+    }
+  ]
+}

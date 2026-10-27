@@ -12,6 +12,7 @@ describe("decision-moment", () => {
     expect(isTerminalOutcome("passed")).toBe(true)
     expect(isTerminalOutcome("redirected")).toBe(true)
     expect(isTerminalOutcome("rejected")).toBe(true)
+    expect(isTerminalOutcome("completed")).toBe(true)
     expect(isTerminalOutcome("active")).toBe(false)
   })
 

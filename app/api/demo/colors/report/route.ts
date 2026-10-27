@@ -6,17 +6,17 @@ import {
   generateDetailedReviewerReport,
 } from "@/lib/detailed-reviewer-report"
 import { collectApplicationFacts } from "@/lib/application-facts"
-import { COLORS_FORUM_MEMBERSHIP_RUBRIC, COLORS_FORUM_V1_RUBRIC } from "@/lib/application-signal-state"
+import { COLORS_FORUM_V1_RUBRIC } from "@/lib/application-signal-state"
 import { collectApplicationIntegrityConcerns } from "@/lib/application-integrity-concerns"
 import { getOrCreateRequestId } from "@/lib/request-trace"
-import { COLORS_DETAILED_REPORT_VERSION, COLORS_FORUM_MEMBERSHIP_REPORT_VERSION, normaliseReviewerReport } from "@/lib/reviewer-report"
+import { COLORS_DETAILED_REPORT_VERSION, COLORS_FORUM_MEMBERSHIP_REPORT_VERSION, normaliseReviewerReport, type ReviewerReport } from "@/lib/reviewer-report"
 import { log } from "@/lib/logger"
 import { supabase } from "@/lib/supabase"
-import { applicantAsksQuestion, COLORS_THIN_PILOT_MARKER } from "@/lib/colors-thin-conversation"
-import { auditColorsConversationIntegrity, groundColorsProfile, pendingColorsReport } from "@/lib/colors-post-conversation"
-import { extractProfile } from "@/lib/profile-extraction"
-import { COLORS_FORUM_MEMBERSHIP_PROFILE_HINT, COLORS_FORUM_MEMBERSHIP_PROFILE_SCHEMA, COLORS_THIN_PROFILE_EVIDENCE_HINT } from "@/lib/onboarding-persona-template"
-import { modelFromEnv } from "@/lib/llm-usage"
+import { COLORS_THIN_PILOT_MARKER } from "@/lib/colors-thin-conversation"
+import { ColorsAssessmentError, generateColorsThinAssessment } from "@/lib/colors-thin-assessment"
+import { pendingColorsReport } from "@/lib/colors-post-conversation"
+import { alignSuitabilityWithPolicy, suitabilityFromReviewerReport } from "@/lib/colors-suitability"
+import { parseClientDecisionPolicy } from "@/lib/decision-policy"
 
 type ReportMessage = {
   id: string
@@ -163,74 +163,48 @@ export async function POST(req: NextRequest) {
   }
   let failureStage = "report_generation"
   try {
-    const transcriptRows = rows.filter((message): message is ReportMessage & { role: "user" | "assistant" } =>
-      message.role === "user" || message.role === "assistant",
-    )
-    const lastApplicantMessage = [...transcriptRows].reverse().find((message) => message.role === "user")
-    const grouchoClosedWithQuestionPending = thinPilot &&
-      record(lastAssistant.metadata).application_closing === true &&
-      applicantAsksQuestion(lastApplicantMessage?.content ?? "")
-    const postAudit = thinPilot
-      ? await auditColorsConversationIntegrity({
-          messages: transcriptRows,
-          forumMembershipPilot: true,
-          requestId: getOrCreateRequestId(req),
-          organisationId: project.context.organisationId,
-          projectId: project.context.projectId,
-          sessionId,
-        })
-      : { concerns: collectApplicationIntegrityConcerns(transcriptRows), processMessageIds: [] }
-    const reportInput = thinPilot
-      ? {
-          ...preliminaryReport,
-          safety_or_integrity_flags: [...new Set(postAudit.concerns.map((concern) => concern.reviewerFlag).filter(Boolean))],
-        }
-      : preliminaryReport
-    const report = await generateDetailedReviewerReport({
-      transcript: transcriptRows.map(({ id, role, content }) => ({ id, role, content })),
-      baseReport: reportInput,
-      facts: collectApplicationFacts(transcriptRows),
-      integrityObservations: postAudit.concerns,
-      excludedApplicantMessageIds: rows.flatMap((message) =>
-        message.role === "user" && record(message.metadata).application_media_request
-          ? [message.id]
-          : [],
-      ).concat(postAudit.processMessageIds),
-      requestId: getOrCreateRequestId(req),
-      organisationId: project.context.organisationId,
-      projectId: project.context.projectId,
-      sessionId,
-      terminalStatus: session.status,
-      grouchoClosedWithQuestionPending,
-      rubricVersion: thinPilot
-        ? COLORS_FORUM_MEMBERSHIP_RUBRIC
-        : isV1Session(rows) ? COLORS_FORUM_V1_RUBRIC : undefined,
-      forumMembershipPilot: thinPilot,
-      ...(thinPilot ? { modelOverride: modelFromEnv("GROUCHO_COLORS_THIN_REVIEWER_MODEL", "claude-sonnet-5-5") } : {}),
-    })
-    failureStage = "report_validation"
-    if (!report.detailed_opinion) throw new Error("Detailed report was empty")
+    let report: ReviewerReport
     if (thinPilot) {
-      failureStage = "profile_extraction"
-      const profile = await extractProfile({
-        transcript: transcriptRows.map(({ role, content }) => ({ role, content })),
-        persona: {
-          profile_schema: COLORS_FORUM_MEMBERSHIP_PROFILE_SCHEMA,
-          profile_extractor_hint: `${COLORS_FORUM_MEMBERSHIP_PROFILE_HINT} ${COLORS_THIN_PROFILE_EVIDENCE_HINT}`,
-        },
+      const assessment = await generateColorsThinAssessment({
+        rows,
+        baseReport: preliminaryReport,
+        terminalStatus: session.status,
+        requestId: getOrCreateRequestId(req),
+        organisationId: project.context.organisationId,
+        projectId: project.context.projectId,
+        sessionKey: sessionId,
+      })
+      report = assessment.report
+      failureStage = "profile_persistence"
+      const { error: profileError } = await supabase.from("sessions")
+        .update({ profile: assessment.profile, profile_extracted_at: new Date().toISOString() })
+        .eq("id", session.id)
+      if (profileError) throw profileError
+    } else {
+      const transcriptRows = rows.filter((message): message is ReportMessage & { role: "user" | "assistant" } =>
+        message.role === "user" || message.role === "assistant",
+      )
+      const postAudit = { concerns: collectApplicationIntegrityConcerns(transcriptRows), processMessageIds: [] as string[] }
+      report = await generateDetailedReviewerReport({
+        transcript: transcriptRows.map(({ id, role, content }) => ({ id, role, content })),
+        baseReport: preliminaryReport,
+        facts: collectApplicationFacts(transcriptRows),
+        integrityObservations: postAudit.concerns,
+        excludedApplicantMessageIds: rows.flatMap((message) =>
+          message.role === "user" && record(message.metadata).application_media_request
+            ? [message.id]
+            : [],
+        ),
         requestId: getOrCreateRequestId(req),
         organisationId: project.context.organisationId,
         projectId: project.context.projectId,
         sessionId,
         terminalStatus: session.status,
+        rubricVersion: isV1Session(rows) ? COLORS_FORUM_V1_RUBRIC : undefined,
+        forumMembershipPilot: false,
       })
-      if (profile.extraction.status !== "ok") throw new Error(profile.extraction.reason)
-      const groundedProfile = groundColorsProfile(profile, postAudit.concerns, report)
-      failureStage = "profile_persistence"
-      const { error: profileError } = await supabase.from("sessions")
-        .update({ profile: groundedProfile, profile_extracted_at: new Date().toISOString() })
-        .eq("id", session.id)
-      if (profileError) throw profileError
+      failureStage = "report_validation"
+      if (!report.detailed_opinion) throw new Error("Detailed report was empty")
     }
     failureStage = "report_persistence"
     const { error } = await supabase.from("messages")
@@ -241,9 +215,27 @@ export async function POST(req: NextRequest) {
       } })
       .eq("id", lastAssistant.id)
     if (error) throw error
+    if (thinPilot) {
+      // Sort demo applications like real ones; no decision policy or webhook runs for the demo.
+      // Optional: a failure here must not turn a ready report into a failed one.
+      try {
+        const derived = suitabilityFromReviewerReport(report)
+        if (derived !== null) {
+          const suitabilityScore = alignSuitabilityWithPolicy(
+            derived, report.advisory_recommendation, parseClientDecisionPolicy(project.context.settings?.raw),
+          )
+          const { error: scoreError } = await supabase.from("sessions")
+            .update({ suitability_score: suitabilityScore })
+            .eq("id", session.id)
+          if (scoreError) throw scoreError
+        }
+      } catch {
+        log.warn("colors_demo_suitability_not_saved", { projectId: project.context.projectId, sessionId })
+      }
+    }
     return NextResponse.json({ status: "ready", report })
   } catch (error) {
-    const stage = error instanceof DetailedReportGenerationError
+    const stage = error instanceof DetailedReportGenerationError || error instanceof ColorsAssessmentError
       ? error.stage
       : failureStage
     log.warn("colors_demo_report_request_failed", {

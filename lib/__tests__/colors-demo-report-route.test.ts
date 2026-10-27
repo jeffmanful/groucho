@@ -10,6 +10,7 @@ import { extractProfile } from "@/lib/profile-extraction"
 
 const state = vi.hoisted(() => ({
   updates: [] as Array<Record<string, unknown>>,
+  sessionUpdates: [] as Array<Record<string, unknown>>,
   sessionStatus: "passed",
   applicantContent: "I host a listening table.",
   metadata: {
@@ -96,8 +97,13 @@ vi.mock("@/lib/supabase", () => ({
         update(value: { metadata: Record<string, unknown> }) {
           return {
             async eq() {
-              state.metadata = value.metadata
-              state.updates.push(value.metadata)
+              // Only message updates carry report metadata; session updates (profile, score) do not.
+              if (table === "messages") {
+                state.metadata = value.metadata
+                state.updates.push(value.metadata)
+              } else {
+                state.sessionUpdates.push(value as unknown as Record<string, unknown>)
+              }
               return { error: null }
             },
           }
@@ -119,6 +125,7 @@ function request() {
 describe("COLORS demo report endpoint", () => {
   beforeEach(() => {
     state.updates = []
+    state.sessionUpdates = []
     state.sessionStatus = "passed"
     state.applicantContent = "I host a listening table."
     state.metadata = {
@@ -238,6 +245,7 @@ describe("COLORS demo report endpoint", () => {
     const { POST } = await import("@/app/api/demo/colors/report/route")
     const response = await POST(request())
     expect((await response.json()).status).toBe("ready")
+    expect(state.sessionUpdates).toContainEqual({ suitability_score: expect.any(Number) })
     expect(vi.mocked(auditColorsConversationIntegrity)).toHaveBeenCalled()
     expect(vi.mocked(auditColorsConversationIntegrity)).toHaveBeenCalledWith(
       expect.objectContaining({ forumMembershipPilot: true }),

@@ -1107,6 +1107,12 @@ function OrganisationDetailPageInner() {
         >
           organisations
         </Link>
+        <Link
+          href={`/admin/organisations/${orgId}/personas`}
+          style={{ opacity: 0.65, color: "#fff", textDecoration: "none", marginLeft: "auto" }}
+        >
+          Personas →
+        </Link>
       </div>
 
       <h1

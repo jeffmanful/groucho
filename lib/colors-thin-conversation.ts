@@ -14,7 +14,8 @@ import {
   normaliseMediaChoiceInteraction,
   type MediaChoiceAnswer,
 } from "@/lib/gatekeeper-interaction-spec"
-import { gatekeeperConversationModel } from "@/lib/gatekeeper-models"
+import { colorsThinConversationModel, supportsForcedToolChoice } from "@/lib/gatekeeper-models"
+import { queueSessionCompletion } from "@/lib/session-completion-jobs"
 import { logLlmUsage } from "@/lib/llm-usage"
 import { log } from "@/lib/logger"
 import type { ProjectContext } from "@/lib/project-resolution"
@@ -22,7 +23,8 @@ import { REQUEST_ID_HEADER } from "@/lib/request-trace"
 import { supabase } from "@/lib/supabase"
 import { DEFAULT_APPLICATION_CLOSING_MESSAGE } from "@/lib/project-settings"
 
-export const COLORS_THIN_PILOT_MARKER = "colors_thin_pilot_v1"
+import { applicantAsksQuestion, COLORS_THIN_PILOT_MARKER } from "@/lib/colors-engine"
+export { applicantAsksQuestion, COLORS_THIN_PILOT_MARKER }
 
 type ConversationReply = {
   reply: string
@@ -33,14 +35,45 @@ type ConversationReply = {
   addsNewContext?: boolean
 }
 
+/**
+ * The reply text so far from a partial JSON object such as `{"reply":"Sunday swaps sou`.
+ * Used to stream schema-constrained JSON output, where no parsed snapshot is available.
+ */
+export function partialReplyFromJson(partial: string): string | undefined {
+  const match = /"reply"\s*:\s*"((?:[^"\\]|\\.)*)(\\?)/.exec(partial)
+  if (!match) return undefined
+  try {
+    return JSON.parse(`"${match[1]}"`) as string
+  } catch {
+    // A partly received escape such as \u00 cannot be decoded yet.
+    return undefined
+  }
+}
+
+/** Neutral placeholder for the API's required per-turn scores; see the completion job for suitability. */
+export const UNSCORED_TURN = { specificity: 0.5, authenticity: 0.5, cultural_depth: 0.5, overall: 0.5 } as const
+
+/** Used when the model raises a consent boundary without a usable consent question. */
+export const DEFAULT_CONSENT_QUESTION = "Would you ask the artist for permission before sharing anything of theirs that isn't public?"
+export const DEFAULT_CONSENT_STATEMENT = "Sharing someone else's unreleased or private work without their permission isn't something the Forum allows."
+
+export function isConsentQuestion(question: string): boolean {
+  return question.trim().endsWith("?") && /\b(?:consent|permission|ask|agree|approval)\b/i.test(question)
+}
+
+/** From this many applicant answers, Groucho is told to wrap up unless something genuinely new is open. */
+export const WRAP_UP_ANSWERS = 5
+/** At this many applicant answers the runtime closes, unless the applicant has just asked a question or a boundary is open. */
+export const SOFT_CLOSE_ANSWERS = 7
+
 export const colorsThinResponseTool = {
   name: "groucho_converse",
   description: "Choose the next applicant-facing turn. Do not assess or score the applicant.",
   input_schema: {
     type: "object",
     properties: {
-      addsNewContext: { type: "boolean", description: "Whether this applicant answer adds a relevant fact, preference, example, correction or question not already understood. Repeating the same hope or saying they do not know adds no new context. This is conversational progress, never an applicant score." },
       reply: { type: "string" },
+      addsNewContext: { type: "boolean", description: "Whether this applicant answer adds a relevant fact, preference, example, correction or question not already understood. Repeating the same hope or saying they do not know adds no new context. This is conversational progress, never an applicant score." },
       close: { type: "boolean" },
       boundary: { type: "string", enum: ["none", "consent", "safety"] },
       boundaryQuestion: { type: "string" },
@@ -62,6 +95,21 @@ export const colorsThinResponseTool = {
   },
 } as const satisfies Anthropic.Tool
 
+function strictJsonSchema(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(strictJsonSchema)
+  if (!node || typeof node !== "object") return node
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(node)) {
+    if (key === "maxItems") continue // not accepted by structured outputs; the server validates media IDs
+    out[key] = strictJsonSchema(value)
+  }
+  if (out.type === "object") out.additionalProperties = false
+  return out
+}
+
+/** The same fields as the groucho_converse tool, for models that use structured JSON output. */
+export const COLORS_THIN_OUTPUT_SCHEMA = strictJsonSchema(colorsThinResponseTool.input_schema) as Record<string, unknown>
+
 export function colorsThinConversationPrompt(input: {
   applicationAudience?: "community" | "artist"
   hasApplicantDetails?: boolean
@@ -82,15 +130,23 @@ TONES is an optional branch when the person mentions it or their story naturally
 
 Speak as Groucho, not as a reviewer. Respond to a specific detail, then ask one clear question at most. Every non-closing text turn must end with one direct question ending in ?. If there is no question worth asking and the exchange has naturally reached an end, set close=true. Vary the wording and route with the person. Do not announce stages, score, classify evidence, or mention an application checklist. A request to clarify or change topic deserves a direct response. Sharing public music links and discussing artists are ordinary Forum activity. Never ask for artist permission because someone shares or recommends music, and never introduce a copyright, remixing or reposting test. If the applicant independently proposes exposing someone else's private material, state the privacy boundary plainly; do not generalise that situation into a test for everyone. Set boundary to consent or safety only for a concrete concern raised in the applicant's own words. Otherwise boundaryQuestion must be empty.
 
-Mark addsNewContext from what this answer actually adds to the conversation, not its length or fluency. A concise new fact counts. Rewording a hope already understood, another vague preference, or saying they do not know is not new context. After one useful clarification, accept remaining uncertainty: switch to a genuinely different useful topic or close. Do not ask another version of what makes feedback useful or what the person wants if they already answered. Do not ask questions merely to make a brief applicant become articulate.
+Mark addsNewContext from what this answer actually adds to the conversation, not its length or fluency. A concise new fact counts. Rewording a hope already understood, another vague preference, or saying they do not know is not new context. Short non-committal answers such as "not really", "hard to say", "just vibes" or "I don't know yet" add no new context, even when worded differently each time. After one useful clarification, accept remaining uncertainty: switch to a genuinely different useful topic or close. Do not ask another version of what makes feedback useful or what the person wants if they already answered. Do not ask questions merely to make a brief applicant become articulate.
 
-This is answer ${input.turnCount}. Having enough material for a useful report means you may close, not that you should. Continue when the person is developing an interesting thread, offering a revealing detail, or raising something worth responding to. Do not prolong a settled exchange with routine clarifications, repeat a covered purpose, or ask questions only to reach a turn count. Close when the exchange has reached a natural stopping point. On close, write a brief acknowledgment of the person's actual point, not their directness or honesty, with no question, verdict, promise, generic farewell, or comment about having enough information or moving forward. The runtime will add the neutral final line. A higher emergency limit stops genuine loops.
+Pacing (internal only): the applicant has given ${input.turnCount} answer(s). Never mention numbers, turns, stages, how far along the conversation is, or how much you have learned. Most conversations should close after 3 to 5 applicant answers. Close as soon as you understand three things: why they want to join, one concrete thread about their music, COLORS or a community, and how they would take part or what they hope to find. Also close when an answer adds nothing new after one clarification. A thread that could be deepened further is not a reason to continue once those three are understood. On close, write one short sentence that reflects the person's actual point, with no question, verdict, promise, generic farewell, or comment about having enough information. The runtime adds the neutral final line.
 
 Approved media catalog: ${JSON.stringify(input.mediaCatalog)}. Media is optional. Offer it only when it helps this person's current thread or they ask to see a source. Use only listed IDs. Never imply they watched or understood an asset before they say so. A reference uses one or two image/link cards; a choice uses two to four videos with a rationale. The reply must still make sense if media cannot be shown. Omit interactionProposal for an ordinary text turn or an unresolved boundary.
 
 Turn-routing priority: a favourite COLORS SHOW is a recorded performance, not evidence of attending an event. When someone names a show or artist, follow what they heard, felt or remember if that detail is still open; otherwise move to their music, community or Forum thread. Do not suggest live attendance as an alternative or ask whether they attended unless they themselves introduce a live event. Do not seek event names, dates or lineups to validate what they say. This guides the purpose of a question, not its wording.
 
-Conversation style priority: on an ordinary live turn, use one brief sentence to reflect a specific detail and one brief, open question ending in ?. Do not append suggested answers, either/or alternatives, or "or something else" to the question. Answer a direct applicant question or explain something they asked about as fully as needed. Show warmth through attention, without endorsing the person as right for the Forum or promising who will join or what exchanges will happen there.
+Reply format (highest priority on every ordinary turn):
+- At most two sentences and at most 40 words in total.
+- First sentence: reflect one specific detail from their last answer in plain words. No praise, no summary of everything they have said.
+- Second sentence: one short open question ending in ?.
+- Never put options inside the question. No "or", no list of examples, no "or something else".
+  Bad: "Would you want a short written note, or a longer talk about it?"
+  Good: "How would you like to hear people's reactions?"
+- If the applicant asked you something, answer it plainly first; you may use one extra sentence for that. Never promise Forum features, who will join or what will happen there.
+Show warmth through attention, not by endorsing the person as right for the Forum.
 
 Call groucho_converse exactly once. The reply is applicant-facing. close means the conversation is finished, not that an applicant has passed or failed. On close, the runtime appends the neutral closing message.`
 }
@@ -114,12 +170,6 @@ export function oneQuestion(reply: string): string {
     : reply
 }
 
-/** A direct applicant question must receive a live reply before the session can close. */
-export function applicantAsksQuestion(message: string): boolean {
-  const question = message.replace(/(?:,?\s*\b(?:you know|right|you see|you get me|know what I mean))\?\s*$/i, "").trim()
-  return question.includes("?") ||
-    /(?:^|[.!]\s+)(?:(?:is|are|can|could|would|will|do|does|did|should|may|might|have|has)\b|(?:what|how|why|where|when|who)\s+(?:is|are|was|were|do|does|did|can|could|would|will|should|have|has)\b)/i.test(question)
-}
 
 /** A close may acknowledge the last answer, but must never imply a decision. */
 export function conversationalClosing(acknowledgment: string, neutralLine: string): string {
@@ -138,9 +188,25 @@ export async function postColorsThinConversation(input: {
   context: ProjectContext
   sessionId: string
   message: string
-  applicant: ApplicantIdentity
+  applicant?: ApplicantIdentity
   interactionAnswer?: MediaChoiceAnswer
   requestId?: string
+  /**
+   * Receives the applicant-facing reply text as it is generated, cut at its first question.
+   * Called only on turns where the runtime cannot force a close, so streamed text is not
+   * later replaced by a closing line. The final JSON response stays authoritative.
+   */
+  onReplyDelta?: (text: string) => void
+  /** A model chosen from COLORS_THIN_CONVERSATION_MODEL_OPTIONS; callers validate it first. */
+  modelOverride?: string
+  /** From the request's bot signals; recorded on the completion job. */
+  likelyBot?: boolean
+  /**
+   * Run the completion pipeline (report, score, decision policy, verdict, webhooks) when the
+   * conversation closes. The demo turns this off, as the old engine does for reviewer previews,
+   * so test conversations never reach the client's webhooks.
+   */
+  runCompletion?: boolean
 }): Promise<NextResponse> {
   const { organisationId, projectId, settings } = input.context
   const { data: session, error: sessionError } = await supabase.from("sessions")
@@ -152,7 +218,8 @@ export async function postColorsThinConversation(input: {
   if (sessionError) return json({ error: "Session unavailable" }, input.requestId, 503)
   if (!session) return json({ error: "Session not found" }, input.requestId, 404)
   if (session.status !== "active") return json({ error: "Session concluded" }, input.requestId, 409)
-  if (session.applicant_email !== input.applicant.email) {
+  // Later API turns may omit the applicant; when present it must match the session's identity.
+  if (input.applicant && session.applicant_email !== input.applicant.email) {
     return json({ error: "Applicant identity does not match this session" }, input.requestId, 409)
   }
 
@@ -207,8 +274,7 @@ export async function postColorsThinConversation(input: {
       role: entry.role as "assistant" | "user",
       content: entry.content as string,
     }))
-  const model = gatekeeperConversationModel()
-  const neutralClosingLine = settings.applicationExperience.closing_message?.trim() || DEFAULT_APPLICATION_CLOSING_MESSAGE
+  const model = input.modelOverride?.trim() || colorsThinConversationModel()
   const previousProgress = [...history].reverse().filter(entry => entry.role === "assistant")
   let quietTurns = 0
   for (const entry of previousProgress) {
@@ -223,19 +289,52 @@ export async function postColorsThinConversation(input: {
     mediaCatalog: colorsInteractionCatalog(shows),
   }) + `\n\nPrevious consecutive answers without new context: ${quietTurns}. A genuine applicant question always deserves an answer. Do not re-probe something they have already said they cannot explain.`
 
-  async function requestReply(operation: string, instruction: string, maxTokens = 600): Promise<ConversationReply> {
-    const response = await new Anthropic({ maxRetries: 1, timeout: 45000 }).messages.create({
-      model, max_tokens: maxTokens, system: system + "\n\n" + instruction,
-      messages: [...conversation, { role: "user", content: currentAnswer }],
-      tools: [colorsThinResponseTool],
-      tool_choice: { type: "tool", name: colorsThinResponseTool.name },
-    })
+  async function requestReply(operation: string, instruction: string, maxTokens = 600,
+    onReply?: (text: string) => void): Promise<ConversationReply> {
+    const forcedTool = supportsForcedToolChoice(model)
+    const base = {
+      model, max_tokens: maxTokens,
+      system: system + "\n\n" + instruction + (forcedTool ? "" : "\n\nReturn the groucho_converse fields as one JSON object."),
+      messages: [...conversation, { role: "user" as const, content: currentAnswer }],
+    }
+    const request = forcedTool
+      ? { ...base, tools: [colorsThinResponseTool], tool_choice: { type: "tool" as const, name: colorsThinResponseTool.name } }
+      : { ...base, output_config: { format: { type: "json_schema" as const, schema: COLORS_THIN_OUTPUT_SCHEMA } } }
+    const client = new Anthropic({ maxRetries: 1, timeout: 45000 })
+    let response: Anthropic.Message
+    if (onReply) {
+      let shown = ""
+      const show = (reply: unknown) => {
+        if (typeof reply !== "string") return
+        const visible = oneQuestion(reply.trimStart())
+        if (visible.length > shown.length && visible.startsWith(shown)) {
+          shown = visible
+          onReply(visible)
+        }
+      }
+      const stream = client.messages.stream(request as Anthropic.MessageCreateParamsNonStreaming)
+      if (forcedTool) stream.on("inputJson", (_partial, snapshot) => show(record(snapshot).reply))
+      else stream.on("text", (_delta, snapshot) => show(partialReplyFromJson(snapshot)))
+      response = await stream.finalMessage()
+    } else {
+      response = await client.messages.create(request as Anthropic.MessageCreateParamsNonStreaming)
+    }
     await logLlmUsage({ operation, provider: "anthropic", model, usage: response.usage,
       providerResponseId: response.id, requestId: input.requestId, organisationId, projectId, sessionId: input.sessionId })
     if (response.stop_reason === "max_tokens" || response.stop_reason === "refusal") throw new Error(`Conversation model stopped: ${response.stop_reason}`)
-    const call = response.content.find(block => block.type === "tool_use" && block.name === colorsThinResponseTool.name)
-    if (!call || call.type !== "tool_use") throw new Error("Conversation tool response missing")
-    const value = record(call.input)
+    let value: Record<string, unknown>
+    if (forcedTool) {
+      const call = response.content.find(block => block.type === "tool_use" && block.name === colorsThinResponseTool.name)
+      if (!call || call.type !== "tool_use") throw new Error("Conversation tool response missing")
+      value = record(call.input)
+    } else {
+      const text = response.content.flatMap(block => block.type === "text" ? [block.text] : []).join("")
+      try {
+        value = record(JSON.parse(text))
+      } catch {
+        throw new Error("Conversation tool response malformed")
+      }
+    }
     if (typeof value.reply !== "string" || !value.reply.trim() || typeof value.close !== "boolean" ||
       !["none", "consent", "safety"].includes(String(value.boundary)) || typeof value.boundaryQuestion !== "string") {
       throw new Error("Conversation tool response malformed")
@@ -252,14 +351,20 @@ export async function postColorsThinConversation(input: {
   const questionInstruction = "The applicant asked a direct question. Answer it using only approved Forum context, saying what is unknown when needed. Do not restate their question. Set close=false and finish with one relevant open question."
   let proposal: ConversationReply
   let addsNewContext: boolean | undefined
-  let stopReason: "no_new_context" | "emergency_limit" | undefined
+  let stopReason: "no_new_context" | "soft_limit" | "emergency_limit" | undefined
   try {
+    const forcedClosePossible = !applicantQuestion &&
+      (turnCount >= SOFT_CLOSE_ANSWERS || turnCount >= emergencyLimit || (turnCount >= 3 && quietTurns >= 1))
+    const streamReply = forcedClosePossible ? undefined : input.onReplyDelta
     proposal = await requestReply("colors_thin_conversation", applicantQuestion ? questionInstruction :
-      turnCount >= emergencyLimit ? "The emergency conversation limit is reached. Acknowledge the latest point and close neutrally without a question or decision." : "Continue only if a useful thread remains; otherwise close naturally.")
+      turnCount >= emergencyLimit ? "The emergency conversation limit is reached. Acknowledge the latest point and close neutrally without a question or decision." :
+        turnCount >= WRAP_UP_ANSWERS ? "The conversation is ready to wrap up. Close now unless the latest answer opened something genuinely new that you do not yet understand. Never continue only to deepen a thread." :
+          "Continue only if a useful thread remains; otherwise close naturally.", undefined, streamReply)
     addsNewContext = applicantQuestion ? true : proposal.addsNewContext
     const stalled = turnCount >= 3 && addsNewContext === false && quietTurns >= 1
-    if (!applicantQuestion && proposal.boundary === "none" && (stalled || turnCount >= emergencyLimit)) {
-      stopReason = stalled ? "no_new_context" : "emergency_limit"
+    const softLimitReached = turnCount >= SOFT_CLOSE_ANSWERS
+    if (!applicantQuestion && proposal.boundary === "none" && (stalled || softLimitReached || turnCount >= emergencyLimit)) {
+      stopReason = turnCount >= emergencyLimit ? "emergency_limit" : stalled ? "no_new_context" : "soft_limit"
       // Formatting repairs must not turn a settled exchange into another interview.
       proposal = { ...proposal, close: true, interactionProposal: undefined }
     }
@@ -285,18 +390,9 @@ export async function postColorsThinConversation(input: {
       }
       if (!usable) throw new Error("Conversation repair exhausted")
     }
-    // A closing acknowledgment is cosmetic: a failure must never discard a usable close.
-    if (!applicantQuestion && proposal.close && proposal.boundary === "none" &&
-      (stopReason || conversationalClosing(proposal.reply, neutralClosingLine) === neutralClosingLine)) {
-      try {
-        const repaired = await requestReply(stopReason === "emergency_limit" ? "colors_thin_emergency_close_repair" : "colors_thin_closing_acknowledgment_repair",
-          "Close now. Set close=true and boundary=none. Reflect one concrete point from the latest answer in one short sentence. No question, verdict, promise, process claim or generic farewell; the runtime adds the neutral final line.", 300)
-        if (repaired.close && repaired.boundary === "none" && repaired.boundaryQuestion === "" && !repaired.reply.includes("?") &&
-          conversationalClosing(repaired.reply, neutralClosingLine) !== neutralClosingLine) proposal = repaired
-      } catch (error) {
-        log.warn("colors_thin_optional_close_repair_failed", { sessionId: input.sessionId, detail: error instanceof Error ? error.message : String(error) })
-      }
-    }
+    // The closing acknowledgment is cosmetic. Rather than spend another model round trip on it,
+    // conversationalClosing keeps the first safe reflective sentence of this reply, or falls back
+    // to the neutral closing line alone.
   } catch (error) {
     log.error("colors_thin_conversation_failed", { requestId: input.requestId, sessionId: input.sessionId, detail: error instanceof Error ? error.message : String(error) })
     return json({ error: "Groucho could not respond. Please try again.", retryable: true }, input.requestId, 503)
@@ -307,12 +403,14 @@ export async function postColorsThinConversation(input: {
   const repeatedConsentBoundary = proposal.boundary === "consent" && previousBoundary === "consent"
   const requestedClose = !applicantQuestion && !firstBoundaryTurn &&
     (proposal.close || repeatedConsentBoundary || turnCount >= emergencyLimit)
-  if (firstBoundaryTurn && (!proposal.boundaryQuestion.endsWith("?") ||
-    !/\b(?:consent|permission|ask|agree|approval)\b/i.test(proposal.boundaryQuestion))) {
-    log.error("colors_thin_boundary_question_invalid", {
+  // A consent boundary must end with a clear consent question. If the model's wording misses,
+  // use a fixed one rather than failing the applicant's turn.
+  let boundaryQuestion = proposal.boundaryQuestion
+  if (firstBoundaryTurn && !isConsentQuestion(boundaryQuestion)) {
+    log.warn("colors_thin_boundary_question_replaced", {
       requestId: input.requestId, sessionId: input.sessionId,
     })
-    return json({ error: "Groucho could not respond. Please try again." }, input.requestId, 503)
+    boundaryQuestion = DEFAULT_CONSENT_QUESTION
   }
   const rich = !requestedClose && proposal.boundary === "none"
     ? resolveApplicationRichInteraction(proposal.interactionProposal, shows)
@@ -338,7 +436,7 @@ export async function postColorsThinConversation(input: {
       settings.applicationExperience.closing_message?.trim() || DEFAULT_APPLICATION_CLOSING_MESSAGE,
     )
     : firstBoundaryTurn
-      ? `${boundaryStatement} ${proposal.boundaryQuestion}`.trim()
+      ? `${boundaryStatement || DEFAULT_CONSENT_STATEMENT} ${boundaryQuestion}`.trim()
       : oneQuestion(activeRich?.question ?? proposal.reply)
 
   const { data: savedUser, error: userError } = await supabase.from("messages").insert({
@@ -381,6 +479,7 @@ export async function postColorsThinConversation(input: {
       ui,
       boundary: proposal.boundary,
       conversation_progress: { ...(addsNewContext === undefined ? {} : { adds_new_context: addsNewContext }), ...(stopReason ? { stop_reason: stopReason } : {}) },
+      conversation_model: model,
       ...(rich ? { application_rich_interaction: {
         kind: rich.kind,
         purpose: rich.purpose,
@@ -393,10 +492,22 @@ export async function postColorsThinConversation(input: {
     await supabase.from("messages").delete().eq("id", savedUser.id)
     return json({ error: "Reply could not be saved" }, input.requestId, 503)
   }
+  if (close && input.runCompletion !== false) {
+    await queueSessionCompletion({
+      organisationId,
+      projectId,
+      sessionId: session.id,
+      likelyBot: input.likelyBot ?? false,
+      requestId: input.requestId,
+    })
+  }
   return json({
     message: reply,
     status: close ? "completed" : "active",
     reviewStatus: close ? "pending" : "not_ready",
+    // The API contract requires per-turn scores. This engine does not score turns, so this is a
+    // neutral placeholder; suitability is derived from the reviewer report after completion.
+    scores: UNSCORED_TURN,
     ui,
   }, input.requestId)
 }

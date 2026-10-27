@@ -1,3 +1,4 @@
+import { colorsEngineRoute, postColorsEngineTurn } from "@/lib/colors-engine-routing"
 import { COMMUNITY_APPLICATION_CONTEXT, ARTIST_APPLICATION_CONTEXT, ARTIST_APPLICATION_OPENING } from "@/lib/artist-application"
 import Anthropic from "@anthropic-ai/sdk"
 import { NextResponse } from "next/server"
@@ -840,6 +841,26 @@ export async function postSessionMessage(
     touchApiKeyLastUsed(apiKeyId)
   }
 
+  // Sessions on the newer COLORS engine, and new sessions on projects configured for it, are
+  // answered there. The demo route makes this choice itself before calling this function.
+  if (!input.demoReviewerPreview) {
+    const route = await timings.measure("engine_route", () => colorsEngineRoute({
+      projectId, sessionId, rawSettings: settings.raw,
+    }))
+    if (route !== "standard") {
+      return postColorsEngineTurn({
+        route,
+        context: projectResolved.context,
+        sessionId,
+        message,
+        applicant: applicantIdentity,
+        interactionAnswer: input.interactionAnswer,
+        requestId: input.requestId,
+        likelyBot: botSignal.likelyBot,
+      })
+    }
+  }
+
   const openingMessage = applicationOpeningMessageForSignals(
     settings.applicationExperience.opening_message,
     applicationSignalDefinitions(
@@ -930,7 +951,7 @@ export async function postSessionMessage(
   ].filter((id, index, ids): id is string => Boolean(id) && ids.indexOf(id) === index)
 
   const resolvedPersona = await timings.measure("persona_resolution", () =>
-    resolveActiveGatekeeperPersona(personaCandidates),
+    resolveActiveGatekeeperPersona(personaCandidates, organisationId),
   )
 
   const storedApplicant = existing ? applicantIdentityFromRow(existing) : applicantIdentity
