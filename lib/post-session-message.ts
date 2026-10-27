@@ -20,7 +20,8 @@ import { log } from "@/lib/logger"
 import { REQUEST_ID_HEADER } from "@/lib/request-trace"
 import { supabase } from "@/lib/supabase"
 import { isConcludedSessionStatus } from "@/lib/session-status"
-import { botSignalFromHeaders } from "@/lib/bot-signals"
+import { readApplicantSignals, scheduleApplicantSignals } from "@/lib/applicant-signals"
+import { botSignalForApplicant } from "@/lib/bot-signals"
 import {
   completeSessionImmediately,
   enqueueSessionCompletionJob,
@@ -762,8 +763,12 @@ export async function postSessionMessage(
     projectResolved.context
   input.timingProjectId = projectId
 
+  // Keyed requests come through the client's server; the applicant's details are in forwarded headers.
+  const applicantSignals = readApplicantSignals(input.incomingHeaders ?? new Headers(), {
+    viaApiKey: Boolean(apiKeyId) && !input.demoProjectContext && !projectIdOverride,
+  })
   const botSignal = input.incomingHeaders
-    ? botSignalFromHeaders(input.incomingHeaders)
+    ? botSignalForApplicant(applicantSignals)
     : { likelyBot: false as const }
 
   if (botSignal.likelyBot && process.env.GROUPCHO_REJECT_AUTOMATED_UA === "1") {
@@ -1003,6 +1008,7 @@ export async function postSessionMessage(
     }
     sessionRowId = created.id
   }
+  if (input.incomingHeaders) scheduleApplicantSignals({ sessionRowId }, applicantSignals)
 
   const { data: userMsg, error: userMsgError } = await timings.measure("user_persistence", () => supabase
     .from("messages")

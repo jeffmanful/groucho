@@ -365,3 +365,75 @@ describe("createClient — JSON parsing", () => {
     })
   })
 })
+
+describe("application review", () => {
+  it("lists applications with query parameters and the API key", async () => {
+    const fakeFetch = mockFetch(async () =>
+      jsonResponse({ applications: [], total: 0, counts: {}, offset: 0, limit: 20 }),
+    )
+    const client = createClient({ baseUrl: "https://groucho.test/", apiKey: "gk_live_x", fetch: fakeFetch })
+    await client.listApplications({ queue: "ready_for_review", search: "maya", limit: 20, from: "" })
+
+    const [url, init] = fakeFetch.mock.calls[0]!
+    expect(String(url)).toBe("https://groucho.test/v1/applications?queue=ready_for_review&q=maya&limit=20")
+    expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer gk_live_x")
+  })
+
+  it("gets one application by the client's session key", async () => {
+    const fakeFetch = mockFetch(async () => jsonResponse({ application: {}, reviewerReport: null, transcript: [] }))
+    const client = createClient({ baseUrl: "https://groucho.test", apiKey: "gk_live_x", fetch: fakeFetch })
+    await client.getApplication("sess/1")
+    expect(String(fakeFetch.mock.calls[0]![0])).toBe("https://groucho.test/v1/applications/sess%2F1")
+  })
+
+  it("records a decision with the reviewer", async () => {
+    const fakeFetch = mockFetch(async () =>
+      jsonResponse({ sessionId: "s1", reviewStatus: "declined", decision: { decision: "declined" } }, 201),
+    )
+    const client = createClient({ baseUrl: "https://groucho.test", apiKey: "gk_live_x", fetch: fakeFetch })
+    const res = await client.decideApplication("s1", {
+      decision: "declined",
+      reason: "Not a fit this season",
+      reviewer: { email: "maya@colors.example", name: "Maya" },
+    })
+    expect(res.reviewStatus).toBe("declined")
+    expect(fakeFetch.mock.calls[0]![0]).toBe("https://groucho.test/v1/applications/s1/decision")
+    expect(JSON.parse(requestBody(fakeFetch))).toEqual({
+      decision: "declined",
+      reason: "Not a fit this season",
+      reviewer: { email: "maya@colors.example", name: "Maya" },
+    })
+  })
+
+  it("surfaces the scope error for a conversations key", async () => {
+    const fakeFetch = mockFetch(async () => jsonResponse({ error: "This key can run conversations only." }, 403))
+    const client = createClient({ baseUrl: "https://groucho.test", apiKey: "gk_live_x", fetch: fakeFetch })
+    await expect(client.listApplications()).rejects.toMatchObject({ status: 403, message: "This key can run conversations only." })
+  })
+
+  it("corrects a decision and reports outcomes", async () => {
+    const fakeFetch = mockFetch(async () => jsonResponse({ ok: true }, 201))
+    const client = createClient({ baseUrl: "https://groucho.test", apiKey: "gk_live_x", fetch: fakeFetch })
+    await client.correctApplication("s1", { decision: "approved", reason: "Clarified on a call", expectedDecisionId: "d1" })
+    await client.reportOutcome("s1", { outcome: "joined", occurredAt: "2026-10-27T10:00:00Z" })
+    expect(fakeFetch.mock.calls.map((call) => call[0])).toEqual([
+      "https://groucho.test/v1/applications/s1/correction",
+      "https://groucho.test/v1/applications/s1/outcomes",
+    ])
+    expect(JSON.parse(fakeFetch.mock.calls[1]![1]!.body as string)).toEqual({ outcome: "joined", occurredAt: "2026-10-27T10:00:00Z" })
+  })
+
+  it("submits entries and places people in cohorts", async () => {
+    const fakeFetch = mockFetch(async () => jsonResponse({ ok: true }, 200))
+    const client = createClient({ baseUrl: "https://groucho.test/", apiKey: "gk_live_x", fetch: fakeFetch })
+    await client.submitEntry({ sessionId: "entry-0001", applicant: { email: "sam@example.com" }, fields: { size: "9" } })
+    await client.listCohorts()
+    await client.addToCohort("c/1", { sessionIds: ["entry-0001"] })
+    expect(fakeFetch.mock.calls.map((call) => [call[0], call[1]!.method])).toEqual([
+      ["https://groucho.test/v1/entries", "POST"],
+      ["https://groucho.test/v1/cohorts", "GET"],
+      ["https://groucho.test/v1/cohorts/c%2F1/members", "POST"],
+    ])
+    expect(JSON.parse(fakeFetch.mock.calls[2]![1]!.body as string)).toEqual({ sessionIds: ["entry-0001"] })
+  })
+})

@@ -54,10 +54,18 @@ export type ApplicationItem = {
   decision: {
     decision: "approved" | "declined"
     source: "human" | "policy" | null
+    /** Where it was made: this dashboard, the client's own app through the API, or their policy. */
+    via?: "dashboard" | "api" | "policy"
     reviewer: string | null
     reason: string | null
     decidedAt: string | null
+    /** The current decision's id, needed to correct it. */
+    id?: string | null
+    corrected?: boolean
+    applicantReason?: string | null
   } | null
+  /** The latest outcome the client's system reported after the decision. */
+  latestOutcome?: { outcome: string; at: string | null } | null
 }
 
 export type QueueMetrics = {

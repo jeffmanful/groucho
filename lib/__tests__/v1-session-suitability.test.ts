@@ -19,7 +19,7 @@ vi.mock("@/lib/supabase", () => ({
         : table === "verdicts" ? (mocks.verdictPayload ? { payload: mocks.verdictPayload } : null)
           : null
       const chain = {
-        select: () => chain, eq: () => chain, order: () => chain, limit: () => chain,
+        select: () => chain, eq: () => chain, is: () => chain, order: () => chain, limit: () => chain,
         maybeSingle: async () => ({ data, error: null }),
         then: (resolve: (value: unknown) => unknown) => Promise.resolve({ count: 3, data: [], error: null }).then(resolve),
       }

@@ -2,8 +2,9 @@
 
 import { safeAuthPath } from "@/lib/auth-redirect"
 import Link from "next/link"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
+import styles from "./login.module.css"
 
 export default function LoginForm({
   initialError,
@@ -16,13 +17,17 @@ export default function LoginForm({
 }) {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState(initialError)
   const [loading, setLoading] = useState(false)
+  const [rejected, setRejected] = useState(false)
+  const passwordRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError("")
+    setRejected(false)
     setLoading(true)
 
     try {
@@ -48,135 +53,132 @@ export default function LoginForm({
             : safePath,
         )
         router.refresh()
+        return
+      }
+      if (res.status === 429) {
+        setError("Too many attempts. Wait a minute, then try again.")
       } else {
-        setError("Email or password was not recognised.")
+        setError("That email and password didn't match. Check them and try again.")
+        setRejected(true)
+        setPassword("")
       }
     } catch {
-      setError("Something went wrong.")
-    } finally {
-      setLoading(false)
+      setError("Groucho couldn't be reached. Check your connection and try again.")
     }
+    setLoading(false)
   }
 
+  // Focus the password field once it is enabled again after a rejected attempt.
+  useEffect(() => {
+    if (rejected && !loading) passwordRef.current?.focus()
+  }, [rejected, loading])
+
+  const passwordInvalid = rejected
+
   return (
-    <div className="flex flex-col min-h-screen py-12 items-center justify-center">
-      <div className="w-[80%] max-w-[400px]">
-        <div
-          style={{
-            fontSize: "0.7rem",
-            letterSpacing: "0.12em",
-            opacity: 0.3,
-            marginBottom: "2.5rem",
-          }}
-        >
-          GROUCHO
-        </div>
-        <h1 className="text-3xl mb-3">
-          {demoLogin ? "Demo sign in" : "Admin sign in"}
-        </h1>
-        <p className="text-sm text-white/60 mb-8">
-          {demoLogin
-            ? "Use your demo tester account."
-            : "Sign in to manage your Groucho dashboard."}
-        </p>
-        {!demoLogin && (
-          <a
-            href={`/api/auth/google?next=${encodeURIComponent(nextPath)}`}
-            className="block w-full rounded-lg border border-white/30 px-4 py-3 text-center text-white hover:bg-white/10 mb-6"
-          >
-            Continue with Google
-          </a>
+    <div className={styles.page}>
+      <header className={styles.header}>
+        <Link href="/login" className={styles.brand} aria-label="Groucho sign in">
+          groucho<span>.</span>
+        </Link>
+        {demoLogin ? (
+          <Link href="/login" className={styles.headerLink}>Admin sign in</Link>
+        ) : (
+          <Link href="/demos" className={styles.headerLink}>View demos</Link>
         )}
-        <p className="text-sm opacity-60 mb-6">
-          {demoLogin
-            ? "Enter your demo email and password."
-            : "Or sign in with your email and password."}
-        </p>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-[1.5rem]">
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="Email"
-            aria-label="Email"
-            autoComplete="username"
-            required
-            autoFocus
-            disabled={loading}
-            className="w-full font-inherit text-white text-md py-[0.5rem] outline-none border-b border-b-white/40 focus:border-b-white/60 bg-transparent disabled:opacity-30"
-          />
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Password"
-            aria-label="Password"
-            autoComplete="current-password"
-            required
-            disabled={loading}
-            className="w-full font-inherit text-white text-md py-[0.5rem] outline-none border-b border-b-white/40 focus:border-b-white/60 bg-transparent disabled:opacity-30"
-          />
-          {error && (
-            <div role="alert" style={{ fontSize: "0.85rem", opacity: 0.8 }}>
-              {error}
+      </header>
+
+      <main className={styles.main}>
+        <div className={styles.panel}>
+          <div className={styles.intro}>
+            <h1 className={styles.title}>{demoLogin ? "Open the demo" : "Sign in to Groucho"}</h1>
+            <p className={styles.lede}>
+              {demoLogin
+                ? "Sign in with the demo account you were given to try the COLORS application flow."
+                : "Review applications and manage your projects."}
+            </p>
+          </div>
+
+          {!demoLogin ? (
+            <>
+              <a href={`/api/auth/google?next=${encodeURIComponent(nextPath)}`} className={styles.google}>
+                Continue with Google
+              </a>
+              <div className={styles.divider} aria-hidden="true">
+                <span />or<span />
+              </div>
+            </>
+          ) : null}
+
+          <form onSubmit={handleSubmit} className={styles.form}>
+            {error ? (
+              <div role="alert" className={styles.alert}>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+                  <circle cx="8" cy="8" r="6" />
+                  <path d="M8 5v3.5M8 10.8v.01" />
+                </svg>
+                <span>{error}</span>
+              </div>
+            ) : null}
+            <label className={styles.field}>
+              {demoLogin ? "Demo email" : "Email"}
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder={demoLogin ? "tester@company.com" : "you@company.com"}
+                autoComplete="username"
+                required
+                autoFocus
+                disabled={loading}
+                className={styles.input}
+              />
+            </label>
+            <div className={styles.field}>
+              <label htmlFor="login-password">Password</label>
+              <span className={passwordInvalid ? styles.passwordInvalid : styles.password}>
+                <input
+                  id="login-password"
+                  ref={passwordRef}
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  required
+                  disabled={loading}
+                  aria-invalid={passwordInvalid || undefined}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((value) => !value)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  aria-pressed={showPassword}
+                >
+                  {showPassword ? "Hide" : "Show"}
+                </button>
+              </span>
             </div>
-          )}
-          <button
-            type="submit"
-            disabled={loading}
-            className="self-start text-white text-md py-[0.5rem] opacity-60 hover:opacity-100 transition-opacity disabled:opacity-30 bg-transparent border-none cursor-pointer font-inherit"
-          >
-            {loading
-              ? "Signing in…"
-              : demoLogin
-              ? "Open demo"
-              : "Sign in to dashboard"}
-          </button>
-        </form>
-        {!demoLogin && (
-          <Link
-            href="/demos"
-            className="block w-full mt-8 rounded-lg border border-white/25 px-4 py-3 text-center text-white/80 hover:text-white hover:bg-white/10"
-          >
-            Access public demos
-          </Link>
-        )}
-        {demoLogin && (
-          <Link
-            href="/login"
-            className="block mt-5 text-center text-sm text-white/60 hover:text-white"
-          >
-            Back to admin sign in
-          </Link>
-        )}
-        {!demoLogin && (
-          <p className="mt-8 text-center text-sm opacity-40 space-y-2 flex flex-col">
-            <Link
-              href="/signup/organisation"
-              className="text-white/50 hover:text-white/70 underline-offset-4 hover:underline"
-            >
-              Create an organisation (email code, no invite)
-            </Link>
-            <span className="text-white/35 text-xs">
-              Organisation members: complete the email code on your invite or{" "}
-              <Link
-                href="/signup/organisation"
-                className="text-white/45 hover:text-white/65"
-              >
-                /signup/organisation
-              </Link>
-              , then open{" "}
-              <Link
-                href="/admin/organisations"
-                className="text-white/45 hover:text-white/65"
-              >
-                /admin/organisations
-              </Link>
-              .
-            </span>
-          </p>
-        )}
-      </div>
+            <button type="submit" disabled={loading} className={styles.submit} aria-busy={loading || undefined}>
+              {loading ? "Signing in…" : demoLogin ? "Open demo" : "Sign in"}
+            </button>
+          </form>
+
+          <div className={styles.footer}>
+            {demoLogin ? (
+              <span>
+                No demo account? <Link href="/demos">Browse the public demos</Link>
+              </span>
+            ) : (
+              <>
+                <span>
+                  New to Groucho? <Link href="/signup/organisation">Create an organisation</Link>
+                </span>
+                <span>Invited to a team? Open the link in your invitation email.</span>
+              </>
+            )}
+          </div>
+        </div>
+      </main>
     </div>
   )
 }

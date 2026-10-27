@@ -27,6 +27,9 @@ vi.mock("@/lib/supabase", () => ({
           selected = columns
           return chain
         },
+        is() {
+          return chain
+        },
         eq(column: string, value: string) {
           if (column === "id") selectedId = value
           return chain
@@ -107,7 +110,12 @@ vi.mock("@/lib/supabase", () => ({
           }
           return { data: [], count: 0, error: null }
         },
-        async in() {
+        // Awaited directly, or after .is("superseded_by", null) for current decisions.
+        in() {
+          const result = chain.inResult()
+          return Object.assign(result, { is: () => result })
+        },
+        async inResult() {
           if (
             table === "application_decisions" &&
             database.legacyPolicySchema &&

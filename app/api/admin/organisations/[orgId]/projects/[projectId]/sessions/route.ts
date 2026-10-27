@@ -1,3 +1,4 @@
+import { currentDecisionsFor } from "@/lib/current-decision"
 import { NextRequest, NextResponse } from "next/server"
 import { resolveAdminActor } from "@/lib/admin-actor"
 import { requireOrgMember, unauthorized } from "@/lib/org-access"
@@ -148,22 +149,16 @@ export async function GET(
   let decisions: DecisionListRow[] = []
   let decisionsError: DatabaseError | null = null
   if (sessionIds.length) {
-    const decisionResult = await supabase
-      .from("application_decisions")
-      .select("session_id, decision, decision_source")
-      .in("session_id", sessionIds)
-    decisions = (decisionResult.data ?? []) as DecisionListRow[]
+    const decisionResult = await currentDecisionsFor<DecisionListRow>(sessionIds, "session_id, decision, decision_source")
+    decisions = decisionResult.data
     decisionsError = decisionResult.error
 
     if (isMissingSchemaPart(decisionsError, "decision_source")) {
       console.warn(
         "sessions list: decision-policy migration is not applied; treating existing decisions as human",
       )
-      const legacyDecisionResult = await supabase
-        .from("application_decisions")
-        .select("session_id, decision")
-        .in("session_id", sessionIds)
-      decisions = (legacyDecisionResult.data ?? []).map((decision) => ({
+      const legacyDecisionResult = await currentDecisionsFor<{ session_id: string; decision: string }>(sessionIds, "session_id, decision")
+      decisions = legacyDecisionResult.data.map((decision) => ({
         ...decision,
         decision_source: "human" as const,
       })) as DecisionListRow[]

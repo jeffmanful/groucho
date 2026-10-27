@@ -40,20 +40,21 @@ const alertStyles: Record<
   AdminFeedbackType,
   { border: string; background: string; color: string }
 > = {
+  // Dashboard tokens, so the banner follows the light or dark theme.
   error: {
-    border: "1px solid rgba(248,113,113,0.45)",
-    background: "rgba(248,113,113,0.08)",
-    color: "#fca5a5",
+    border: "1px solid color-mix(in srgb, var(--danger, #f87171) 45%, transparent)",
+    background: "color-mix(in srgb, var(--danger, #f87171) 8%, transparent)",
+    color: "var(--danger, #fca5a5)",
   },
   success: {
-    border: "1px solid rgba(74,222,128,0.4)",
-    background: "rgba(74,222,128,0.08)",
-    color: "#86efac",
+    border: "1px solid color-mix(in srgb, var(--success, #4ade80) 40%, transparent)",
+    background: "color-mix(in srgb, var(--success, #4ade80) 8%, transparent)",
+    color: "var(--success, #86efac)",
   },
   info: {
-    border: "1px solid rgba(255,255,255,0.2)",
-    background: "rgba(255,255,255,0.05)",
-    color: "rgba(255,255,255,0.75)",
+    border: "1px solid var(--border-strong, rgba(255,255,255,0.2))",
+    background: "var(--surface, rgba(255,255,255,0.05))",
+    color: "var(--text-secondary, rgba(255,255,255,0.75))",
   },
 }
 

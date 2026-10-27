@@ -3,6 +3,7 @@ import { resolveAdminActor } from "@/lib/admin-actor"
 import { requireOrgAdmin, requireOrgMember, unauthorized } from "@/lib/org-access"
 import { supabase } from "@/lib/supabase"
 import { generateWebhookSigningSecret } from "@/lib/verdict-webhook"
+import { parseWebhookEvents, WEBHOOK_EVENTS } from "@/lib/webhook-events"
 
 async function assertProjectInOrg(
   orgId: string,
@@ -83,10 +84,10 @@ export async function POST(
   }
 
   const label = body.label?.trim() || null
-  const events =
-    Array.isArray(body.events) && body.events.length > 0
-      ? body.events
-      : ["session.completed"]
+  const events = body.events === undefined ? ["session.completed"] : parseWebhookEvents(body.events)
+  if (!events) {
+    return NextResponse.json({ error: `events must list one or more of: ${WEBHOOK_EVENTS.join(", ")}` }, { status: 400 })
+  }
 
   const signing_secret = generateWebhookSigningSecret()
 

@@ -1,5 +1,5 @@
+import { applicationAccess } from "@/lib/application-access"
 import { NextRequest, NextResponse } from "next/server"
-import { applicationDecisionGrantsAccess } from "@/lib/application-decision"
 import { getDefaultProjectId } from "@/lib/project-resolution"
 import { supabase } from "@/lib/supabase"
 
@@ -28,13 +28,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ authorized: false })
   }
 
-  const { data: decision } = await supabase
-    .from("application_decisions")
-    .select("decision, access_secret")
-    .eq("session_id", data.id)
-    .maybeSingle()
-
-  const authorized = applicationDecisionGrantsAccess(decision, secret)
+  const { granted: authorized } = await applicationAccess({ sessionId: data.id, projectId: project.projectId, secret })
 
   return NextResponse.json({ authorized })
 }

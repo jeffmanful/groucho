@@ -119,15 +119,31 @@ export function applySharedFilters<Q extends FilterableQuery<Q>>(query: Q, filte
   return next
 }
 
-export const QUEUE_COLUMNS = [
-  "id", "session_id", "status", "created_at", "updated_at", "applicant_email", "applicant_name",
+/** Columns before the corrections and outcomes migration. */
+export const LEGACY_QUEUE_COLUMNS = [
+  "id", "project_id", "session_id", "status", "created_at", "updated_at", "applicant_email", "applicant_name",
   "applicant_details", "application_audience", "suitability_score", "decision", "decision_source",
   "reviewer_kind", "reviewer_email", "decision_reason", "decided_at", "recommendation", "confidence",
   "report_status", "conversation_model", "answer_count", "queue",
 ].join(", ")
 
+export const QUEUE_COLUMNS = [
+  LEGACY_QUEUE_COLUMNS, "decision_id", "decision_corrected", "reviewer_name", "decision_applicant_reason",
+  "latest_outcome", "latest_outcome_at",
+].join(", ")
+
+/** Reads the review queue, falling back to the older columns until the latest migration is applied. */
+export async function withQueueColumns<T extends { error: { code?: string } | null }>(
+  run: (columns: string) => PromiseLike<T>,
+): Promise<T> {
+  const result = await run(QUEUE_COLUMNS)
+  if (result.error?.code === "42703") return run(LEGACY_QUEUE_COLUMNS)
+  return result
+}
+
 export type QueueRow = {
   id: string
+  project_id: string
   session_id: string
   status: string
   created_at: string
@@ -149,11 +165,17 @@ export type QueueRow = {
   conversation_model: string | null
   answer_count: number
   queue: ApplicationQueue
+  decision_id?: string | null
+  decision_corrected?: boolean | null
+  reviewer_name?: string | null
+  decision_applicant_reason?: string | null
+  latest_outcome?: string | null
+  latest_outcome_at?: string | null
 }
 
-function baseQuery(organisationId: string, projectId: string, head = false) {
+function baseQuery(organisationId: string, projectId: string, head = false, columns = QUEUE_COLUMNS) {
   return supabase.from("application_review_queue")
-    .select(head ? "id" : QUEUE_COLUMNS, head ? { count: "exact", head: true } : { count: "exact" })
+    .select(head ? "id" : columns, head ? { count: "exact", head: true } : { count: "exact" })
     .eq("organisation_id", organisationId)
     .eq("project_id", projectId)
 }
@@ -166,21 +188,23 @@ export async function listApplications(input: {
   limit?: number
 }): Promise<{ rows: QueueRow[]; total: number }> {
   const { filters } = input
-  let query = applySharedFilters(baseQuery(input.organisationId, input.projectId), filters)
-  if (filters.queue !== "all") query = query.eq("queue", filters.queue)
-  if (filters.sort === "suitability") {
-    query = query.order("suitability_score", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false })
-  } else if (filters.sort === "newest") {
-    query = query.order("created_at", { ascending: false })
-  } else if (filters.sort === "oldest") {
-    query = query.order("created_at", { ascending: true })
-  } else {
-    query = query.order("updated_at", { ascending: true })
-  }
-  // A unique tiebreaker keeps paging (and the export's chunks) stable when timestamps tie.
-  query = query.order("id", { ascending: true })
   const limit = input.limit ?? filters.limit
-  const { data, error, count } = await query.range(filters.offset, filters.offset + limit - 1)
+  const { data, error, count } = await withQueueColumns((columns) => {
+    let query = applySharedFilters(baseQuery(input.organisationId, input.projectId, false, columns), filters)
+    if (filters.queue !== "all") query = query.eq("queue", filters.queue)
+    if (filters.sort === "suitability") {
+      query = query.order("suitability_score", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false })
+    } else if (filters.sort === "newest") {
+      query = query.order("created_at", { ascending: false })
+    } else if (filters.sort === "oldest") {
+      query = query.order("created_at", { ascending: true })
+    } else {
+      query = query.order("updated_at", { ascending: true })
+    }
+    // A unique tiebreaker keeps paging (and the export's chunks) stable when timestamps tie.
+    query = query.order("id", { ascending: true })
+    return query.range(filters.offset, filters.offset + limit - 1)
+  })
   if (error) throw error
   return { rows: (data ?? []) as unknown as QueueRow[], total: count ?? 0 }
 }
@@ -283,10 +307,16 @@ export function applicationFromRow(row: QueueRow) {
     decision: row.decision ? {
       decision: row.decision,
       source: row.decision_source,
-      reviewer: row.reviewer_email,
+      /** Where the decision was made: the dashboard, the client's own app (API) or the client's policy. */
+      via: row.reviewer_kind === "policy" ? "policy" as const : row.reviewer_kind === "api" ? "api" as const : "dashboard" as const,
+      reviewer: row.reviewer_email ?? row.reviewer_name ?? null,
       reason: row.decision_reason,
       decidedAt: row.decided_at,
+      id: row.decision_id ?? null,
+      corrected: Boolean(row.decision_corrected),
+      applicantReason: row.decision_applicant_reason ?? null,
     } : null,
+    latestOutcome: row.latest_outcome ? { outcome: row.latest_outcome, at: row.latest_outcome_at ?? null } : null,
   }
 }
 

@@ -22,6 +22,15 @@ tags:
     description: Chat turns and outcomes
   - name: Access
     description: Post-pass email capture
+  - name: Applications
+    description: |
+      Review applications from your own app. These endpoints need an **applications** API key,
+      created in Groucho under the project's Keys & webhooks. Use it only from your server —
+      never behind a browser-facing proxy. Conversation keys get `403`.
+  - name: Entries
+    description: Drop entries without a conversation. Uses a conversations key.
+  - name: Cohorts
+    description: Groups of approved applicants (ballot pool, guaranteed places, winners). Applications key.
 
 security:
   - bearerAuth: []
@@ -191,6 +200,264 @@ paths:
           description: Session not eligible for email capture
         "429":
           description: Rate limited
+
+  /v1/applications:
+    get:
+      tags: [Applications]
+      summary: List applications with Groucho's assessment
+      operationId: listApplications
+      parameters:
+        - name: queue
+          in: query
+          schema:
+            type: string
+            enum: [ready_for_review, awaiting_assessment, in_progress, approved, declined, abandoned, all]
+            default: ready_for_review
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [suitability, newest, oldest, longest_waiting]
+            default: suitability
+        - name: q
+          in: query
+          description: Search name, email or artist name.
+          schema: { type: string }
+        - name: audience
+          in: query
+          schema: { type: string, enum: [community, artist, all], default: all }
+        - name: recommendation
+          in: query
+          schema: { type: string, enum: [recommend, human_review, decline, all], default: all }
+        - name: from
+          in: query
+          description: Submitted on or after this date (YYYY-MM-DD).
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          description: Submitted on or before this date (YYYY-MM-DD).
+          schema: { type: string, format: date }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: One page of applications
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationList"
+        "401":
+          description: Missing or invalid API key
+        "403":
+          description: The key is not an applications key
+
+  /v1/applications/{sessionId}:
+    get:
+      tags: [Applications]
+      summary: Get one application with the reviewer report and conversation
+      operationId: getApplication
+      parameters:
+        - $ref: "#/components/parameters/sessionId"
+      responses:
+        "200":
+          description: The application
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationDetail"
+        "403":
+          description: The key is not an applications key
+        "404":
+          description: Unknown application for this project
+
+  /v1/applications/{sessionId}/decision:
+    post:
+      tags: [Applications]
+      summary: Approve or decline an application
+      description: |
+        Records the decision as made by the reviewer you name, through your app. The first decision
+        wins. A reason is required to decline. Groucho then sends `application.decided` to every
+        webhook subscribed to it, and an approval returns the access secret for `POST /v1/sessions/{sessionId}/access`.
+      operationId: decideApplication
+      parameters:
+        - $ref: "#/components/parameters/sessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DecideApplicationRequest"
+      responses:
+        "201":
+          description: Decision recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DecideApplicationResponse"
+        "400":
+          description: Invalid decision, missing decline reason or invalid reviewer email
+        "403":
+          description: The key is not an applications key
+        "404":
+          description: Unknown application for this project
+        "409":
+          description: Not finished yet, or a decision has already been recorded
+
+  /v1/applications/{sessionId}/correction:
+    post:
+      tags: [Applications]
+      summary: Correct a decision
+      description: |
+        Replaces the current decision with a new one, with a reason. The old decision stays in the
+        history. Groucho sends `application.decision_corrected`; telling the applicant is up to you.
+        Approved → declined revokes the access secret; declined → approved returns a new one.
+      operationId: correctApplication
+      parameters:
+        - $ref: "#/components/parameters/sessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CorrectApplicationRequest"
+      responses:
+        "201":
+          description: Correction recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CorrectApplicationResponse"
+        "400":
+          description: Invalid decision, missing reason or invalid reviewer email
+        "404":
+          description: Unknown application, or nothing decided yet
+        "409":
+          description: The decision changed since `expectedDecisionId` was read
+        "422":
+          description: The correction doesn't change the decision
+
+  /v1/applications/{sessionId}/outcomes:
+    post:
+      tags: [Applications]
+      summary: Report what happened after the decision
+      description: |
+        Tell Groucho whether the person was invited, joined and took part. Groucho uses this to
+        measure whether the people it recommends actually join. Reporting the same outcome with the
+        same `occurredAt` again is ignored.
+      operationId: reportApplicationOutcome
+      parameters:
+        - $ref: "#/components/parameters/sessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportOutcomeRequest"
+      responses:
+        "201":
+          description: Outcome recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportOutcomeResponse"
+        "200":
+          description: Already reported; ignored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportOutcomeResponse"
+        "400":
+          description: Unknown outcome or invalid occurredAt
+        "409":
+          description: The application hasn't been decided yet
+
+  /v1/entries:
+    post:
+      tags: [Entries]
+      summary: Submit a drop entry
+      description: |
+        Records an entry without a conversation: email, name, phone, social links and the drop's own
+        fields (size, city...). Use a conversations key from your server or proxy. Sending the same
+        `sessionId` again returns the first entry. Entries are reviewed in Groucho, where duplicates
+        across email, phone and social accounts are flagged.
+      operationId: submitEntry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitEntryRequest"
+      responses:
+        "201":
+          description: Entry recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmitEntryResponse"
+        "200":
+          description: Already entered with this sessionId; nothing changed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmitEntryResponse"
+        "400":
+          description: Invalid email, phone, socials or fields
+        "409":
+          description: Entries are closed or not open yet, or the sessionId belongs to a conversation
+
+  /v1/cohorts:
+    get:
+      tags: [Cohorts]
+      summary: List cohorts
+      description: The current round's cohorts, such as a ballot pool, guaranteed places and winners. Server only (applications key).
+      operationId: listCohorts
+      responses:
+        "200":
+          description: Cohorts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CohortList"
+
+  /v1/cohorts/{cohortId}/members:
+    post:
+      tags: [Cohorts]
+      summary: Place people in a cohort
+      description: |
+        Put approved applicants in a cohort, for example the winners of a ballot you ran yourself.
+        People already in another cohort this round move here. Each move is sent as
+        `application.allocated`. Server only (applications key).
+      operationId: addToCohort
+      parameters:
+        - name: cohortId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddToCohortRequest"
+      responses:
+        "200":
+          description: People placed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddToCohortResponse"
+        "404":
+          description: Unknown cohort, or some sessionIds weren't found (listed in `unknown`)
+        "409":
+          description: The cohort is full
+        "422":
+          description: Someone isn't approved
+        "423":
+          description: The cohort is locked
 
 components:
   securitySchemes:
@@ -858,6 +1125,358 @@ components:
           additionalProperties: true
         extraction:
           $ref: "#/components/schemas/ProfileExtraction"
+
+    ApplicationQueue:
+      type: string
+      enum: [ready_for_review, awaiting_assessment, in_progress, approved, declined, abandoned]
+
+    ApplicationDecisionSummary:
+      type: object
+      required: [decision, source, via, reviewerEmail, reason, applicantReason, corrected, decidedAt]
+      properties:
+        decision:
+          type: string
+          enum: [approved, declined]
+        source:
+          type: [string, "null"]
+          enum: [human, policy, null]
+        via:
+          type: string
+          enum: [dashboard, api, policy]
+          description: Where the decision was made — the Groucho dashboard, your app through the API, or your automatic decision policy.
+        reviewerEmail:
+          type: [string, "null"]
+        reason:
+          type: [string, "null"]
+        applicantReason:
+          type: [string, "null"]
+        corrected:
+          type: boolean
+        decidedAt:
+          type: [string, "null"]
+          format: date-time
+
+    Application:
+      type: object
+      required: [sessionId, status, queue, reviewStatus, submittedAt, updatedAt, applicant, assessment, decision, latestOutcome]
+      properties:
+        sessionId:
+          type: string
+          description: Your session key.
+        status:
+          type: string
+        queue:
+          $ref: "#/components/schemas/ApplicationQueue"
+        reviewStatus:
+          type: string
+          enum: [not_ready, pending, approved, declined]
+        submittedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        applicant:
+          type: object
+          required: [name, email, audience, artistName, city, age, socialLinks, musicLinks]
+          properties:
+            name: { type: [string, "null"] }
+            email: { type: [string, "null"] }
+            audience: { type: string, enum: [community, artist] }
+            artistName: { type: [string, "null"] }
+            city: { type: [string, "null"] }
+            age: { type: [number, "null"] }
+            socialLinks: { type: array, items: { type: string } }
+            musicLinks: { type: array, items: { type: string } }
+        assessment:
+          type: object
+          required: [suitabilityScore, suitabilityBand, recommendation, confidence]
+          properties:
+            suitabilityScore: { type: [number, "null"] }
+            suitabilityBand: { type: [string, "null"] }
+            recommendation:
+              type: [string, "null"]
+              enum: [recommend, human_review, decline, null]
+            confidence: { type: [number, "null"] }
+        decision:
+          oneOf:
+            - $ref: "#/components/schemas/ApplicationDecisionSummary"
+            - type: "null"
+        latestOutcome:
+          description: The latest outcome you reported.
+          oneOf:
+            - type: object
+              required: [outcome, occurredAt]
+              properties:
+                outcome: { $ref: "#/components/schemas/ApplicationOutcome" }
+                occurredAt: { type: [string, "null"], format: date-time }
+            - type: "null"
+
+    ApplicationList:
+      type: object
+      required: [applications, total, counts, offset, limit]
+      properties:
+        applications:
+          type: array
+          items:
+            $ref: "#/components/schemas/Application"
+        total:
+          type: integer
+        counts:
+          type: object
+          description: Applications in each queue (and `all`) for the same filters.
+          additionalProperties:
+            type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+
+    ApplicationDetail:
+      type: object
+      required: [application, reviewerReport, transcript, decisions, outcomes]
+      properties:
+        application:
+          $ref: "#/components/schemas/Application"
+        reviewerReport:
+          description: Groucho's report for reviewers, once the conversation has finished.
+          oneOf:
+            - $ref: "#/components/schemas/ReviewerReport"
+            - type: "null"
+        transcript:
+          type: array
+          items:
+            type: object
+            required: [role, content, sentAt]
+            properties:
+              role: { type: string, enum: [applicant, groucho] }
+              content: { type: string }
+              sentAt: { type: string, format: date-time }
+        decisions:
+          description: Every decision, oldest first, including corrections.
+          type: array
+          items:
+            $ref: "#/components/schemas/DecisionHistoryEntry"
+        outcomes:
+          type: array
+          items:
+            type: object
+            required: [outcome, occurredAt, note]
+            properties:
+              outcome: { $ref: "#/components/schemas/ApplicationOutcome" }
+              occurredAt: { type: string, format: date-time }
+              note: { type: [string, "null"] }
+
+    DecideApplicationRequest:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          type: string
+          enum: [approved, declined]
+        reason:
+          type: string
+          maxLength: 1200
+          description: Required when declining. An internal note for your team.
+        applicantReason:
+          type: string
+          maxLength: 1200
+          description: A reason you may share with the applicant. Groucho never sends it to them.
+        reviewer:
+          type: object
+          description: The person in your app who made the decision. Shown in the Groucho dashboard and webhooks.
+          properties:
+            email: { type: string, format: email }
+            name: { type: string }
+
+    DecideApplicationResponse:
+      type: object
+      required: [sessionId, reviewStatus, decision]
+      properties:
+        sessionId:
+          type: string
+        reviewStatus:
+          type: string
+          enum: [approved, declined]
+        decision:
+          type: object
+          required: [decision, source, via, reason, decidedAt]
+          properties:
+            decision: { type: string, enum: [approved, declined] }
+            source: { type: string, enum: [human] }
+            via: { type: string, enum: [api] }
+            reason: { type: [string, "null"] }
+            decidedAt: { type: string, format: date-time }
+        accessSecret:
+          type: string
+          format: uuid
+          description: Only for approvals. Pass to `POST /v1/sessions/{sessionId}/access`.
+
+    ApplicationOutcome:
+      type: string
+      enum: [invited, joined, invite_declined, no_response, active, inactive, left, removed]
+
+    DecisionHistoryEntry:
+      type: object
+      required: [id, decision, source, via, reviewerEmail, reviewerName, reason, applicantReason, decidedAt, correction, current]
+      properties:
+        id: { type: string }
+        decision: { type: string, enum: [approved, declined] }
+        source: { type: string, enum: [human, policy] }
+        via: { type: string, enum: [dashboard, api, policy] }
+        reviewerEmail: { type: [string, "null"] }
+        reviewerName: { type: [string, "null"] }
+        reason: { type: [string, "null"] }
+        applicantReason: { type: [string, "null"] }
+        decidedAt: { type: string, format: date-time }
+        correction: { type: boolean, description: Whether this decision corrected an earlier one. }
+        current: { type: boolean, description: Whether this is the decision in force. }
+
+    CorrectApplicationRequest:
+      type: object
+      required: [decision, reason]
+      properties:
+        decision: { type: string, enum: [approved, declined] }
+        reason: { type: string, maxLength: 1200, description: Why the decision is being corrected. }
+        applicantReason: { type: string, maxLength: 1200, description: A reason you may share with the applicant. }
+        expectedDecisionId:
+          type: string
+          description: The decision you are correcting. If it has changed since, you get 409.
+        reviewer:
+          type: object
+          properties:
+            email: { type: string, format: email }
+            name: { type: string }
+
+    CorrectApplicationResponse:
+      type: object
+      required: [sessionId, reviewStatus, decision, replaced]
+      properties:
+        sessionId: { type: string }
+        reviewStatus: { type: string, enum: [approved, declined] }
+        decision:
+          type: object
+          required: [id, decision, source, via, reason, applicantReason, decidedAt]
+          properties:
+            id: { type: string }
+            decision: { type: string, enum: [approved, declined] }
+            source: { type: string, enum: [human] }
+            via: { type: string, enum: [api] }
+            reason: { type: string }
+            applicantReason: { type: [string, "null"] }
+            decidedAt: { type: string, format: date-time }
+        replaced:
+          type: object
+          required: [id, decision]
+          properties:
+            id: { type: string }
+            decision: { type: string, enum: [approved, declined] }
+        accessSecret:
+          type: string
+          format: uuid
+          description: Only when the correction approves.
+
+    ReportOutcomeRequest:
+      type: object
+      required: [outcome]
+      properties:
+        outcome:
+          $ref: "#/components/schemas/ApplicationOutcome"
+        occurredAt:
+          type: string
+          format: date-time
+          description: When it happened. Defaults to now; can't be in the future.
+        note:
+          type: string
+          maxLength: 500
+
+    ReportOutcomeResponse:
+      type: object
+      required: [sessionId, outcome, occurredAt, duplicate]
+      properties:
+        sessionId: { type: string }
+        outcome:
+          $ref: "#/components/schemas/ApplicationOutcome"
+        occurredAt: { type: string, format: date-time }
+        duplicate: { type: boolean }
+        id: { type: string }
+        reportedAt: { type: string, format: date-time }
+
+    SubmitEntryRequest:
+      type: object
+      required: [sessionId, applicant]
+      properties:
+        sessionId: { type: string, minLength: 8, maxLength: 128, description: Your key for this entry. }
+        applicant:
+          $ref: "#/components/schemas/ApplicantIdentity"
+        phone: { type: string, maxLength: 40 }
+        socials:
+          type: array
+          maxItems: 8
+          items: { type: string, maxLength: 300 }
+          description: Profile links or handles. Reviewers open these; Groucho flags accounts used on more than one entry.
+        fields:
+          type: object
+          maxProperties: 20
+          additionalProperties:
+            oneOf: [{ type: string }, { type: number }, { type: boolean }]
+          description: 'Drop-specific answers, e.g. `{ "size": "UK 9", "city": "London" }`. Names use letters, numbers and underscores.'
+
+    SubmitEntryResponse:
+      type: object
+      required: [sessionId, status, duplicate]
+      properties:
+        sessionId: { type: string }
+        status: { type: string, enum: [received] }
+        duplicate: { type: boolean, description: True when this sessionId had already entered. }
+
+    Cohort:
+      type: object
+      required: [id, name, grantsAccess, capacity, members, locked, drawnAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        grantsAccess: { type: boolean, description: Members can use their access secret. }
+        capacity: { type: integer, nullable: true }
+        members: { type: integer }
+        locked: { type: boolean }
+        drawnAt: { type: string, format: date-time, nullable: true }
+
+    CohortList:
+      type: object
+      required: [round, cohorts]
+      properties:
+        round:
+          type: object
+          required: [id, name]
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+            opensAt: { type: string, format: date-time, nullable: true }
+            closesAt: { type: string, format: date-time, nullable: true }
+        cohorts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Cohort"
+
+    AddToCohortRequest:
+      type: object
+      required: [sessionIds]
+      properties:
+        sessionIds:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items: { type: string }
+          description: Your session ids.
+        reason: { type: string, maxLength: 1200 }
+
+    AddToCohortResponse:
+      type: object
+      required: [runId, moved]
+      properties:
+        runId: { type: string, format: uuid }
+        moved: { type: integer, description: People who changed cohort. Anyone already here isn't counted. }
 
     Error:
       type: object

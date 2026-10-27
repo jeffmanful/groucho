@@ -1,5 +1,5 @@
+import { applicationAccess } from "@/lib/application-access"
 import { NextRequest } from "next/server"
-import { applicationDecisionGrantsAccess } from "@/lib/application-decision"
 import { log } from "@/lib/logger"
 import { getOrCreateRequestId } from "@/lib/request-trace"
 import { resolveProjectContext } from "@/lib/project-resolution"
@@ -78,26 +78,19 @@ export async function POST(
     return tracedJson(req, { ok: true })
   }
 
-  const { data: decision, error: decisionError } = await supabase
-    .from("application_decisions")
-    .select("decision, access_secret")
-    .eq("session_id", session.id)
-    .maybeSingle()
+  // With cohorts, only a place in a cohort that grants access counts; see lib/application-access.ts.
+  const access = await applicationAccess({ sessionId: session.id, projectId, secret: body.secret?.trim() })
 
-  if (decisionError) {
-    log.error("v1_access_decision_failed", {
-      requestId,
-      projectId,
-      detail: decisionError.message,
-    })
+  if (access.error) {
+    log.error("v1_access_decision_failed", { requestId, projectId, detail: "decision lookup failed" })
     return tracedJson(req, { error: "Database error" }, { status: 500 })
   }
 
-  if (!decision || decision.decision !== "approved") {
+  if (!access.approved) {
     return tracedJson(req, { error: "Session not eligible" }, { status: 403 })
   }
 
-  if (!applicationDecisionGrantsAccess(decision, body.secret?.trim())) {
+  if (!access.granted) {
     return tracedJson(req, { error: "Invalid or missing secret" }, { status: 400 })
   }
 

@@ -5,6 +5,7 @@ import {
   parseOpeningMessage,
 } from "@/lib/opening-message"
 import { getOrCreateRequestId } from "@/lib/request-trace"
+import { readApplicantSignals, scheduleApplicantSignals } from "@/lib/applicant-signals"
 import { resolveProjectContext } from "@/lib/project-resolution"
 import { startGatekeeperSession } from "@/lib/start-gatekeeper-session"
 import { startOnboardingSession } from "@/lib/start-onboarding-session"
@@ -71,9 +72,14 @@ export async function POST(
     projectSettings: settings,
   }
 
-  if (settings.projectType === "onboarding") {
-    return startOnboardingSession(startInput)
+  const response = settings.projectType === "onboarding"
+    ? await startOnboardingSession(startInput)
+    : await startGatekeeperSession(startInput)
+  if (response.ok) {
+    scheduleApplicantSignals(
+      { projectId: projectResolved.context.projectId, sessionKey: sessionId },
+      readApplicantSignals(req.headers, { viaApiKey: Boolean(projectResolved.context.apiKeyId) }),
+    )
   }
-
-  return startGatekeeperSession(startInput)
+  return response
 }

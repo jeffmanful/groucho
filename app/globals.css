@@ -9,6 +9,14 @@
 }
 
 @font-face {
+  font-family: "Geist Mono";
+  src: url("/fonts/geist/GeistMono-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
   font-family: "Geist Pixel";
   src: url("/fonts/geist/GeistPixel-Square.woff2") format("woff2");
   font-weight: 400;
@@ -58,6 +66,7 @@
 :root {
   --font-sans: "Overused Grotesk", sans-serif;
   --font-geist: "Geist", sans-serif;
+  --font-geist-mono: "Geist Mono", ui-monospace, monospace;
   --font-geist-pixel: "Geist Pixel", monospace;
   --icon-swap-dur: 200ms;
   --icon-swap-blur: 2px;

@@ -3,6 +3,7 @@ import { resolveAdminActor } from "@/lib/admin-actor"
 import { requireOrgAdmin, requireOrgMember, unauthorized } from "@/lib/org-access"
 import { supabase } from "@/lib/supabase"
 import { generateWebhookSigningSecret } from "@/lib/verdict-webhook"
+import { parseWebhookEvents, WEBHOOK_EVENTS } from "@/lib/webhook-events"
 
 async function assertWebhookInProject(
   orgId: string,
@@ -95,10 +96,11 @@ export async function PATCH(
     patch.url = u
   }
   if (body.events !== undefined) {
-    if (!Array.isArray(body.events) || body.events.length === 0) {
-      return NextResponse.json({ error: "events must be a non-empty array" }, { status: 400 })
+    const events = parseWebhookEvents(body.events)
+    if (!events) {
+      return NextResponse.json({ error: `events must list one or more of: ${WEBHOOK_EVENTS.join(", ")}` }, { status: 400 })
     }
-    patch.events = body.events
+    patch.events = events
   }
   if (body.active !== undefined) patch.active = body.active
 

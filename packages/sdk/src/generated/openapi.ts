@@ -94,6 +94,171 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/applications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List applications with Groucho's assessment */
+        get: operations["listApplications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/applications/{sessionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one application with the reviewer report and conversation */
+        get: operations["getApplication"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/applications/{sessionId}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve or decline an application
+         * @description Records the decision as made by the reviewer you name, through your app. The first decision
+         *     wins. A reason is required to decline. Groucho then sends `application.decided` to every
+         *     webhook subscribed to it, and an approval returns the access secret for `POST /v1/sessions/{sessionId}/access`.
+         */
+        post: operations["decideApplication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/applications/{sessionId}/correction": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Correct a decision
+         * @description Replaces the current decision with a new one, with a reason. The old decision stays in the
+         *     history. Groucho sends `application.decision_corrected`; telling the applicant is up to you.
+         *     Approved → declined revokes the access secret; declined → approved returns a new one.
+         */
+        post: operations["correctApplication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/applications/{sessionId}/outcomes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report what happened after the decision
+         * @description Tell Groucho whether the person was invited, joined and took part. Groucho uses this to
+         *     measure whether the people it recommends actually join. Reporting the same outcome with the
+         *     same `occurredAt` again is ignored.
+         */
+        post: operations["reportApplicationOutcome"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit a drop entry
+         * @description Records an entry without a conversation: email, name, phone, social links and the drop's own
+         *     fields (size, city...). Use a conversations key from your server or proxy. Sending the same
+         *     `sessionId` again returns the first entry. Entries are reviewed in Groucho, where duplicates
+         *     across email, phone and social accounts are flagged.
+         */
+        post: operations["submitEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/cohorts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List cohorts
+         * @description The current round's cohorts, such as a ballot pool, guaranteed places and winners. Server only (applications key).
+         */
+        get: operations["listCohorts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/cohorts/{cohortId}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Place people in a cohort
+         * @description Put approved applicants in a cohort, for example the winners of a ballot you ran yourself.
+         *     People already in another cohort this round move here. Each move is sent as
+         *     `application.allocated`. Server only (applications key).
+         */
+        post: operations["addToCohort"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -401,6 +566,264 @@ export interface components {
             } | null;
             extraction: components["schemas"]["ProfileExtraction"];
         };
+        /** @enum {string} */
+        ApplicationQueue: "ready_for_review" | "awaiting_assessment" | "in_progress" | "approved" | "declined" | "abandoned";
+        ApplicationDecisionSummary: {
+            /** @enum {string} */
+            decision: "approved" | "declined";
+            /** @enum {string|null} */
+            source: "human" | "policy" | null;
+            /**
+             * @description Where the decision was made — the Groucho dashboard, your app through the API, or your automatic decision policy.
+             * @enum {string}
+             */
+            via: "dashboard" | "api" | "policy";
+            reviewerEmail: string | null;
+            reason: string | null;
+            applicantReason: string | null;
+            corrected: boolean;
+            /** Format: date-time */
+            decidedAt: string | null;
+        };
+        Application: {
+            /** @description Your session key. */
+            sessionId: string;
+            status: string;
+            queue: components["schemas"]["ApplicationQueue"];
+            /** @enum {string} */
+            reviewStatus: "not_ready" | "pending" | "approved" | "declined";
+            /** Format: date-time */
+            submittedAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            applicant: {
+                name: string | null;
+                email: string | null;
+                /** @enum {string} */
+                audience: "community" | "artist";
+                artistName: string | null;
+                city: string | null;
+                age: number | null;
+                socialLinks: string[];
+                musicLinks: string[];
+            };
+            assessment: {
+                suitabilityScore: number | null;
+                suitabilityBand: string | null;
+                /** @enum {string|null} */
+                recommendation: "recommend" | "human_review" | "decline" | null;
+                confidence: number | null;
+            };
+            decision: components["schemas"]["ApplicationDecisionSummary"] | null;
+            /** @description The latest outcome you reported. */
+            latestOutcome: {
+                outcome: components["schemas"]["ApplicationOutcome"];
+                /** Format: date-time */
+                occurredAt: string | null;
+            } | null;
+        };
+        ApplicationList: {
+            applications: components["schemas"]["Application"][];
+            total: number;
+            /** @description Applications in each queue (and `all`) for the same filters. */
+            counts: {
+                [key: string]: number;
+            };
+            offset: number;
+            limit: number;
+        };
+        ApplicationDetail: {
+            application: components["schemas"]["Application"];
+            /** @description Groucho's report for reviewers, once the conversation has finished. */
+            reviewerReport: components["schemas"]["ReviewerReport"] | null;
+            transcript: {
+                /** @enum {string} */
+                role: "applicant" | "groucho";
+                content: string;
+                /** Format: date-time */
+                sentAt: string;
+            }[];
+            /** @description Every decision, oldest first, including corrections. */
+            decisions: components["schemas"]["DecisionHistoryEntry"][];
+            outcomes: {
+                outcome: components["schemas"]["ApplicationOutcome"];
+                /** Format: date-time */
+                occurredAt: string;
+                note: string | null;
+            }[];
+        };
+        DecideApplicationRequest: {
+            /** @enum {string} */
+            decision: "approved" | "declined";
+            /** @description Required when declining. An internal note for your team. */
+            reason?: string;
+            /** @description A reason you may share with the applicant. Groucho never sends it to them. */
+            applicantReason?: string;
+            /** @description The person in your app who made the decision. Shown in the Groucho dashboard and webhooks. */
+            reviewer?: {
+                /** Format: email */
+                email?: string;
+                name?: string;
+            };
+        };
+        DecideApplicationResponse: {
+            sessionId: string;
+            /** @enum {string} */
+            reviewStatus: "approved" | "declined";
+            decision: {
+                /** @enum {string} */
+                decision: "approved" | "declined";
+                /** @enum {string} */
+                source: "human";
+                /** @enum {string} */
+                via: "api";
+                reason: string | null;
+                /** Format: date-time */
+                decidedAt: string;
+            };
+            /**
+             * Format: uuid
+             * @description Only for approvals. Pass to `POST /v1/sessions/{sessionId}/access`.
+             */
+            accessSecret?: string;
+        };
+        /** @enum {string} */
+        ApplicationOutcome: "invited" | "joined" | "invite_declined" | "no_response" | "active" | "inactive" | "left" | "removed";
+        DecisionHistoryEntry: {
+            id: string;
+            /** @enum {string} */
+            decision: "approved" | "declined";
+            /** @enum {string} */
+            source: "human" | "policy";
+            /** @enum {string} */
+            via: "dashboard" | "api" | "policy";
+            reviewerEmail: string | null;
+            reviewerName: string | null;
+            reason: string | null;
+            applicantReason: string | null;
+            /** Format: date-time */
+            decidedAt: string;
+            /** @description Whether this decision corrected an earlier one. */
+            correction: boolean;
+            /** @description Whether this is the decision in force. */
+            current: boolean;
+        };
+        CorrectApplicationRequest: {
+            /** @enum {string} */
+            decision: "approved" | "declined";
+            /** @description Why the decision is being corrected. */
+            reason: string;
+            /** @description A reason you may share with the applicant. */
+            applicantReason?: string;
+            /** @description The decision you are correcting. If it has changed since, you get 409. */
+            expectedDecisionId?: string;
+            reviewer?: {
+                /** Format: email */
+                email?: string;
+                name?: string;
+            };
+        };
+        CorrectApplicationResponse: {
+            sessionId: string;
+            /** @enum {string} */
+            reviewStatus: "approved" | "declined";
+            decision: {
+                id: string;
+                /** @enum {string} */
+                decision: "approved" | "declined";
+                /** @enum {string} */
+                source: "human";
+                /** @enum {string} */
+                via: "api";
+                reason: string;
+                applicantReason: string | null;
+                /** Format: date-time */
+                decidedAt: string;
+            };
+            replaced: {
+                id: string;
+                /** @enum {string} */
+                decision: "approved" | "declined";
+            };
+            /**
+             * Format: uuid
+             * @description Only when the correction approves.
+             */
+            accessSecret?: string;
+        };
+        ReportOutcomeRequest: {
+            outcome: components["schemas"]["ApplicationOutcome"];
+            /**
+             * Format: date-time
+             * @description When it happened. Defaults to now; can't be in the future.
+             */
+            occurredAt?: string;
+            note?: string;
+        };
+        ReportOutcomeResponse: {
+            sessionId: string;
+            outcome: components["schemas"]["ApplicationOutcome"];
+            /** Format: date-time */
+            occurredAt: string;
+            duplicate: boolean;
+            id?: string;
+            /** Format: date-time */
+            reportedAt?: string;
+        };
+        SubmitEntryRequest: {
+            /** @description Your key for this entry. */
+            sessionId: string;
+            applicant: components["schemas"]["ApplicantIdentity"];
+            phone?: string;
+            /** @description Profile links or handles. Reviewers open these; Groucho flags accounts used on more than one entry. */
+            socials?: string[];
+            /** @description Drop-specific answers, e.g. `{ "size": "UK 9", "city": "London" }`. Names use letters, numbers and underscores. */
+            fields?: {
+                [key: string]: string | number | boolean;
+            };
+        };
+        SubmitEntryResponse: {
+            sessionId: string;
+            /** @enum {string} */
+            status: "received";
+            /** @description True when this sessionId had already entered. */
+            duplicate: boolean;
+        };
+        Cohort: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @description Members can use their access secret. */
+            grantsAccess: boolean;
+            capacity: number | null;
+            members: number;
+            locked: boolean;
+            /** Format: date-time */
+            drawnAt: string | null;
+        };
+        CohortList: {
+            round: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+                /** Format: date-time */
+                opensAt?: string | null;
+                /** Format: date-time */
+                closesAt?: string | null;
+            };
+            cohorts: components["schemas"]["Cohort"][];
+        };
+        AddToCohortRequest: {
+            /** @description Your session ids. */
+            sessionIds: string[];
+            reason?: string;
+        };
+        AddToCohortResponse: {
+            /** Format: uuid */
+            runId: string;
+            /** @description People who changed cohort. Anyone already here isn't counted. */
+            moved: number;
+        };
         Error: {
             error?: string;
         };
@@ -602,6 +1025,367 @@ export interface operations {
             };
             /** @description Rate limited */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listApplications: {
+        parameters: {
+            query?: {
+                queue?: "ready_for_review" | "awaiting_assessment" | "in_progress" | "approved" | "declined" | "abandoned" | "all";
+                sort?: "suitability" | "newest" | "oldest" | "longest_waiting";
+                /** @description Search name, email or artist name. */
+                q?: string;
+                audience?: "community" | "artist" | "all";
+                recommendation?: "recommend" | "human_review" | "decline" | "all";
+                /** @description Submitted on or after this date (YYYY-MM-DD). */
+                from?: string;
+                /** @description Submitted on or before this date (YYYY-MM-DD). */
+                to?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of applications */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationList"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The key is not an applications key */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["sessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The application */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationDetail"];
+                };
+            };
+            /** @description The key is not an applications key */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown application for this project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    decideApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["sessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecideApplicationRequest"];
+            };
+        };
+        responses: {
+            /** @description Decision recorded */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DecideApplicationResponse"];
+                };
+            };
+            /** @description Invalid decision, missing decline reason or invalid reviewer email */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The key is not an applications key */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown application for this project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not finished yet, or a decision has already been recorded */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    correctApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["sessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CorrectApplicationRequest"];
+            };
+        };
+        responses: {
+            /** @description Correction recorded */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectApplicationResponse"];
+                };
+            };
+            /** @description Invalid decision, missing reason or invalid reviewer email */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown application, or nothing decided yet */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The decision changed since `expectedDecisionId` was read */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The correction doesn't change the decision */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reportApplicationOutcome: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["sessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportOutcomeRequest"];
+            };
+        };
+        responses: {
+            /** @description Already reported; ignored */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportOutcomeResponse"];
+                };
+            };
+            /** @description Outcome recorded */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportOutcomeResponse"];
+                };
+            };
+            /** @description Unknown outcome or invalid occurredAt */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The application hasn't been decided yet */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    submitEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmitEntryRequest"];
+            };
+        };
+        responses: {
+            /** @description Already entered with this sessionId; nothing changed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmitEntryResponse"];
+                };
+            };
+            /** @description Entry recorded */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmitEntryResponse"];
+                };
+            };
+            /** @description Invalid email, phone, socials or fields */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Entries are closed or not open yet, or the sessionId belongs to a conversation */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listCohorts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cohorts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CohortList"];
+                };
+            };
+        };
+    };
+    addToCohort: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cohortId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddToCohortRequest"];
+            };
+        };
+        responses: {
+            /** @description People placed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddToCohortResponse"];
+                };
+            };
+            /** @description Unknown cohort, or some sessionIds weren't found (listed in `unknown`) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The cohort is full */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Someone isn't approved */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The cohort is locked */
+            423: {
                 headers: {
                     [name: string]: unknown;
                 };

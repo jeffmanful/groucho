@@ -1,3 +1,4 @@
+import { currentDecisionFor } from "@/lib/current-decision"
 import { NextRequest } from "next/server"
 import { applicationReviewStatus } from "@/lib/application-decision"
 import { applicantIdentityFromRow } from "@/lib/applicant-identity"
@@ -59,11 +60,12 @@ export async function GET(
   const applicant = applicantIdentityFromRow(row)
 
   const { data: applicationDecision } = concluded
-    ? await supabase
-        .from("application_decisions")
-        .select("decision, decision_source, access_secret, suitability_score")
-        .eq("session_id", row.id)
-        .maybeSingle()
+    ? await currentDecisionFor<{
+        decision: string
+        decision_source: string | null
+        access_secret: string | null
+        suitability_score: number | null
+      }>(row.id, "decision, decision_source, access_secret, suitability_score")
     : { data: null }
   const reviewStatus = applicationReviewStatus({
     concluded,

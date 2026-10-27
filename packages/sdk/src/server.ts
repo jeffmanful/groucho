@@ -15,3 +15,6 @@ export function createServerClient(options: CreateServerClientOptions): GrouchoC
 export { createClient } from "./client.js"
 export type { GrouchoClient, GrouchoClientOptions } from "./client.js"
 export { GrouchoApiError } from "./errors.js"
+export { createGrouchoRelay, applicantFromRequest, applicantIpFrom, APPLICANT_PATHS, type GrouchoRelayOptions } from "./relay.js"
+export { APPLICANT_HEADERS, setApplicantHeaders, type ApplicantConnection } from "./applicant.js"
+export type { ApplicantRequestOptions } from "./client.js"

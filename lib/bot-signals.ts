@@ -76,3 +76,12 @@ export function isLikelyAutomatedUserAgent(userAgent: string | null | undefined)
 export function botSignalFromHeaders(headers: Headers): BotSignal {
   return isLikelyAutomatedUserAgent(headers.get("user-agent"))
 }
+
+/**
+ * The bot check for the applicant's own browser. When a client's server relays the request without
+ * forwarding the applicant's details, the user agent we see is the client's server, so we don't judge it.
+ */
+export function botSignalForApplicant(signals: { source: "forwarded" | "direct" | "relay"; userAgent: string | null }): BotSignal {
+  if (signals.source === "relay") return { likelyBot: false }
+  return isLikelyAutomatedUserAgent(signals.userAgent)
+}

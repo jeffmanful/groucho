@@ -15,6 +15,6 @@ export async function GET(req: NextRequest) {
   }
 
   const completions = await processPendingSessionCompletionJobs(10)
-  const webhookDeliveries = await processPendingWebhookDeliveries(50)
+  const webhookDeliveries = await processPendingWebhookDeliveries(200)
   return NextResponse.json({ completions, webhookDeliveries })
 }

@@ -29,6 +29,22 @@ The Groucho API authenticates with a `Bearer gk_*` project API key. **That key m
 
 ### 1. Host proxy (recommended for browser apps)
 
+Use `createGrouchoRelay` for the route your browser calls. It attaches your key on the server and
+forwards the applicant's IP, user agent and language, so Groucho can see entries that share a
+connection:
+
+```ts
+// app/api/groucho/[...path]/route.ts
+import { createGrouchoRelay } from "@groucho/sdk/server"
+
+const relay = createGrouchoRelay({ baseUrl: process.env.GROUCHO_API_BASE_URL!, apiKey: process.env.GROUCHO_API_KEY! })
+
+export async function GET(req: Request, ctx: { params: Promise<{ path: string[] }> }) {
+  return relay(req, (await ctx.params).path)
+}
+export const POST = GET
+```
+
 Mount a proxy route on your own origin that forwards to Groucho with the secret key attached server-side. The browser only talks to your own domain.
 
 ```ts
@@ -57,6 +73,9 @@ export const GET = (req: NextRequest, ctx: { params: Promise<{ path: string[] }>
 export const POST = (req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) =>
   ctx.params.then(({ path }) => proxy(req, path))
 ```
+
+Give the proxy a **conversations** key. It forwards every path the browser asks for, so it must
+never hold an applications key (see [Reviewing applications](#reviewing-applications-from-your-own-app)).
 
 Then in the browser:
 
@@ -102,6 +121,69 @@ if (res.status !== "active") {
   // res.profile carries the extracted profile on terminal turns
 }
 ```
+
+### Reviewing applications from your own app
+
+The Groucho dashboard is always where access is controlled, but you can also build review screens
+into your own product. Create an **Applications** key for the project in Groucho (Keys & webhooks),
+keep it on your server, and use it with `createServerClient`:
+
+```ts
+import { createServerClient } from "@groucho/sdk/server"
+
+const reviews = createServerClient({
+  baseUrl: "https://groucho.example.com",
+  apiKey: process.env.GROUCHO_APPLICATIONS_KEY!, // applications key — server only
+})
+
+const { applications, counts } = await reviews.listApplications({ queue: "ready_for_review", sort: "suitability" })
+const { application, reviewerReport, transcript } = await reviews.getApplication(applications[0].sessionId)
+
+const result = await reviews.decideApplication(application.sessionId, {
+  decision: "approved", // or "declined" with a reason
+  reviewer: { email: "maya@colors.example", name: "Maya" }, // who decided, as your app knows them
+})
+// result.accessSecret is set for approvals.
+```
+
+- Check that the signed-in user may review applications before calling these — Groucho trusts the
+  reviewer your server names.
+- The first decision wins: a second one, from your app or the dashboard, gets `409`.
+  Use `correctApplication` to change a decision; the old one stays in the history.
+- Call `reportOutcome` when someone is invited, joins or leaves, so Groucho can measure
+  whether its recommendations hold up.
+- Every decision — from the dashboard, your app or your automatic policy — is sent to webhooks
+  subscribed to `application.decided`, so your app stays in sync whoever decides.
+- A conversations key gets `403` from these methods.
+
+### Drops: entries and cohorts
+
+For a drop, collect entries with a form instead of a conversation. `submitEntry` works with a
+conversations key, so it can sit behind your host proxy like the chat:
+
+```ts
+await client.submitEntry({
+  sessionId: crypto.randomUUID(), // your key for this entry; resending it is safe
+  applicant: { email: "sam@example.com", name: "Sam" },
+  phone: "+44 7700 900123",
+  socials: ["https://instagram.com/sam"],
+  fields: { size: "UK 9", city: "London" },
+})
+```
+
+Your team reviews entries in Groucho, where entries sharing an email, phone number or social
+account are flagged, then places approved people in cohorts: a ballot pool, guaranteed places,
+winners. Groucho can run the draw, or you can export the pool, run it yourself and report the
+winners back with an applications key:
+
+```ts
+const { cohorts } = await reviews.listCohorts()
+const winners = cohorts.find((c) => c.name === "Winners")!
+await reviews.addToCohort(winners.id, { sessionIds: drawnSessionIds, reason: "Ballot run in our CRM" })
+```
+
+Every move is sent as `application.allocated`. When a project has cohorts, only members of a
+cohort that grants access can use their access secret.
 
 ## React API
 
@@ -234,7 +316,8 @@ Skip the import and write your own CSS if you want full control — every primit
 - ✅ Keep `gk_*` API keys on the server.
 - ✅ Use `proxyBasePath` in the browser; use `apiKey` only in `createServerClient`.
 - ✅ Rotate the key when a developer leaves — admin UI has a one-click rotate.
-- ✅ Verify webhook signatures with the HMAC secret if you also process `session.completed`.
+- ✅ Give your browser-facing proxy a conversations key; keep applications keys for server code only.
+- ✅ Verify webhook signatures (`X-Groucho-Signature`) for `session.completed` and `application.decided`.
 - ✅ Grant access only from `reviewStatus === "approved"` and the matching approval secret; never infer it from an outcome or score.
 
 ## Versioning

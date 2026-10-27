@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### Added
+
+- `createGrouchoRelay` (in `@groucho/sdk/server`): a relay for your browser-facing route that keeps the
+  key on your server, only reaches applicant-facing endpoints, never forwards cookies, and passes on the
+  applicant's IP, user agent and language. `applicantFromRequest` and an `applicant` option on
+  `sendMessage`, `startSession` and `submitEntry` do the same for calls you make from your server.
+- `listApplications`, `getApplication` and `decideApplication` for reviewing applications from
+  your own app. They need an applications-scoped API key and must run on your server.
+- `correctApplication` to correct a decision (the old one stays in the history) and
+  `reportOutcome` to tell Groucho whether approved people were invited, joined and took part.
+- `submitEntry` for drop entries without a conversation (email, phone, socials, drop fields).
+- `listCohorts` and `addToCohort` for reading cohorts and reporting the winners of a ballot you
+  ran yourself. Types: `Cohort`, `CohortList`, `SubmitEntryRequest`, `SubmitEntryResponse`,
+  `AddToCohortRequest`, `AddToCohortResponse`.
+- `decideApplication` accepts `applicantReason`, a reason you may share with the applicant.
+- `getApplication` returns the decision history and reported outcomes.
+- Types: `Application`, `ApplicationList`, `ApplicationDetail`, `ApplicationQueue`,
+  `ApplicationDecisionSummary`, `DecideApplicationRequest`, `DecideApplicationResponse`,
+  `ListApplicationsQuery`.
+
 ### Changed
 
 - Generated response types now include client decision state, final suitability

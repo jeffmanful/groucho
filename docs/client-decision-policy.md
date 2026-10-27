@@ -54,9 +54,14 @@ review band.
 2. The client thresholds classify the score into a suitability band.
 3. If the relevant automatic switch is enabled, Groucho records an immutable
    policy decision. Otherwise the application remains pending.
-4. A reviewer may approve or decline any pending application in the admin UI.
+4. A reviewer may approve or decline any pending application in the admin UI, or
+   in the client's own app through the applications API.
 5. The first recorded decision wins. A policy retry cannot overwrite a human
    decision, and a later human request cannot replace an existing policy decision.
+6. A decision can only change through a **correction**: a new human decision, with a
+   reason, that supersedes the current one. Corrections come from the client (its
+   owners and admins in the dashboard, or its app through the API), never from
+   Groucho staff. The replaced decision stays in the history.
 
 `reviewStatus` is the authoritative application-decision state:
 
@@ -70,14 +75,19 @@ conversation/model outcome. They are not access decisions.
 
 ## Audit record
 
-Every final decision is stored in `application_decisions` with one immutable row
-per session.
+Every decision is stored in `application_decisions`. Rows are append-only: the only
+change ever made to a row is marking it `superseded_by` a correction, enforced by a
+trigger. Each session has exactly one current decision (not superseded), and the
+`correct_application_decision` database function makes a correction atomically after
+checking the decision the reviewer saw is still current.
 
 Human decisions use:
 
 - `decision_source = "human"`;
-- `reviewer_kind = "platform"` or `"member"`;
-- a reviewer identity and optional reason.
+- `reviewer_kind = "platform"` or `"member"` for the Groucho dashboard, or `"api"`
+  for the client's own app;
+- a reviewer identity and optional reason. API decisions store the reviewer email and
+  name the client supplied, plus the `api_key_id` of the applications key used.
 
 Automatic decisions use:
 
@@ -102,14 +112,17 @@ Terminal message responses and `GET /v1/sessions/{sessionId}` can return:
   applicant flow.
 
 Human approvals return their access secret through the authenticated admin
-decision endpoint. Do not infer approval from `status`, `outcome`, a reviewer
+decision endpoint, or through `POST /v1/applications/{sessionId}/decision` when the
+client's app records the decision with an applications-scoped key. Every decision,
+from any source, is also sent to webhooks subscribed to `application.decided`. Do not infer approval from `status`, `outcome`, a reviewer
 recommendation, or a score alone.
 
 ## Admin behavior
 
 The application list is sorted by suitability score, highest first, with sessions
 that do not yet have a stored score last. Operators see the score band, current
-review status, and whether an existing decision came from a person or the policy.
+review status, and whether an existing decision came from a reviewer in the
+dashboard, the client's own app, or the policy.
 
 Historical sessions are not backfilled by the schema migration. They may show no
 suitability score until a separate backfill is run.
@@ -124,3 +137,9 @@ policy audit fields, constraints, and the project/suitability sorting index.
 The tables remain server-controlled and protected by RLS. If a Supabase project's
 Data API settings do not expose newly created tables automatically, verify the
 server-role grants separately; grants and RLS are distinct controls.
+
+Decisions from a client's own app and `application.decided` webhooks need
+[`20261027120000_application_decision_api.sql`](../supabase/migrations/20261027120000_application_decision_api.sql).
+It adds API key scopes (existing keys stay conversations-only), the `api` reviewer kind,
+and decision deliveries on `webhook_deliveries`. Dashboard and policy decisions keep
+working before it is applied; their webhooks are queued once it is.

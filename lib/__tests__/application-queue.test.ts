@@ -15,6 +15,7 @@ import {
 
 class FakeQuery {
   calls: Array<[string, ...unknown[]]> = []
+  is(column: string, value: unknown) { this.calls.push(["is", column, value]); return this }
   eq(column: string, value: unknown) { this.calls.push(["eq", column, value]); return this }
   gte(column: string, value: unknown) { this.calls.push(["gte", column, value]); return this }
   lte(column: string, value: unknown) { this.calls.push(["lte", column, value]); return this }
@@ -23,7 +24,7 @@ class FakeQuery {
 }
 
 const row: QueueRow = {
-  id: "app-1", session_id: "client-1", status: "completed", created_at: "2026-10-20T10:00:00Z",
+  id: "app-1", project_id: "project-1", session_id: "client-1", status: "completed", created_at: "2026-10-20T10:00:00Z",
   updated_at: "2026-10-20T10:06:00Z", applicant_email: "ada@example.test", applicant_name: "Ada",
   applicant_details: { city: "London", age: 27, artistName: "ADA", socialLinks: [], musicLinks: [] },
   application_audience: "artist", suitability_score: 0.834, decision: null, decision_source: null,
@@ -91,8 +92,10 @@ describe("application review queue", () => {
       assessment: { suitabilityScore: 0.834, recommendation: "recommend", confidence: 0.78, answerCount: 4 },
       decision: null,
     })
-    expect(applicationFromRow({ ...row, decision: "approved", decision_source: "human", reviewer_email: "r@example.test", decided_at: "2026-10-21T09:00:00Z" }).decision)
-      .toEqual({ decision: "approved", source: "human", reviewer: "r@example.test", reason: null, decidedAt: "2026-10-21T09:00:00Z" })
+    expect(applicationFromRow({ ...row, decision: "approved", decision_source: "human", reviewer_kind: "member", reviewer_email: "r@example.test", decided_at: "2026-10-21T09:00:00Z" }).decision)
+      .toEqual({ decision: "approved", source: "human", via: "dashboard", reviewer: "r@example.test", reason: null, decidedAt: "2026-10-21T09:00:00Z", id: null, corrected: false, applicantReason: null })
+    expect(applicationFromRow({ ...row, decision: "declined", decision_source: "human", reviewer_kind: "api", decided_at: "2026-10-21T09:00:00Z" }).decision?.via).toBe("api")
+    expect(applicationFromRow({ ...row, decision: "declined", decision_source: "policy", reviewer_kind: "policy", decided_at: "2026-10-21T09:00:00Z" }).decision?.via).toBe("policy")
   })
 
   it("exports quoted CSV and neutralises spreadsheet formulas", () => {

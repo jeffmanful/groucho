@@ -1,35 +1,10 @@
-import { randomUUID } from "crypto"
 import { NextRequest, NextResponse } from "next/server"
-import {
-  applicationDecisionActor,
-  parseHumanApplicationDecision,
-} from "@/lib/application-decision"
+import { parseHumanApplicationDecision } from "@/lib/application-decision"
+import { recordHumanApplicationDecision } from "@/lib/application-decision-record"
 import { resolveAdminActor } from "@/lib/admin-actor"
 import { requireOrgAdmin, unauthorized } from "@/lib/org-access"
-import { isConcludedSessionStatus } from "@/lib/session-status"
-import { supabase } from "@/lib/supabase"
 
-const MAX_REASON_LENGTH = 1200
-
-function advisoryRecommendationFromPayload(
-  payload: unknown,
-): "recommend" | "human_review" | "decline" | null {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    return null
-  }
-  const report = (payload as Record<string, unknown>).reviewer_report
-  if (!report || typeof report !== "object" || Array.isArray(report)) {
-    return null
-  }
-  const recommendation = (report as Record<string, unknown>)
-    .advisory_recommendation
-  return recommendation === "recommend" ||
-    recommendation === "human_review" ||
-    recommendation === "decline"
-    ? recommendation
-    : null
-}
-
+/** Approve or decline a finished application from the dashboard. */
 export async function POST(
   req: NextRequest,
   {
@@ -45,7 +20,7 @@ export async function POST(
   const deny = await requireOrgAdmin(actor, orgId)
   if (deny) return deny
 
-  let body: { decision?: unknown; reason?: unknown }
+  let body: { decision?: unknown; reason?: unknown; applicantReason?: unknown }
   try {
     body = await req.json()
   } catch {
@@ -60,108 +35,28 @@ export async function POST(
     )
   }
 
-  const reason =
-    typeof body.reason === "string"
-      ? body.reason.trim().slice(0, MAX_REASON_LENGTH)
-      : ""
-  if (decision === "declined" && !reason) {
+  const result = await recordHumanApplicationDecision({
+    organisationId: orgId,
+    projectId,
+    sessionId,
+    decision,
+    reason: typeof body.reason === "string" ? body.reason : "",
+    applicantReason: typeof body.applicantReason === "string" ? body.applicantReason : null,
+    reviewer:
+      actor.kind === "platform"
+        ? { kind: "platform", email: actor.email }
+        : { kind: "member", userId: actor.userId, email: actor.email },
+  })
+  if (!result.ok) {
     return NextResponse.json(
-      { error: "A reason is required when declining an application" },
-      { status: 400 },
+      { error: result.error, ...(result.existing ? { decision: result.existing } : {}) },
+      { status: result.status },
     )
-  }
-
-  const { data: session, error: sessionError } = await supabase
-    .from("sessions")
-    .select("id, status")
-    .eq("id", sessionId)
-    .eq("project_id", projectId)
-    .eq("organisation_id", orgId)
-    .maybeSingle()
-
-  if (sessionError || !session) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 })
-  }
-  // Finished applications from either engine can be decided; the newer COLORS engine ends
-  // conversations as `completed`. Active and abandoned sessions cannot.
-  if (!isConcludedSessionStatus(session.status) || session.status === "abandoned") {
-    return NextResponse.json(
-      { error: "Only completed applications can be reviewed" },
-      { status: 409 },
-    )
-  }
-
-  const { data: existing, error: existingError } = await supabase
-    .from("application_decisions")
-    .select("id, decision, created_at")
-    .eq("session_id", sessionId)
-    .maybeSingle()
-
-  if (existingError) {
-    console.error("application decision lookup:", existingError)
-    return NextResponse.json({ error: "Database error" }, { status: 500 })
-  }
-  if (existing) {
-    return NextResponse.json(
-      { error: "A human decision has already been recorded", decision: existing },
-      { status: 409 },
-    )
-  }
-
-  const { data: verdict } = await supabase
-    .from("verdicts")
-    .select("payload")
-    .eq("session_id", sessionId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  let advisoryRecommendation = advisoryRecommendationFromPayload(verdict?.payload)
-  if (!advisoryRecommendation) {
-    // Demo and not-yet-delivered applications keep their report on the closing message.
-    const { data: closing } = await supabase
-      .from("messages")
-      .select("metadata")
-      .eq("session_id", sessionId)
-      .eq("role", "assistant")
-      .order("sent_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    advisoryRecommendation = advisoryRecommendationFromPayload(closing?.metadata)
-  }
-  const accessSecret = decision === "approved" ? randomUUID() : null
-
-  const { data: recorded, error: insertError } = await supabase
-    .from("application_decisions")
-    .insert({
-      organisation_id: orgId,
-      project_id: projectId,
-      session_id: sessionId,
-      decision,
-      decision_source: "human",
-      advisory_recommendation: advisoryRecommendation,
-      ...applicationDecisionActor(actor),
-      reason: reason || null,
-      access_secret: accessSecret,
-    })
-    .select(
-      "id, decision, decision_source, advisory_recommendation, reviewer_kind, reason, created_at",
-    )
-    .single()
-
-  if (insertError || !recorded) {
-    if (insertError?.code === "23505") {
-      return NextResponse.json(
-        { error: "A human decision has already been recorded" },
-        { status: 409 },
-      )
-    }
-    console.error("application decision insert:", insertError)
-    return NextResponse.json({ error: "Database error" }, { status: 500 })
   }
 
   return NextResponse.json({
-    decision: recorded,
+    decision: result.decision,
     reviewStatus: decision,
-    ...(accessSecret ? { accessSecret } : {}),
+    ...(result.accessSecret ? { accessSecret: result.accessSecret } : {}),
   })
 }

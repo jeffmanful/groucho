@@ -5,7 +5,6 @@ import type { RefObject } from "react"
 import { Download, RefreshCw, X } from "lucide-react"
 import { Badge, type BadgeTone } from "@/components/arc/badge/badge"
 import { Button } from "@/components/arc/button/button"
-import { MetricCard } from "@/components/arc/metric-card/metric-card"
 import { SearchField } from "@/components/arc/search-field/search-field"
 import { ReviewerReportView } from "@/components/admin/ReviewerReportView"
 import {
@@ -71,7 +70,13 @@ function download(filename: string, csv: string) {
   URL.revokeObjectURL(url)
 }
 
-export function ApplicationsWorkspace() {
+function decisionAttribution(decision: NonNullable<ApplicationItem["decision"]>): string {
+  if (decision.source === "policy" || decision.via === "policy") return "Automatically, by your decision policy"
+  if (decision.via === "api") return decision.reviewer ? `By ${decision.reviewer} in your app` : "In your app"
+  return `By ${decision.reviewer ?? "a reviewer"}`
+}
+
+export function ApplicationsWorkspace({ organisationId }: { organisationId?: string } = {}) {
   const [projects, setProjects] = useState<ProjectChoice[]>([DEMO_PROJECT])
   const [projectId, setProjectId] = useState<string>("")
   const [filters, setFilters] = useState<ApplicationFilters>(DEFAULT_FILTERS)
@@ -108,11 +113,14 @@ export function ApplicationsWorkspace() {
       const response = await fetch("/api/admin/overview").catch(() => null)
       const payload = response?.ok ? await response.json() as OverviewResponse : {}
       if (cancelled) return
-      const real = (payload.organisations ?? []).flatMap((organisation) =>
+      const real = (payload.organisations ?? [])
+        .filter((organisation) => !organisationId || organisation.id === organisationId)
+        .flatMap((organisation) =>
         (organisation.projects ?? [])
           .filter((candidate) => (candidate.projectType ?? "gatekeeper") === "gatekeeper")
           .map((candidate) => ({ id: candidate.id, organisationId: candidate.organisationId || organisation.id, name: candidate.name, organisationName: organisation.name, canDecide: organisation.canCreateProject === true })))
-      const all = [...real, DEMO_PROJECT]
+      // Inside an organisation only its projects are offered; the sample project lives with the demos.
+      const all = organisationId ? real : [...real, DEMO_PROJECT]
       setProjects(all)
       const requested = new URLSearchParams(window.location.search).get("project")
       let remembered: string | null = null
@@ -121,7 +129,7 @@ export function ApplicationsWorkspace() {
       setProjectId(initial?.id ?? "")
     })()
     return () => { cancelled = true }
-  }, [])
+  }, [organisationId])
 
   function changeSearch(value: string) {
     setSearchDraft(value)
@@ -223,7 +231,7 @@ export function ApplicationsWorkspace() {
       setOpened({
         ...selected,
         queue: pendingDecision,
-        decision: { decision: pendingDecision, source: "human", reviewer: "You", reason: reason.trim() || null, decidedAt: new Date().toISOString() },
+        decision: { decision: pendingDecision, source: "human", via: "dashboard", reviewer: "You", reason: reason.trim() || null, decidedAt: new Date().toISOString() },
       })
       setPendingDecision(null)
       setReason("")
@@ -272,7 +280,7 @@ export function ApplicationsWorkspace() {
             <select value={projectId} onChange={(event) => chooseProject(event.target.value)}>
               {projects.map((candidate) => (
                 <option key={candidate.id} value={candidate.id}>
-                  {candidate.demo ? candidate.name : `${candidate.organisationName} / ${candidate.name}`}
+                  {candidate.demo || organisationId ? candidate.name : `${candidate.organisationName} / ${candidate.name}`}
                 </option>
               ))}
             </select>
@@ -293,10 +301,22 @@ export function ApplicationsWorkspace() {
       ) : null}
 
       <section className={styles.metrics} aria-label="Review workload">
-        <MetricCard label="Awaiting review" value={metrics?.awaitingReview ?? 0} context="Assessed and waiting for a decision" />
-        <MetricCard label="Oldest waiting" value={daysSince(metrics?.oldestPendingSince ?? null)} suffix={"\u00a0days"} context={metrics?.oldestPendingSince ? `Since ${formatDate(metrics.oldestPendingSince)}` : "Nothing waiting"} />
-        <MetricCard label="Decided this week" value={metrics?.decidedLast7Days ?? 0} context="Approvals and declines, last 7 days" />
-        <MetricCard label="Time to decision" value={metrics?.medianHoursToDecision ?? 0} suffix={"\u00a0h"} context={metrics?.medianHoursToDecision === null || !metrics ? "No decisions yet" : "Median, most recent 200 decisions"} />
+        <div className={styles.metric}>
+          <span>Awaiting review</span>
+          <strong className={metrics?.awaitingReview ? styles.metricAttention : undefined}>{metrics?.awaitingReview ?? 0}</strong>
+        </div>
+        <div className={styles.metric}>
+          <span>Oldest waiting</span>
+          <strong>{metrics?.oldestPendingSince ? `${daysSince(metrics.oldestPendingSince)}\u00a0days` : "–"}</strong>
+        </div>
+        <div className={styles.metric}>
+          <span>Decided, 7 days</span>
+          <strong>{metrics?.decidedLast7Days ?? 0}</strong>
+        </div>
+        <div className={styles.metric}>
+          <span>Median time to decision</span>
+          <strong>{metrics?.medianHoursToDecision === null || metrics?.medianHoursToDecision === undefined ? "–" : `${metrics.medianHoursToDecision}\u00a0h`}</strong>
+        </div>
       </section>
 
       <nav className={styles.queues} aria-label="Review queues">
@@ -453,7 +473,7 @@ export function ApplicationsWorkspace() {
                       {selected.decision.decision === "approved" ? "Approved" : "Declined"}
                     </Badge>
                     <p>
-                      {selected.decision.source === "policy" ? "Automatically, by your decision policy" : `By ${selected.decision.reviewer ?? "a reviewer"}`}
+                      {decisionAttribution(selected.decision)}
                       {" · "}{formatDateTime(selected.decision.decidedAt)}
                     </p>
                     {selected.decision.reason ? <blockquote>{selected.decision.reason}</blockquote> : null}

@@ -1,5 +1,5 @@
-import AdminDashboard from "@/components/admin/AdminDashboard"
+import { OrganisationsHome } from "@/components/admin/dashboard/OrganisationsHome"
 
-export default function AdminPage() {
-  return <AdminDashboard />
+export default function AdminHomePage() {
+  return <OrganisationsHome />
 }

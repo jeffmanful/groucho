@@ -9,6 +9,9 @@ import {
   type Profile,
 } from "@/lib/profile-extraction"
 import { log } from "@/lib/logger"
+import { buildDecisionPayload } from "@/lib/decision-payload"
+import { buildAllocationPayload, buildCohortRunPayload } from "@/lib/allocation-payload"
+import { ALLOCATION_EVENT, isCohortEvent, isDecisionEvent } from "@/lib/webhook-events"
 import type { ReviewerReport } from "@/lib/reviewer-report"
 import type { MediaChoiceAnswer } from "@/lib/gatekeeper-interaction-spec"
 
@@ -308,12 +311,45 @@ function signBody(secret: string, rawBody: string): string {
   return createHmac("sha256", secret).update(rawBody).digest("hex")
 }
 
+const DELIVERY_COLUMNS = "id, attempt_count, max_attempts, webhook_id, verdict_id, status, event, decision_id, move_id, run_id"
+const DECISION_DELIVERY_COLUMNS = "id, attempt_count, max_attempts, webhook_id, verdict_id, status, event, decision_id"
+const LEGACY_DELIVERY_COLUMNS = "id, attempt_count, max_attempts, webhook_id, verdict_id, status"
+
 export async function tryDeliverWebhook(deliveryId: string): Promise<void> {
-  const { data: row, error } = await supabase
+  let result = await supabase
     .from("webhook_deliveries")
-    .select("id, attempt_count, max_attempts, webhook_id, verdict_id, status")
+    .select(DELIVERY_COLUMNS)
     .eq("id", deliveryId)
     .maybeSingle()
+  // Older databases lack the allocation columns, or the event column altogether (every delivery is
+  // then session.completed).
+  if (result.error?.code === "42703") {
+    result = await supabase
+      .from("webhook_deliveries")
+      .select(DECISION_DELIVERY_COLUMNS)
+      .eq("id", deliveryId)
+      .maybeSingle()
+  }
+  if (result.error?.code === "42703") {
+    result = await supabase
+      .from("webhook_deliveries")
+      .select(LEGACY_DELIVERY_COLUMNS)
+      .eq("id", deliveryId)
+      .maybeSingle()
+  }
+  const { data, error } = result
+  const row = data as {
+    id: string
+    attempt_count: number
+    max_attempts: number
+    webhook_id: string
+    verdict_id: string | null
+    status: string
+    event?: string | null
+    decision_id?: string | null
+    move_id?: string | null
+    run_id?: string | null
+  } | null
 
   if (error || !row) {
     console.error("webhook_deliveries fetch:", error)
@@ -328,29 +364,41 @@ export async function tryDeliverWebhook(deliveryId: string): Promise<void> {
     .eq("id", row.webhook_id as string)
     .maybeSingle()
 
-  const { data: verdictRow, error: vErr } = await supabase
-    .from("verdicts")
-    .select("payload")
-    .eq("id", row.verdict_id as string)
-    .maybeSingle()
+  const event =
+    isDecisionEvent(row.event) || isCohortEvent(row.event) || row.event === ALLOCATION_EVENT ? row.event : "session.completed"
+  let payload: unknown = null
+  let pErr: unknown = null
+  if (event === ALLOCATION_EVENT) {
+    payload = row.move_id ? await buildAllocationPayload(row.move_id) : null
+  } else if (isCohortEvent(event)) {
+    payload = row.run_id ? await buildCohortRunPayload(row.run_id, event) : null
+  } else if (isDecisionEvent(event)) {
+    payload = row.decision_id ? await buildDecisionPayload(row.decision_id, event) : null
+  } else {
+    const { data: verdictRow, error: vErr } = await supabase
+      .from("verdicts")
+      .select("payload")
+      .eq("id", row.verdict_id as string)
+      .maybeSingle()
+    payload = verdictRow?.payload ?? null
+    pErr = vErr
+  }
 
-  if (wErr || vErr || !wh || !verdictRow) {
-    console.error("webhook/verdict fetch:", wErr ?? vErr)
+  if (wErr || pErr || !wh || !payload) {
+    console.error("webhook/payload fetch:", wErr ?? pErr ?? "missing payload")
     return
   }
 
   const attempt = (row.attempt_count as number) + 1
   const max = (row.max_attempts as number) ?? 8
-  const verdictPayload = verdictRow.payload as VerdictPayload
-
-  const rawBody = JSON.stringify(verdictPayload)
+  const rawBody = JSON.stringify(payload)
 
   try {
     const res = await fetch(wh.url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Groucho-Event": "session.completed",
+        "X-Groucho-Event": event,
         "X-Groucho-Delivery-Id": deliveryId,
         "X-Groucho-Signature": `sha256=${signBody(wh.signing_secret, rawBody)}`,
       },
@@ -421,12 +469,12 @@ export async function processPendingWebhookDeliveries(limit = 25): Promise<numbe
     .order("created_at", { ascending: true })
     .limit(limit)
 
-  let n = 0
-  for (const r of rows ?? []) {
-    await tryDeliverWebhook(r.id as string)
-    n += 1
+  // Ten at a time, so a large draw or bulk decision drains quickly without flooding the receiver.
+  const ids = (rows ?? []).map((r) => r.id as string)
+  for (let i = 0; i < ids.length; i += 10) {
+    await Promise.all(ids.slice(i, i + 10).map((id) => tryDeliverWebhook(id)))
   }
-  return n
+  return ids.length
 }
 
 export function generateWebhookSigningSecret(): string {

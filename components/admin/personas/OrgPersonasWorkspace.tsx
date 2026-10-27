@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import Link from "next/link"
 import { Badge } from "@/components/arc/badge/badge"
 import { Button } from "@/components/arc/button/button"
 import styles from "./org-personas.module.css"
@@ -216,7 +215,6 @@ export function OrgPersonasWorkspace({ orgId }: { orgId: string }) {
             Your own personas, and the Groucho personas you can use as they are or clone to change.
           </p>
         </div>
-        <Link className={styles.back} href={`/admin/organisations/${orgId}`}>Back to organisation</Link>
       </header>
 
       {notice ? (

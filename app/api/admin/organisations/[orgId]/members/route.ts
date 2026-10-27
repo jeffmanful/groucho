@@ -44,7 +44,7 @@ export async function GET(
       } catch {
         /* ignore */
       }
-      return { ...m, email }
+      return { ...m, email, is_you: actor.kind === "member" && actor.userId === m.user_id }
     }),
   )
 

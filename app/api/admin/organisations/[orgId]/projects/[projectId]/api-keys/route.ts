@@ -6,6 +6,7 @@ import {
 } from "@/lib/api-keys"
 import { resolveAdminActor } from "@/lib/admin-actor"
 import { requireOrgAdmin, requireOrgMember, unauthorized } from "@/lib/org-access"
+import { parseApiKeyScopes } from "@/lib/api-key-scopes"
 import { supabase } from "@/lib/supabase"
 
 async function assertProjectInOrg(
@@ -42,7 +43,7 @@ export async function GET(
 
   const { data, error } = await supabase
     .from("api_keys")
-    .select("id, key_prefix, label, last_used_at, created_at, revoked_at")
+    .select("*")
     .eq("project_id", projectId)
     .order("created_at", { ascending: false })
 
@@ -51,7 +52,18 @@ export async function GET(
     return NextResponse.json({ error: "Database error" }, { status: 500 })
   }
 
-  return NextResponse.json(data ?? [])
+  // Never return the key hash. Keys from before scopes existed can only run conversations.
+  return NextResponse.json(
+    (data ?? []).map((row) => ({
+      id: row.id,
+      key_prefix: row.key_prefix,
+      label: row.label,
+      last_used_at: row.last_used_at,
+      created_at: row.created_at,
+      revoked_at: row.revoked_at,
+      scopes: Array.isArray(row.scopes) ? row.scopes : ["conversations"],
+    })),
+  )
 }
 
 export async function POST(
@@ -71,7 +83,7 @@ export async function POST(
     return NextResponse.json({ error: "Not found" }, { status: check.status })
   }
 
-  let body: { label?: string }
+  let body: { label?: string; scopes?: unknown }
   try {
     body = await req.json()
   } catch {
@@ -79,6 +91,13 @@ export async function POST(
   }
 
   const label = body.label?.trim() || null
+  const scopes = parseApiKeyScopes(body.scopes)
+  if (!scopes) {
+    return NextResponse.json(
+      { error: "scopes must be [\"conversations\"] or [\"applications\"]" },
+      { status: 400 },
+    )
+  }
   const plaintext = generateGatekeeperApiKey()
   const key_hash = hashApiKeySecret(plaintext)
   const key_prefix = apiKeyPrefix(plaintext)
@@ -91,11 +110,16 @@ export async function POST(
       key_hash,
       key_prefix,
       label,
+      // Older databases have no scopes column; a conversations key is what every key was before.
+      ...(scopes.includes("applications") ? { scopes } : {}),
     })
     .select("id, key_prefix, label, created_at")
     .single()
 
   if (error) {
+    if (error.code === "PGRST204" || error.code === "42703") {
+      return NextResponse.json({ error: "Applications keys need the latest database update." }, { status: 409 })
+    }
     console.error("api_keys insert:", error)
     return NextResponse.json({ error: "Database error" }, { status: 500 })
   }
@@ -103,6 +127,7 @@ export async function POST(
   return NextResponse.json(
     {
       ...data,
+      scopes,
       /** Shown once; store server-side or hand to integrator — never logged again. */
       secret: plaintext,
     },

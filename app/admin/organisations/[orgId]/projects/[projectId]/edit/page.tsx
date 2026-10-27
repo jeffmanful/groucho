@@ -222,13 +222,6 @@ export default function EditProjectPage() {
     form.acceptanceThreshold,
   ])
 
-  const eventToggle = (id: string) => {
-    patchForm({
-      webhookEvents: form.webhookEvents.includes(id)
-        ? form.webhookEvents.filter((x) => x !== id)
-        : [...form.webhookEvents, id],
-    })
-  }
 
   async function save() {
     const flushedSteps = flowFlushRef.current?.()
@@ -249,18 +242,6 @@ export default function EditProjectPage() {
       return
     }
 
-    if (formForSave.webhookUrl.trim()) {
-      try {
-        const u = new URL(formForSave.webhookUrl.trim())
-        if (u.protocol !== "https:") {
-          showError("Webhook URL must use https://")
-          return
-        }
-      } catch {
-        showError("Invalid webhook URL.")
-        return
-      }
-    }
 
     setSaving(true)
     clearAlert()
@@ -308,7 +289,7 @@ export default function EditProjectPage() {
 
   if (loading) {
     return (
-      <div style={{ padding: "2rem", fontFamily: "system-ui, sans-serif", opacity: 0.45 }}>
+      <div style={{ padding: "2rem", opacity: 0.45 }}>
         Loading project…
       </div>
     )
@@ -316,12 +297,12 @@ export default function EditProjectPage() {
 
   if (loadError && !hydrated) {
     return (
-      <div style={{ padding: "2rem", fontFamily: "system-ui, sans-serif" }}>
+      <div style={{ padding: "2rem" }}>
         <AdminFormAlert
           alert={{ type: "error", message: loadError }}
           onDismiss={() => setLoadError(null)}
         />
-        <Link href={`/admin/organisations/${orgId}`} style={{ color: "rgba(255,255,255,0.5)" }}>
+        <Link href={`/admin/organisations/${orgId}/projects`} style={{ color: "rgba(255,255,255,0.5)" }}>
           Back to organisation
         </Link>
       </div>
@@ -333,7 +314,7 @@ export default function EditProjectPage() {
   return (
     <div
       ref={formTopRef}
-      style={{ padding: "2rem", fontFamily: "system-ui, sans-serif", maxWidth: "40rem" }}
+      style={{ padding: "2rem", maxWidth: "40rem" }}
     >
       <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", fontSize: "0.7rem" }}>
         <Link href="/admin" style={{ opacity: 0.35, color: "#fff", textDecoration: "none" }}>
@@ -341,7 +322,7 @@ export default function EditProjectPage() {
         </Link>
         <span style={{ opacity: 0.2 }}>/</span>
         <Link
-          href={`/admin/organisations/${orgId}`}
+          href={`/admin/organisations/${orgId}/projects`}
           style={{ opacity: 0.35, color: "#fff", textDecoration: "none" }}
         >
           {orgName || "organisation"}
@@ -669,41 +650,13 @@ export default function EditProjectPage() {
       </section>
 
       <section>
-        <h2 style={sectionHeading}>Webhooks</h2>
-        <div style={{ marginBottom: "1rem" }}>
-          <label style={setupLabel}>Webhook URL (https only, optional)</label>
-          <input
-            style={setupInput}
-            value={form.webhookUrl}
-            onChange={(e) => patchForm({ webhookUrl: e.target.value })}
-            placeholder="https://…"
-          />
-        </div>
-        <div style={{ marginBottom: "1.5rem" }}>
-          <label style={setupLabel}>Events</label>
-          {(["session.completed", "verdict.created"] as const).map((id) => (
-            <label
-              key={id}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "0.4rem",
-                fontSize: "0.78rem",
-                opacity: 0.55,
-                marginBottom: "0.35rem",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={form.webhookEvents.includes(id)}
-                onChange={() => eventToggle(id)}
-              />
-              {id}
-            </label>
-          ))}
-        </div>
-        <p style={{ fontSize: "0.75rem", opacity: 0.4, marginBottom: "1.25rem" }}>
-          API keys and session history are managed on the organisation page.
+        <h2 style={sectionHeading}>Webhooks and API keys</h2>
+        <p style={{ fontSize: "0.85rem", opacity: 0.6, margin: "0 0 1.5rem" }}>
+          Manage them on the project&apos;s{" "}
+          <Link href={`/admin/organisations/${orgId}/projects/${projectId}`} style={{ color: "inherit" }}>
+            Keys &amp; webhooks
+          </Link>{" "}
+          page.
         </p>
       </section>
 

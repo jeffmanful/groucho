@@ -1,3 +1,4 @@
+import { currentDecisionFor } from "@/lib/current-decision"
 import { randomUUID } from "crypto"
 import {
   clientPolicyDecision,
@@ -5,6 +6,7 @@ import {
   serializeClientDecisionPolicy,
   type SuitabilityBand,
 } from "@/lib/decision-policy"
+import { enqueueDecisionWebhooks } from "@/lib/decision-webhook"
 import { supabase } from "@/lib/supabase"
 
 type AdvisoryRecommendation = "recommend" | "human_review" | "decline"
@@ -56,15 +58,15 @@ export async function recordAutomaticApplicationDecision(input: {
       suitability_score: suitabilityScore,
       policy_snapshot: serializeClientDecisionPolicy(policy),
     })
-    .select("decision, access_secret, reviewer_kind")
+    .select("id, decision, access_secret, reviewer_kind")
     .single()
 
   if (error?.code === "23505") {
-    const { data: existing, error: existingError } = await supabase
-      .from("application_decisions")
-      .select("decision, access_secret, reviewer_kind")
-      .eq("session_id", input.sessionId)
-      .maybeSingle()
+    const { data: existing, error: existingError } = await currentDecisionFor<{
+      decision: string
+      access_secret: string | null
+      reviewer_kind: string
+    }>(input.sessionId, "decision, access_secret, reviewer_kind")
     if (existingError) throw existingError
     if (!existing) throw error
     return {
@@ -79,6 +81,7 @@ export async function recordAutomaticApplicationDecision(input: {
     }
   }
   if (error || !data) throw error ?? new Error("Automatic decision was not recorded")
+  await enqueueDecisionWebhooks({ decisionId: data.id as string, projectId: input.projectId })
 
   return {
     reviewStatus: outcome.decision,

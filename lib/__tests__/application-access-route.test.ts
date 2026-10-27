@@ -24,6 +24,9 @@ vi.mock("@/lib/supabase", () => ({
         select() {
           return chain
         },
+        is() {
+          return chain
+        },
         eq() {
           return chain
         },

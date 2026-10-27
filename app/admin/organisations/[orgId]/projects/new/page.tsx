@@ -138,8 +138,6 @@ export default function NewProjectWizardPage() {
     ProjectSetupFormState["applicationMaxTurns"]
   >("")
 
-  const [webhookUrl, setWebhookUrl] = useState("")
-  const [webhookEvents, setWebhookEvents] = useState<string[]>([])
   const [automaticAcceptanceEnabled, setAutomaticAcceptanceEnabled] = useState(false)
   const [automaticDeclineEnabled, setAutomaticDeclineEnabled] = useState(false)
   const [acceptanceThreshold, setAcceptanceThreshold] = useState(0.8)
@@ -197,12 +195,6 @@ export default function NewProjectWizardPage() {
     )
   }, [personaId, projectType, flowSteps, reviewThreshold, acceptanceThreshold])
 
-  const eventToggle = (id: string) => {
-    setWebhookEvents((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    )
-  }
-
   const stepTitles: Record<number, string> = {
     1: "What are you protecting?",
     2: "Configuration",
@@ -246,8 +238,8 @@ export default function NewProjectWizardPage() {
         flowSteps,
         welcomeMessage,
         onboardingExperience,
-        webhookUrl,
-        webhookEvents,
+        webhookUrl: "",
+        webhookEvents: [],
         automaticAcceptanceEnabled,
         automaticDeclineEnabled,
         acceptanceThreshold,
@@ -344,30 +336,14 @@ export default function NewProjectWizardPage() {
       flowSteps: stepsForSave,
       welcomeMessage,
       onboardingExperience,
-      webhookUrl,
-      webhookEvents,
+      webhookUrl: "",
+      webhookEvents: [],
       automaticAcceptanceEnabled,
       automaticDeclineEnabled,
       acceptanceThreshold,
       reviewThreshold,
     }
     const settings = buildProjectSettingsPayload(undefined, formForSettings)
-    if (webhookUrl.trim()) {
-      try {
-        const u = new URL(webhookUrl.trim())
-        if (u.protocol !== "https:") {
-          showError("Webhook URL must use https://")
-          setCreating(false)
-          return
-        }
-        settings.webhook_url = webhookUrl.trim()
-        settings.webhook_events = webhookEvents
-      } catch {
-        showError("Invalid webhook URL.")
-        setCreating(false)
-        return
-      }
-    }
 
     const res = await fetch(`/api/admin/organisations/${orgId}/projects`, {
       method: "POST",
@@ -413,7 +389,7 @@ export default function NewProjectWizardPage() {
 
   function finish() {
     if (!keyAck && keySecret) return
-    router.push(`/admin/organisations/${orgId}`)
+    router.push(`/admin/organisations/${orgId}/projects`)
   }
 
   if (projectType === "ticket_access" && step > 1) return <TicketProjectSetup orgId={orgId} name={name} slug={slug} onBack={() => setStep(1)} />
@@ -421,7 +397,7 @@ export default function NewProjectWizardPage() {
   return (
     <div
       ref={formTopRef}
-      style={{ padding: "2rem", fontFamily: "system-ui, sans-serif", maxWidth: "40rem" }}
+      style={{ padding: "2rem", maxWidth: "40rem" }}
     >
       <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", fontSize: "0.7rem" }}>
         <Link
@@ -432,7 +408,7 @@ export default function NewProjectWizardPage() {
         </Link>
         <span style={{ opacity: 0.2 }}>/</span>
         <Link
-          href={`/admin/organisations/${orgId}`}
+          href={`/admin/organisations/${orgId}/projects`}
           style={{ opacity: 0.35, color: "#fff", textDecoration: "none" }}
         >
           {orgName || "organisation"}
@@ -711,43 +687,12 @@ export default function NewProjectWizardPage() {
       {step === 3 && (
         <section>
           <h2 style={{ ...label, fontSize: "0.8rem", opacity: 0.55, marginBottom: "1rem" }}>
-            3 — Where should outcomes go? (optional)
+            3 — Webhooks and API keys
           </h2>
-          <p style={{ fontSize: "0.78rem", opacity: 0.4, marginBottom: "1rem" }}>
-            Stored in project settings for when webhooks ship. Skip if unsure.
+          <p style={{ fontSize: "0.78rem", opacity: 0.55, marginBottom: "1.5rem", lineHeight: 1.6 }}>
+            After the project is created, add webhooks and more API keys on its Keys &amp; webhooks page.
+            Webhooks can tell your system when an application finishes and when it is decided.
           </p>
-          <div style={{ marginBottom: "1rem" }}>
-            <label style={label}>Webhook URL (https only)</label>
-            <input
-              style={input}
-              value={webhookUrl}
-              onChange={(e) => setWebhookUrl(e.target.value)}
-              placeholder="https://…"
-            />
-          </div>
-          <div style={{ marginBottom: "1.5rem" }}>
-            <label style={label}>Events</label>
-            {(["session.completed", "verdict.created"] as const).map((id) => (
-              <label
-                key={id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.4rem",
-                  fontSize: "0.78rem",
-                  opacity: 0.55,
-                  marginBottom: "0.35rem",
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={webhookEvents.includes(id)}
-                  onChange={() => eventToggle(id)}
-                />
-                {id}
-              </label>
-            ))}
-          </div>
           <button type="button" style={btn(false)} onClick={back}>
             Back
           </button>
@@ -780,7 +725,7 @@ export default function NewProjectWizardPage() {
           >
             Retry issue API key
           </button>
-          <Link href={`/admin/organisations/${orgId}`} style={{ ...btn(false), display: "inline-block" }}>
+          <Link href={`/admin/organisations/${orgId}/projects`} style={{ ...btn(false), display: "inline-block" }}>
             Organisation →
           </Link>
         </section>
@@ -809,10 +754,6 @@ export default function NewProjectWizardPage() {
             <dt style={{ opacity: 0.35 }}>Environment / mode</dt>
             <dd style={{ margin: "0 0 0.5rem 0" }}>
               {environment} · sessions {sessionMode}
-            </dd>
-            <dt style={{ opacity: 0.35 }}>Webhook</dt>
-            <dd style={{ margin: 0, wordBreak: "break-all" }}>
-              {webhookUrl.trim() || "—"}
             </dd>
           </dl>
           <label

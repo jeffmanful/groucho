@@ -93,7 +93,7 @@ export default function NewProjectPickerPage() {
 
   if (loading) {
     return (
-      <div style={{ padding: "2rem", opacity: 0.4, fontFamily: "system-ui, sans-serif" }}>
+      <div style={{ padding: "2rem", opacity: 0.4 }}>
         Loading…
       </div>
     )
@@ -101,7 +101,7 @@ export default function NewProjectPickerPage() {
 
   return (
     <div
-      style={{ padding: "2rem", fontFamily: "system-ui, sans-serif", maxWidth: "32rem" }}
+      style={{ padding: "2rem", maxWidth: "32rem" }}
     >
       <Link
         href="/admin"

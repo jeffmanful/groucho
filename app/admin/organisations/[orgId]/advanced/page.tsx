@@ -1,0 +1,2055 @@
+"use client"
+
+import Link from "next/link"
+import { Suspense, useCallback, useEffect, useState } from "react"
+import { useParams, useSearchParams } from "next/navigation"
+import { DecisionPolicyFields } from "@/components/admin/DecisionPolicyFields"
+import {
+  parseClientDecisionPolicy,
+  serializeClientDecisionPolicy,
+} from "@/lib/decision-policy"
+
+type Project = {
+  id: string
+  name: string
+  slug: string
+  created_at: string
+  expose_to_anon_read: boolean
+  settings?: Record<string, unknown>
+}
+
+type OrgDetail = {
+  id: string
+  name: string
+  slug: string
+  created_at: string
+  projects: Project[]
+}
+
+type ApiKeyRow = {
+  id: string
+  key_prefix: string
+  label: string | null
+  last_used_at: string | null
+  created_at: string
+  revoked_at: string | null
+}
+
+type WebhookRow = {
+  id: string
+  label: string | null
+  url: string
+  events: string[]
+  active: boolean
+  created_at: string
+}
+
+type MemberRow = {
+  id: string
+  user_id: string
+  role: string
+  invited_at: string | null
+  accepted_at: string | null
+  email: string | null
+}
+
+type SessionRow = {
+  id: string
+  session_id: string
+  status: string
+  created_at: string
+  updated_at: string
+  profile_extracted_at?: string | null
+  persona_id?: string | null
+  applicant_email?: string | null
+  applicant_name?: string | null
+  suitability_score?: number | null
+  suitability_band?: "recommended_acceptance" | "review" | "below_threshold" | null
+  review_status?: "not_ready" | "pending" | "approved" | "declined"
+  decision_source?: "human" | "policy" | null
+}
+
+type InvitationRow = {
+  id: string
+  email: string
+  role: string
+  expires_at: string
+  accepted_at: string | null
+}
+
+type TranscriptMessage = {
+  id: string
+  role: string
+  content: string
+  sent_at: string
+  metadata: unknown
+}
+
+type ProfilePayload = {
+  schema_version: number
+  core: {
+    summary: string
+    sentiment: string
+    engagement: string
+    language: string
+    intent_tags: string[]
+    interests: string[]
+    risk_flags: string[]
+    qa: { question: string; answer: string }[]
+    confidence: number
+  } | null
+  custom: Record<string, unknown> | null
+  extraction:
+    | { model: string; status: "ok" }
+    | { model: string; status: "failed"; reason?: string }
+}
+
+type SessionProfileListRow = {
+  session: SessionRow
+  profile: ProfilePayload
+  personaSchema: unknown
+  verdictCreatedAt: string
+}
+
+type SettingsAuditRow = {
+  id: string
+  actor_kind: "platform" | "member" | "system"
+  actor_email: string | null
+  source: string
+  changed_keys: string[]
+  created_at: string
+}
+
+function isProfilePayload(raw: unknown): raw is ProfilePayload {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false
+  const o = raw as Record<string, unknown>
+  const ext = o.extraction
+  if (!ext || typeof ext !== "object" || Array.isArray(ext)) return false
+  const st = (ext as Record<string, unknown>).status
+  return typeof o.schema_version === "number" && (st === "ok" || st === "failed")
+}
+
+function slugify(str: string) {
+  return str
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+}
+
+const label: React.CSSProperties = {
+  display: "block",
+  fontSize: "13px",
+  color: "var(--text-secondary)",
+  marginBottom: "0.35rem",
+}
+
+const sectionHeading: React.CSSProperties = {
+  display: "block",
+  margin: 0,
+  fontSize: "var(--text-sm)",
+  fontWeight: 500,
+  color: "var(--foreground)",
+}
+
+const input: React.CSSProperties = {
+  width: "100%",
+  maxWidth: "24rem",
+  background: "transparent",
+  border: "none",
+  borderBottom: "1px solid rgba(255,255,255,0.15)",
+  color: "#fff",
+  outline: "none",
+  padding: "0.45rem 0",
+  fontFamily: "inherit",
+  fontSize: "0.85rem",
+  boxSizing: "border-box",
+}
+
+function btn(p: boolean): React.CSSProperties {
+  return {
+    background: "transparent",
+    border: p
+      ? "1px solid rgba(255,255,255,0.4)"
+      : "1px solid rgba(255,255,255,0.15)",
+    color: p ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.35)",
+    padding: "0.3rem 0.65rem",
+    cursor: "pointer",
+    fontSize: "0.68rem",
+    letterSpacing: "0.06em",
+    fontFamily: "inherit",
+  }
+}
+
+function isPii(personaSchema: unknown, key: string): boolean {
+  if (!personaSchema || typeof personaSchema !== "object") return false
+  const props = (personaSchema as { properties?: unknown }).properties
+  if (!props || typeof props !== "object") return false
+  const def = (props as Record<string, unknown>)[key]
+  if (!def || typeof def !== "object") return false
+  return (def as Record<string, unknown>)["x-pii"] === true
+}
+
+function Chip({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "0.15rem 0.5rem",
+        background: "rgba(255,255,255,0.08)",
+        border: "1px solid rgba(255,255,255,0.12)",
+        borderRadius: "999px",
+        fontSize: "0.68rem",
+        marginRight: "0.35rem",
+        marginBottom: "0.25rem",
+      }}
+    >
+      {children}
+    </span>
+  )
+}
+
+function ProfilePanel({
+  profile,
+  session,
+  personaSchema,
+  canReveal,
+  revealedKeys,
+  onToggleReveal,
+}: {
+  profile: ProfilePayload
+  session?: SessionRow | null
+  personaSchema: unknown
+  canReveal: boolean
+  revealedKeys: Set<string>
+  onToggleReveal: (key: string) => void
+}) {
+  const core = profile.core
+  const custom = profile.custom ?? {}
+  return (
+    <div
+      style={{
+        marginTop: "1.5rem",
+        padding: "1rem",
+        background: "rgba(255,255,255,0.03)",
+        border: "1px solid rgba(255,255,255,0.08)",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "0.75rem",
+          flexWrap: "wrap",
+          marginBottom: "0.75rem",
+        }}
+      >
+        <div style={{ ...label, marginBottom: 0 }}>
+          APPLICANT PROFILE (v{profile.schema_version}){" "}
+          <span
+            style={{
+              marginLeft: "0.5rem",
+              opacity: 0.5,
+              fontFamily: "monospace",
+              textTransform: "none",
+              letterSpacing: 0,
+            }}
+          >
+            {profile.extraction.status}
+            {profile.extraction.status === "failed" && profile.extraction.reason
+              ? ` · ${profile.extraction.reason}`
+              : ""}
+          </span>
+        </div>
+        {session?.suitability_score != null && (
+          <div aria-label="Suitability assessment">
+            <Chip>suitability: {Math.round(session.suitability_score * 100)}%</Chip>
+            {session.suitability_band && (
+              <Chip>{session.suitability_band.replaceAll("_", " ")}</Chip>
+            )}
+            {session.review_status === "approved" && <Chip>accepted</Chip>}
+            {session.review_status === "declined" && <Chip>declined</Chip>}
+          </div>
+        )}
+      </div>
+
+      {core ? (
+        <>
+          <p style={{ fontSize: "0.85rem", margin: 0, marginBottom: "0.75rem" }}>
+            {core.summary || <span style={{ opacity: 0.35 }}>No summary.</span>}
+          </p>
+          <div style={{ marginBottom: "0.5rem" }}>
+            <Chip>sentiment: {core.sentiment}</Chip>
+            <Chip>engagement: {core.engagement}</Chip>
+            <Chip>language: {core.language}</Chip>
+            <Chip>confidence: {core.confidence.toFixed(2)}</Chip>
+          </div>
+          {core.intent_tags.length > 0 && (
+            <div style={{ marginTop: "0.5rem" }}>
+              <span style={{ opacity: 0.4, fontSize: "0.7rem", marginRight: "0.5rem" }}>
+                intent
+              </span>
+              {core.intent_tags.map((t) => (
+                <Chip key={t}>{t}</Chip>
+              ))}
+            </div>
+          )}
+          {core.interests.length > 0 && (
+            <div style={{ marginTop: "0.35rem" }}>
+              <span style={{ opacity: 0.4, fontSize: "0.7rem", marginRight: "0.5rem" }}>
+                interests
+              </span>
+              {core.interests.map((t) => (
+                <Chip key={t}>{t}</Chip>
+              ))}
+            </div>
+          )}
+          {core.risk_flags.length > 0 && (
+            <div style={{ marginTop: "0.35rem" }}>
+              <span style={{ opacity: 0.4, fontSize: "0.7rem", marginRight: "0.5rem" }}>
+                risks
+              </span>
+              {core.risk_flags.map((t) => (
+                <Chip key={t}>{t}</Chip>
+              ))}
+            </div>
+          )}
+          {core.qa.length > 0 && (
+            <details style={{ marginTop: "0.75rem" }}>
+              <summary
+                style={{
+                  cursor: "pointer",
+                  fontSize: "0.7rem",
+                  opacity: 0.55,
+                  letterSpacing: "0.06em",
+                }}
+              >
+                {core.qa.length} Q/A pair{core.qa.length === 1 ? "" : "s"}
+              </summary>
+              <ul style={{ listStyle: "none", padding: "0.5rem 0 0", margin: 0 }}>
+                {core.qa.map((qa, i) => (
+                  <li
+                    key={i}
+                    style={{
+                      padding: "0.35rem 0",
+                      borderBottom: "1px solid rgba(255,255,255,0.04)",
+                      fontSize: "0.78rem",
+                    }}
+                  >
+                    <div style={{ opacity: 0.5 }}>{qa.question}</div>
+                    <div style={{ opacity: 0.85, marginTop: "0.15rem" }}>{qa.answer}</div>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </>
+      ) : (
+        <p style={{ opacity: 0.35, fontSize: "0.78rem", margin: 0 }}>No core profile.</p>
+      )}
+
+      {custom && Object.keys(custom).length > 0 && (
+        <div style={{ marginTop: "1rem" }}>
+          <div style={{ ...label, marginBottom: "0.5rem" }}>Custom</div>
+          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+            {Object.entries(custom).map(([k, v]) => {
+              const pii = isPii(personaSchema, k)
+              const revealed = revealedKeys.has(k)
+              const display =
+                pii && !revealed ? "••••••" : typeof v === "string" ? v : JSON.stringify(v)
+              return (
+                <li
+                  key={k}
+                  style={{
+                    fontSize: "0.78rem",
+                    padding: "0.35rem 0",
+                    borderBottom: "1px solid rgba(255,255,255,0.05)",
+                    display: "flex",
+                    gap: "0.75rem",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontFamily: "monospace",
+                      opacity: 0.55,
+                      minWidth: "8rem",
+                    }}
+                  >
+                    {k}
+                    {pii ? (
+                      <span style={{ marginLeft: "0.3rem", color: "#f59e0b", fontSize: "0.62rem" }}>
+                        PII
+                      </span>
+                    ) : null}
+                  </span>
+                  <span style={{ opacity: 0.9, wordBreak: "break-word" }}>{display}</span>
+                  {pii && canReveal && (
+                    <button
+                      type="button"
+                      style={{ ...btn(false), marginLeft: "auto" }}
+                      onClick={() => onToggleReveal(k)}
+                    >
+                      {revealed ? "hide" : "reveal"}
+                    </button>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function OrganisationDetailPageInner() {
+  const params = useParams()
+  const searchParams = useSearchParams()
+  const orgId = params.orgId as string
+
+  const [org, setOrg] = useState<OrgDetail | null>(null)
+  const [name, setName] = useState("")
+  const [slug, setSlug] = useState("")
+  const [members, setMembers] = useState<MemberRow[]>([])
+  const [projName, setProjName] = useState("")
+  const [projSlug, setProjSlug] = useState("")
+  const [projSlugManual, setProjSlugManual] = useState(false)
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
+  const [keys, setKeys] = useState<ApiKeyRow[]>([])
+  const [webhooks, setWebhooks] = useState<WebhookRow[]>([])
+  const [whUrl, setWhUrl] = useState("")
+  const [whLabel, setWhLabel] = useState("")
+  const [revealedWebhookSecret, setRevealedWebhookSecret] = useState<string | null>(null)
+  const [sessions, setSessions] = useState<SessionRow[]>([])
+  const [sessionTotal, setSessionTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [msg, setMsg] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  const [deleteSlug, setDeleteSlug] = useState("")
+  const [revealedSecret, setRevealedSecret] = useState<string | null>(null)
+  const [invites, setInvites] = useState<InvitationRow[]>([])
+  const [inviteEmail, setInviteEmail] = useState("")
+  const [inviteRole, setInviteRole] = useState("member")
+  const [lastInviteUrl, setLastInviteUrl] = useState<string | null>(null)
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
+  const [sessionAction, setSessionAction] = useState<
+    { sessionId: string; kind: "abandon" | "profile" } | null
+  >(null)
+  const [transcript, setTranscript] = useState<TranscriptMessage[]>([])
+  const [profile, setProfile] = useState<ProfilePayload | null>(null)
+  const [personaSchema, setPersonaSchema] = useState<unknown>(null)
+  const [revealedCustomKeys, setRevealedCustomKeys] = useState<Set<string>>(new Set())
+  const [sessionProfileRows, setSessionProfileRows] = useState<SessionProfileListRow[]>([])
+  const [loadingSessionProfiles, setLoadingSessionProfiles] = useState(false)
+  const [profilesExpandedSessionId, setProfilesExpandedSessionId] = useState<string | null>(null)
+  const [profilesRevealedKeys, setProfilesRevealedKeys] = useState<Set<string>>(new Set())
+  const [projSettingsSessionMode, setProjSettingsSessionMode] = useState<"live" | "dry-run">("live")
+  const [projDecisionPolicy, setProjDecisionPolicy] = useState(() =>
+    parseClientDecisionPolicy({}),
+  )
+  const [projSettingsExtract, setProjSettingsExtract] = useState<
+    "default" | "off" | "passed_only"
+  >("default")
+  const [savingProjectSettings, setSavingProjectSettings] = useState(false)
+  const [settingsAudit, setSettingsAudit] = useState<SettingsAuditRow[]>([])
+  const [quickAddOpen, setQuickAddOpen] = useState(false)
+  /** `platform` = allowlisted operator; otherwise org membership role. */
+  const [accessRole, setAccessRole] = useState<"platform" | "owner" | "admin" | "member" | null>(
+    null,
+  )
+
+  const loadAccess = useCallback(async () => {
+    const res = await fetch(`/api/admin/organisations/${orgId}/access`)
+    if (!res.ok) {
+      setAccessRole(null)
+      return
+    }
+    const j: { role: string } = await res.json()
+    const r = j.role
+    if (r === "platform" || r === "owner" || r === "admin" || r === "member") {
+      setAccessRole(r)
+    } else setAccessRole(null)
+  }, [orgId])
+
+  const canOrgAdmin =
+    accessRole === "platform" || accessRole === "owner" || accessRole === "admin"
+  const canOrgOwner = accessRole === "platform" || accessRole === "owner"
+
+  const loadOrg = useCallback(async () => {
+    const res = await fetch(`/api/admin/organisations/${orgId}`)
+    if (!res.ok) {
+      setOrg(null)
+      setLoading(false)
+      return
+    }
+    const data: OrgDetail = await res.json()
+    setOrg(data)
+    setName(data.name)
+    setSlug(data.slug)
+    setLoading(false)
+  }, [orgId])
+
+  useEffect(() => {
+    if (!org?.projects?.length) return
+    const fromQuery = searchParams.get("project")?.trim()
+    setSelectedProjectId((prev) => {
+      if (fromQuery && org.projects.some((p) => p.id === fromQuery)) return fromQuery
+      if (prev && org.projects.some((p) => p.id === prev)) return prev
+      return org.projects[0].id
+    })
+  }, [org, searchParams])
+
+  useEffect(() => {
+    const sessionParam = searchParams.get("session")?.trim()
+    if (sessionParam) setSelectedSessionId(sessionParam)
+  }, [searchParams])
+
+  const loadMembers = useCallback(async () => {
+    const res = await fetch(`/api/admin/organisations/${orgId}/members`)
+    if (res.ok) setMembers(await res.json())
+  }, [orgId])
+
+  const loadInvites = useCallback(async () => {
+    const res = await fetch(`/api/admin/organisations/${orgId}/invitations`)
+    if (res.ok) setInvites(await res.json())
+  }, [orgId])
+
+  const loadTranscript = useCallback(async () => {
+    if (!selectedProjectId || !selectedSessionId) {
+      setTranscript([])
+      setProfile(null)
+      setPersonaSchema(null)
+      setRevealedCustomKeys(new Set())
+      return
+    }
+    const res = await fetch(
+      `/api/admin/organisations/${orgId}/projects/${selectedProjectId}/sessions/${selectedSessionId}/messages`,
+    )
+    if (res.ok) {
+      const j = await res.json()
+      setTranscript(j.messages ?? [])
+      setProfile((j.profile as ProfilePayload | null) ?? null)
+      setPersonaSchema(j.personaSchema ?? null)
+      setRevealedCustomKeys(new Set())
+    } else {
+      setTranscript([])
+      setProfile(null)
+      setPersonaSchema(null)
+      setRevealedCustomKeys(new Set())
+    }
+  }, [orgId, selectedProjectId, selectedSessionId])
+
+  const loadKeys = useCallback(async () => {
+    if (!selectedProjectId) {
+      setKeys([])
+      return
+    }
+    const res = await fetch(
+      `/api/admin/organisations/${orgId}/projects/${selectedProjectId}/api-keys`,
+    )
+    if (res.ok) setKeys(await res.json())
+  }, [orgId, selectedProjectId])
+
+  const loadWebhooks = useCallback(async () => {
+    if (!selectedProjectId) {
+      setWebhooks([])
+      return
+    }
+    const res = await fetch(
+      `/api/admin/organisations/${orgId}/projects/${selectedProjectId}/webhooks`,
+    )
+    if (res.ok) setWebhooks(await res.json())
+  }, [orgId, selectedProjectId])
+
+  const loadSessions = useCallback(async () => {
+    if (!selectedProjectId) {
+      setSessions([])
+      setSessionTotal(0)
+      return
+    }
+    const res = await fetch(
+      `/api/admin/organisations/${orgId}/projects/${selectedProjectId}/sessions`,
+    )
+    if (res.ok) {
+      const j = await res.json()
+      const nextSessions = (j.sessions ?? []) as SessionRow[]
+      setSessions(nextSessions)
+      setSessionTotal(j.total ?? 0)
+      setSelectedSessionId((current) => {
+        if (current && nextSessions.some((session) => session.id === current)) {
+          return current
+        }
+        return (
+          nextSessions.find((session) => session.status === "active") ??
+          nextSessions[0] ??
+          null
+        )?.id ?? null
+      })
+    }
+  }, [orgId, selectedProjectId])
+
+  const loadSessionProfiles = useCallback(async () => {
+    if (!selectedProjectId) {
+      setSessionProfileRows([])
+      setLoadingSessionProfiles(false)
+      return
+    }
+    setLoadingSessionProfiles(true)
+    const res = await fetch(
+      `/api/admin/organisations/${orgId}/projects/${selectedProjectId}/session-profiles`,
+    )
+    if (res.ok) {
+      const j: {
+        rows?: {
+          session: SessionRow | null
+          profile: unknown
+          verdictCreatedAt: string
+          personaSchema: unknown
+        }[]
+      } = await res.json()
+      const out: SessionProfileListRow[] = []
+      for (const r of j.rows ?? []) {
+        if (!r.session?.id) continue
+        if (!isProfilePayload(r.profile)) continue
+        out.push({
+          session: r.session,
+          profile: r.profile,
+          personaSchema: r.personaSchema ?? null,
+          verdictCreatedAt: r.verdictCreatedAt,
+        })
+      }
+      setSessionProfileRows(out)
+    } else {
+      setSessionProfileRows([])
+    }
+    setLoadingSessionProfiles(false)
+  }, [orgId, selectedProjectId])
+
+  const loadSettingsAudit = useCallback(async () => {
+    if (!selectedProjectId || !canOrgAdmin) {
+      setSettingsAudit([])
+      return
+    }
+    const res = await fetch(
+      `/api/admin/organisations/${orgId}/projects/${selectedProjectId}/settings-audit`,
+    )
+    if (!res.ok) {
+      setSettingsAudit([])
+      return
+    }
+    const body: { changes?: SettingsAuditRow[] } = await res.json()
+    setSettingsAudit(body.changes ?? [])
+  }, [canOrgAdmin, orgId, selectedProjectId])
+
+  useEffect(() => {
+    setLoading(true)
+    void loadAccess()
+    void loadOrg()
+    void loadMembers()
+    void loadInvites()
+  }, [loadAccess, loadOrg, loadMembers, loadInvites])
+
+  useEffect(() => {
+    void loadKeys()
+    void loadWebhooks()
+    void loadSessions()
+    void loadSessionProfiles()
+    void loadSettingsAudit()
+  }, [
+    loadKeys,
+    loadWebhooks,
+    loadSessions,
+    loadSessionProfiles,
+    loadSettingsAudit,
+  ])
+
+  useEffect(() => {
+    setSelectedSessionId(null)
+    setTranscript([])
+    setProfilesExpandedSessionId(null)
+    setProfilesRevealedKeys(new Set())
+  }, [selectedProjectId])
+
+  useEffect(() => {
+    setProfilesRevealedKeys(new Set())
+  }, [profilesExpandedSessionId])
+
+  useEffect(() => {
+    if (!org?.projects?.length || !selectedProjectId) return
+    const p = org.projects.find((x) => x.id === selectedProjectId)
+    if (!p) return
+    const s = (p.settings ?? {}) as Record<string, unknown>
+    setProjSettingsSessionMode(s.session_mode === "dry-run" ? "dry-run" : "live")
+    setProjDecisionPolicy(parseClientDecisionPolicy(s))
+    const pe = s.profile_extract_on
+    if (pe === false || pe === null) setProjSettingsExtract("off")
+    else if (Array.isArray(pe) && pe.length === 1 && pe[0] === "passed")
+      setProjSettingsExtract("passed_only")
+    else setProjSettingsExtract("default")
+  }, [org, selectedProjectId])
+
+  useEffect(() => {
+    void loadTranscript()
+  }, [loadTranscript])
+
+  useEffect(() => {
+    if (!projSlugManual) setProjSlug(slugify(projName))
+  }, [projName, projSlugManual])
+
+  useEffect(() => {
+    if (accessRole === "admin" && inviteRole === "owner") setInviteRole("member")
+  }, [accessRole, inviteRole])
+
+  async function saveOrg(e: React.FormEvent) {
+    e.preventDefault()
+    setErr(null)
+    setMsg(null)
+    const res = await fetch(`/api/admin/organisations/${orgId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, slug }),
+    })
+    const b = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      setErr(b.error ?? "Update failed")
+      return
+    }
+    setMsg("Organisation saved.")
+    await loadOrg()
+  }
+
+  async function abandonSession(session: SessionRow) {
+    if (!selectedProjectId || session.status !== "active") return
+    if (
+      !window.confirm(
+        "Mark this session as abandoned? The transcript will be kept, but the applicant will not be able to continue it.",
+      )
+    ) {
+      return
+    }
+
+    setErr(null)
+    setMsg(null)
+    setSessionAction({ sessionId: session.id, kind: "abandon" })
+    const res = await fetch(
+      `/api/admin/organisations/${orgId}/projects/${selectedProjectId}/sessions/${session.id}/abandon`,
+      { method: "POST" },
+    )
+    const body = await res.json().catch(() => ({}))
+    setSessionAction(null)
+    if (!res.ok) {
+      setErr(body.error ?? "Could not mark session as abandoned")
+      await loadSessions()
+      return
+    }
+
+    setMsg("Session marked as abandoned. Its transcript has been preserved.")
+    await Promise.all([loadSessions(), loadSessionProfiles(), loadTranscript()])
+  }
+
+  async function generateSessionProfile(session: SessionRow) {
+    if (!selectedProjectId) return
+    const wasRegeneration = profile !== null
+    setErr(null)
+    setMsg(null)
+    setSessionAction({ sessionId: session.id, kind: "profile" })
+    const res = await fetch(
+      `/api/admin/organisations/${orgId}/projects/${selectedProjectId}/sessions/${session.id}/profile`,
+      { method: "POST" },
+    )
+    const body = await res.json().catch(() => ({}))
+    setSessionAction(null)
+
+    if (isProfilePayload(body.profile)) {
+      setProfile(body.profile)
+    }
+    if (!res.ok) {
+      setErr(body.detail ?? body.error ?? "Could not generate profile")
+      await loadSessionProfiles()
+      return
+    }
+
+    setMsg(wasRegeneration ? "Profile regenerated." : "Profile generated.")
+    await Promise.all([loadSessions(), loadSessionProfiles(), loadTranscript()])
+  }
+
+  async function deleteOrg() {
+    if (!org) return
+    setErr(null)
+    setMsg(null)
+    const res = await fetch(`/api/admin/organisations/${orgId}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirmSlug: deleteSlug.trim() }),
+    })
+    const b = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      setErr(b.error ?? "Delete failed")
+      return
+    }
+    window.location.href = "/admin/organisations"
+  }
+
+  async function addProject(e: React.FormEvent) {
+    e.preventDefault()
+    setErr(null)
+    setMsg(null)
+    const res = await fetch(`/api/admin/organisations/${orgId}/projects`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: projName, slug: projSlug }),
+    })
+    const b = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      setErr(b.error ?? "Could not create project")
+      return
+    }
+    setProjName("")
+    setProjSlug("")
+    setProjSlugManual(false)
+    setMsg("Project created.")
+    await loadOrg()
+    setSelectedProjectId(b.id)
+  }
+
+  async function toggleAnonRead(p: Project, next: boolean) {
+    setErr(null)
+    const res = await fetch(
+      `/api/admin/organisations/${orgId}/projects/${p.id}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expose_to_anon_read: next }),
+      },
+    )
+    const b = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      setErr(b.error ?? "Update failed")
+      return
+    }
+    setMsg(
+      next
+        ? "This project is now the anon admin / Realtime scope (others cleared)."
+        : "Anon read scope cleared for this project.",
+    )
+    await loadOrg()
+  }
+
+  async function saveProjectSettings(e: React.FormEvent) {
+    e.preventDefault()
+    if (!canOrgAdmin || !selectedProjectId || !org) return
+    const p = org.projects.find((x) => x.id === selectedProjectId)
+    if (!p) return
+    setSavingProjectSettings(true)
+    setErr(null)
+    setMsg(null)
+    const merged: Record<string, unknown> = {
+      ...((p.settings ?? {}) as Record<string, unknown>),
+    }
+    merged.session_mode = projSettingsSessionMode
+    merged.decision_policy = serializeClientDecisionPolicy(projDecisionPolicy)
+    delete merged.pass_threshold
+    delete merged.reject_threshold
+    if (projSettingsExtract === "off") merged.profile_extract_on = false
+    else if (projSettingsExtract === "passed_only") merged.profile_extract_on = ["passed"]
+    else merged.profile_extract_on = ["passed", "redirected", "rejected"]
+
+    const res = await fetch(
+      `/api/admin/organisations/${orgId}/projects/${selectedProjectId}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ settings: merged }),
+      },
+    )
+    const b = await res.json().catch(() => ({}))
+    setSavingProjectSettings(false)
+    if (!res.ok) {
+      setErr(b.error ?? "Could not save project settings")
+      return
+    }
+    setMsg("Project settings saved.")
+    await Promise.all([loadOrg(), loadSettingsAudit()])
+  }
+
+  async function deleteProject(p: Project) {
+    if (!window.confirm(`Delete project “${p.name}” and its keys/sessions?`)) return
+    setErr(null)
+    const res = await fetch(
+      `/api/admin/organisations/${orgId}/projects/${p.id}`,
+      { method: "DELETE" },
+    )
+    if (!res.ok) {
+      const b = await res.json().catch(() => ({}))
+      setErr(b.error ?? "Delete failed")
+      return
+    }
+    if (selectedProjectId === p.id) setSelectedProjectId(null)
+    setMsg("Project deleted.")
+    await loadOrg()
+  }
+
+  async function createKey() {
+    if (!selectedProjectId) return
+    setErr(null)
+    setRevealedSecret(null)
+    const res = await fetch(
+      `/api/admin/organisations/${orgId}/projects/${selectedProjectId}/api-keys`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      },
+    )
+    const b = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      setErr(b.error ?? "Could not create key")
+      return
+    }
+    if (b.secret) setRevealedSecret(b.secret)
+    await loadKeys()
+  }
+
+  async function createWebhook(e: React.FormEvent) {
+    e.preventDefault()
+    if (!selectedProjectId) return
+    setErr(null)
+    setRevealedWebhookSecret(null)
+    const res = await fetch(
+      `/api/admin/organisations/${orgId}/projects/${selectedProjectId}/webhooks`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: whUrl.trim(),
+          label: whLabel.trim() || undefined,
+        }),
+      },
+    )
+    const b = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      setErr(b.error ?? "Could not create webhook")
+      return
+    }
+    if (typeof b.signing_secret === "string") setRevealedWebhookSecret(b.signing_secret)
+    setWhUrl("")
+    setWhLabel("")
+    await loadWebhooks()
+  }
+
+  async function toggleWebhook(w: WebhookRow, next: boolean) {
+    if (!selectedProjectId) return
+    setErr(null)
+    const res = await fetch(
+      `/api/admin/organisations/${orgId}/projects/${selectedProjectId}/webhooks/${w.id}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active: next }),
+      },
+    )
+    if (!res.ok) {
+      const b = await res.json().catch(() => ({}))
+      setErr(b.error ?? "Update failed")
+      return
+    }
+    await loadWebhooks()
+  }
+
+  async function rotateWebhookSecret(id: string) {
+    if (!selectedProjectId) return
+    if (!window.confirm("Rotate signing secret? The old secret stops working immediately.")) return
+    setErr(null)
+    setRevealedWebhookSecret(null)
+    const res = await fetch(
+      `/api/admin/organisations/${orgId}/projects/${selectedProjectId}/webhooks/${id}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rotate_secret: true }),
+      },
+    )
+    const b = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      setErr(b.error ?? "Rotate failed")
+      return
+    }
+    if (typeof b.signing_secret === "string") setRevealedWebhookSecret(b.signing_secret)
+  }
+
+  async function testWebhook(id: string) {
+    if (!selectedProjectId) return
+    setErr(null)
+    setMsg(null)
+    const res = await fetch(
+      `/api/admin/organisations/${orgId}/projects/${selectedProjectId}/webhooks/${id}/test`,
+      { method: "POST" },
+    )
+    const b = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      setErr(b.error ?? "Test failed")
+      return
+    }
+    setMsg(
+      b.ok
+        ? `Ping delivered (${b.http_status}).`
+        : `Endpoint returned HTTP ${b.http_status}.`,
+    )
+  }
+
+  async function deleteWebhook(id: string) {
+    if (!selectedProjectId) return
+    if (!window.confirm("Delete this webhook?")) return
+    setErr(null)
+    const res = await fetch(
+      `/api/admin/organisations/${orgId}/projects/${selectedProjectId}/webhooks/${id}`,
+      { method: "DELETE" },
+    )
+    if (!res.ok) {
+      const b = await res.json().catch(() => ({}))
+      setErr(b.error ?? "Delete failed")
+      return
+    }
+    await loadWebhooks()
+  }
+
+  async function revokeKey(id: string) {
+    if (!selectedProjectId) return
+    if (!window.confirm("Revoke this API key?")) return
+    setErr(null)
+    const res = await fetch(
+      `/api/admin/organisations/${orgId}/projects/${selectedProjectId}/api-keys/${id}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ revoked: true }),
+      },
+    )
+    if (!res.ok) {
+      const b = await res.json().catch(() => ({}))
+      setErr(b.error ?? "Revoke failed")
+      return
+    }
+    await loadKeys()
+  }
+
+  async function createInvite(e: React.FormEvent) {
+    e.preventDefault()
+    setErr(null)
+    setMsg(null)
+    setLastInviteUrl(null)
+    const res = await fetch(`/api/admin/organisations/${orgId}/invitations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: inviteEmail.trim(), role: inviteRole }),
+    })
+    const b = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      setErr(b.error ?? "Could not create invitation")
+      return
+    }
+    const url =
+      typeof window !== "undefined" && b.token
+        ? `${window.location.origin}/invite/${b.token}`
+        : null
+    setLastInviteUrl(url)
+    setInviteEmail("")
+    setMsg("Invitation created. Copy the link below — the token is not shown again in the list.")
+    await loadInvites()
+  }
+
+  async function deleteInvite(id: string) {
+    if (!window.confirm("Delete this pending invitation?")) return
+    setErr(null)
+    const res = await fetch(
+      `/api/admin/organisations/${orgId}/invitations/${id}`,
+      { method: "DELETE" },
+    )
+    if (!res.ok) {
+      const b = await res.json().catch(() => ({}))
+      setErr(b.error ?? "Delete failed")
+      return
+    }
+    await loadInvites()
+  }
+
+  if (loading && !org) {
+    return (
+      <div style={{ padding: "2rem", opacity: 0.4 }}>
+        Loading…
+      </div>
+    )
+  }
+
+  if (!org) {
+    return (
+      <div style={{ padding: "2rem" }}>
+        <p>Organisation not found.</p>
+        <Link href="/admin/organisations" style={{ color: "rgba(255,255,255,0.5)" }}>
+          ← Back
+        </Link>
+      </div>
+    )
+  }
+
+  const selected =
+    org.projects.find((p) => p.id === selectedProjectId) ?? org.projects[0]
+  const selectedSession = sessions.find((session) => session.id === selectedSessionId) ?? null
+
+  return (
+    <div style={{ padding: "2rem", maxWidth: "96rem", margin: "0 auto" }}>
+      <h1
+        style={{
+          fontSize: "var(--text-2xl)",
+          fontWeight: 500,
+          letterSpacing: "-0.01em",
+          margin: "0 0 1.5rem",
+        }}
+      >
+        Advanced project tools
+      </h1>
+      <p style={{ color: "var(--text-secondary)", margin: "-1rem 0 2rem", maxWidth: "64ch" }}>
+        Raw project settings, sessions and extracted profiles. Members, invitations and organisation details are in Members &amp; settings.
+      </p>
+
+      {(msg || err) && (
+        <p style={{ color: err ? "#f87171" : "rgba(255,255,255,0.5)", fontSize: "0.8rem" }}>
+          {err ?? msg}
+        </p>
+      )}
+
+      <section style={{ marginBottom: "2.5rem" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: "0.75rem",
+            marginBottom: "1rem",
+          }}
+        >
+          <h2 style={{ ...sectionHeading, marginBottom: 0 }}>Projects</h2>
+          {canOrgAdmin && (
+            <Link
+              href={`/admin/organisations/${orgId}/projects/new`}
+              style={{
+                ...btn(true),
+                textDecoration: "none",
+                fontSize: "0.72rem",
+              }}
+            >
+              Create project
+            </Link>
+          )}
+        </div>
+        {canOrgAdmin && (
+          <div style={{ marginBottom: "1.25rem" }}>
+            <button
+              type="button"
+              onClick={() => setQuickAddOpen((o) => !o)}
+              style={{
+                ...btn(false),
+                fontSize: "0.65rem",
+                opacity: 0.5,
+              }}
+            >
+              {quickAddOpen ? "▼" : "▶"} Quick create (name and slug only)
+            </button>
+            {quickAddOpen && (
+              <div style={{ marginTop: "1rem" }}>
+                <p
+                  style={{
+                    fontSize: "0.72rem",
+                    opacity: 0.4,
+                    marginBottom: "0.75rem",
+                    lineHeight: 1.45,
+                    maxWidth: "36rem",
+                  }}
+                >
+                  Skips gatekeeper/onboarding configuration. Prefer{" "}
+                  <strong style={{ fontWeight: 400, opacity: 0.7 }}>
+                    Create project
+                  </strong>{" "}
+                  for the full wizard (flow type, persona, webhooks).
+                </p>
+                <form onSubmit={addProject}>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "1rem",
+                      flexWrap: "wrap",
+                      alignItems: "flex-end",
+                    }}
+                  >
+                    <div>
+                      <label style={label}>Name</label>
+                      <input
+                        style={input}
+                        value={projName}
+                        onChange={(e) => setProjName(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label style={label}>Slug</label>
+                      <input
+                        style={input}
+                        value={projSlug}
+                        onChange={(e) => {
+                          setProjSlugManual(true)
+                          setProjSlug(e.target.value)
+                        }}
+                      />
+                    </div>
+                    <button type="submit" style={btn(false)}>
+                      Add project
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+          </div>
+        )}
+
+        <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+          {org.projects.map((p) => (
+            <li
+              key={p.id}
+              style={{
+                padding: "0.75rem 0",
+                borderBottom: "1px solid rgba(255,255,255,0.06)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedProjectId(p.id)}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color:
+                      selectedProjectId === p.id ? "#fff" : "rgba(255,255,255,0.45)",
+                    cursor: "pointer",
+                    fontSize: "0.85rem",
+                    textAlign: "left",
+                  }}
+                >
+                  {p.name}
+                </button>
+                <span style={{ fontFamily: "monospace", fontSize: "0.72rem", opacity: 0.35 }}>
+                  {p.slug}
+                </span>
+                {canOrgAdmin && (
+                  <Link
+                    href={`/admin/organisations/${orgId}/projects/${p.id}/edit`}
+                    style={{
+                      ...btn(false),
+                      fontSize: "0.65rem",
+                      textDecoration: "none",
+                    }}
+                  >
+                    Edit
+                  </Link>
+                )}
+                {canOrgAdmin && (
+                  <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.72rem", opacity: 0.55 }}>
+                    <input
+                      type="checkbox"
+                      checked={p.expose_to_anon_read}
+                      onChange={(e) => void toggleAnonRead(p, e.target.checked)}
+                    />
+                    anon admin scope
+                  </label>
+                )}
+                {canOrgAdmin && (
+                  <button type="button" style={{ ...btn(false), marginLeft: "auto" }} onClick={() => void deleteProject(p)}>
+                    delete
+                  </button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {selected && (
+        <section style={{ marginBottom: "2.5rem" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "0.75rem",
+              marginBottom: "0.75rem",
+            }}
+          >
+            <h2 style={{ ...sectionHeading, marginBottom: 0 }}>Project settings: {selected.name}</h2>
+            {canOrgAdmin && (
+              <Link
+                href={`/admin/organisations/${orgId}/projects/${selected.id}/edit`}
+                style={{
+                  ...btn(true),
+                  textDecoration: "none",
+                  fontSize: "0.72rem",
+                }}
+              >
+                Edit full setup
+              </Link>
+            )}
+          </div>
+          <p style={{ opacity: 0.35, fontSize: "0.75rem", marginBottom: "1rem", lineHeight: 1.45 }}>
+            Quick tweaks below, or use <strong style={{ fontWeight: 400, opacity: 0.65 }}>Edit full setup</strong>{" "}
+            for name, type, onboarding steps, persona, and webhooks. Other keys in{" "}
+            <span style={{ fontFamily: "monospace" }}>settings</span> are preserved when you save.
+          </p>
+          {!canOrgAdmin ? (
+            <ul style={{ listStyle: "none", padding: 0, margin: 0, fontSize: "0.78rem", opacity: 0.5 }}>
+              <li>
+                session_mode:{" "}
+                {String((selected.settings as Record<string, unknown> | undefined)?.session_mode ?? "live")}
+              </li>
+              <li>
+                acceptance: {Math.round(parseClientDecisionPolicy(selected.settings).acceptanceThreshold * 100)}%
+              </li>
+              <li>
+                review: {Math.round(parseClientDecisionPolicy(selected.settings).reviewThreshold * 100)}%
+              </li>
+              <li>
+                automatic acceptance: {parseClientDecisionPolicy(selected.settings).automaticAcceptanceEnabled ? "on" : "off"}
+              </li>
+              <li>
+                automatic decline: {parseClientDecisionPolicy(selected.settings).automaticDeclineEnabled ? "on" : "off"}
+              </li>
+              <li>
+                profile_extract_on:{" "}
+                {JSON.stringify((selected.settings as Record<string, unknown> | undefined)?.profile_extract_on ?? "default (unset)")}
+              </li>
+            </ul>
+          ) : (
+            <form onSubmit={(e) => void saveProjectSettings(e)}>
+              <div style={{ marginBottom: "1rem" }}>
+                <span style={{ ...label, display: "block" }}>Session mode</span>
+                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.78rem", opacity: 0.75, marginBottom: "0.35rem" }}>
+                  <input
+                    type="radio"
+                    name="sessionMode"
+                    checked={projSettingsSessionMode === "live"}
+                    onChange={() => setProjSettingsSessionMode("live")}
+                  />
+                  Live — verdicts and profile extraction run
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.78rem", opacity: 0.75 }}>
+                  <input
+                    type="radio"
+                    name="sessionMode"
+                    checked={projSettingsSessionMode === "dry-run"}
+                    onChange={() => setProjSettingsSessionMode("dry-run")}
+                  />
+                  Dry-run — no verdict / extraction (testing)
+                </label>
+              </div>
+              <div style={{ marginBottom: "1rem" }}>
+                <span style={{ ...label, display: "block" }}>Client decision policy</span>
+                <DecisionPolicyFields
+                  value={projDecisionPolicy}
+                  onChange={setProjDecisionPolicy}
+                />
+              </div>
+              <div style={{ marginBottom: "1rem" }}>
+                <span style={{ ...label, display: "block" }}>Profile extraction</span>
+                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.78rem", opacity: 0.75, marginBottom: "0.35rem" }}>
+                  <input
+                    type="radio"
+                    name="profileExtract"
+                    checked={projSettingsExtract === "default"}
+                    onChange={() => setProjSettingsExtract("default")}
+                  />
+                  All completed sessions — passed, redirected, rejected
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.78rem", opacity: 0.75, marginBottom: "0.35rem" }}>
+                  <input
+                    type="radio"
+                    name="profileExtract"
+                    checked={projSettingsExtract === "passed_only"}
+                    onChange={() => setProjSettingsExtract("passed_only")}
+                  />
+                  Passed sessions only
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.78rem", opacity: 0.75 }}>
+                  <input
+                    type="radio"
+                    name="profileExtract"
+                    checked={projSettingsExtract === "off"}
+                    onChange={() => setProjSettingsExtract("off")}
+                  />
+                  Off
+                </label>
+              </div>
+              <button
+                type="submit"
+                style={{
+                  ...btn(true),
+                  minHeight: "2.75rem",
+                  opacity:
+                    savingProjectSettings ||
+                    projDecisionPolicy.reviewThreshold >=
+                      projDecisionPolicy.acceptanceThreshold
+                      ? 0.4
+                      : 1,
+                }}
+                disabled={
+                  savingProjectSettings ||
+                  projDecisionPolicy.reviewThreshold >=
+                    projDecisionPolicy.acceptanceThreshold
+                }
+              >
+                {savingProjectSettings ? "Saving…" : "Save project settings"}
+              </button>
+            </form>
+          )}
+          {canOrgAdmin && settingsAudit.length > 0 && (
+            <details style={{ marginTop: "1rem" }}>
+              <summary style={{ cursor: "pointer", fontSize: "0.72rem", opacity: 0.55 }}>
+                Settings history ({settingsAudit.length} recent changes)
+              </summary>
+              <ul style={{ listStyle: "none", padding: "0.5rem 0 0", margin: 0 }}>
+                {settingsAudit.map((change) => (
+                  <li
+                    key={change.id}
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: "0.5rem",
+                      padding: "0.35rem 0",
+                      borderBottom: "1px solid rgba(255,255,255,0.05)",
+                      fontSize: "0.7rem",
+                    }}
+                  >
+                    <span style={{ opacity: 0.7 }}>{change.changed_keys.join(", ")}</span>
+                    <span style={{ opacity: 0.35 }}>
+                      by {change.actor_email ?? change.actor_kind}
+                    </span>
+                    <span style={{ opacity: 0.3, marginLeft: "auto" }}>
+                      {new Date(change.created_at).toLocaleString()}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </section>
+      )}
+
+      {selected && (
+        <section style={{ marginBottom: "2.5rem" }}>
+          <h2 style={{ ...sectionHeading, marginBottom: "0.75rem" }}>
+            API KEYS — {selected.name}
+          </h2>
+          {canOrgAdmin && (
+            <button type="button" style={{ ...btn(true), marginBottom: "1rem" }} onClick={() => void createKey()}>
+              Create key
+            </button>
+          )}
+          {revealedSecret && (
+            <div
+              style={{
+                padding: "1rem",
+                marginBottom: "1rem",
+                background: "rgba(255,255,255,0.04)",
+                fontFamily: "monospace",
+                fontSize: "0.75rem",
+                wordBreak: "break-all",
+              }}
+            >
+              <div style={{ opacity: 0.45, marginBottom: "0.5rem" }}>Copy now — not shown again</div>
+              {revealedSecret}
+              <button
+                type="button"
+                style={{ ...btn(false), marginTop: "0.75rem" }}
+                onClick={() => {
+                  void navigator.clipboard.writeText(revealedSecret)
+                }}
+              >
+                Copy
+              </button>
+              <button
+                type="button"
+                style={{ ...btn(false), marginTop: "0.75rem", marginLeft: "0.5rem" }}
+                onClick={() => setRevealedSecret(null)}
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+            {keys.map((k) => (
+              <li
+                key={k.id}
+                style={{
+                  fontSize: "0.78rem",
+                  padding: "0.45rem 0",
+                  borderBottom: "1px solid rgba(255,255,255,0.06)",
+                  display: "flex",
+                  gap: "1rem",
+                  alignItems: "center",
+                }}
+              >
+                <span style={{ fontFamily: "monospace", opacity: 0.5 }}>{k.key_prefix}…</span>
+                <span style={{ opacity: 0.35 }}>{k.label ?? "—"}</span>
+                <span style={{ opacity: 0.25, marginLeft: "auto" }}>
+                  {k.revoked_at ? "revoked" : k.last_used_at ? "used" : "unused"}
+                </span>
+                {canOrgAdmin && !k.revoked_at && (
+                  <button type="button" style={btn(false)} onClick={() => void revokeKey(k.id)}>
+                    revoke
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {selected && (
+        <section style={{ marginBottom: "2.5rem" }}>
+          <h2 style={{ ...sectionHeading, marginBottom: "0.75rem" }}>
+            WEBHOOKS — {selected.name}
+          </h2>
+          <p style={{ opacity: 0.35, fontSize: "0.75rem", marginBottom: "1rem" }}>
+            HTTPS endpoints that receive signed JSON when a session completes (event{" "}
+            <span style={{ fontFamily: "monospace" }}>session.completed</span>). Configure{" "}
+            <span style={{ fontFamily: "monospace" }}>CRON_SECRET</span> and call{" "}
+            <span style={{ fontFamily: "monospace" }}>GET /api/cron/webhook-deliveries</span>{" "}
+            on a schedule for retries.
+          </p>
+          {canOrgAdmin && (
+            <form onSubmit={createWebhook} style={{ marginBottom: "1.25rem" }}>
+              <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", alignItems: "flex-end" }}>
+                <div style={{ flex: "1 1 12rem" }}>
+                  <label style={label}>HTTPS URL</label>
+                  <input
+                    style={input}
+                    type="url"
+                    value={whUrl}
+                    onChange={(e) => setWhUrl(e.target.value)}
+                    placeholder="https://example.com/groucho-hook"
+                    required
+                  />
+                </div>
+                <div style={{ flex: "1 1 8rem" }}>
+                  <label style={label}>Label (optional)</label>
+                  <input
+                    style={input}
+                    value={whLabel}
+                    onChange={(e) => setWhLabel(e.target.value)}
+                    placeholder="Production"
+                  />
+                </div>
+                <button type="submit" style={btn(true)}>
+                  Add webhook
+                </button>
+              </div>
+            </form>
+          )}
+          {revealedWebhookSecret && (
+            <div
+              style={{
+                padding: "1rem",
+                marginBottom: "1rem",
+                background: "rgba(255,255,255,0.04)",
+                fontFamily: "monospace",
+                fontSize: "0.75rem",
+                wordBreak: "break-all",
+              }}
+            >
+              <div style={{ opacity: 0.45, marginBottom: "0.5rem" }}>
+                Signing secret — copy now (create or rotate)
+              </div>
+              {revealedWebhookSecret}
+              <button
+                type="button"
+                style={{ ...btn(false), marginTop: "0.75rem" }}
+                onClick={() => void navigator.clipboard.writeText(revealedWebhookSecret)}
+              >
+                Copy
+              </button>
+              <button
+                type="button"
+                style={{ ...btn(false), marginTop: "0.75rem", marginLeft: "0.5rem" }}
+                onClick={() => setRevealedWebhookSecret(null)}
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+            {webhooks.map((w) => (
+              <li
+                key={w.id}
+                style={{
+                  fontSize: "0.78rem",
+                  padding: "0.45rem 0",
+                  borderBottom: "1px solid rgba(255,255,255,0.06)",
+                  display: "flex",
+                  gap: "0.75rem",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                }}
+              >
+                <span style={{ opacity: w.active ? 0.85 : 0.35 }}>{w.label ?? "—"}</span>
+                <span style={{ fontFamily: "monospace", opacity: 0.4, wordBreak: "break-all" }}>
+                  {w.url}
+                </span>
+                {canOrgAdmin && (
+                  <label style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontSize: "0.72rem", opacity: 0.5 }}>
+                    <input
+                      type="checkbox"
+                      checked={w.active}
+                      onChange={(e) => void toggleWebhook(w, e.target.checked)}
+                    />
+                    active
+                  </label>
+                )}
+                {canOrgAdmin && (
+                  <>
+                    <button type="button" style={{ ...btn(false), marginLeft: "auto" }} onClick={() => void testWebhook(w.id)}>
+                      test ping
+                    </button>
+                    <button type="button" style={btn(false)} onClick={() => void rotateWebhookSecret(w.id)}>
+                      rotate secret
+                    </button>
+                    <button type="button" style={btn(false)} onClick={() => void deleteWebhook(w.id)}>
+                      delete
+                    </button>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {selected && (
+        <section style={{ marginBottom: "2.5rem" }}>
+          <h2 style={{ ...sectionHeading, marginBottom: "0.75rem" }}>
+            SESSIONS — {selected.name} ({sessionTotal})
+          </h2>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 25rem), 1fr))",
+              gap: "1rem",
+              alignItems: "start",
+            }}
+          >
+          <ul
+            style={{
+              listStyle: "none",
+              padding: 0,
+              margin: 0,
+              border: "1px solid rgba(255,255,255,0.08)",
+              maxHeight: "46rem",
+              overflowY: "auto",
+            }}
+          >
+            {sessions.map((s) => (
+              <li key={s.id}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedSessionId(s.id)}
+                  aria-pressed={selectedSessionId === s.id}
+                  style={{
+                    width: "100%",
+                    fontSize: "0.75rem",
+                    minHeight: "3.75rem",
+                    padding: "0.65rem 0.75rem",
+                    border: "none",
+                    borderBottom: "1px solid rgba(255,255,255,0.06)",
+                    borderLeft:
+                      selectedSessionId === s.id
+                        ? "2px solid rgba(255,255,255,0.9)"
+                        : "2px solid transparent",
+                    display: "flex",
+                    gap: "1rem",
+                    fontFamily: "monospace",
+                    background:
+                      selectedSessionId === s.id
+                        ? "rgba(255,255,255,0.06)"
+                        : "transparent",
+                    color: "inherit",
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  <span style={{ opacity: 0.45 }}>{s.session_id.slice(0, 12)}…</span>
+                  <span style={{ opacity: 0.35 }}>{s.status}</span>
+                  <span
+                    style={{
+                      opacity: s.suitability_score == null ? 0.25 : 0.75,
+                      fontVariantNumeric: "tabular-nums",
+                      minWidth: "3.25rem",
+                    }}
+                  >
+                    {s.suitability_score == null
+                      ? "—"
+                      : `${Math.round(s.suitability_score * 100)}%`}
+                  </span>
+                  <span style={{ opacity: 0.42 }}>
+                    {s.review_status === "approved"
+                      ? s.decision_source === "policy"
+                        ? "auto accepted"
+                        : "accepted"
+                      : s.review_status === "declined"
+                        ? s.decision_source === "policy"
+                          ? "auto declined"
+                          : "declined"
+                        : s.suitability_band === "recommended_acceptance"
+                          ? "recommended"
+                          : s.suitability_band === "below_threshold"
+                            ? "below threshold"
+                            : s.review_status === "pending"
+                              ? "needs review"
+                              : "in progress"}
+                  </span>
+                  <span
+                    style={{
+                      opacity: sessionProfileRows.some((row) => row.session.id === s.id)
+                        ? 0.65
+                        : 0.25,
+                    }}
+                  >
+                    {sessionProfileRows.some((row) => row.session.id === s.id)
+                      ? "profile ready"
+                      : "profile missing"}
+                  </span>
+                  <span style={{ opacity: 0.35 }}>
+                    {s.applicant_name || s.applicant_email || "anonymous"}
+                  </span>
+                  <span style={{ opacity: 0.25, marginLeft: "auto" }}>
+                    {new Date(s.created_at).toLocaleString()}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          {selectedSessionId && (
+            <div
+              style={{
+                padding: "1rem",
+                background: "rgba(255,255,255,0.03)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                maxHeight: "46rem",
+                overflowY: "auto",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "0.75rem",
+                  flexWrap: "wrap",
+                  marginBottom: "0.75rem",
+                }}
+              >
+                <div style={{ ...label, marginBottom: 0 }}>
+                  TRANSCRIPT
+                  {selectedSession && (
+                    <span style={{ marginLeft: "0.6rem", opacity: 0.8 }}>
+                      {selectedSession.status}
+                    </span>
+                  )}
+                </div>
+                {canOrgAdmin && selectedSession && (
+                  <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      disabled={
+                        sessionAction !== null ||
+                        !transcript.some((message) => message.role === "user")
+                      }
+                      onClick={() => void generateSessionProfile(selectedSession)}
+                      style={{
+                        ...btn(true),
+                        minHeight: "2.75rem",
+                        opacity:
+                          sessionAction !== null ||
+                          !transcript.some((message) => message.role === "user")
+                            ? 0.35
+                            : 1,
+                        cursor:
+                          sessionAction !== null ||
+                          !transcript.some((message) => message.role === "user")
+                            ? "not-allowed"
+                            : "pointer",
+                      }}
+                    >
+                      {sessionAction?.sessionId === selectedSession.id &&
+                      sessionAction.kind === "profile"
+                        ? "Generating…"
+                        : profile
+                          ? "Regenerate profile"
+                          : "Generate profile"}
+                    </button>
+                    {selectedSession.status === "active" && (
+                      <button
+                        type="button"
+                        disabled={sessionAction !== null}
+                        onClick={() => void abandonSession(selectedSession)}
+                        style={{
+                          ...btn(false),
+                          minHeight: "2.75rem",
+                          opacity: sessionAction !== null ? 0.35 : 0.8,
+                          cursor: sessionAction !== null ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        {sessionAction?.sessionId === selectedSession.id &&
+                        sessionAction.kind === "abandon"
+                          ? "Marking…"
+                          : "Mark abandoned"}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+              {transcript.length === 0 ? (
+                <p style={{ opacity: 0.35, fontSize: "0.78rem" }}>No messages or loading…</p>
+              ) : (
+                <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                  {transcript.map((m) => {
+                    const scores =
+                      m.metadata &&
+                      typeof m.metadata === "object" &&
+                      m.metadata !== null &&
+                      "scores" in m.metadata
+                        ? (m.metadata as { scores: unknown }).scores
+                        : null
+                    return (
+                      <li
+                        key={m.id}
+                        style={{
+                          fontSize: "0.78rem",
+                          padding: "0.5rem 0",
+                          borderBottom: "1px solid rgba(255,255,255,0.05)",
+                        }}
+                      >
+                        <span style={{ opacity: 0.35, marginRight: "0.75rem" }}>{m.role}</span>
+                        <span style={{ opacity: 0.9 }}>{m.content}</span>
+                        {scores != null && (
+                          <div
+                            style={{
+                              marginTop: "0.25rem",
+                              opacity: 0.35,
+                              fontFamily: "monospace",
+                              fontSize: "0.68rem",
+                            }}
+                          >
+                            {JSON.stringify(scores)}
+                          </div>
+                        )}
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+              {profile && (
+                <ProfilePanel
+                  profile={profile}
+                  session={selectedSession}
+                  personaSchema={personaSchema}
+                  canReveal={canOrgAdmin}
+                  revealedKeys={revealedCustomKeys}
+                  onToggleReveal={(k) =>
+                    setRevealedCustomKeys((prev) => {
+                      const next = new Set(prev)
+                      if (next.has(k)) next.delete(k)
+                      else next.add(k)
+                      return next
+                    })
+                  }
+                />
+              )}
+            </div>
+          )}
+          </div>
+        </section>
+      )}
+
+      {selected && (
+        <section style={{ marginBottom: "2.5rem" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "baseline",
+              justifyContent: "space-between",
+              gap: "1rem",
+              flexWrap: "wrap",
+              marginBottom: "0.5rem",
+            }}
+          >
+            <h2 style={{ ...sectionHeading, marginBottom: 0 }}>
+              EXTRACTED PROFILES — {selected.name}
+            </h2>
+            <button
+              type="button"
+              style={{ ...btn(false), fontSize: "0.62rem" }}
+              onClick={() => void loadSessionProfiles()}
+            >
+              refresh
+            </button>
+          </div>
+          <p style={{ fontSize: "0.75rem", opacity: 0.4, marginBottom: "1rem", lineHeight: 1.45 }}>
+            Structured profiles generated automatically or manually. Open a row for full core,
+            custom fields, and PII reveal. Use{" "}
+            <span style={{ fontFamily: "monospace", opacity: 0.7 }}>Open transcript</span> to jump
+            to the same session below.
+          </p>
+          {loadingSessionProfiles ? (
+            <p style={{ opacity: 0.35, fontSize: "0.78rem" }}>Loading profiles…</p>
+          ) : sessionProfileRows.length === 0 ? (
+            <p style={{ opacity: 0.35, fontSize: "0.78rem" }}>
+              No extracted profiles yet. Open a session transcript to generate one manually, or
+              enable automatic extraction in project settings.
+            </p>
+          ) : (
+            <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+              {sessionProfileRows.map((row) => {
+                const ext = row.profile.extraction
+                const preview =
+                  row.profile.core?.summary?.trim() ||
+                  (ext.status === "failed"
+                    ? `Extraction failed${"reason" in ext && ext.reason ? `: ${ext.reason}` : ""}`
+                    : "No summary.")
+                const expanded = profilesExpandedSessionId === row.session.id
+                return (
+                  <li
+                    key={row.session.id}
+                    style={{
+                      borderBottom: "1px solid rgba(255,255,255,0.06)",
+                      paddingBottom: "0.5rem",
+                      marginBottom: "0.5rem",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        alignItems: "center",
+                        gap: "0.75rem",
+                        fontSize: "0.75rem",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setProfilesExpandedSessionId((prev) =>
+                            prev === row.session.id ? null : row.session.id,
+                          )
+                        }
+                        style={{
+                          ...btn(expanded),
+                          fontFamily: "monospace",
+                          fontSize: "0.68rem",
+                        }}
+                      >
+                        {row.session.session_id.slice(0, 14)}…
+                      </button>
+                      <Chip>{row.session.status}</Chip>
+                      <Chip>
+                        profile: {ext.status}
+                      </Chip>
+                      <span style={{ opacity: 0.3, fontSize: "0.68rem", marginLeft: "auto" }}>
+                        {new Date(row.verdictCreatedAt).toLocaleString()}
+                      </span>
+                    </div>
+                    <p
+                      style={{
+                        fontSize: "0.72rem",
+                        opacity: 0.45,
+                        margin: "0.35rem 0 0.5rem",
+                        lineHeight: 1.35,
+                        maxWidth: "42rem",
+                      }}
+                    >
+                      {preview.length > 220 ? `${preview.slice(0, 220)}…` : preview}
+                    </p>
+                    <button
+                      type="button"
+                      style={{ ...btn(false), fontSize: "0.62rem", marginRight: "0.5rem" }}
+                      onClick={() => {
+                        setSelectedSessionId(row.session.id)
+                        setProfilesExpandedSessionId(null)
+                      }}
+                    >
+                      Open transcript
+                    </button>
+                    {expanded && (
+                      <div style={{ marginTop: "0.75rem" }}>
+                        <ProfilePanel
+                          profile={row.profile}
+                          session={row.session}
+                          personaSchema={row.personaSchema}
+                          canReveal={canOrgAdmin}
+                          revealedKeys={profilesRevealedKeys}
+                          onToggleReveal={(k) =>
+                            setProfilesRevealedKeys((prev) => {
+                              const next = new Set(prev)
+                              if (next.has(k)) next.delete(k)
+                              else next.add(k)
+                              return next
+                            })
+                          }
+                        />
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </section>
+      )}
+
+      {canOrgOwner && (
+        <section style={{ borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: "2rem" }}>
+          <h2 style={{ ...sectionHeading, marginBottom: "0.75rem", color: "#f87171" }}>Danger zone</h2>
+          <p style={{ fontSize: "0.78rem", opacity: 0.45, marginBottom: "1rem" }}>
+            Deletes the organisation and all projects, keys, and sessions (cascade). Owners (or
+            platform operators) only.
+          </p>
+          <input
+            style={input}
+            placeholder={`Type slug “${org.slug}” to confirm`}
+            value={deleteSlug}
+            onChange={(e) => setDeleteSlug(e.target.value)}
+          />
+          <button
+            type="button"
+            style={{ ...btn(false), marginTop: "0.75rem", borderColor: "rgba(248,113,113,0.5)", color: "#f87171" }}
+            onClick={() => void deleteOrg()}
+          >
+            Delete organisation
+          </button>
+        </section>
+      )}
+    </div>
+  )
+}
+
+export default function OrganisationDetailPage() {
+  return (
+    <Suspense
+      fallback={
+        <div style={{ padding: "2rem", opacity: 0.4 }}>
+          Loading…
+        </div>
+      }
+    >
+      <OrganisationDetailPageInner />
+    </Suspense>
+  )
+}

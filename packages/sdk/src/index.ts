@@ -18,6 +18,28 @@ export {
   type MediaChoiceInteraction,
   type MediaChoiceAnswer,
   type InteractionAnswer,
+  type Application,
+  type ApplicationQueue,
+  type ApplicationDecisionSummary,
+  type ApplicationList,
+  type ApplicationDetail,
+  type DecideApplicationRequest,
+  type DecideApplicationResponse,
+  type ListApplicationsQuery,
+  type ApplicationOutcome,
+  type DecisionHistoryEntry,
+  type CorrectApplicationRequest,
+  type CorrectApplicationResponse,
+  type ReportOutcomeRequest,
+  type ReportOutcomeResponse,
+  type SubmitEntryRequest,
+  type SubmitEntryResponse,
+  type Cohort,
+  type CohortList,
+  type AddToCohortRequest,
+  type AddToCohortResponse,
+  type ApplicantRequestOptions,
 } from "./client.js"
 export { GrouchoApiError } from "./errors.js"
 export type { components, operations, paths } from "./generated/openapi.js"
+export { APPLICANT_HEADERS, type ApplicantConnection } from "./applicant.js"

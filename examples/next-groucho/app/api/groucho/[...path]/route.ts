@@ -1,55 +1,17 @@
-import { NextRequest, NextResponse } from "next/server"
+import { createGrouchoRelay } from "@groucho-gatekeeper/sdk/server"
 
-async function proxy(req: NextRequest, pathSegments: string[]) {
-  const upstreamBase =
-    process.env.GROUPCHO_API_BASE_URL?.replace(/\/$/, "") ?? "http://127.0.0.1:3000"
-  const key = process.env.GROUPCHO_API_KEY
-  if (!key) {
-    return NextResponse.json(
-      { error: "GROUPCHO_API_KEY is not set on the host" },
-      { status: 500 },
-    )
+// Keeps the key on this server and forwards the applicant's IP, user agent and language to Groucho.
+const relay = createGrouchoRelay({
+  baseUrl: process.env.GROUPCHO_API_BASE_URL?.replace(/\/$/, "") ?? "http://127.0.0.1:3000",
+  apiKey: process.env.GROUPCHO_API_KEY ?? "",
+})
+
+async function handle(req: Request, ctx: { params: Promise<{ path: string[] }> }) {
+  if (!process.env.GROUPCHO_API_KEY) {
+    return Response.json({ error: "GROUPCHO_API_KEY is not set on the host" }, { status: 500 })
   }
-
-  const pathPart = pathSegments.join("/")
-  const url = new URL(`${upstreamBase}/${pathPart}`)
-  url.search = req.nextUrl.search
-
-  const headers = new Headers(req.headers)
-  headers.delete("host")
-  headers.set("Authorization", `Bearer ${key}`)
-
-  const init: RequestInit = {
-    method: req.method,
-    headers,
-  }
-
-  if (req.method !== "GET" && req.method !== "HEAD") {
-    init.body = await req.arrayBuffer()
-  }
-
-  const res = await fetch(url, init)
-
-  const out = new NextResponse(res.body, { status: res.status })
-  res.headers.forEach((value, key) => {
-    if (key.toLowerCase() === "transfer-encoding") return
-    out.headers.set(key, value)
-  })
-  return out
+  return relay(req, (await ctx.params).path)
 }
 
-export async function GET(
-  req: NextRequest,
-  ctx: { params: Promise<{ path: string[] }> },
-) {
-  const { path } = await ctx.params
-  return proxy(req, path)
-}
-
-export async function POST(
-  req: NextRequest,
-  ctx: { params: Promise<{ path: string[] }> },
-) {
-  const { path } = await ctx.params
-  return proxy(req, path)
-}
+export const GET = handle
+export const POST = handle
