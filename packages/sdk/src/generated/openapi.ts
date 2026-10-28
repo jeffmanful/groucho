@@ -487,6 +487,9 @@ export interface components {
             welcomeMessage?: string;
         };
         Session: {
+            /** @description Last applicant-facing closing message, available for concluded gatekeeper sessions so a host can restore submission confirmation. */
+            message?: string;
+            ui?: components["schemas"]["GrouchoInteractionUi"];
             /** Format: uuid */
             id?: string;
             /** @description Same as path `sessionId` */
@@ -914,6 +917,8 @@ export interface operations {
                     /** Format: uuid */
                     personaId?: string | null;
                     applicant?: components["schemas"]["ApplicantIdentity"];
+                    /** @description Server-side application invitation token. Required for invitation-only projects; fixes the session, email and application audience. */
+                    invitationToken?: string;
                     /**
                      * @description Optional gatekeeper opener for new sessions. Overrides the project's
                      *     `application_experience.opening_message` when the session is first created.

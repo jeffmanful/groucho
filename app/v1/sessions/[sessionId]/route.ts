@@ -58,6 +58,12 @@ export async function GET(
   const outcome = outcomeLabelFromDbStatus(row.status)
   const concluded = isConcludedSessionStatus(row.status)
   const applicant = applicantIdentityFromRow(row)
+  const { data: closing } = concluded && settings.projectType === "gatekeeper"
+    ? await supabase.from("messages").select("content, metadata").eq("session_id", row.id)
+      .eq("role", "assistant").order("sent_at", { ascending: false }).limit(1).maybeSingle()
+    : { data: null }
+  const closingMetadata = closing?.metadata && typeof closing.metadata === "object" && !Array.isArray(closing.metadata)
+    ? closing.metadata as Record<string, unknown> : null
 
   const { data: applicationDecision } = concluded
     ? await currentDecisionFor<{
@@ -154,6 +160,7 @@ export async function GET(
   }
 
   return tracedJson(req, {
+    ...(typeof closing?.content === "string" ? { message: closing.content, ...(closingMetadata?.ui ? { ui: closingMetadata.ui } : {}) } : {}),
     id: row.id,
     clientSessionKey: row.session_id,
     status: row.status,

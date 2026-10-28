@@ -22,6 +22,7 @@ import {
 } from "@/lib/gatekeeper-interaction-spec"
 import type { PostSessionMessageInput } from "@/lib/post-session-message"
 import { isConcludedSessionStatus } from "@/lib/session-status"
+import { invitationAllowsStart, resolveApplicationInvitation } from "@/lib/application-invitations"
 import {
   applicationOpeningMessageForSignals,
   applicationSignalDefinitions,
@@ -54,6 +55,7 @@ export type StartGatekeeperSessionInput = {
   conversationEngine?: string
   /** Recorded on the opening message so API turns on demo sessions never run completion. */
   demoSession?: boolean
+  invitationToken?: string
 }
 
 async function resolvePersonaId(
@@ -84,6 +86,16 @@ export async function startGatekeeperSession(
     return traceJson(input, { error: "Ticket access is simulation-only. Open the admin ticket workspace." }, { status: 409 })
   }
   const { organisationId, projectId, apiKeyId } = context
+  if (projectSettings.raw.application_invitation_required === true) {
+    try {
+      const invitation = await resolveApplicationInvitation(projectId, input.invitationToken)
+      if (!invitationAllowsStart(invitation, sessionId, applicantIdentity)) {
+        return traceJson(input, { error: "A valid invitation for this applicant and application is required." }, { status: 403 })
+      }
+    } catch {
+      return traceJson(input, { error: "Invitation service unavailable. Please retry." }, { status: 503 })
+    }
+  }
   // Projects configured for the newer COLORS engine start every new session on it.
   const conversationEngine = input.conversationEngine ??
     (projectUsesColorsEngine(projectSettings.raw) ? COLORS_THIN_PILOT_MARKER : undefined)

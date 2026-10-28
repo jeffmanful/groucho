@@ -7,6 +7,7 @@ export type ApplicantIntakeFormProps = {
   audience?: "community" | "artist"
   initialEmail?: string
   initialName?: string
+  emailReadOnly?: boolean
   disabled?: boolean
   onSubmit: (applicant: ApplicantIdentity) => void
 }
@@ -24,7 +25,7 @@ function linksFromText(raw: string, label: string): string[] {
   }))]
 }
 
-export function ApplicantIntakeForm({ audience = "community", initialEmail = "", initialName = "", disabled, onSubmit }: ApplicantIntakeFormProps) {
+export function ApplicantIntakeForm({ audience = "community", initialEmail = "", initialName = "", emailReadOnly = false, disabled, onSubmit }: ApplicantIntakeFormProps) {
   const id = useId()
   const [error, setError] = useState<string | null>(null)
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -60,7 +61,7 @@ export function ApplicantIntakeForm({ audience = "community", initialEmail = "",
       <p id={`${id}-help`} className="groucho-muted">Tell us a little about yourself. An artist name and links are optional, whether you make music or simply enjoy it.</p>
       <fieldset disabled={disabled} className="groucho-artist-intake__fields">
         <label className="groucho-field"><span className="groucho-field__label">Name</span><input className="groucho-field__input" name="name" autoComplete="name" defaultValue={initialName} maxLength={160} required /></label>
-        <label className="groucho-field"><span className="groucho-field__label">Email</span><input className="groucho-field__input" name="email" type="email" autoComplete="email" defaultValue={initialEmail} maxLength={320} required /></label>
+        <label className="groucho-field"><span className="groucho-field__label">Email</span><input className="groucho-field__input" name="email" type="email" autoComplete="email" defaultValue={initialEmail} readOnly={emailReadOnly} maxLength={320} required /></label>
         <div className="groucho-artist-intake__row">
           <label className="groucho-field"><span className="groucho-field__label">City</span><input className="groucho-field__input" name="city" autoComplete="address-level2" maxLength={120} required /></label>
           <label className="groucho-field"><span className="groucho-field__label">Age</span><input className="groucho-field__input" name="age" type="number" inputMode="numeric" min={0} max={120} step={1} required /></label>

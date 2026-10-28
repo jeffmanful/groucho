@@ -31,6 +31,7 @@ import { DotMatrixPresence } from "./DotMatrixPresence.js"
 import {
   DEFAULT_GATEKEEPER_UI,
   turnFromStartResponse,
+  gatekeeperRestoration,
 } from "./gatekeeper-turn.js"
 import { InteractionInput } from "./InteractionInput.js"
 import { OutcomeBanner } from "./OutcomeBanner.js"
@@ -79,6 +80,10 @@ export type GatekeeperV2Props = {
   className?: string
   /** Ask before restoring an existing active session (default: true) */
   confirmResume?: boolean
+  /** Restore saved intake and submission confirmation through a browser-bound applicant relay. */
+  restoreSession?: boolean
+  /** Use with an email-bound application invitation. The server must enforce the same identity. */
+  lockApplicantEmail?: boolean
 }
 
 export function GatekeeperV2(props: GatekeeperV2Props) {
@@ -104,6 +109,8 @@ function GatekeeperV2Experience({
   renderFooter,
   className,
   confirmResume = true,
+  restoreSession = false,
+  lockApplicantEmail = false,
 }: GatekeeperV2Props) {
   const client = useGroucho()
   const [internalId, setInternalId] = useState<string | null>(null)
@@ -148,6 +155,7 @@ function GatekeeperV2Experience({
     useState<InteractionAnswer | null>(null)
   const [showSlowResponse, setShowSlowResponse] = useState(false)
   const [outcome, setOutcome] = useState<SessionOutcome>("active")
+  const [restoredSessionId, setRestoredSessionId] = useState<string | null>(null)
   const [pendingResume, setPendingResume] =
     useState<StartSessionResponse | null>(null)
   const bootstrappedSessionRef = useRef<string | null>(null)
@@ -170,6 +178,27 @@ function GatekeeperV2Experience({
     ? submittedApplicant
     : applicantProp ?? submittedApplicant
   const needsApplicant = collectApplicant && (!activeApplicant || (intakeMode === "artist" ? !activeApplicant.artist : intakeMode === "community" && !activeApplicant.details))
+  const restoring = restoreSession && restoredSessionId !== sessionId
+
+  useEffect(() => {
+    if (!restoreSession || !sessionId || restoredSessionId === sessionId) return
+    let cancelled = false
+    void client.getSession(sessionId).then(session => {
+      if (cancelled) return
+      const restored = gatekeeperRestoration(session, intakeMode, applicantProp?.email)
+      if (!restored) return
+      setSubmittedApplicant(restored.applicant)
+      if (restored.turn) {
+        setTurn(restored.turn)
+        setOutcome(restored.outcome)
+        setDecisionPhase("revealed")
+        bootstrappedSessionRef.current = sessionId
+      }
+    }).catch(() => { /* A fresh session has no applicant capability yet. */ }).finally(() => {
+      if (!cancelled) setRestoredSessionId(sessionId)
+    })
+    return () => { cancelled = true }
+  }, [client, restoreSession, sessionId, restoredSessionId, intakeMode, applicantProp?.email])
 
   const presenceState = presenceForDecisionPhase({
     loading,
@@ -234,7 +263,7 @@ function GatekeeperV2Experience({
   }, [decisionPhase, decisionDurationMs])
 
   useEffect(() => {
-    if (!sessionId || needsApplicant || terminal) return
+    if (!sessionId || needsApplicant || terminal || restoring) return
     if (bootstrappedSessionRef.current === sessionId) return
     if (bootstrapInFlightRef.current) return
 
@@ -286,6 +315,7 @@ function GatekeeperV2Experience({
   }, [
     sessionId,
     needsApplicant,
+    restoring,
     terminal,
     client,
     personaId,
@@ -451,10 +481,11 @@ function GatekeeperV2Experience({
               Retry answer
             </button>
           ) : null}
+          {!failedAnswer && !turn && !sessionIdProp ? <button type="button" className="groucho-retry" onClick={startOver} disabled={bootstrapping || restoring}>Start a new application</button> : null}
         </div>
       ) : null}
       {needsApplicant && intakeMode !== "email" ? (
-        <ApplicantIntakeForm audience={intakeMode} initialEmail={applicantProp?.email} initialName={applicantProp?.name} disabled={bootstrapping} onSubmit={setSubmittedApplicant} />
+        <ApplicantIntakeForm audience={intakeMode} initialEmail={applicantProp?.email} initialName={applicantProp?.name} emailReadOnly={lockApplicantEmail} disabled={bootstrapping || restoring} onSubmit={setSubmittedApplicant} />
       ) : needsApplicant ? (
         <form
           className="groucho-applicant-form"

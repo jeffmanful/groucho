@@ -1,9 +1,14 @@
 # Initial COLORS Forum membership conversation
 
-This brief governs the thin COLORS demo conversation and its post-conversation
-report. The initial Forum is a place to discuss music and culture and share
-external links. It does not support audio uploads. It will include space for
-TONES and live events.
+This brief governs the COLORS conversation and its post-conversation report.
+Product context was updated on 28 October against the Forum's `roadmap.md`, the
+launch scope agreed by Jeffrey and COLORS on 19 October. Planned launch includes
+Discussions, Scenes (Beta) and Scene chat, user/artist profiles, artist audio
+uploads organised in projects, and a submissions discovery feed. Competitions
+are coming soon. These are launch plans, not a claim that every feature is
+enabled in the pilot. Groucho must not promise particular feedback, groups,
+members or availability dates. The Forum also has context for TONES and live
+events.
 
 ## What the conversation should learn
 
@@ -46,7 +51,8 @@ Public music links, song recommendations and discussion do not require an
 artist-permission declaration. Groucho must not introduce copyright or
 permission hypotheticals to test membership. A volunteered plan to expose
 someone else's private material belongs to a narrow safety response, not to
-routine questioning. No audio-upload workflow should be implied.
+routine questioning. Sharing the applicant's own music is legitimate
+participation context. Do not invent upload visibility or publishing workflows.
 
 Groucho may explain the city and community focus of TONES using the approved
 description above. An applicant may describe an event they attended, but

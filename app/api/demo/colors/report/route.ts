@@ -17,6 +17,7 @@ import { ColorsAssessmentError, generateColorsThinAssessment } from "@/lib/color
 import { pendingColorsReport } from "@/lib/colors-post-conversation"
 import { alignSuitabilityWithPolicy, suitabilityFromReviewerReport } from "@/lib/colors-suitability"
 import { parseClientDecisionPolicy } from "@/lib/decision-policy"
+import { COLORS_ASSESSMENT_LEASE_MS } from "@/lib/admin-session-report"
 
 type ReportMessage = {
   id: string
@@ -139,7 +140,7 @@ export async function POST(req: NextRequest) {
   }
   const startedAt = typeof metadata.colors_demo_report_started_at === "number"
     ? metadata.colors_demo_report_started_at : 0
-  if (metadata.colors_demo_report_status === "generating" && Date.now() - startedAt < 90_000) {
+  if (metadata.colors_demo_report_status === "generating" && Date.now() - startedAt < COLORS_ASSESSMENT_LEASE_MS) {
     return NextResponse.json({ status: "pending" }, { status: 202 })
   }
   const generatingMetadata = {

@@ -38,6 +38,7 @@ export async function POST(
     applicant?: unknown
     openingMessage?: unknown
     openingInteraction?: unknown
+    invitationToken?: string
   } = {}
   try {
     const text = await req.text()
@@ -63,6 +64,7 @@ export async function POST(
 
   const startInput = {
     sessionId,
+    invitationToken: typeof body.invitationToken === "string" ? body.invitationToken : undefined,
     personaId: body.personaId ?? undefined,
     applicantIdentity: applicant.value,
     openingMessage: opening.value,

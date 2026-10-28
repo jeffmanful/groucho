@@ -3,7 +3,7 @@ import { resolveAdminActor } from "@/lib/admin-actor"
 import { requireOrgMember, unauthorized } from "@/lib/org-access"
 import { supabase } from "@/lib/supabase"
 import { isConcludedSessionStatus } from "@/lib/session-status"
-import { adminSessionReviewerReport } from "@/lib/admin-session-report"
+import { adminSessionAssessment, adminSessionReviewerReport } from "@/lib/admin-session-report"
 
 export async function GET(
   _req: NextRequest,
@@ -80,6 +80,7 @@ export async function GET(
     messages: data ?? [],
     profile,
     reviewerReport,
+    assessment: adminSessionAssessment(data ?? [], ["completed", "passed", "redirected", "rejected"].includes(session.status)),
     personaSchema,
   })
 }

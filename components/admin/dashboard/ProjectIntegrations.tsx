@@ -7,6 +7,7 @@ import { projectStatus } from "./OrgOverview"
 import { useOrganisationSummary } from "./OrganisationSummaryContext"
 import { WEBHOOK_EVENTS, WEBHOOK_EVENT_LABELS, type WebhookEvent } from "@/lib/webhook-events"
 import styles from "./dashboard.module.css"
+import { ApplicationInvitations } from "@/components/admin/client/ApplicationInvitations"
 
 type ApiKey = { id: string; key_prefix: string; label: string | null; scopes?: string[]; last_used_at: string | null; created_at: string; revoked_at: string | null }
 type KeyUse = "conversations" | "applications"
@@ -148,6 +149,8 @@ export function ProjectIntegrations({ projectId }: { projectId: string }) {
       {notice ? <p className={notice.error ? styles.error : styles.notice} role="alert">{notice.text}</p> : null}
       {data?.error ? <p className={styles.error} role="alert">{data.error}</p> : null}
       {secret ? <Secret label={secret.label} value={secret.value} onDismiss={() => setSecret(null)} /> : null}
+
+      {orgId ? <ApplicationInvitations key={`${orgId}:${projectId}`} orgId={orgId} projectId={projectId} canManage={canManage} /> : null}
 
       <section className={styles.section} aria-labelledby="api-keys">
         <div className={styles.sectionHeader} style={{ alignItems: "flex-end" }}>

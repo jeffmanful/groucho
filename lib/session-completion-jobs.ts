@@ -22,6 +22,7 @@ import { pendingColorsReport } from "@/lib/colors-post-conversation"
 import { alignSuitabilityWithPolicy, compatibilityOutcomeFromReport, suitabilityFromReviewerReport } from "@/lib/colors-suitability"
 import { parseClientDecisionPolicy } from "@/lib/decision-policy"
 import type { Profile } from "@/lib/profile-extraction"
+import { COLORS_ASSESSMENT_LEASE_MS } from "@/lib/admin-session-report"
 
 type CompletionJob = {
   id: string
@@ -264,7 +265,7 @@ function metadataRecord(value: unknown): Record<string, unknown> {
 }
 
 /** How long a report started elsewhere (for example by the demo page) is left to finish. */
-const ASSESSMENT_IN_PROGRESS_MS = 90_000
+const ASSESSMENT_IN_PROGRESS_MS = COLORS_ASSESSMENT_LEASE_MS
 
 /**
  * Completion for the newer COLORS engine: reuse or produce the reviewer report and grounded

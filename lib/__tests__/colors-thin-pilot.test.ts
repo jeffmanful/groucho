@@ -51,7 +51,10 @@ describe("COLORS thin conversation pilot", () => {
     expect(prompt).toContain("At most two sentences and at most 40 words in total")
     expect(prompt).toContain("Never put options inside the question")
     expect(prompt).toContain("not by endorsing the person as right for the Forum")
-    expect(prompt).toContain("initial Forum is for discussion and sharing external links")
+    expect(prompt).toContain("artist audio uploads organised in projects on artist profiles")
+    expect(prompt).toContain("not a promise that every feature is enabled in the pilot")
+    expect(prompt).toContain("Competitions are coming soon, not an active entry opportunity")
+    expect(prompt).not.toContain("does not support audio uploads")
     expect(prompt).not.toContain("Make a private advisory judgment")
     expect(Object.keys(colorsThinResponseTool.input_schema.properties)).toEqual([
       "reply", "addsNewContext", "close", "boundary", "boundaryQuestion", "interactionProposal",

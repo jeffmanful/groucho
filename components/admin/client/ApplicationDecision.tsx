@@ -11,6 +11,7 @@ import { OUTCOME_LABELS } from "@/lib/outcome-labels"
 import { shortDate } from "@/lib/relative-time"
 import type { ReviewerReport } from "@/lib/reviewer-report"
 import { CorrectionDialog } from "./CorrectionDialog"
+import { ApplicationAssessment } from "./ApplicationAssessment"
 import styles from "./client.module.css"
 
 type Loaded = {
@@ -21,6 +22,7 @@ type Loaded = {
 type Detail = {
   messages: Array<{ id: string; role: "user" | "assistant"; content: string; sent_at?: string }>
   reviewerReport: ReviewerReport | null
+  assessment?: { supported: boolean; status: "ready" | "pending" | "generating" | "failed" | "outdated" }
 }
 type History = {
   decisions: DecisionHistoryEntry[]
@@ -70,6 +72,9 @@ export function ApplicationDecision({ projectId, sessionId }: { projectId: strin
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [correcting, setCorrecting] = useState(false)
+  const [assessing, setAssessing] = useState(false)
+  const [assessmentNotice, setAssessmentNotice] = useState<string | null>(null)
+  const [assessmentError, setAssessmentError] = useState<string | null>(null)
   const key = `${orgId}|${projectId}|${sessionId}|${token}`
 
   useEffect(() => {
@@ -107,6 +112,26 @@ export function ApplicationDecision({ projectId, sessionId }: { projectId: strin
   const recommendation = application?.assessment.recommendation ? RECOMMENDATION[application.assessment.recommendation] : null
   const decidable = application && !application.decision && (application.queue === "ready_for_review" || application.queue === "awaiting_assessment")
   const currentEntry = history?.decisions.find((entry) => entry.current) ?? null
+  const needsAssessment = detail?.assessment?.supported && (detail.assessment.status !== "ready" || application?.assessment.suitabilityScore === null)
+
+  async function assess() {
+    setAssessing(true)
+    setAssessmentError(null)
+    setAssessmentNotice(null)
+    try {
+      const response = await fetch(`${base}/sessions/${sessionId}/assessment`, { method: "POST" })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(typeof body.error === "string" ? body.error : "The assessment could not be completed.")
+      setAssessmentNotice(body.status === "pending" ? "The assessment is being generated. Refresh its status shortly." : "Assessment ready. Your decision is unchanged.")
+      setToken(current => current + 1)
+      refresh()
+    } catch (problem) {
+      setAssessmentError(problem instanceof Error ? problem.message : "The assessment could not be completed.")
+      setToken(current => current + 1)
+    } finally {
+      setAssessing(false)
+    }
+  }
 
   async function decide() {
     if (!choice) return
@@ -181,7 +206,27 @@ export function ApplicationDecision({ projectId, sessionId }: { projectId: strin
                 ) : null}
               </div>
               {report?.applicant_bio ? <p>{report.applicant_bio}</p> : null}
+              {detail?.assessment?.supported && detail.assessment.status !== "ready" ? (
+                <p className={styles.secondary}>
+                  {detail.assessment.status === "failed" ? "The assessment failed. The saved conversation can be assessed again."
+                    : detail.assessment.status === "outdated" ? "This assessment uses an earlier report version. Update it before deciding."
+                      : detail.assessment.status === "generating" ? "Groucho is generating the assessment."
+                        : "The assessment has not completed yet."}
+                </p>
+              ) : null}
+              {assessmentNotice ? <p className={styles.secondary} role="status">{assessmentNotice}</p> : null}
+              {assessmentError ? <p className={styles.errorText} role="alert">{assessmentError}</p> : null}
+              {needsAssessment && detail?.assessment && value.permissions.canDecide ? (
+                <button type="button" className={`${styles.button} ${styles.tall}`} disabled={assessing} onClick={() => {
+                  if (detail.assessment?.status === "generating") setToken(current => current + 1)
+                  else void assess()
+                }}>
+                  {assessing ? "Generating assessment…" : detail.assessment.status === "generating" ? "Refresh assessment status" : detail.assessment.status === "failed" ? "Retry assessment" : detail.assessment.status === "outdated" ? "Update assessment" : detail.assessment.status === "ready" ? "Save assessment score" : "Generate assessment"}
+                </button>
+              ) : null}
             </div>
+
+            {report ? <ApplicationAssessment report={report} /> : null}
 
             {report && (report.evidence_references.length || report.reviewer_focus) ? (
               <section style={{ display: "grid", gap: 12 }} aria-labelledby="said">
@@ -333,7 +378,7 @@ export function ApplicationDecision({ projectId, sessionId }: { projectId: strin
                   {saving ? "Saving…" : choice === "declined" ? `Decline ${firstName(name)}` : choice === "approved" ? `Approve ${firstName(name)}` : "Choose approve or decline"}
                 </button>
                 <span className={`${styles.muted} ${styles.small}`}>
-                  Your system gets the decision and contacts {firstName(name)}. Groucho won&apos;t.
+                  Your team is responsible for telling {firstName(name)} and arranging access. Groucho records the decision.
                 </span>
               </form>
             ) : (

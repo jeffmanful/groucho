@@ -125,6 +125,9 @@ paths:
                   nullable: true
                 applicant:
                   $ref: "#/components/schemas/ApplicantIdentity"
+                invitationToken:
+                  type: string
+                  description: Server-side application invitation token. Required for invitation-only projects; fixes the session, email and application audience.
                 openingMessage:
                   type: string
                   maxLength: 500
@@ -973,6 +976,11 @@ components:
     Session:
       type: object
       properties:
+        message:
+          type: string
+          description: Last applicant-facing closing message, available for concluded gatekeeper sessions so a host can restore submission confirmation.
+        ui:
+          $ref: "#/components/schemas/GrouchoInteractionUi"
         id:
           type: string
           format: uuid

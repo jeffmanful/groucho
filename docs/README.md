@@ -5,6 +5,7 @@ Proposed experiments live in [../pilots/](../pilots/README.md), including
 
 | Document | Description |
 |----------|-------------|
+| [colors-admin-pilot.md](./colors-admin-pilot.md) | Current pilot: invitation-only Forum applications, private admin assessments and human decisions |
 | [colors-conversation-engine.md](./colors-conversation-engine.md) | Current: all COLORS applications on the newer engine, completion pipeline, derived suitability score, API/SDK rollout |
 | [artist-forum-application.md](./artist-forum-application.md) | Shared community/artist intake, conversation modes, SDK adoption and deployment gates |
 | [shared-intake-replay-review-2026-10-26.md](./shared-intake-replay-review-2026-10-26.md) | Historical mixed-engine diagnostics; not a comparable evaluation of the two flows |
