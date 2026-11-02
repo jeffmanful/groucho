@@ -4,6 +4,8 @@ Email/password and Google OAuth use Supabase Auth. Platform access requires a se
 
 The requested core administrator, `jeff@cursive-studios.com`, has been provisioned in the configured Supabase project. Its password is stored by Supabase Auth, not in this repository. Signing in uses `/api/auth/login`, and logout clears Supabase and legacy cookies. Existing shared-password operators and isolated demo testers are retained for compatibility.
 
+The `/demos` sign-in form sends `demo: true` to `/api/auth/login`. Configured demo testers and authenticated platform administrators can use it. Confirmed Supabase administrators are checked against trusted `app_metadata` or active managed platform access; legacy operators still require their allowlist, password and access check. Administrator demo access uses a signed, expiring demo cookie carrying the administrator's own email. It also carries through to COLORS conversation cookies. Ordinary organisation members and user-editable metadata do not grant demo access. Successful sign-in reloads the destination so server-rendered demo pages read the new cookie.
+
 ## Enable Google
 
 1. In Google Cloud Console, select or create the Groucho project. Configure Google Auth Platform branding, audience and consent (openid, email, profile). While in testing, add the intended test users.
