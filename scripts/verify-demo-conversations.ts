@@ -27,6 +27,15 @@ const answers: Record<DemoConversationId, Record<string, string>> = {
 }
 
 const publicMode = process.argv.includes("--public")
+// Keep out-of-order synthetic answers self-contained: an unlabelled quotation can
+// otherwise sound like another story detail when the persona asks a follow-up.
+const freeTextAnswers: Partial<Record<DemoConversationId, Record<string, string>>> = {
+  saltings: {
+    wants: "What I need from the fortnight is someone to read my work.",
+    line: "A line from my draft is: The bridge arrived in pieces, but the leaving happened all at once.",
+    attendance: "I can attend the whole fortnight, 11 to 25 January.",
+  },
+}
 
 async function verify(id: DemoConversationId) {
   const { data: project, error } = publicMode
@@ -55,7 +64,7 @@ async function verify(id: DemoConversationId) {
     const nextField = fieldOrder.find(field => !details[field.key])?.key ?? "ritual"
     const answer = options
       ? options.find(option => Object.values(answers[id]).includes(option)) ?? options[0]
-      : answers[id][nextField] ?? "That covers what I wanted to share, thank you."
+      : freeTextAnswers[id]?.[nextField] ?? answers[id][nextField] ?? "That covers what I wanted to share, thank you."
     response = publicMode ? await publicRequest("messages", { message: answer }) : await postDemoConversation({ context, sessionId, message: answer, runCompletion: false })
     data = await response.json()
     transcript.push({ answer, httpStatus: response.status, response: data })
