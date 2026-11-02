@@ -1,9 +1,8 @@
 "use client"
 
-import { safeAuthPath } from "@/lib/auth-redirect"
+import { safeAuthPath, safeDemoPath } from "@/lib/auth-redirect"
 import Link from "next/link"
 import { useEffect, useRef, useState } from "react"
-import { useRouter } from "next/navigation"
 import styles from "./login.module.css"
 
 export default function LoginForm({
@@ -22,7 +21,6 @@ export default function LoginForm({
   const [loading, setLoading] = useState(false)
   const [rejected, setRejected] = useState(false)
   const passwordRef = useRef<HTMLInputElement>(null)
-  const router = useRouter()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -34,7 +32,7 @@ export default function LoginForm({
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, demo: demoLogin }),
       })
 
       if (res.ok) {
@@ -43,20 +41,20 @@ export default function LoginForm({
           "next",
         )
         const safePath = safeAuthPath(requestedPath ?? nextPath)
-        router.push(
+        // Reload even when signing in on /demos itself so its server session is fresh.
+        window.location.assign(
           data.role === "colors_demo_tester"
-            ? safePath === "/demo/colors" ||
-              safePath === "/demos" ||
-              safePath.startsWith("/demos/")
-              ? safePath
-              : "/demos"
+            ? safeDemoPath(safePath)
             : safePath,
         )
-        router.refresh()
         return
       }
       if (res.status === 429) {
         setError("Too many attempts. Wait a minute, then try again.")
+      } else if (res.status === 403) {
+        setError("Use a demo account or a platform administrator account to open the demos.")
+      } else if (res.status >= 500) {
+        setError("Sign-in is temporarily unavailable. Please try again shortly.")
       } else {
         setError("That email and password didn't match. Check them and try again.")
         setRejected(true)
@@ -94,7 +92,7 @@ export default function LoginForm({
             <h1 className={styles.title}>{demoLogin ? "Open the demo" : "Sign in to Groucho"}</h1>
             <p className={styles.lede}>
               {demoLogin
-                ? "Sign in with the demo account you were given to try the COLORS application flow."
+                ? "Sign in with your demo account or platform administrator account to explore Groucho."
                 : "Review applications and manage your projects."}
             </p>
           </div>

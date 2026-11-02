@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
   })
   if (!response.ok) return response
   const token = await issueDemoToken({
-    kind: "session", email: tester.email, sessionId, issuedAt: Date.now(),
+    kind: "session", email: tester.email, access: tester.access, sessionId, issuedAt: Date.now(),
   })
   if (!token) return NextResponse.json({ error: "Server misconfigured" }, { status: 500 })
   response.cookies.set(DEMO_SESSION_COOKIE, token, {

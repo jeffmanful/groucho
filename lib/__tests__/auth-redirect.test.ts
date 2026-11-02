@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { safeAuthPath, authRequestOrigin } from "../auth-redirect"
+import { safeAuthPath, safeDemoPath, authRequestOrigin } from "../auth-redirect"
 
 describe("safeAuthPath", () => {
   it("preserves local destinations", () => {
@@ -7,6 +7,16 @@ describe("safeAuthPath", () => {
   })
   it.each([null, "https://evil.test", "//evil.test", "/\\evil.test", "/\nevil.test", " /admin"])("rejects external and malformed redirects: %s", value => {
     expect(safeAuthPath(value)).toBe("/admin")
+  })
+})
+
+describe("safeDemoPath", () => {
+  it("preserves demo links including artist application queries", () => {
+    expect(safeDemoPath("/demo/colors?application=artist")).toBe("/demo/colors?application=artist")
+    expect(safeDemoPath("/demos/ticket-access")).toBe("/demos/ticket-access")
+  })
+  it.each([null, "/admin", "/demo/colors-other", "/demos/../../admin", "//evil.test"])("keeps testers within the demos: %s", value => {
+    expect(safeDemoPath(value)).toBe("/demos")
   })
 })
 
