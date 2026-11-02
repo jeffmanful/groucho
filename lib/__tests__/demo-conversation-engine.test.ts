@@ -94,6 +94,18 @@ describe("shared conversation runtime for public demos", () => {
     expect((await (await run("A gift")).json()).details.recipient).toBe("A gift")
   })
 
+  it("repairs a repeated selector after its named field has been answered", async () => {
+    mocks.history[0].metadata.conversation_profile = "saltings"
+    mocks.history[0].metadata.conversation_choice_key = "attendance"
+    mocks.history[0].metadata.conversation_details = { workingOn: "A novel", stuck: "The ending", wants: "Silence" }
+    mocks.create.mockResolvedValueOnce(result("Can you be there for the full fortnight, 11 to 25 January?", false, { choiceKey: "attendance" }))
+      .mockResolvedValueOnce(result("Would you share a line from the novel?"))
+    const data = await (await run("Yes, the whole fortnight", "saltings")).json()
+    expect(data.message).toBe("Would you share a line from the novel?")
+    expect(data.details.attendance).toBe("Yes, the whole fortnight")
+    expect(mocks.create).toHaveBeenCalledTimes(2)
+  })
+
   it("respects a request to stop and marks missing details honestly", async () => {
     mocks.create.mockResolvedValueOnce(result("Thank you for your time.", true))
     expect((await (await run("No thanks, please stop.")).json()).completion.complete).toBe(false)

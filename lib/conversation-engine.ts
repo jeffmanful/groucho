@@ -389,6 +389,8 @@ export async function postConversation(input: {
   function hasQuestion(reply: ConversationReply): boolean {
     const rich = reply.boundary === "none" ? config.resolveInteraction?.(reply.interactionProposal, shows) ?? null : null
     if (fields.length && reply.boundary === "none") {
+      const choice = choiceFor(reply)
+      if (choice?.field && detailsFor(reply)[choice.field]) return false
       if (reply.choiceKey && reply.choiceKey !== "none" && !choiceFor(reply)) return false
       if (/\b(?:which (?:sounds|of these|of those)|choose|pick|select|which one|which night)\b/i.test(reply.reply) && !choiceFor(reply)) return false
       if (choiceFor(reply)) return true
@@ -429,7 +431,7 @@ export async function postConversation(input: {
         try {
           const repaired = await requestReply(applicantQuestion ? operation("question_reply_repair") : operation("active_question_repair"),
             (applicantQuestion ? questionInstruction : fields.length
-              ? `Return an answerable turn with one clear question or approved choiceKey. Required details still missing: ${missingFor(proposal).map(field => field.label).join(", ")}. Capture supported facts from the current answer. Continue until these details are understood; never request something already confirmed. A selection question requires its registered choiceKey.`
+              ? `Return an answerable turn with one clear question or approved choiceKey. Required details still missing: ${missingFor(proposal).map(field => field.label).join(", ")}. Capture supported facts from the current answer. Continue until these details are understood; never request something already confirmed. A selection question requires its registered choiceKey. Do not select a choiceKey for a field already supplied, including the option the applicant just selected. Use choiceKey=none for an open question.`
               : "The previous active reply had no question. Ask one useful open question if a real thread remains, or set close=true if the exchange is settled. Do not continue for formatting alone.") + feedback)
           if (closesBeforeReady(repaired) || (applicantQuestion ? repaired.close || !hasQuestion(repaired) : !repaired.close && !hasQuestion(repaired))) {
             feedback = "\nThe last repair was unusable. " + (applicantQuestion ? "It must answer the question, set close=false, and include one direct question ending in ?." : "Set close=true for a settled exchange; otherwise include one direct question ending in ?.")
