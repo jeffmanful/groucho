@@ -100,6 +100,19 @@ describe("shared conversation runtime for public demos", () => {
     expect(mocks.create).toHaveBeenCalledTimes(1)
   })
 
+  it("closes an explicit stop question even if the model proposes another question", async () => {
+    mocks.create.mockResolvedValueOnce(result("What scent do you remember?"))
+    const data = await (await run("Can we stop?")).json()
+    expect(data).toMatchObject({ status: "completed", completion: { complete: false } })
+    expect(data.message).not.toContain("?")
+    expect(mocks.create).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not treat a memory of a bus stop as a request to end", async () => {
+    mocks.create.mockResolvedValueOnce(result("Where would it burn?"))
+    expect((await (await run("The bus stop by the sea.")).json()).status).toBe("active")
+  })
+
   it("does not save the answer when repair fails", async () => {
     mocks.create.mockResolvedValue(result("An observation without a question."))
     expect((await run()).status).toBe(503)

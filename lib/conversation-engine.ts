@@ -288,7 +288,8 @@ export async function postConversation(input: {
   const currentAnswer = input.interactionAnswer
     ? `${input.message}\nMedia choice: ${JSON.stringify(input.interactionAnswer)}`
     : input.message
-  const applicantQuestion = applicantAsksQuestion(input.message)
+  const stoppedByApplicant = fields.length > 0 && /^(?:(?:no thanks[,!.]?\s*)?(?:please\s+)?stop(?:\s+(?:now|this|the conversation))?[.!?]*|(?:can|could) (?:we|you) (?:please )?stop(?: (?:now|this|the conversation))?[.!?]*|(?:let'?s|i want to|i'd like to) (?:stop|end (?:this|the conversation))[.!?]*|(?:no thanks|not interested|goodbye|i'm done|i am done)[.!?]*)$/i.test(input.message.trim())
+  const applicantQuestion = !stoppedByApplicant && applicantAsksQuestion(input.message)
   const conversation = history.filter((entry) => entry.role === "assistant" || entry.role === "user")
     .slice(-20).map((entry) => ({
       role: entry.role as "assistant" | "user",
@@ -404,6 +405,7 @@ export async function postConversation(input: {
       (turnCount >= (config.softCloseAnswers ?? SOFT_CLOSE_ANSWERS) || turnCount >= emergencyLimit || (turnCount >= 3 && quietTurns >= 1))
     const streamReply = forcedClosePossible ? undefined : input.onReplyDelta
     proposal = await requestReply(operation("conversation"), applicantQuestion ? questionInstruction :
+      stoppedByApplicant ? "The applicant wants to stop. Acknowledge that briefly and close without a question or decision." :
       turnCount >= emergencyLimit ? "The emergency conversation limit is reached. Acknowledge the latest point and close neutrally without a question or decision." :
         turnCount >= (config.wrapUpAnswers ?? WRAP_UP_ANSWERS) ? "The conversation is ready to wrap up. Close now unless the latest answer opened something genuinely new that you do not yet understand. Never continue only to deepen a thread." :
           "Continue only if a useful thread remains; otherwise close naturally.", undefined, streamReply)
@@ -415,7 +417,7 @@ export async function postConversation(input: {
       // Formatting repairs must not turn a settled exchange into another interview.
       proposal = { ...proposal, close: true, interactionProposal: undefined }
     }
-    const stoppedByApplicant = /\b(?:stop|end (?:this|the conversation)|no thanks|not interested|goodbye)\b/i.test(input.message)
+    if (stoppedByApplicant) proposal = { ...proposal, close: true, boundary: "none", boundaryQuestion: "", interactionProposal: undefined }
     const closesBeforeReady = (reply: ConversationReply) => fields.length > 0 && reply.close && reply.boundary === "none" &&
       missingFor(reply).length > 0 && !stoppedByApplicant && !stopReason
     const needsRepair = closesBeforeReady(proposal) || !stopReason && (applicantQuestion && (proposal.close || !hasQuestion(proposal)) ||
