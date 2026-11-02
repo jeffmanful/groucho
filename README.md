@@ -33,6 +33,8 @@ pnpm run example:groucho
 
 ## Docs and releases
 
+- Shared COLORS/public demo engine and migration rationale: [`docs/reusable-conversation-engine.md`](./docs/reusable-conversation-engine.md)
+- Creating a persona and wiring a future demo: [`docs/demo-persona-creation.md`](./docs/demo-persona-creation.md)
 - Proposed pilots: [`pilots/README.md`](./pilots/README.md)
 - Client-owned suitability thresholds and automatic actions: [`docs/client-decision-policy.md`](./docs/client-decision-policy.md)
 - Historical COLORS state snapshot: [`docs/groucho-state-of-play-2026-08-20.md`](./docs/groucho-state-of-play-2026-08-20.md)

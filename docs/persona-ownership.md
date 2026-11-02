@@ -75,6 +75,12 @@ The newer COLORS conversation engine takes its voice from `lib/colors-forum-pers
 database persona. For COLORS projects on that engine, the persona row still sets the profile fields and
 extractor hint, and is what the dashboard shows. Moving that prompt into the persona row is a follow-up.
 
+Public demos configured with `conversation_engine: "conversation_v1"` use the active database persona's
+prompt for character and a registered backend profile for fields, options and simulation completion. The
+adapter requires the resolved persona to match `persona_id`; it does not use a different fallback when that
+persona is unavailable. Live demo details do not come from the separate extraction pipeline. See
+[Demo persona creation](./demo-persona-creation.md).
+
 ## What the migration does to existing personas
 
 1. Every existing persona becomes a Groucho persona at version 1, with a snapshot in `persona_versions`.

@@ -5,6 +5,8 @@ Proposed experiments live in [../pilots/](../pilots/README.md), including
 
 | Document | Description |
 |----------|-------------|
+| [reusable-conversation-engine.md](./reusable-conversation-engine.md) | Shared COLORS/public demo runtime, migration rationale, settings, completion and verification |
+| [demo-persona-creation.md](./demo-persona-creation.md) | Character prompts, backend profiles, supported choices, new demo integration and evaluation |
 | [colors-admin-pilot.md](./colors-admin-pilot.md) | Current pilot: invitation-only Forum applications, private admin assessments and human decisions |
 | [colors-conversation-engine.md](./colors-conversation-engine.md) | Current: all COLORS applications on the newer engine, completion pipeline, derived suitability score, API/SDK rollout |
 | [artist-forum-application.md](./artist-forum-application.md) | Shared community/artist intake, conversation modes, SDK adoption and deployment gates |

@@ -2,7 +2,9 @@
 
 Personas define how Groucho sounds, how gatekeeper evidence should be assessed, and what custom profile fields should be extracted from completed sessions. Final application decisions belong to the project's client-owned decision policy, not the persona.
 
-In the current implementation, personas are global platform-managed records. Organisation members can read personas for project configuration, but only platform admins can create, edit, or delete them.
+Personas can be Groucho-owned originals or organisation-owned copies. Platform admins manage the originals; organisation owners/admins can clone visible originals and edit their own copies. Visibility and versioning follow [Persona ownership](./persona-ownership.md).
+
+For new public demos, use [Demo persona creation](./demo-persona-creation.md). The shared `conversation_v1` runtime separates character from code-defined fields, choices and simulation completion. The gatekeeper examples below describe the legacy structured-outcome path, not the template for a new public demo.
 
 ## Data Model
 
@@ -22,7 +24,7 @@ Only one persona is intended to be default. When a persona is saved as default, 
 
 ## How Personas Are Used
 
-Gatekeeper projects:
+Gatekeeper projects using the legacy engine:
 
 - The persona prompt drives tone, questioning style, and semantic pass/redirect/reject judgment.
 - The runtime appends Groucho's structured outcome instructions.
@@ -45,9 +47,11 @@ Profile extraction:
 - `profile_schema` defines the `profile.custom` fields.
 - `profile_extractor_hint` gives the extractor additional brand-specific instructions.
 
+Public demos on `conversation_v1` use their configured active database persona for character and a backend demo profile for facts/interactions. They use `groucho_converse` or equivalent structured output, collect live named `details` and finish as simulations without queuing profile extraction or decisions. COLORS' newer adapter retains its code-defined prompt and separate completion pipeline. See [Reusable conversation engine](./reusable-conversation-engine.md).
+
 ## Creating A Persona
 
-Platform admins can create personas through `POST /api/admin/personas`.
+Platform admins can create Groucho-owned personas through `POST /api/admin/personas`. Organisation-owned clone/edit workflows follow [Persona ownership](./persona-ownership.md).
 
 Example gatekeeper persona:
 
@@ -159,7 +163,7 @@ For old or retired personas, prefer setting `is_active` to `false`. This keeps h
 ## Configuration Guidance
 
 - Keep prompts concise and behavioral. Explain what good and concerning answers look like.
-- For gatekeeper personas, describe when to pass, redirect, or reject, or document the project's private outcome mapping. The runtime handles the structured tool contract.
+- For legacy gatekeeper personas, document the project's private outcome mapping. New public demo personas should define character and boundaries without pass/reject instructions; the shared runtime handles questions and simulation completion.
 - For onboarding personas, describe tone and boundaries. Do not put the full ordered question list in the prompt; configure those on the project.
 - Keep custom profile schemas small. Five to ten fields is usually enough.
 - Use different personas for application and onboarding if the brand voice changes between selection and welcome.
