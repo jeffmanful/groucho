@@ -552,7 +552,8 @@ export async function postConversation(input: {
         kind: rich.kind,
         purpose: rich.purpose,
       } } : {}),
-      ...(close ? { application_closing: true, colors_demo_report_status: "pending" } : {}),
+      ...(close ? { application_closing: true } : {}),
+      ...(close && !config.completionMessage ? { colors_demo_report_status: "pending" } : {}),
     },
   })
   if (assistantError) {
@@ -574,7 +575,7 @@ export async function postConversation(input: {
     engine: config.marker,
     profile: config.id,
     status: close ? "completed" : "active",
-    reviewStatus: close ? "pending" : "not_ready",
+    reviewStatus: close ? (config.completionMessage ? "not_required" : "pending") : "not_ready",
     // The API contract requires per-turn scores. This engine does not score turns, so this is a
     // neutral placeholder; suitability is derived from the reviewer report after completion.
     scores: UNSCORED_TURN,

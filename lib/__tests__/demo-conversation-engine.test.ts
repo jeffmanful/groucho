@@ -85,6 +85,8 @@ describe("shared conversation runtime for public demos", () => {
     const data = await (await run("In my living room.")).json()
     expect(data).toMatchObject({ status: "completed", engine: CONVERSATION_ENGINE_MARKER, completion: { mode: "simulation", complete: true } })
     expect(data.secret).toBeUndefined()
+    expect(data.reviewStatus).toBe("not_required")
+    expect(mocks.inserted[1].metadata.colors_demo_report_status).toBeUndefined()
     expect(mocks.queue).not.toHaveBeenCalled()
   })
 
