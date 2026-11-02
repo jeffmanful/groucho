@@ -1,7 +1,8 @@
 # Media choice interactions
 
-Date: 2026-09-15  
-Status: Implemented
+Status: implemented rich-media contract, reviewed 2 November 2026.
+
+This guide applies to compatible SDK/host renderers and COLORS media handling. The public branded demos currently support text and simple registered `singleSelect`, not this richer renderer; see [shared engine](reusable-conversation-engine.md). Source authority: interaction normalisation and media-choice components. Repository support does not imply an older installed SDK was upgraded.
 
 `mediaChoice` is a reusable interaction for asking somebody to select, remove,
 or rank video-backed options and optionally explain the decision. It is

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://groucho.dev/schemas/session.completed.v1.json",
   "title": "session.completed (verdict) v1",
-  "description": "Delivered as the JSON body of POST webhook requests when a gatekeeper session reaches a terminal state. Verify X-Groucho-Signature: sha256=<hex> over the raw body bytes using the webhook signing secret.",
+  "description": "Delivered by the configured real-session completion pipeline, not public persona simulations. Newer COLORS assessments may finish asynchronously after a completed conversation. Verify X-Groucho-Signature: sha256=<hex> over raw body bytes. This event is not itself approval or fulfilment.",
   "type": "object",
   "required": ["event", "id", "occurred_at", "project", "session", "outcome"],
   "properties": {
@@ -34,7 +34,7 @@
         "internal_id": { "type": "string", "format": "uuid", "description": "sessions.id" },
         "status": {
           "type": "string",
-          "enum": ["passed", "redirected", "rejected"]
+          "enum": ["passed", "redirected", "rejected", "completed"]
         }
       }
     },
@@ -52,8 +52,18 @@
       }
     },
     "profile": {
-      "description": "Structured profile extracted from the conversation. See profile-payload.schema.json. Omitted when extraction is disabled for the project, or when no persona profile data is available.",
+      "description": "Extracted applicant profile object when the selected completion/assessment pipeline produces one. This is not the string runtime profile ID on shared-engine message responses. Generic extraction settings do not govern every pipeline; see profile-schema-guide.md.",
       "$ref": "profile-payload.schema.json"
+    },
+    "suitability_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Advisory suitability, distinct from a recorded decision and allocation."
+    },
+    "reviewer_report": {
+      "type": "object",
+      "description": "Private evidence-backed reviewer report when produced by the selected real-application pipeline; not an applicant-facing field."
     },
     "interaction_answers": {
       "type": "array",

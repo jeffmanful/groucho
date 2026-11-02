@@ -13,6 +13,8 @@ only by either:
 
 Both automatic actions are off by default.
 
+This guide applies to real application decisions. Public `conversation_v1` simulations do not queue assessment/policy work and close with message `reviewStatus: not_required`; no approval or allocation is implied. See [runtime map](architecture.md).
+
 ## Project configuration
 
 Gatekeeper project settings accept:
@@ -35,7 +37,7 @@ numbers from `0` to `1`, inclusive.
 
 Projects on the newer COLORS conversation engine have no per-turn scores; their suitability score
 is derived from the private reviewer report's recommendation and confidence. See
-[colors-conversation-engine.md](./colors-conversation-engine.md#suitability-score).
+[colors-conversation-engine.md](colors-conversation-engine.md#suitability-score).
 
 
 | Suitability score | Band | Default result | Optional automatic action |
@@ -77,7 +79,7 @@ conversation/model outcome. They are not access decisions.
 
 Every decision is stored in `application_decisions`. Rows are append-only: the only
 change ever made to a row is marking it `superseded_by` a correction, enforced by a
-trigger. Each session has exactly one current decision (not superseded), and the
+trigger. Each decided session has one current decision (not superseded); an undecided session has none. The
 `correct_application_decision` database function makes a correction atomically after
 checking the decision the reviewer saw is still current.
 

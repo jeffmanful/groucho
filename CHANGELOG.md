@@ -6,6 +6,16 @@ will follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Documentation and shared demos — 2 November 2026
+
+- Shared COLORS conversation runtime with separate public Odile/Warden/Mo profiles, registered options, bounded question repairs, grounded named details and honest simulation completion.
+- Shared public website controller with visible options, retry/draft handling, named summaries and restart.
+- Consolidated current architecture/configuration/integration/persona guides, corrected SDK package/response contracts and regenerated declarations.
+- Removed obsolete build prompts and overlapping score-driven/pilot specifications; moved dated tests/meeting plans/changelogs into an explicitly historical archive. Current guidance is indexed in `docs/README.md`.
+
+Earlier entries below are implementation history, not current setup instructions; the architecture guide defines each runtime's present scope.
+
+
 ### Added
 
 - Added client-owned decision policies with configurable acceptance and review
@@ -20,7 +30,7 @@ will follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   so conversation completion is distinct from final access authority.
 
 - Added configurable gatekeeper application experiences with opening and closing
-  messages, opening interaction controls, ordered required signals, preferred
+  messages, opening interaction controls, private evidence goals, preferred
   input types, and a maximum-turn target.
 - Added admin project fields and validation for configuring application
   experiences without editing prompts directly.
@@ -38,7 +48,7 @@ will follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Added focused contract and flow coverage for opening messages, interaction
   specifications, signal state, model selection, terminal decisions, applicant
   identity, and the COLORS application sequence.
-- Added the COLORS application improvement tracker and V2 roadmap documentation.
+- Added early COLORS improvement/roadmap documents, subsequently consolidated into current guides (see archive removal map).
 
 ### Changed
 

@@ -21,6 +21,8 @@ Roles:
 - `member` can view organisation resources but cannot perform admin writes.
 - Platform admins bypass org membership checks.
 
+Persona ownership/visibility is organisation-scoped too; see [persona ownership](persona-ownership.md). The public demo profile selects an exact active accessible persona.
+
 ## Access Rules
 
 The current server-side checks are:

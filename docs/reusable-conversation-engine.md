@@ -1,6 +1,6 @@
 # Reusable conversation engine
 
-Implemented 2 November 2026. For future demos, read this architecture guide and [Demo persona creation](./demo-persona-creation.md). The companion [groucho-demos repository](https://github.com/thompson-mcdonald/groucho-demos) documents the website in `docs/conversation-engine.md`.
+Implemented 2 November 2026. For future demos, read this architecture guide and [Demo persona creation](demo-persona-creation.md). The companion [groucho-demos repository](https://github.com/thompson-mcdonald/groucho-demos) documents the website in `docs/conversation-engine.md`.
 
 ## Why the demos moved to this engine
 

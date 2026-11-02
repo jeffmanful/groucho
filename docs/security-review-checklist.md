@@ -12,7 +12,7 @@ Use for internal review or customer questionnaires. Not exhaustive.
 
 - [ ] **Project resolution** from `Authorization: Bearer gk_*` only on intended routes (`/v1/*`, `/api/chat`, etc.).
 - [ ] **Rate limits** enforced (`GROUCHO_RL_*`); 429 returns `Retry-After` where implemented.
-- [ ] **Middleware** does not log full `Authorization` headers (see [ADR-0001](./adr/0001-api-key-and-client-access.md)).
+- [ ] **Middleware** does not log full `Authorization` headers (see [ADR-0001](adr/0001-api-key-and-client-access.md)).
 
 ## Application decisions and access
 
@@ -26,8 +26,7 @@ Use for internal review or customer questionnaires. Not exhaustive.
   the suitability score, and a complete policy snapshot.
 - [ ] Human decisions store `decision_source = human` and a verified platform or
   organisation-member reviewer identity.
-- [ ] The unique session constraint makes decisions immutable; policy retries and
-  reviewer actions do not overwrite an existing decision.
+- [ ] The current-decision constraint and correction function preserve one current decision per decided session; policy retries do not overwrite history, and corrections append a new auditable decision.
 - [ ] Access capture requires `decision = approved` and a constant-time-equivalent
   exact match against that decision's `access_secret`; declines never have a secret.
 - [ ] `application_decisions` remains RLS-protected and server-controlled. Data API
@@ -45,8 +44,15 @@ Use for internal review or customer questionnaires. Not exhaustive.
 
 ## Client / SDK
 
-- [ ] **ADR-0001**: production integrations use host **proxy** or server-side key; browser-direct `gk_live_*` discouraged.
+- [ ] **ADR-0001**: project keys stay server-side, including test keys. Relays restrict paths/methods, enforce the host ownership policy and filter private applicant response fields where required.
+
+## Simulation and shared-engine checks
+
+- [ ] Public profiles bind the intended active persona and engine/profile; no legacy fallback.
+- [ ] Completed simulations issue no access secret, report job, decision or fulfilment claim.
+- [ ] Registered options are rendered and every active turn remains answerable.
+- [ ] COLORS reports stay private; model recommendations and compatibility scores cannot grant access.
 
 ## Load / availability
 
-- [ ] Run k6 script (`loadtests/k6/chat-messages.js`) against staging before major releases; compare to PRD NFR-PERF-1 targets.
+- [ ] Run k6 script (`loadtests/k6/chat-messages.js`) against staging before major releases; record latency, error, retry and duplicate-delivery limits for the intended runtime rather than using retired PRD targets.

@@ -1,7 +1,8 @@
 # COLORS Groucho conversation guide and review rubric
 
-Status: authoritative conversation-quality standard  
-Created: 2026-09-07
+Status: current conversation-quality review standard, reviewed 2 November 2026.
+
+This rubric evaluates conversations; it does not configure the runtime, impose a fixed interview script or decide applicant access. The [membership brief](colors-forum-membership-brief.md), [COLORS engine](colors-conversation-engine.md) and [client policy](client-decision-policy.md) own those distinct contracts. Scores below rate transcript quality, not applicant suitability. Historical calibration agendas and controller plans were retired in favour of these current sources.
 
 ## Purpose
 
@@ -22,13 +23,7 @@ Use this guide to:
 - distinguish an attentive cultural exchange from a styled application form;
 - identify conversations that require correction before deployment.
 
-This guide complements the authoritative
-[COLORS persona spec](../COLORS_PERSONA_SPEC.md), the
-[conversation-depth rules](./colors-conversation-depth.md), the
-[calibration cases](./colors-calibration-cases-2026-08-20.md), and the
-[client-owned decision policy](./client-decision-policy.md). If a decision-policy
-or privacy rule conflicts with a stylistic preference in this guide, the policy
-rule takes precedence.
+This guide complements the [current persona sources](../COLORS_PERSONA_SPEC.md), [membership brief](colors-forum-membership-brief.md), [engine contract](colors-conversation-engine.md) and [client decision policy](client-decision-policy.md). Historical calibration examples are evidence, not a second set of current membership criteria. Decision/privacy rules take precedence over stylistic preferences.
 
 ## North star
 

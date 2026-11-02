@@ -1,6 +1,6 @@
 # Creating a demo persona
 
-Use this guide for public demos on `conversation_v1`. Read [Reusable conversation engine](./reusable-conversation-engine.md) for the implementation and rationale, and [Persona ownership](./persona-ownership.md) for permissions, visibility and versioning.
+Use this guide for public demos on `conversation_v1`. Read [Reusable conversation engine](reusable-conversation-engine.md) for the implementation and rationale, and [Persona ownership](persona-ownership.md) for permissions, visibility and versioning.
 
 ## Write a brief first
 
@@ -50,7 +50,7 @@ The composer normalises literal `\n` sequences and keeps persona text before a n
 
 ## Create or choose the record
 
-Use the authenticated admin persona workflow. Platform admins manage Groucho-owned originals through `/api/admin/personas`; organisation owners/admins can clone visible originals and edit their own copies. Follow the [ownership guide](./persona-ownership.md).
+Use the authenticated admin persona workflow. Platform admins manage Groucho-owned originals through `/api/admin/personas`; organisation owners/admins can clone visible originals and edit their own copies. Follow the [ownership guide](persona-ownership.md).
 
 Use a stable slug, make the persona active, and leave `is_default` false unless intentionally changing the platform fallback. Set the intended project's `settings.persona_id` to the actual UUID. Its organisation must own the persona or have access to the Groucho original.
 

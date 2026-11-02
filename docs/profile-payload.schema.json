@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://groucho.dev/schemas/profile.v1.json",
   "title": "Profile v1",
-  "description": "Structured profile extracted on terminal session outcomes. The `core` object is platform-versioned. The `custom` object is brand-defined via personas.profile_schema (JSON Schema, properties only). Fields under `custom` may declare \"x-pii\": true to opt-in to platform PII masking in admin UIs and log redaction.",
+  "description": "Structured applicant profile produced by configured extraction or assessment pipelines, not the public simulations' live details or string runtime profile ID. The core object is platform-versioned; custom fields come from the applicable persona/assessment schema. x-pii marks custom fields for supported admin masking, not universal redaction of every export or webhook.",
   "type": "object",
   "required": ["schema_version", "extraction"],
   "properties": {

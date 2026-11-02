@@ -15,10 +15,12 @@ export interface paths {
         put?: never;
         /**
          * Send a user message and receive the assistant reply
-         * @description Idempotent session binding: the first successful call for a new
-         *     `sessionId` creates a session row; subsequent calls append messages.
+         * @description A client-provided session key binds the conversation. The runtime can
+         *     bootstrap a missing session before its first answer; subsequent calls
+         *     append turns. This does not guarantee idempotent message delivery.
          *
-         *     If the session is already **concluded** (pass / redirect / reject), returns **409**.
+         *     If already concluded, or a configured public demo has an incompatible
+         *     engine/profile marker, returns **409**. Start a fresh compatible attempt.
          */
         post: operations["postSessionMessage"];
         delete?: never;
@@ -45,6 +47,7 @@ export interface paths {
          *
          *     - **gatekeeper** — persists the application opening message (project config, or optional `openingMessage` in the request body).
          *     - **onboarding** — persists welcome + first question and returns `currentStep`.
+         *     - **public demo profile** — supplies its registered opening/choice, ignoring incompatible caller overrides; new starts identify `engine` and `profile`.
          */
         post: operations["startSession"];
         delete?: never;
@@ -334,7 +337,7 @@ export interface components {
             reviewer_focus: string;
         };
         /**
-         * @description Advisory conversation outcome. It does not approve or decline the application by itself. `completed` is returned by the newer COLORS conversation engine, which finishes without an outcome of its own; its suitability score and reviewer report follow asynchronously.
+         * @description Advisory conversation outcome. It does not approve or decline the application by itself. `completed` is returned by shared newer-engine conversations. Real COLORS applications have a separate asynchronous assessment; public persona demos instead return explicit simulation completion without assessment jobs.
          * @enum {string}
          */
         SessionOutcome: "active" | "passed" | "redirected" | "rejected" | "completed";
@@ -344,7 +347,7 @@ export interface components {
          */
         ApplicationReviewStatus: "not_ready" | "pending" | "approved" | "declined";
         /** @enum {string} */
-        ProjectType: "gatekeeper" | "onboarding";
+        ProjectType: "gatekeeper" | "onboarding" | "ticket_access";
         /** @enum {string} */
         GrouchoIntent: "probe" | "clarify" | "challenge" | "acknowledge" | "decide" | "redirect" | "reject";
         /** @enum {string} */
@@ -444,12 +447,52 @@ export interface components {
             bootstrapped?: boolean;
             /** @description True when this start call restored an existing active session. */
             resumed?: boolean;
+            /** @description Runtime response marker on fresh public-demo starts; currently groucho_conversation_v1. */
+            engine?: string;
+            /** @description Registered public-demo profile ID, not an extracted applicant profile object. */
+            profile?: string;
+            /** @description Named public-demo details; empty on a fresh start. */
+            details?: {
+                [key: string]: string;
+            };
         };
         SessionMessage: {
             /** @enum {string} */
             role: "user" | "assistant";
             content: string;
         };
+        DemoConversationCompletion: {
+            /** @enum {string} */
+            mode: "simulation";
+            /** @description Required details were captured. False is an honest incomplete ending, not rejection or transport failure. */
+            complete: boolean;
+            /** @description Honest demo outcome; no real booking, allocation, submission or email is implied. */
+            message: string;
+        };
+        /** @description Immediate reply from the shared COLORS/public-demo engine. Its profile property is a string runtime ID, unlike the extracted object profile in standard message/session responses. Public simulations supply details and completion; real COLORS assessment follows separately. */
+        SharedConversationResponse: {
+            message: string;
+            /** @enum {string} */
+            status: "active" | "completed";
+            /** @description groucho_conversation_v1 for public profiles; colors_thin_pilot_v1 for COLORS. */
+            engine: string;
+            /** @description Runtime profile ID, not extracted applicant data. */
+            profile: string;
+            /**
+             * @description Public simulation completion is not_required; real application decisions have a separate lifecycle.
+             * @enum {string}
+             */
+            reviewStatus?: "not_ready" | "pending" | "not_required";
+            /** @description Neutral 0.5 compatibility placeholders, not an assessment of the visitor. */
+            scores: components["schemas"]["ScoreBreakdown"];
+            ui: components["schemas"]["GrouchoInteractionUi"];
+            /** @description Accumulated approved fields for public-demo rendering. */
+            details?: {
+                [key: string]: string;
+            };
+            completion?: components["schemas"]["DemoConversationCompletion"];
+        };
+        /** @description Standard gatekeeper/onboarding response. Newer shared-engine replies use SharedConversationResponse. */
         PostMessageResponse: {
             /** @description Assistant text for this turn. Terminal application turns return the configured neutral closing message, while `status` carries the internal outcome. */
             message: string;
@@ -863,7 +906,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PostMessageResponse"];
+                    "application/json": components["schemas"]["PostMessageResponse"] | components["schemas"]["SharedConversationResponse"];
                 };
             };
             /** @description Invalid body or missing fields */
@@ -891,7 +934,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Upstream scorer or LLM unavailable */
+            /** @description Runtime/configuration unavailable, model failure or exhausted reply repair; the latter is retryable before persisting that answer. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -922,7 +965,8 @@ export interface operations {
                     /**
                      * @description Optional gatekeeper opener for new sessions. Overrides the project's
                      *     `application_experience.opening_message` when the session is first created.
-                     *     Ignored when resuming an active session that already has an opener.
+                     *     Ignored when resuming an active session that already has an opener,
+                     *     and overridden by the registered public demo profile.
                      */
                     openingMessage?: string;
                     openingInteraction?: components["schemas"]["OpeningInteraction"];

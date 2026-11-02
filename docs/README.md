@@ -1,46 +1,38 @@
-# Groucho documentation index
+# Groucho documentation
 
-Proposed experiments live in [../pilots/](../pilots/README.md), including
-[fair ticket access with World ID](../pilots/fair-ticket-access-world-id.md).
+Current guidance reviewed against repository source on 2 November 2026. Begin with the runtime map; a completed conversation is not necessarily an assessment, approval or allocation.
 
-| Document | Description |
-|----------|-------------|
-| [reusable-conversation-engine.md](./reusable-conversation-engine.md) | Shared COLORS/public demo runtime, migration rationale, settings, completion and verification |
-| [demo-persona-creation.md](./demo-persona-creation.md) | Character prompts, backend profiles, supported choices, new demo integration and evaluation |
-| [colors-admin-pilot.md](./colors-admin-pilot.md) | Current pilot: invitation-only Forum applications, private admin assessments and human decisions |
-| [colors-conversation-engine.md](./colors-conversation-engine.md) | Current: all COLORS applications on the newer engine, completion pipeline, derived suitability score, API/SDK rollout |
-| [artist-forum-application.md](./artist-forum-application.md) | Shared community/artist intake, conversation modes, SDK adoption and deployment gates |
-| [shared-intake-replay-review-2026-10-26.md](./shared-intake-replay-review-2026-10-26.md) | Historical mixed-engine diagnostics; not a comparable evaluation of the two flows |
-| [paired-new-engine-review-2026-10-26.md](./paired-new-engine-review-2026-10-26.md) | Matched applicant runs through community and artist entries using the same newer engine and assessment pipeline |
-| [stopping-retry-evidence-review-2026-10-26.md](./stopping-retry-evidence-review-2026-10-26.md) | Local stopping/retry fixes, explicit neutral unknowns and verified matched-applicant rerun |
-| [dashboard-uiarc.md](./dashboard-uiarc.md) | UIArc admin shell, overview and ticket-review experience, scope and verification |
-| [groucho-state-of-play-2026-08-20.md](./groucho-state-of-play-2026-08-20.md) | Historical end-of-day COLORS status and verification snapshot; its human-only decision boundary is superseded |
-| [groucho-latency-improvements-2026-08-21.md](./groucho-latency-improvements-2026-08-21.md) | Implemented response-time architecture, operational requirements, measurements, and retained quality safeguards |
-| [PRD.md](./PRD.md) | v1.1 product requirements (gatekeeper + onboarding flows, structured `profile`), personas, FR/NFR, acceptance criteria |
-| [adr/0001-api-key-and-client-access.md](./adr/0001-api-key-and-client-access.md) | ADR: where API keys may run (browser vs server) |
-| [database-setup.md](./database-setup.md) | Local or hosted Supabase + env vars for the team |
-| [schema-migration.md](./schema-migration.md) | Current Supabase schema → v1 tables + RLS matrix |
-| [client-decision-policy.md](./client-decision-policy.md) | Authoritative suitability bands, automatic acceptance/decline settings, audit records, and access rules |
-| [organisations.md](./organisations.md) | How organisations, members, invitations, and org-level access work |
-| [personas.md](./personas.md) | How personas drive tone, decisions, thresholds, and profile extraction |
-| [projects.md](./projects.md) | How projects configure gatekeeper and onboarding flows, keys, and webhooks |
-| [client-integration-guide.md](./client-integration-guide.md) | Host app integration pattern: multiple Groucho projects, explicit session IDs, SDK mounts, and webhook-driven decisions |
-| [platform-project-wizard.md](./platform-project-wizard.md) | Multi-step project creation epic |
-| [api/openapi.yaml](./api/openapi.yaml) | Public Project HTTP API (sessions / messages / access) |
-| [sdk-surface.md](./sdk-surface.md) | `@groucho/sdk` exports and React API |
-| [v2-roadmap.md](./v2-roadmap.md) | V2 gatekeeper-first product direction and refactor roadmap |
-| [groucho-stronger-v1-implementation-plan.md](./groucho-stronger-v1-implementation-plan.md) | Historical implementation plan for authoritative state, evidence provenance, the original human-only decision boundary, and fairness evaluation; see the current decision-policy guide |
-| [colors-flexible-conversation-contract.md](./colors-flexible-conversation-contract.md) | Firm evidence intents, flexible question generation, opening-answer routing, and soft pacing for the COLORS flow |
-| [current-functionality-and-coverage-audit-2026-08-20.md](./current-functionality-and-coverage-audit-2026-08-20.md) | Active runtime map, automated coverage, completed cleanup, and remaining production gaps |
-| [colors-application-improvements.md](./colors-application-improvements.md) | COLORS application content, performance, acceptance criteria, and implementation tracker |
-| [colors-cultural-signals.md](./colors-cultural-signals.md) | Five-phase plan and privacy boundaries for project-level cultural memory |
-| [colors-conversation-realism.md](./colors-conversation-realism.md) | Eight-layer roadmap for making Groucho feel like an attentive conversation rather than an interview |
-| [colors-conversation-guide-and-rubric.md](./colors-conversation-guide-and-rubric.md) | Authoritative standard for the COLORS Groucho experience, transcript-quality scoring, critical failures, and reviewer calibration |
-| [colors-curation-question-experiment.md](./colors-curation-question-experiment.md) | COLORS-specific rich question catalogue, media-choice interaction requirements, and control-versus-curation-pilot test design |
-| [media-choice-interactions.md](./media-choice-interactions.md) | Production contract and integration guide for video-backed select, remove, rank, rationale, and structured-answer interactions |
-| [colors-evaluation-rubric-discovery.md](./colors-evaluation-rubric-discovery.md) | COLORS rubric discovery questions, needed client examples, and confirmed Groucho rules |
-| [roadmap-github-issues.md](./roadmap-github-issues.md) | Phased issues for GitHub or Linear |
+## Start here
 
-Product prompts live under [../prompts/](../prompts/).
+| Guide | Use it for |
+| --- | --- |
+| [Architecture and runtime map](architecture.md) | Choosing a flow and understanding conversation, assessment, decision and fulfilment boundaries |
+| [Shared conversation engine](reusable-conversation-engine.md) | COLORS runtime extraction, public demo contracts, rollout, recovery and verification |
+| [Creating a demo persona](demo-persona-creation.md) | Character briefs, profiles, fields, choices and adding another demo |
+| [Client integration](client-integration-guide.md) | Server relays, identity, keys, sessions, decisions and webhooks |
+| [SDK surface](sdk-surface.md) | Actual package name, source entry points and version adoption |
 
-- [Dashboard admin access](admin-access.md) — Invitations, acceptance, revocation and platform permissions.
+## Configuration and operations
+
+- [Projects](projects.md), [project creation](platform-project-wizard.md), [organisations](organisations.md).
+- [Personas](personas.md), [ownership and versions](persona-ownership.md), [profile schemas](profile-schema-guide.md).
+- [Authentication](authentication.md), [dashboard access](admin-access.md), [API-key ADR](adr/0001-api-key-and-client-access.md).
+- [Database setup](database-setup.md), [schema map](database-schema.md), [retention and recovery](backup-retention.md), [security review](security-review-checklist.md).
+- [Decision policy](client-decision-policy.md), [review and allocation workspace](client-decision-workspace.md).
+
+## COLORS and interactions
+
+- [COLORS engine and completion](colors-conversation-engine.md).
+- [Invitation-only Forum pilot](colors-admin-pilot.md) and [protected reviewer demo](colors-forum-demo.md): distinct experiences with distinct permissions.
+- [Community/artist intake](artist-forum-application.md), [membership brief](colors-forum-membership-brief.md), [conversation quality rubric](colors-conversation-guide-and-rubric.md).
+- [Rich media interactions](media-choice-interactions.md) and [aggregate cultural signals](colors-cultural-signals.md).
+
+## Contracts, proposals and evidence
+
+- [OpenAPI](api/openapi.yaml), [profile schema](profile-payload.schema.json), [completion webhook schema](event-payload-session-completed.schema.json).
+- [SDK README](../packages/sdk/README.md) and [Next.js example](../examples/next-groucho/README.md).
+- [Pilot proposals and simulations](../pilots/README.md) are not launch commitments or current integration instructions.
+- [Historical evidence and removal map](archive/README.md). Dated replay JSON remains under `docs/replays` for evaluation tooling.
+- [Documentation maintenance rules](documentation-policy.md).
+
+The public demo website is a separate [groucho-demos repository](https://github.com/thompson-mcdonald/groucho-demos). Its README and `docs` cover branded pages and the browser controller. Old build prompts and overlapping controller specifications have been removed; Git history retains them.
