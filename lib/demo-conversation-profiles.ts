@@ -1,0 +1,125 @@
+import { NextResponse } from "next/server"
+import { postConversation, type ConversationChoice, type ConversationField } from "@/lib/conversation-engine"
+import { colorsThinConversationModel } from "@/lib/gatekeeper-models"
+import { resolveActiveGatekeeperPersona } from "@/lib/persona-resolution"
+import type { ProjectContext } from "@/lib/project-resolution"
+
+export const CONVERSATION_ENGINE_MARKER = "groucho_conversation_v1"
+export const CONVERSATION_ENGINE_SETTING = "conversation_v1"
+export type DemoConversationId = "loptimiste" | "saltings" | "lewisham-social"
+type DemoProfile = {
+  id: DemoConversationId
+  opening: string
+  openingChoice?: string
+  objective: string
+  guidance: string
+  closing: string
+  completion: string
+  fields: readonly ConversationField[]
+  choices: Readonly<Record<string, ConversationChoice>>
+}
+
+export const TOUR_NIGHTS = [
+  "Glasgow, Thu 8 Apr", "Manchester, Sat 10 Apr", "Leeds, Sun 11 Apr",
+  "Bristol, Tue 13 Apr", "Dublin, Fri 16 Apr", "London, Sat 17 Apr", "London, Sun 18 Apr",
+] as const
+
+export const DEMO_CONVERSATION_PROFILES: Record<DemoConversationId, DemoProfile> = {
+  loptimiste: {
+    id: "loptimiste", opening: "Bonsoir. Is this for you, or for someone?", openingChoice: "recipient",
+    objective: "Learn who the candle is for, one personal scent memory, and where it would burn.",
+    guidance: "Follow the guest's memory with attention, then learn where the candle would burn. A gift is welcome: keep the recipient in mind without requiring the guest to know their private memories. A floral or coastal memory is not a failure and does not establish that they dislike smoke. Ask about scent preference only if needed. Do not invent geography, product names, a permanent collection, stock levels or a numbered reservation. The only supplied scent is cinza de inverno: woodsmoke, cold air and bourbon. Never pretend number 214 is allocated to anyone.",
+    closing: "Merci for spending a little time with me.",
+    completion: "Demo complete. No candle has been reserved and no access code will be sent.",
+    fields: [
+      { key: "recipient", label: "Who it is for", required: true },
+      { key: "scentMemory", label: "A personal scent memory", required: true },
+      { key: "burnLocation", label: "Where the candle would burn", required: true },
+      { key: "ritual", label: "How it would be used" },
+    ],
+    choices: {
+      recipient: { field: "recipient", question: "Is this for you, or for someone?", options: ["For me", "A gift"] },
+      ritual: { field: "ritual", question: "Which sounds most like you?", options: ["A candle for long evenings", "A candle for one particular room", "A candle I’ll keep for an occasion", "I’d like to give it away"] },
+    },
+  },
+  saltings: {
+    id: "saltings", opening: "What are you working on, in a sentence you'd say out loud?",
+    objective: "Understand the writing, where it is stuck, what two weeks would offer, a line of their own and their availability.",
+    guidance: "The illustrative residency is 11–25 January 2027, a room of twelve. Hear the writing without grading it. Ask at most one useful follow-up on a difficulty. A line can be unfinished or one they cannot get right. Ask what the fortnight would offer with the need choice; ask availability with the attendance choice. Do not close before asking about a line and availability unless the writer wants to stop. If they cannot attend or do not wish to share a line, record that honestly and close without judgment. Do not invent workshops, letters, selection results, a shortlist or a place. The note is only a summary of what the writer actually said.",
+    closing: "Thank you. Your note is here to read.",
+    completion: "Demo complete. This note has not been sent and no residency application has been submitted.",
+    fields: [
+      { key: "workingOn", label: "Working on", required: true },
+      { key: "stuck", label: "Where it is stuck", required: true },
+      { key: "wants", label: "Wants from two weeks", required: true },
+      { key: "line", label: "A line, or their decision not to share one", required: true },
+      { key: "attendance", label: "Availability for 11–25 January", required: true },
+    ],
+    choices: {
+      need: { field: "wants", question: "What do you need from two weeks?", options: ["Silence", "Company", "Someone to read it", "A deadline"] },
+      attendance: { field: "attendance", question: "Can you be there for the full fortnight, 11 to 25 January?", options: ["Yes, the whole fortnight", "Most of it", "Not this time"] },
+    },
+  },
+  "lewisham-social": {
+    id: "lewisham-social", opening: "Alright! What got you into us?", openingChoice: "discovery",
+    objective: "Hear how they found the band, who they would bring, where they are coming from and which exact tour night they prefer.",
+    guidance: "This is the spring 2027 tour, two face-value tickets per fan. New fans and people coming alone are welcome. A larger group can each try the demo separately; do not imply extra tickets are held. Manchester is marked rammed in the illustrative data; other nights have room. Offer an alternative once and respect their preference. Ask the night choice when choosing a date, and capture night as the exact approved label. London has two nights: never infer a date from London alone. Do not invent gigs, songs, past attendance, live inventory or a booking. No code is issued. A chosen night is a preference, not a reservation.",
+    closing: "Thanks for coming through the door.",
+    completion: "Demo complete. Your preferred night is shown here; no tickets are reserved and no presale code will be sent.",
+    fields: [
+      { key: "discovery", label: "How they found the band", required: true },
+      { key: "companion", label: "Who they would bring, or coming alone", required: true },
+      { key: "location", label: "Where they are coming from", required: true },
+      { key: "night", label: "Exact preferred tour night", required: true, values: TOUR_NIGHTS },
+    ],
+    choices: {
+      discovery: { field: "discovery", question: "What got you into us?", options: ["A gig", "A track", "Someone dragged me along"] },
+      night: { field: "night", question: "Which night would you prefer?", options: TOUR_NIGHTS },
+    },
+  },
+}
+
+export function demoConversationProfile(raw: unknown): DemoProfile | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
+  const settings = raw as Record<string, unknown>
+  if (settings.conversation_engine !== CONVERSATION_ENGINE_SETTING) return null
+  const id = settings.conversation_profile
+  return typeof id === "string" && Object.hasOwn(DEMO_CONVERSATION_PROFILES, id)
+    ? DEMO_CONVERSATION_PROFILES[id as DemoConversationId] : null
+}
+
+export function usesReusableConversationEngine(raw: unknown): boolean {
+  return Boolean(raw) && typeof raw === "object" && !Array.isArray(raw) &&
+    (raw as Record<string, unknown>).conversation_engine === CONVERSATION_ENGINE_SETTING
+}
+
+/** Keep the configured character and tone, replacing legacy scripted outcomes with this runtime's contract. */
+export function demoConversationPrompt(profile: DemoProfile, persona: string, turnCount: number): string {
+  const character = persona.replace(/\\n/g, "\n").split(/\n\s*(?:CONVERSATION FLOW|DECISION GUIDANCE)/)[0]
+  return `${character}
+
+PROJECT CONVERSATION
+Purpose: ${profile.objective}
+${profile.guidance}
+This is a fictional public demonstration, not a real allocation or application. Preserve the character above but replace any contradictory promise or decision instruction with this contract. Do not score, judge eligibility or promise a reservation, shortlist, ticket, code or email.
+Respond to a concrete detail, then leave exactly one answerable question on every active turn. An observation alone is not a question. If asking an approved selection question, set choiceKey; the server supplies its options. Never ask a multiple-choice question without a supported choiceKey. Otherwise ask an open question and set choiceKey to none. Keep replies to two short sentences. Do not praise an answer as perfect or rank the person. Do not repeat details already supplied. Answer the person's questions directly, acknowledge corrections and respect requests to stop.
+The conversation has ${turnCount} applicant answers. Aim for a short natural exchange, usually 3–6 answers, allowing extra turns only for useful clarification or missing required details. Completion requires the supplied required fields, or an honest incomplete close if they stop or the runtime reaches its limit. Never invent missing facts. On close, use a brief specific acknowledgement without a question; the runtime adds the character's final line and an honest demo completion message.
+Call groucho_converse exactly once. Set close only when finished. Set addsNewContext honestly. Set boundary to none unless a concrete safety or privacy concern requires a response. Public music discussion is ordinary conversation, not a consent test. Never reveal internal field keys, scoring, budgets or routing.`
+}
+
+export async function postDemoConversation(input: Omit<Parameters<typeof postConversation>[0], "configuration"> & { context: ProjectContext }) {
+  const profile = demoConversationProfile(input.context.settings.raw)
+  const personaId = input.context.settings.raw.persona_id
+  if (!profile || typeof personaId !== "string") return NextResponse.json({ error: "Demo conversation is not configured" }, { status: 503 })
+  const persona = await resolveActiveGatekeeperPersona([personaId], input.context.organisationId)
+  if (!persona || persona.id !== personaId) return NextResponse.json({ error: "Demo persona unavailable" }, { status: 503 })
+  return postConversation({ ...input, runCompletion: false, configuration: {
+    id: profile.id, marker: CONVERSATION_ENGINE_MARKER, model: colorsThinConversationModel(),
+    fields: profile.fields, choices: profile.choices,
+    wrapUpAnswers: 7, softCloseAnswers: 10,
+    closingMessage: profile.closing, completionMessage: profile.completion,
+    consentStatement: "Someone else's private information needs their permission before it is shared.",
+    consentQuestion: "Would you ask for their permission before sharing it?",
+    buildPrompt: ({ turnCount }) => demoConversationPrompt(profile, persona.prompt, turnCount),
+  } })
+}

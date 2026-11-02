@@ -67,7 +67,7 @@ itself: each extra accepted account increases an attacker's chances.
 
 Multiple accounts per person remain possible. Phone and Instagram paths are not
 equivalent to the unique-person guarantee sought in the
-[World ID pilot](./fair-ticket-access-world-id.md). Someone could enter once
+[World ID pilot](fair-ticket-access-world-id.md). Someone could enter once
 through each route; verified contact details and local account linking reduce
 some overlap but cannot establish universal cross-route uniqueness. Measure this
 residual risk, and do not label the result “one person, one entry.”
@@ -219,7 +219,7 @@ retries cannot increase the allowance.
 
 Face-value resale, controlled transfer and ownership-bound entry require partner
 cooperation. The controls and companion/recovery exceptions in the
-[World ID pilot](./fair-ticket-access-world-id.md#resale-and-transfer-policy) apply
+[World ID pilot](fair-ticket-access-world-id.md#resale-and-transfer-policy) apply
 here too. Account control cannot stop a successful buyer arranging an outside
 payment. Do not market this pilot as complete scalping prevention.
 

@@ -1,74 +1,24 @@
-# ADR 0001: API key handling and browser vs server access
+# ADR 0001: project keys stay on the server
 
-**Status:** Accepted (draft for implementation)  
-**Date:** 2026-04-08  
-**Deciders:** Product / Engineering  
-**Tags:** security, sdk, api-keys
-
-## Context
-
-Groucho issues **project API keys** (`gk_live_*`, `gk_test_*`) that identify an organisation + project and authorise the **chat/session HTTP API**. Integrators may:
-
-1. **Embed** the Gatekeeper UI in a browser (React SPA, marketing site).
-2. **Call** the API from a **trusted server** (Next.js Route Handler, Rails, Edge function).
-
-Browser-exposed secrets are vulnerable to extraction (view source, compromised dependency, XSS). At the same time, pure server-side integration adds friction for static sites and prototypes.
-
-We need a **default recommendation** and **supported alternatives** documented for the SDK and PRD.
+Status: implemented integration boundary; reviewed 2 November 2026. Supersedes the original draft's browser-direct key and hypothetical token recipes.
 
 ## Decision
 
-### Primary pattern (recommended for production)
+Browsers call a same-origin host relay. The relay stores a conversations-scoped `gk_*` project key server-side, limits routes/methods, derives applicant connection context from trusted hosting metadata, and forwards requests to Groucho. Browser bundles, public environment variables and storage must not contain that key.
 
-**Host-server proxy with secret key**
+Use `createGrouchoRelay` from `@groucho-gatekeeper/sdk/server` for the supported applicant endpoint relay. Use `createGrouchoApplicantRelay` when the host needs its session-ownership cookie and a strict applicant response allowlist; invitation-aware integration uses the assigned server-resolved grant. The latter currently strips public-demo `engine`/`details`/`completion` fields, so it is not a drop-in replacement for the custom public-demo controller.
 
-- The **full** `gk_live_*` / `gk_test_*` secret exists only on the host’s **server** (environment variable, secret manager).
-- The browser never sees the Groucho project key.
-- The browser obtains a **short-lived, scoped session token** from the host:
-  - e.g. `POST /api/groucho/session` on the host → host validates its own user (cookie/session) → host calls Groucho `POST /v1/sessions` with Bearer `gk_*` → returns `{ grouchoSessionToken, expiresAt }` to the browser.
-- Subsequent chat calls from the browser go to **`POST /api/groucho/messages`** (host), which forwards to Groucho with the **server-held** key and attaches `X-Groucho-Session-Id` (or equivalent).
+The generic relay restricts paths but is not a substitute for host user authentication or session ownership. A host must enforce its own permissions. Applications-scoped keys can read/decide applications and belong only in authorised server review handlers, never in browser-facing relays.
 
-**Properties:** Key never leaves host infra; Groucho can rate-limit by host origin + key; revoking key is sufficient.
+## What is not the contract
 
-### Secondary pattern (documented, higher risk)
+There is no required Groucho-issued short-lived applicant token exchange at `POST /v1/sessions`. Use the implemented `/v1/sessions/{id}/start` and message/read routes. Application invitation tokens are a separate implemented capability; they do not make exposing the project key safe. A test key is still a server credential, not a public browser key.
 
-**Browser-direct with live key**
+## Reference implementations
 
-- Integrator configures `NEXT_PUBLIC_GROUPCHO_KEY` or passes key into `createClient({ apiKey })` in client bundles.
-- **Requirements if used:** Groucho API must enforce **strict CORS** allowlists per project, **aggressive rate limits**, **key rotation** UX in platform, and documentation that **any XSS = full key compromise**.
-- **Test keys** (`gk_test_*`) may be used in preview/staging only; discourage `gk_live_*` in client bundles in docs and CLI warnings.
+- [SDK relay source](../../packages/sdk/src/relay.ts) and [applicant relay](../../packages/sdk/src/applicant-relay.ts).
+- [Client integration](../client-integration-guide.md) and [SDK surface](../sdk-surface.md).
+- [Next.js example](../../examples/next-groucho/README.md).
+- Public `groucho-demos` uses a custom brand/key proxy and explicit demo response validator; see its repository documentation.
 
-### Short-lived tokens (Groucho-issued, optional v1.1)
-
-Optionally Groucho may issue **first-party** opaque tokens returned from `POST /v1/sessions` that are **not** the API key, valid for e.g. 1 hour, bound to `session_id` + `project_id`. That reduces host proxy surface while still avoiding long-lived keys in the browser. This ADR **does not require** v1 to implement Groucho-issued tokens if the host-proxy pattern is sufficient.
-
-## Consequences
-
-### Positive
-
-- Clear security story for enterprise sales and security review.
-- SDK can ship `createServerClient` / `createBrowserClient` helpers that encode the recommended flow.
-
-### Negative
-
-- More boilerplate for static sites (must add one server route).
-- Documentation burden: two patterns to test and maintain.
-
-## Alternatives considered
-
-| Alternative | Why not chosen as default |
-|-------------|---------------------------|
-| Only browser key | Unacceptable security posture for production. |
-| mTLS from browser | Not practical for typical web apps. |
-| OAuth end-user per applicant | Overkill for anonymous gate; session id + host auth is enough. |
-
-## Implementation notes
-
-- OpenAPI / SDK: document **recommended** env vars: `GROUPCHO_API_KEY` (server only), `NEXT_PUBLIC_GROUPCHO_PROJECT_ID` (optional, public id only — not the secret).
-- Platform UI: warn when user copies live key: “Do not expose in client-side code.”
-- Logging: middleware must never log full `Authorization` header.
-
-## References
-
-- [docs/PRD.md](../PRD.md) §9  
-- [docs/sdk-surface.md](../sdk-surface.md)  
+Logs must not contain credentials or full authorisation headers. Match upstream content encoding/length to the body actually forwarded, use no-store where appropriate, and preserve retry/error semantics. See [security review](../security-review-checklist.md).

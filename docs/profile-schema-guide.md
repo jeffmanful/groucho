@@ -1,174 +1,52 @@
-# Authoring a persona profile schema
+# Authoring an extracted profile schema
 
-Groucho extracts a structured profile every time a session reaches a terminal outcome
-(`passed`, `redirected`, or `rejected`). The payload has two halves:
+Current guide, reviewed 2 November 2026. This is the separate extracted-profile contract, not the public demos' live named `details`. See [runtime map](architecture.md).
 
-- **`core`** — platform-versioned fields you always get (`summary`, `sentiment`,
-  `engagement`, `language`, `intent_tags`, `interests`, `risk_flags`, `qa`, `confidence`).
-- **`custom`** — brand-defined fields you declare per persona via `profile_schema`.
+## Which flow extracts
 
-This guide explains how to author the `custom` half.
+| Flow | Extraction |
+| --- | --- |
+| Standard gatekeeper | Configured terminal passed/redirected/rejected statuses; extraction runs after closing |
+| Onboarding | Off by default; explicitly configured extraction can use step keys/schema |
+| Newer COLORS | Its separate assessment pipeline generates/grounds a profile from persisted evidence |
+| Public `conversation_v1` simulations | No extraction/completion job; profile fields do not populate the live note |
 
-## Where to set it
+`profile_extract_on` controls the standard verdict path, not a universal off-switch for the newer COLORS pipeline. For standard flows, `false`/`null` disables, an array selects terminal statuses, and unset gatekeeper settings default to passed/redirected/rejected. Onboarding defaults to no extraction. See `lib/verdict-webhook.ts` and `lib/session-completion-jobs.ts`.
 
-In **Admin → Personas → edit**:
+## Shape and authoring
 
-- **Profile schema (JSON)** — paste a JSON Schema fragment.
-- **Extractor hint** — a short natural-language instruction that gets appended to the
-  extractor's system prompt. Keep it under ~200 chars.
+Profiles have platform-versioned `core`, persona-defined `custom`, and extraction status/model metadata. A failed extraction is not a valid empty success; check `extraction.status`. Full shape: [profile schema](profile-payload.schema.json).
 
-Both are optional. Leave them blank to get only the `core` profile.
-
-## Shape
-
-We accept a **JSON Schema-like** object:
+Edit a persona you are authorised to manage through the admin workflow. `profile_schema` accepts this JSON Schema-like shape:
 
 ```json
 {
   "type": "object",
   "properties": {
-    "<field>": {
-      "type": "string" | "number" | "integer" | "boolean" | "array",
-      "description": "Short hint shown to the extractor — be specific.",
-      "x-pii": true
-    }
+    "intent": { "type": "string", "description": "The visitor's stated purpose; do not infer an unstated motive." },
+    "contact": { "type": "string", "description": "Contact information volunteered in the transcript, if relevant.", "x-pii": true }
   }
 }
 ```
 
-Rules:
+The root/object/property-name checks are implemented in `lib/persona-profile-schema.ts`. Names match `[A-Za-z_][A-Za-z0-9_]*`; field definitions must be objects. This is not full JSON Schema meta-validation. Unknown extracted custom keys are dropped, but arbitrary declared custom values are not comprehensively type/coercion/size validated. Do not promise a per-field 1KB enforcement that the implementation does not provide.
 
-- The root must be `{ "type": "object", "properties": { ... } }`.
-- Property names must match `[A-Za-z_][A-Za-z0-9_]*`.
-- **Anything outside `properties` is ignored.** Unknown LLM keys are silently dropped.
-- `description` is the **most important** field — the extractor reads it to know what
-  to look for.
+Keep fields small and concrete, use descriptions and a concise `profile_extractor_hint` (trimmed/capped at 2,000 characters). Missing evidence stays unknown rather than invented. Custom schema edits affect future extraction, not a migration of old stored profiles. Persona versions preserve content history separately from `schema_version: 1` on the profile payload.
 
-## The `x-pii` convention
+## Personal information and limits
 
-Add `"x-pii": true` to any field that may contain personal data:
+`x-pii: true` marks custom fields for masking/reveal in supported authorised admin views. It does not itself redact every export, webhook or custom value. Core summary and QA text are normalised/redacted for supported email/phone patterns; that is not a complete sensitive-data detector. Minimise collection and keep private fields out of applicant relays.
 
-```json
-{
-  "type": "object",
-  "properties": {
-    "name": { "type": "string", "x-pii": true },
-    "email": { "type": "string", "x-pii": true },
-    "age_band": { "type": "string", "description": "25-34" }
-  }
-}
-```
+`lib/profile-extraction.ts` owns model selection/normalisation. At this review the generic extraction call uses a 2,048-token output budget; core summary is capped at 280 characters, intent tags at five and interests at ten. Logs should contain extraction metadata/key summaries, not raw private values. Model budget and schema hints are not semantic proof of accuracy.
 
-This does three things:
+## Retrieval and recovery
 
-1. The admin **session profile panel** masks the value (`••••••`) and gates a
-   **Reveal** button behind the `requireOrgAdmin` role.
-2. The structured logger redacts the value (only `field_name` is ever logged).
-3. The PII convention is forward-compatible with future Groucho features (PII export
-   filters, RTBF wipes).
+Immediate conversation responses may precede extraction. Read authorised persisted session/reviewer data after completion, or consume the subscribed signed completion webhook. The shared engine's immediate `profile` string is a runtime profile ID, not this extracted object.
 
-`core.summary` and `core.qa[*].answer` are **always** auto-redacted for email and
-E.164-shaped phone numbers, regardless of any schema settings.
-
-## Example: club / venue door
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "previously_attended": {
-      "type": "boolean",
-      "description": "Has the applicant attended this venue before? true/false."
-    },
-    "referral_source": {
-      "type": "string",
-      "description": "How did they hear about us? friend / press / social / other."
-    },
-    "community_link": {
-      "type": "string",
-      "description": "Names of communities, collectives, or scenes they reference."
-    },
-    "contact": {
-      "type": "string",
-      "x-pii": true,
-      "description": "Any email or phone the applicant volunteers (do not solicit)."
-    }
-  }
-}
-```
-
-Extractor hint suggestion:
-
-> Lean on direct quotes for `referral_source`. Leave `previously_attended` empty if
-> not stated.
-
-## Example: SaaS onboarding
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "team_size": {
-      "type": "string",
-      "description": "Rough team size band: 1, 2-10, 11-50, 51-200, 200+."
-    },
-    "use_case": {
-      "type": "string",
-      "description": "1 sentence describing what they want to build with the product."
-    },
-    "blockers": {
-      "type": "array",
-      "description": "Top 1-3 reasons they would not adopt (price, integrations, etc.)."
-    }
-  }
-}
-```
-
-## Versioning
-
-Today only `core` is versioned (`schema_version: 1`). The shape of `custom` is owned
-by *you* — if you change `profile_schema`, future sessions will reflect the new
-shape. Existing verdict rows are not migrated.
-
-## Limits
-
-- Each field's value is clamped at ~1KB by the extractor's JSON budget.
-- `core.summary` ≤ 280 chars; `core.intent_tags` ≤ 5; `core.interests` ≤ 10.
-- The extractor defaults to `claude-haiku-4-5-20251001` with `max_tokens: 2048` to
-  keep terminal-session costs low. Set `GROUCHO_PROFILE_EXTRACTION_MODEL` only
-  when evals show a larger model materially improves extraction quality.
-- Aim for ≤ 10 custom fields; more is allowed but extraction quality degrades.
-- Successful extraction calls emit an `llm_usage` structured log event with token
-  counts and `estimatedCostUsd` when pricing is known for the configured model.
-
-## Disabling extraction
-
-Per project: set `projects.settings.profile_extract_on` to either:
-
-- `false` or `null` — disable extraction entirely, or
-- An array of statuses to run on, e.g. `["passed"]`.
-
-Default (when unset): `["passed", "redirected", "rejected"]`.
-
-The admin dashboard shows profile extraction separately from suitability: the
-score determines the applicant's configured decision band, while the profile
-provides the human-readable summary and supporting context. Project admins can
-see the recent settings history beneath Project Settings, including changes to
-`profile_extract_on`.
-
-To restore missing historical profiles safely, first preview and then run the
-idempotent backfill:
+For standard missing-profile recovery, first preview the backfill:
 
 ```bash
-pnpm run backfill:session-profiles -- --project=<project-slug-or-uuid> --since=<ISO-date> --dry-run
-pnpm run backfill:session-profiles -- --project=<project-slug-or-uuid> --since=<ISO-date>
+pnpm run backfill:session-profiles -- --project=<slug-or-uuid> --since=<ISO-date> --dry-run
 ```
 
-The backfill copies profiles already preserved in verdict payloads before making
-new extraction calls. It does not overwrite an existing session profile.
-
-## Consuming the profile
-
-- **Webhook** — `payload.profile` on `session.completed`.
-- **REST** — `GET /v1/sessions/{sessionId}` returns `profile` once concluded.
-- **SDK** — `<Gatekeeper onOutcome={(outcome, { scores, profile }) => ...} />`.
+Review the scope/side effects before the corresponding write run. The script reuses compatible stored verdict profiles before model calls and does not overwrite an existing session profile. Newer COLORS assessments have their own admin recovery path; public simulations should not be queued into either pipeline merely to produce a sidebar note.

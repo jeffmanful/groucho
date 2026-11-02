@@ -139,10 +139,10 @@ publish retention, access and alternative-verification policies before a pilot.
 
 ## Related plans
 
-- [Fi discovery demo: 23 October](./fi-demo-2026-10-23.md).
-- [Verified fan registration](./verified-fan-registration.md): lighter checks and
+- [Fi discovery demo: 23 October](../docs/archive/plans/fi-demo-2026-10-23.md).
+- [Verified fan registration](verified-fan-registration.md): lighter checks and
   progressive friction; includes dated official sources and limitations.
-- [World ID pilot](./fair-ticket-access-world-id.md): stronger uniqueness route and
+- [World ID pilot](fair-ticket-access-world-id.md): stronger uniqueness route and
   ticket lifecycle controls.
 
 This direction synthesises the supplied founder discussion and this chat's pilot

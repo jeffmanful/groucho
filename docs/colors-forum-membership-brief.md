@@ -1,11 +1,10 @@
 # Initial COLORS Forum membership conversation
 
-This brief governs the COLORS conversation and its post-conversation report.
+This brief governs approved COLORS conversation context and its post-conversation report; reviewed 2 November 2026. It is not a live feature-availability feed. Confirm the host product before changing promises. See [COLORS engine](colors-conversation-engine.md) for implementation and [decision policy](client-decision-policy.md) for access authority.
 Product context was updated on 28 October against the Forum's `roadmap.md`, the
 launch scope agreed by Jeffrey and COLORS on 19 October. Planned launch includes
 Discussions, Scenes (Beta) and Scene chat, user/artist profiles, artist audio
-uploads organised in projects, and a submissions discovery feed. Competitions
-are coming soon. These are launch plans, not a claim that every feature is
+uploads organised in projects, and a submissions discovery feed. The October brief described competitions as future scope. These are launch plans, not a claim that every feature is
 enabled in the pilot. Groucho must not promise particular feedback, groups,
 members or availability dates. The Forum also has context for TONES and live
 events.

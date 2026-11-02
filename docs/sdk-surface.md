@@ -1,205 +1,34 @@
-# `@groucho/sdk` — Package surface specification (v1)
+# SDK surface and adoption
 
-**Package name (proposed):** `@groucho/sdk` (publish name TBD; may remain scoped `@postern/groucho` etc.)
+Current source guide, reviewed 2 November 2026. The package is **`@groucho-gatekeeper/sdk`**, as declared in [package.json](../packages/sdk/package.json), not the earlier proposed `@groucho-gatekeeper/sdk` name. See the [SDK README](../packages/sdk/README.md) for usage.
 
-**Consumers:** React 18+ apps first; other frameworks use the **REST contract** in [api/openapi.yaml](./api/openapi.yaml).
+| Entry | Source authority / purpose |
+| --- | --- |
+| `@groucho-gatekeeper/sdk` | `packages/sdk/src/index.ts`: headless client, errors and generated/public types |
+| `@groucho-gatekeeper/sdk/react` | `src/react/index.ts`: providers, Gatekeeper/GatekeeperV2, intake, transcript/composer and interaction components |
+| `@groucho-gatekeeper/sdk/server` | `src/server.ts`: server client, general relay and session-owned applicant relay |
+| `@groucho-gatekeeper/sdk/groucho.css` | Scoped stylesheet and documented custom properties |
 
-**Security default:** See [adr/0001-api-key-and-client-access.md](./adr/0001-api-key-and-client-access.md) — ship **server** and **browser** entry points with clear docs.
+## Version boundary
 
----
+This guide describes repository source. A package version already installed in another application may not export every helper here. Building/deploying the backend does not publish an SDK or upgrade a consumer. Check the installed version, release notes and actual exports; build/adopt a compatible release before enabling a new engine in a host.
 
-## 1. Package entry points
+The `colors-completed-outcome` changeset covers treating `completed` as terminal. Older consumers that only handle passed/redirected/rejected can leave the composer open. The public demo website uses a custom controller/validator instead of waiting for an SDK publication.
 
-| Export path | Environment | Description |
-|-------------|---------------|-------------|
-| `@groucho/sdk` | universal | Types + `createClient` factory |
-| `@groucho/sdk/react` | client | `Gatekeeper`, primitives, `GrouchoProvider` |
-| `@groucho/sdk/server` | Node / Edge | `createServerClient` with secret key only |
+## HTTP types and responses
 
-> Build tooling: `package.json` **exports** map with `"browser"`, `"import"`, and `"react-native"` omitted until supported.
+OpenAPI is [docs/api/openapi.yaml](api/openapi.yaml); generated TypeScript is `packages/sdk/src/generated/openapi.ts`. Run SDK code generation/build after schema edits rather than manually maintaining duplicate types.
 
----
+`SessionOutcome` includes active, passed, redirected, rejected and completed. A terminal conversation does not establish approval. Real application decisions use `reviewStatus`; public simulation message responses instead use `not_required` at close.
 
-## 2. `createClient` (headless)
+The shared runtime's `profile` response property is a **string profile ID**, while standard message/session contracts use `profile` for an extracted **object**. The separate shared-response schema documents this existing wire distinction. Do not treat a demo/profile ID as an extracted applicant profile. Use the custom demo contract or explicitly narrow the response; retrieve real extracted data from the authorised session/reviewer flow after completion.
 
-```ts
-type GrouchoClientOptions = {
-  /** Base URL of Groucho API, e.g. https://api.groucho.dev */
-  baseUrl: string
-  /** Project API key — use only on server per ADR-0001 */
-  apiKey: string
-  /** Optional fetch implementation (Edge, tests) */
-  fetch?: typeof fetch
-}
+## Relays
 
-declare function createClient(options: GrouchoClientOptions): GrouchoClient
+`createGrouchoRelay` restricts applicant paths and attaches a server-held conversations key. It is not session ownership/authentication by itself. `createGrouchoApplicantRelay` adds an ownership cookie, request filtering and a strict response allowlist for applicant integrations, including server-resolved invitations. Its current allowlist does not preserve public-demo engine/details/completion fields; it is not a drop-in demo relay.
 
-interface GrouchoClient {
-  /** Send one chat turn; mirrors POST /v1/sessions/{sessionId}/messages */
-  sendMessage(
-    sessionId: string,
-    input: { message: string; personaId?: string | null }
-  ): Promise<PostMessageResponse>
+Applications keys and methods such as list/get/decide/correct/reportOutcome belong in authorised server review handlers. The browser-facing path must not expose them. See [API-key ADR](adr/0001-api-key-and-client-access.md).
 
-  /** Optional: fetch session row */
-  getSession?(sessionId: string): Promise<Session>
+## Verification
 
-  /** Post-pass email — mirrors POST /v1/sessions/{sessionId}/access */
-  submitAccessEmail?(
-    sessionId: string,
-    input: { email: string; secret?: string }
-  ): Promise<void>
-}
-```
-
-**Types:** Generated from [openapi.yaml](./api/openapi.yaml) via `openapi-typescript` (devDependency); published as part of package.
-
-Terminal message and session responses expose `reviewStatus`, `suitabilityScore`,
-and `suitabilityBand`. The conversation `status` remains advisory. A response
-`secret` is an approval secret only when the client's enabled deterministic policy
-has recorded an automatic approval; human approvals return their secret through the
-authenticated admin decision endpoint. See
-[client-decision-policy.md](./client-decision-policy.md).
-
-**Errors:** Throw `GrouchoApiError` with `{ status, code?, body }` for non-2xx.
-
----
-
-## 3. React: `GrouchoProvider`
-
-Wraps subtree that needs configuration without prop-drilling.
-
-```tsx
-type GrouchoProviderProps = {
-  /** When set, children use hosted API directly (discouraged for live keys) */
-  client?: GrouchoClient
-  /** When set, SDK calls relative paths on the host (recommended) */
-  proxyBasePath?: string // e.g. "/api/groucho" — host forwards with secret
-  children: React.ReactNode
-}
-```
-
-**Rules:**
-
-- Provide **either** `client` **or** `proxyBasePath`, not both.
-- `proxyBasePath` implies browser uses **cookie/session** to host; host attaches `gk_*`.
-
----
-
-## 4. React: `<Gatekeeper />`
-
-High-level embedded experience (message list + input + loading + outcome).
-
-```tsx
-type GatekeeperProps = {
-  /** Opaque session id; persisted by host or by Gatekeeper in sessionStorage */
-  sessionId?: string
-  /** Called when session id is first created or resumed */
-  onSessionId?: (id: string) => void
-  /** Optional persona picker when project exposes multiple active personas */
-  personaId?: string | null
-  onOutcome?: (
-    outcome: SessionOutcome,
-    meta: { scores: ScoreBreakdown; secret?: string; profile?: Profile }
-  ) => void
-  /**
-   * `profile` remains optional in the immediate terminal callback. Gatekeeper
-   * extraction runs asynchronously after the neutral close is persisted; read the
-   * completed session to retrieve it. The shape follows
-   * `docs/profile-payload.schema.json`; see also `docs/profile-schema-guide.md`.
-   */
-  /** Slots for host branding */
-  renderHeader?: () => React.ReactNode
-  renderFooter?: () => React.ReactNode
-  className?: string
-  /** Accessibility: label for the transcript region */
-  transcriptLabel?: string
-}
-```
-
-**Built-in behaviour:**
-
-- Manages `loading` / error states per turn.
-- Disables input when session `status` is terminal (matches 409 handling: reset session on host policy).
-- Uses design tokens (below) for default **dark** theme.
-- Surfaces the terminal callback immediately; hosts that need the durable decision
-  state should call `getSession()` and use `reviewStatus`, not infer a decision from
-  the terminal outcome.
-
-**Accessibility:**
-
-- `role="log"` / `aria-live="polite"` on transcript.
-- Focus management: return focus to input after assistant reply.
-
----
-
-## 5. Primitives (exported for composition)
-
-| Component | Role |
-|-----------|------|
-| `Transcript` | Scroll region + message bubbles |
-| `MessageBubble` | `role`, `content`, optional metadata badge |
-| `Composer` | Controlled input + submit on Enter |
-| `OutcomeBanner` | Pass / redirect / reject messaging (copy configurable later via project) |
-| `ThinkingIndicator` | Optional branded loading line |
-
-Props mirror internal structure of [app/doorcheck/page.tsx](../app/doorcheck/page.tsx) where useful, without importing app code into the package.
-
----
-
-## 6. Design tokens (default dark theme)
-
-CSS variables set on a wrapping `.groucho-root` (or `data-theme="dark"`):
-
-| Token | Default | Usage |
-|-------|---------|--------|
-| `--groucho-bg` | `#000000` | Surfaces |
-| `--groucho-fg` | `rgba(255,255,255,0.92)` | Primary text |
-| `--groucho-muted` | `rgba(255,255,255,0.55)` | Secondary |
-| `--groucho-border` | `rgba(255,255,255,0.1)` | Inputs, dividers |
-| `--groucho-accent` | `rgba(255,255,255,0.85)` | Focus ring |
-| `--groucho-font-sans` | inherit | Match host or bundle Overused Grotesk later |
-
-**v1:** Single bundled CSS `groucho.css` imported once. **v1.1:** Tailwind preset or unstyled headless variant.
-
----
-
-## 7. Peer dependencies
-
-```json
-{
-  "peerDependencies": {
-    "react": "^18.0.0 || ^19.0.0",
-    "react-dom": "^18.0.0 || ^19.0.0"
-  }
-}
-```
-
-No `motion` peer unless Gatekeeper bundles animations — then declare optional peer or bundle.
-
----
-
-## 8. Testing matrix (package CI)
-
-| Case | Tooling |
-|------|---------|
-| Client against mock HTTP | msw |
-| Gatekeeper a11y | jest-axe smoke |
-| Types | `tsc --noEmit` on `examples/next` |
-
----
-
-## 9. Monorepo placement (suggestion)
-
-```
-packages/sdk/
-  src/
-    client.ts
-    react/
-      Gatekeeper.tsx
-      ...
-  package.json
-examples/next-groucho/
-```
-
-Does not block shipping from the same repo as the platform app.
+From the repository root, run `pnpm run sdk:build` and `pnpm run sdk:test`; the package also provides `typecheck`. Test the actual host for resume, completed closure, error recovery and private report boundaries. Do not carry forward the retired proposal's hypothetical tooling, token exchange or browser-key support as shipped capabilities.

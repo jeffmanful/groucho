@@ -81,7 +81,7 @@ Plus 40 guaranteed pairs, held across sizes. About 180 entrants also tell their 
 
 The Halden persona asks one or two memory questions drawn from these. Today this is persona
 context written into the prompt; the rotating question bank is specified in
-[fan-evidence-and-question-bank.md](../docs/fan-evidence-and-question-bank.md) and not yet built.
+[fan-evidence-and-question-bank.md](fan-evidence-and-question-bank.md) and not yet built.
 
 - **The arch** (2023): Halden started in a Deptford railway arch; the first boot was numbered
   *001* and the founder hand-stamped the boxes.

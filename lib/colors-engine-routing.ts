@@ -6,8 +6,9 @@ import type { MediaChoiceAnswer } from "@/lib/gatekeeper-interaction-spec"
 import type { ProjectContext } from "@/lib/project-resolution"
 import { startGatekeeperSession } from "@/lib/start-gatekeeper-session"
 import { supabase } from "@/lib/supabase"
+import { CONVERSATION_ENGINE_MARKER, usesReusableConversationEngine, postDemoConversation } from "@/lib/demo-conversation-profiles"
 
-export type ColorsEngineRoute = "colors" | "colors-demo" | "start-colors" | "standard"
+export type ColorsEngineRoute = "colors" | "colors-demo" | "start-colors" | "demo-conversation" | "start-demo-conversation" | "standard"
 
 /**
  * Which engine answers this turn. A session keeps the engine it started on, so conversations
@@ -25,7 +26,9 @@ export async function colorsEngineRoute(input: {
     .eq("project_id", input.projectId)
     .maybeSingle()
   if (error) throw error
-  if (!session) return projectUsesColorsEngine(input.rawSettings) ? "start-colors" : "standard"
+  if (!session) return usesReusableConversationEngine(input.rawSettings) ? "start-demo-conversation" : projectUsesColorsEngine(input.rawSettings) ? "start-colors" : "standard"
+  // Configured demos never fall back to the legacy engine. Old sessions receive a restart response.
+  if (usesReusableConversationEngine(input.rawSettings)) return "demo-conversation"
   const { data: opening, error: openingError } = await supabase.from("messages")
     .select("metadata")
     .eq("session_id", session.id)
@@ -55,6 +58,17 @@ export async function postColorsEngineTurn(input: {
   requestId?: string
   likelyBot: boolean
 }): Promise<NextResponse> {
+  if (input.route === "start-demo-conversation" || input.route === "demo-conversation") {
+    if (input.route === "start-demo-conversation") {
+      const started = await startGatekeeperSession({
+        sessionId: input.sessionId, applicantIdentity: input.applicant ?? null,
+        requestId: input.requestId, context: input.context, projectSettings: input.context.settings,
+        conversationEngine: CONVERSATION_ENGINE_MARKER,
+      })
+      if (!started.ok) return started
+    }
+    return postDemoConversation({ ...input, applicant: input.applicant ?? undefined, runCompletion: false })
+  }
   if (input.route === "start-colors") {
     const started = await startGatekeeperSession({
       sessionId: input.sessionId,

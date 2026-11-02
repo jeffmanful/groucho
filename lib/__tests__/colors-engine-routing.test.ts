@@ -43,6 +43,14 @@ describe("routing COLORS conversations to the newer engine", () => {
     expect(await route({ project_type: "gatekeeper" })).toBe("standard")
   })
 
+  it.each(["loptimiste", "saltings", "lewisham-social"])("routes every %s demo through the reusable engine, including requests on old sessions", async profile => {
+    const settings = { conversation_engine: "conversation_v1", conversation_profile: profile }
+    expect(await route(settings)).toBe("start-demo-conversation")
+    mocks.session = { id: "old-session" }
+    mocks.opening = { metadata: { gatekeeper_bootstrap: true } }
+    expect(await route(settings)).toBe("demo-conversation")
+  })
+
   it("keeps each existing session on the engine it started with", async () => {
     mocks.session = { id: "internal-1" }
     mocks.opening = { metadata: { conversation_engine: "colors_thin_pilot_v1" } }
