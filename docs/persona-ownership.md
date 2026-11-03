@@ -59,9 +59,7 @@ a persona id sent by an API caller is ignored unless the project's organisation 
 A platform admin can't restrict a Groucho persona away from an organisation whose projects use it as is;
 those projects have to move to another persona first.
 
-The workspace default is the fallback for a project that names no persona. It must be a Groucho persona, and
-it is used by every organisation regardless of visibility. Today that is COLORS GROUCHO, which only matters
-for the internal Development project; a neutral Groucho persona should replace it once one exists.
+The configured workspace default is a Groucho persona used by flows that permit fallback. Inspect the active database configuration rather than assuming a historical default name. Public demo profiles require the exact configured active persona and reject a different fallback.
 
 ## What lives on a persona, and what does not
 
@@ -75,13 +73,19 @@ The newer COLORS conversation engine takes its voice from `lib/colors-forum-pers
 database persona. For COLORS projects on that engine, the persona row still sets the profile fields and
 extractor hint, and is what the dashboard shows. Moving that prompt into the persona row is a follow-up.
 
+Public demos configured with `conversation_engine: "conversation_v1"` use the active database persona's
+prompt for character and a registered backend profile for fields, options and simulation completion. The
+adapter requires the resolved persona to match `persona_id`; it does not use a different fallback when that
+persona is unavailable. Live demo details do not come from the separate extraction pipeline. See
+[Demo persona creation](demo-persona-creation.md).
+
 ## What the migration does to existing personas
 
 1. Every existing persona becomes a Groucho persona at version 1, with a snapshot in `persona_versions`.
 2. Personas whose name starts with "COLORS" become restricted. COLORS can see them, and so can any other
    organisation with a project already using one.
 3. For every organisation and persona pair in use by its projects, the organisation gets one clone, and its
-   projects are pointed at the clone. Production today:
+   projects are pointed at the clone. Migration snapshot recorded 27 October 2026 (not a live inventory):
 
    | Groucho persona | Clone | Used by |
    | --- | --- | --- |

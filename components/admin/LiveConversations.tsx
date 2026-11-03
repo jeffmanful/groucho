@@ -47,19 +47,6 @@ type ProjectOption = {
   activeSessions: number
 }
 
-type OverviewResponse = {
-  organisations?: Array<{
-    id: string
-    name: string
-    projects?: Array<{
-      id: string
-      name: string
-      organisationId: string
-      activeSessions: number
-    }>
-  }>
-}
-
 const STATUS_COLOR: Record<string, string> = {
   active: "#86efac",
   passed: "#4ade80",
@@ -69,7 +56,6 @@ const STATUS_COLOR: Record<string, string> = {
 }
 
 const FILTERS = ["all", "active", "passed", "redirected", "rejected", "failed"] as const
-const PROJECT_STORAGE_KEY = "groucho_admin_sessions_project"
 
 function parseMetadata(raw: unknown): Message["metadata"] {
   if (!raw) return null
@@ -79,11 +65,9 @@ function parseMetadata(raw: unknown): Message["metadata"] {
   return raw as Message["metadata"]
 }
 
-export default function LiveConversations() {
+export default function LiveConversations({ project }: { project: ProjectOption }) {
   const supabase = useMemo(() => tryCreateSupabaseBrowserClient(), [])
 
-  const [projects, setProjects] = useState<ProjectOption[]>([])
-  const [selectedProjectId, setSelectedProjectId] = useState("")
   const [sessions, setSessions] = useState<LiveSession[]>([])
   const [filter, setFilter] = useState<string>("all")
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
@@ -92,21 +76,19 @@ export default function LiveConversations() {
   const [loading, setLoading] = useState(true)
   const [transcriptLoading, setTranscriptLoading] = useState(false)
   const [transcriptRefreshKey, setTranscriptRefreshKey] = useState(0)
-  const [selectedView, setSelectedView] = useState<"conversation" | "report">("conversation")
+  const [selectedView, setSelectedView] = useState<"conversation" | "report">(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("view") === "report" ? "report" : "conversation")
   const [loadError, setLoadError] = useState<string | null>(null)
   const sessionRequest = useRef(0)
 
-  const selectedProject = useMemo(
-    () => projects.find((project) => project.id === selectedProjectId) ?? null,
-    [projects, selectedProjectId],
-  )
+  const selectedProject = project
 
-  const loadProjectSessions = useCallback(async (project: ProjectOption) => {
+  const loadProjectSessions = useCallback(async (project: ProjectOption, signal?: AbortSignal) => {
     const requestId = ++sessionRequest.current
     const params = new URLSearchParams(window.location.search)
     const focusSession = params.get("project") === project.id ? params.get("session") : null
     const response = await fetch(
       `/api/admin/organisations/${project.organisationId}/projects/${project.id}/sessions${focusSession ? `?session=${encodeURIComponent(focusSession)}` : ""}`,
+      { signal },
     )
     if (requestId !== sessionRequest.current) return
     if (!response.ok) {
@@ -156,50 +138,16 @@ export default function LiveConversations() {
 
   useEffect(() => {
     let cancelled = false
-    async function loadProjects() {
-      setLoading(true)
-      setLoadError(null)
-      const response = await fetch("/api/admin/overview")
-      if (!response.ok) {
-        if (!cancelled) {
-          setLoadError("Could not load your projects.")
-          setLoading(false)
-        }
-        return
-      }
-      const payload = (await response.json()) as OverviewResponse
-      const nextProjects = (payload.organisations ?? []).flatMap((organisation) =>
-        (organisation.projects ?? []).map((project) => ({
-          id: project.id,
-          organisationId: project.organisationId || organisation.id,
-          name: project.name,
-          organisationName: organisation.name,
-          activeSessions: project.activeSessions,
-        })),
-      )
+    const controller = new AbortController()
+    void Promise.resolve().then(() => {
+      if (!cancelled) return loadProjectSessions(project, controller.signal)
+    }).catch(() => {
       if (cancelled) return
-      setProjects(nextProjects)
-      const params = new URLSearchParams(window.location.search)
-      if (params.get("view") === "report") setSelectedView("report")
-      const remembered = window.localStorage.getItem(PROJECT_STORAGE_KEY)
-      const initial =
-        nextProjects.find((project) => project.id === params.get("project")) ??
-        nextProjects.find((project) => project.id === remembered) ??
-        nextProjects.find((project) => project.activeSessions > 0) ??
-        nextProjects[0]
-      setSelectedProjectId(initial?.id ?? "")
-      if (initial) {
-        window.localStorage.setItem(PROJECT_STORAGE_KEY, initial.id)
-        void loadProjectSessions(initial)
-      } else {
-        setLoading(false)
-      }
-    }
-    void loadProjects()
-    return () => {
-      cancelled = true
-    }
-  }, [loadProjectSessions])
+      setLoadError("Could not load sessions for this project.")
+      setLoading(false)
+    })
+    return () => { cancelled = true; controller.abort() }
+  }, [loadProjectSessions, project])
 
   // Auto-expire typing indicators after 3s of silence
   useEffect(() => {
@@ -471,22 +419,6 @@ export default function LiveConversations() {
     URL.revokeObjectURL(url)
   }
 
-  function selectProject(projectId: string) {
-    const project = projects.find((candidate) => candidate.id === projectId)
-    setSelectedProjectId(projectId)
-    setSelectedSessionId(null)
-    setSessions([])
-    setTranscriptLoading(false)
-    setLoading(true)
-    setLoadError(null)
-    if (project) {
-      window.localStorage.setItem(PROJECT_STORAGE_KEY, project.id)
-      void loadProjectSessions(project)
-    } else {
-      setLoading(false)
-    }
-  }
-
   function refreshSessions() {
     setLoading(true)
     setLoadError(null)
@@ -497,22 +429,6 @@ export default function LiveConversations() {
   return (
     <div className="live-sessions" style={{ padding: "2rem", fontSize: "0.875rem" }}>
       <div className="project-toolbar">
-        <label className="project-picker">
-          <span>Project</span>
-          <select
-            value={selectedProjectId}
-            onChange={(event) => selectProject(event.target.value)}
-            disabled={projects.length === 0}
-          >
-            {projects.length === 0 ? <option value="">No accessible projects</option> : null}
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.organisationName} / {project.name}
-                {project.activeSessions > 0 ? ` · ${project.activeSessions} active` : ""}
-              </option>
-            ))}
-          </select>
-        </label>
         <div className="project-context">
           {selectedProject ? (
             <>

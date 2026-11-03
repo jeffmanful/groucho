@@ -1,43 +1,54 @@
-# Groucho authentication
+# Authentication
 
-Email/password and Google OAuth use Supabase Auth. Platform access requires a server-managed `app_metadata.groucho_role` of `platform_admin` and a confirmed email; ordinary authenticated users retain organisation-scoped permissions. User-editable metadata never grants platform access.
+Current supported paths, reviewed 3 November 2026. Source authority: `app/api/auth`, `lib/admin-actor.ts`, `lib/org-access.ts`, demo-token helpers and [dashboard access](admin-access.md).
 
-The requested core administrator, `jeff@cursive-studios.com`, has been provisioned in the configured Supabase project. Its password is stored by Supabase Auth, not in this repository. Signing in uses `/api/auth/login`, and logout clears Supabase and legacy cookies. Existing shared-password operators and isolated demo testers are retained for compatibility.
+## Identity and authorisation
 
-## Enable Google
+Supabase email/password, email-link/code and Google OAuth authenticate identities. A confirmed identity alone does not grant platform access. Trusted `app_metadata.groucho_role` and/or active managed platform access determine administrator authority; user-editable metadata does not. Organisation members retain organisation-scoped permissions.
 
-1. In Google Cloud Console, select or create the Groucho project. Configure Google Auth Platform branding, audience and consent (openid, email, profile). While in testing, add the intended test users.
-2. Create an OAuth client of type **Web application**. Add the deployed Groucho origin and development origin `http://localhost:3010` as authorised JavaScript origins.
-3. Add this exact authorised redirect URI: `https://qqbvcmqzwtifpyufkxhh.supabase.co/auth/v1/callback`.
-4. In the matching Supabase project's **Authentication → Sign In / Providers → Google**, enable Google and enter the client ID and secret. Keep the secret out of Git and client bundles.
-5. Under **Authentication → URL Configuration**, set Site URL to the deployed Groucho origin. Allow the exact app callback URL `https://YOUR-GROUCHO-HOST/api/auth/callback` and local callbacks `http://localhost:3010/api/auth/callback` and `http://127.0.0.1:3010/api/auth/callback` when needed. Include callback query strings in the allowlist pattern as required by Supabase redirect matching.
-6. Test Google login with the core admin and an ordinary user; check `/api/admin/session` returns platform only for the administrator. Check organisation access and logout. The Google provider remains disabled until credentials are configured; no end-to-end Google login has been claimed.
+The shared `/login` screen is invite only. Password sign-in, the OAuth/email callback, protected-page proxy and server-side actor resolution require an existing organisation membership or an active platform grant. A pending invitation permits a verified matching identity to sign in only to its exact acceptance page; it grants no dashboard rights until accepted. Uninvited identities are signed out after password/OAuth sign-in and shown an invitation-required message. Provider authentication records alone never grant Groucho access.
 
-Google starts at `/api/auth/google`; PKCE code exchange happens in `/api/auth/callback`. Only local redirect destinations are accepted. Google authentication alone does not grant access to all organisations. Supabase normally links matching verified emails; confirm the resulting account/role during the admin Google test.
+Public organisation creation is retired: `/signup/organisation` redirects to the shared login and `POST /api/organisations/signup` always returns 403. Platform administrators create organisations through `/api/admin/organisations`, then invite clients. Organisation invitation email codes are sent by `/api/invitations/send-code`, which resolves a live unused token on the server and chooses its stored recipient. Acceptance requires the confirmed invited email and conditionally consumes the invitation before creating the membership; expired, used, cancelled or concurrently consumed invitations cannot create a grant.
 
-The password endpoint validates input and applies a per-email, per-process throttle in addition to Supabase's own auth rate limits. Distributed deployments should configure shared abuse protection. Provision additional platform administrators through a trusted server-side Supabase admin process, never a public signup request.
+Existing allowlisted shared-password operators remain a compatibility path, subject to their password and active access checks. They are not the recommended provisioning mechanism for new administrators. Managed invitations are documented in [dashboard access](admin-access.md).
 
-## Local OAuth setup status — 16 October 2026
+`/api/auth/login` validates input and applies a per-email, per-process throttle as well as provider limits. Distributed abuse controls require deployment configuration. Logout clears relevant Supabase and legacy cookies. Redirect destinations must remain local paths.
 
-Created Google Cloud project **Groucho** (`healthy-spark-511813-i8`) under Cursive Studios and web client **Groucho Web**. The client uses the hosted Supabase callback above and local origins on port 3010. Consent audience is External / Testing. No client secret is stored in this repository.
+## Protected demos versus public demos
 
-Supabase callback allowlist entries saved:
+`/demos` sign-in sends `demo: true`. Configured demo testers and authenticated authorised platform administrators can enter the protected demo hub. Administrators receive a signed expiring demo cookie carrying their own identity; tester access does not become platform or reviewer permission. Successful login reloads the destination so server-rendered pages see the cookie.
 
-- `http://localhost:3010/api/auth/callback**`
-- `http://127.0.0.1:3010/api/auth/callback**`
+The protected COLORS conversation additionally binds the selected session with its own signed cookie. Its sample report is a controlled reviewer demonstration, not a public applicant response. See [COLORS reviewer demo](colors-forum-demo.md).
 
-The suffix permits the callback's `next` query string; application code restricts its destination to local paths. The previous localhost:3000 invite entry is retained. Local callbacks remain allowed. The fallback Site URL is now the verified production origin (see below).
+The three public branded demos at `demos.grcho.com` use their own website controller and server project-key proxy. Their applicant email form is not a platform login. Do not apply protected tester cookies or admin credentials as their integration pattern.
 
-Google provider activation verified through Supabase Auth settings. End-to-end Google sign-in completed for `jeff@cursive-studios.com`, returning to `/admin`; `/api/admin/session` confirmed `kind: platform`. The Google identity linked to the existing administrator. Check the Google External / Testing audience includes any additional intended test accounts if Google denies access.
+## OAuth setup
 
-Local testing caught Next.js reconstructing the request URL with `localhost` even when the browser used `127.0.0.1`. OAuth handlers now preserve validated local Host headers in development so the PKCE verifier cookie stays on the same host. Production uses the request URL origin.
+1. Configure the intended Supabase project's Google provider and a Google web OAuth client. Store the client secret only in the provider/server configuration.
+2. Register that Supabase project's exact provider callback, `https://<project-ref>.supabase.co/auth/v1/callback`, with Google.
+3. Set Supabase Site URL to `https://admin.groucho.app` and configure the production return paths below, plus the exact development callbacks in use. Keep localhost/127.0.0.1 consistent for the PKCE cookie.
+4. `/api/auth/google` starts the flow; `/api/auth/callback` exchanges the code. If Google's consent audience is still testing, include intended test users.
+5. Verify login/logout, local redirect handling and `/api/admin/session` for both an administrator and an ordinary member. Google sign-in must not promote the ordinary member.
 
-## Production configuration — 16 October 2026
+Configure `NEXT_PUBLIC_SUPABASE_URL`, public anon key, server-only service key and `AUTH_SECRET` for the same intended environment. See [database setup](database-setup.md). Do not copy a historical project callback or deployment ID without checking the current target.
 
-Vercel project `verlay/groucho-gatekeeper` is connected to `jeffmanful/groucho` on `main`. Its production domain is `https://groucho-gatekeeper.vercel.app`, confirmed in the project dashboard. The similarly named `groucho` project at `demo.pstrn.xyz` tracks another repository and is not this deployment.
+### Production domain
 
-Supabase Site URL is set to the production origin, with `https://groucho-gatekeeper.vercel.app/api/auth/callback**` allowed alongside local callbacks. Google Web client includes the production origin; its authorised redirect URI remains the hosted Supabase callback. Released through PR #6 (`0f9c415`). End-to-end production Google login completed for `jeff@cursive-studios.com`; it returned to `/admin`, and `/api/admin/session` verified `kind: platform`.
+The production dashboard is [admin.groucho.app](https://admin.groucho.app). The hosted Groucho Supabase project (`qqbvcmqzwtifpyufkxhh`) uses this origin as its Site URL. Its production redirect allowlist includes:
 
-Vercel was configured with Framework Preset **Other**, which published only `public` assets despite a successful Next build. Changed it to **Next.js** and redeployed the same authentication release using current project settings, without build cache. Preserve the Next.js preset for future deployments.
+- `https://admin.groucho.app/api/auth/callback`
+- `https://admin.groucho.app/api/auth/callback?**` (preserves the local `next` destination for Google and administrator email sign-in)
+- `https://admin.groucho.app/invite/**` (organisation invitation email returns)
+- `https://admin.groucho.app/signup/organisation`
 
-Verified corrected production deployment: `https://vercel.com/verlay/groucho-gatekeeper/FBDBZHfZojWUd4ss1K28yKPXy89w`. Login serves HTTP 200 with Google sign-in, and the production OAuth callback preserves the HTTPS production domain. The broader dashboard redesign is not included in this authentication-only release.
+These settings live in [Supabase URL Configuration](https://supabase.com/dashboard/project/qqbvcmqzwtifpyufkxhh/auth/url-configuration); `supabase/config.toml` configures the local development stack. Existing development and legacy Vercel callbacks remain allowed for compatibility. Keep production entries restricted to the auth paths; see [Supabase redirect URL matching](https://supabase.com/docs/guides/auth/redirect-urls).
+
+The app derives callbacks and invitation links from the request/browser origin, so it requires no new site-URL environment variable or redeployment for this domain change. Supabase and legacy auth cookies are host-only: users sign in again on the new domain. Google's registered provider callback remains `https://qqbvcmqzwtifpyufkxhh.supabase.co/auth/v1/callback`, because Google returns through Supabase before returning to the app.
+
+## Deployment verification
+
+Use the Next.js framework preset and a deployment containing the intended environment values. A successful static-assets deployment is not proof that auth route handlers were published. Test the real deployed sign-in path, not only a build or provider toggle.
+
+On 3 November 2026, live checks confirmed the new Vercel domain is verified, `/login` loads, protected pages return to its login screen, and Google sign-in creates a host-only PKCE cookie with an `admin.groucho.app` callback. Supabase accepted the callback (including `next`), organisation invitation and sign-up return paths using invalid-token error redirects without sending email. External `next` destinations fall back to `/admin`. These checks do not complete a real Google account sign-in or exercise email delivery.
+
+The administrator demo-access fix is recorded in PR #9; it avoids treating an authorised administrator as a tester-password failure. This is implementation history, not a claim that every provider/account in every deployment has been configured or rehearsed.

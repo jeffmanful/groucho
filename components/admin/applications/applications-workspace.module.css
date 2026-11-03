@@ -263,11 +263,11 @@
 }
 .panel {
   position: sticky;
-  top: 16px;
+  top: calc(var(--review-context-height, 0px) + 28px);
   display: grid;
   gap: 16px;
   padding: 20px;
-  max-height: calc(100dvh - 32px);
+  max-height: calc(100dvh - var(--review-context-height, 0px) - 44px);
   overflow-y: auto;
 }
 .panelHeader {

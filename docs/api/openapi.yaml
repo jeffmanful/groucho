@@ -6,10 +6,11 @@ info:
     Public HTTP API for gatekeeper sessions. **Project scope** is resolved from the
     `Authorization: Bearer gk_*` API key.
 
-    Behaviour is aligned with the reference implementation in `POST /api/chat`
-    ([app/api/chat/route.ts](../../app/api/chat/route.ts)): client-supplied opaque
-    `sessionId`, first user message creates the server session, scoring is applied
-    to each user turn, assistant reply may conclude the session.
+    Behaviour depends on the configured runtime and persisted session marker.
+    Newer COLORS and public demo conversations finish as `completed`; standard
+    gatekeeper retains advisory passed/redirected/rejected outcomes. Newer engines
+    do not assess each turn. Public simulations do not queue assessment/decision
+    jobs. Conversation completion is not approval, allocation or fulfilment.
 
 servers:
   - url: https://api.groucho.example.com
@@ -41,10 +42,12 @@ paths:
       tags: [Sessions]
       summary: Send a user message and receive the assistant reply
       description: |
-        Idempotent session binding: the first successful call for a new
-        `sessionId` creates a session row; subsequent calls append messages.
+        A client-provided session key binds the conversation. The runtime can
+        bootstrap a missing session before its first answer; subsequent calls
+        append turns. This does not guarantee idempotent message delivery.
 
-        If the session is already **concluded** (pass / redirect / reject), returns **409**.
+        If already concluded, or a configured public demo has an incompatible
+        engine/profile marker, returns **409**. Start a fresh compatible attempt.
       operationId: postSessionMessage
       parameters:
         - name: sessionId
@@ -75,7 +78,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PostMessageResponse"
+                oneOf:
+                  - $ref: "#/components/schemas/PostMessageResponse"
+                  - $ref: "#/components/schemas/SharedConversationResponse"
         "400":
           description: Invalid body or missing fields
           content:
@@ -91,7 +96,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "503":
-          description: Upstream scorer or LLM unavailable
+          description: Runtime/configuration unavailable, model failure or exhausted reply repair; the latter is retryable before persisting that answer.
           content:
             application/json:
               schema:
@@ -109,6 +114,7 @@ paths:
 
         - **gatekeeper** — persists the application opening message (project config, or optional `openingMessage` in the request body).
         - **onboarding** — persists welcome + first question and returns `currentStep`.
+        - **public demo profile** — supplies its registered opening/choice, ignoring incompatible caller overrides; new starts identify `engine` and `profile`.
       operationId: startSession
       parameters:
         - $ref: "#/components/parameters/sessionId"
@@ -134,7 +140,8 @@ paths:
                   description: |
                     Optional gatekeeper opener for new sessions. Overrides the project's
                     `application_experience.opening_message` when the session is first created.
-                    Ignored when resuming an active session that already has an opener.
+                    Ignored when resuming an active session that already has an opener,
+                    and overridden by the registered public demo profile.
                 openingInteraction:
                   $ref: "#/components/schemas/OpeningInteraction"
       responses:
@@ -649,8 +656,9 @@ components:
       type: string
       description: >-
         Advisory conversation outcome. It does not approve or decline the application by itself.
-        `completed` is returned by the newer COLORS conversation engine, which finishes without an
-        outcome of its own; its suitability score and reviewer report follow asynchronously.
+        `completed` is returned by shared newer-engine conversations. Real COLORS
+        applications have a separate asynchronous assessment; public persona demos
+        instead return explicit simulation completion without assessment jobs.
       enum:
         - active
         - passed
@@ -669,7 +677,7 @@ components:
 
     ProjectType:
       type: string
-      enum: [gatekeeper, onboarding]
+      enum: [gatekeeper, onboarding, ticket_access]
 
     GrouchoIntent:
       type: string
@@ -904,6 +912,17 @@ components:
         resumed:
           type: boolean
           description: True when this start call restored an existing active session.
+        engine:
+          type: string
+          description: Runtime response marker on fresh public-demo starts; currently groucho_conversation_v1.
+        profile:
+          type: string
+          description: Registered public-demo profile ID, not an extracted applicant profile object.
+        details:
+          type: object
+          additionalProperties:
+            type: string
+          description: Named public-demo details; empty on a fresh start.
 
     SessionMessage:
       type: object
@@ -915,8 +934,63 @@ components:
         content:
           type: string
 
+    DemoConversationCompletion:
+      type: object
+      required: [mode, complete, message]
+      properties:
+        mode:
+          type: string
+          enum: [simulation]
+        complete:
+          type: boolean
+          description: Required details were captured. False is an honest incomplete ending, not rejection or transport failure.
+        message:
+          type: string
+          minLength: 1
+          description: Honest demo outcome; no real booking, allocation, submission or email is implied.
+
+    SharedConversationResponse:
+      type: object
+      description: >-
+        Immediate reply from the shared COLORS/public-demo engine. Its profile
+        property is a string runtime ID, unlike the extracted object profile in
+        standard message/session responses. Public simulations supply details
+        and completion; real COLORS assessment follows separately.
+      required: [message, status, engine, profile, scores, ui]
+      properties:
+        message:
+          type: string
+          minLength: 1
+        status:
+          type: string
+          enum: [active, completed]
+        engine:
+          type: string
+          description: groucho_conversation_v1 for public profiles; colors_thin_pilot_v1 for COLORS.
+        profile:
+          type: string
+          description: Runtime profile ID, not extracted applicant data.
+        reviewStatus:
+          type: string
+          enum: [not_ready, pending, not_required]
+          description: Public simulation completion is not_required; real application decisions have a separate lifecycle.
+        scores:
+          allOf:
+            - $ref: "#/components/schemas/ScoreBreakdown"
+          description: Neutral 0.5 compatibility placeholders, not an assessment of the visitor.
+        ui:
+          $ref: "#/components/schemas/GrouchoInteractionUi"
+        details:
+          type: object
+          additionalProperties:
+            type: string
+          description: Accumulated approved fields for public-demo rendering.
+        completion:
+          $ref: "#/components/schemas/DemoConversationCompletion"
+
     PostMessageResponse:
       type: object
+      description: Standard gatekeeper/onboarding response. Newer shared-engine replies use SharedConversationResponse.
       required: [message, status, scores]
       properties:
         message:

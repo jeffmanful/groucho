@@ -7,6 +7,15 @@ export function safeAuthPath(value: string | null | undefined): string {
   } catch { return "/admin" }
 }
 
+/** Keep demo sign-in inside the demo routes, preserving query strings. */
+export function safeDemoPath(value: string | null | undefined): string {
+  const path = safeAuthPath(value)
+  const pathname = new URL(path, "https://groucho.invalid").pathname
+  return pathname === "/demo/colors" || pathname === "/demos" || pathname.startsWith("/demos/")
+    ? path
+    : "/demos"
+}
+
 /** Preserve the browser host locally: PKCE cookies cannot cross localhost/127.0.0.1. */
 export function authRequestOrigin(requestUrl: string, host: string | null): string {
   const url = new URL(requestUrl)

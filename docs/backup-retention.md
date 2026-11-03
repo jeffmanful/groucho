@@ -1,6 +1,6 @@
 # Backup, retention, and deletion (Groucho v1)
 
-Operational guidance for hosted deployments. Tune to your compliance regime (GDPR, SOC 2, customer DPAs).
+Operational checklist, reviewed 2 November 2026. These are deployment responsibilities, not a claim that an automatic retention schedule or provider recovery policy is implemented. Define the organisation’s retention/recovery policy separately and verify it against [the schema/migrations](database-schema.md).
 
 ## Data stores
 

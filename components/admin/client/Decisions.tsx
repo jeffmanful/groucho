@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { useEffect, useState, type CSSProperties } from "react"
+import { useOrganisationProject } from "@/components/admin/dashboard/OrganisationProjectContext"
 import { useOrganisationSummary } from "@/components/admin/dashboard/OrganisationSummaryContext"
 import dashboard from "@/components/admin/dashboard/dashboard.module.css"
 import type { DecisionLedger, LedgerEntry, LedgerFilter } from "@/lib/decision-ledger"
@@ -34,12 +35,14 @@ function outcomeDot(outcome: string | undefined): string {
 
 export function Decisions() {
   const { orgId } = useOrganisationSummary()
+  const { project } = useOrganisationProject()
+  const projectId = project?.id ?? null
   const [filter, setFilter] = useState<LedgerFilter>("all")
   const [search, setSearch] = useState("")
   const [query, setQuery] = useState("")
   const [offset, setOffset] = useState(0)
   const [state, setState] = useState<{ key: string; data?: DecisionLedger; error?: string } | null>(null)
-  const key = `${orgId}|${filter}|${query}|${offset}`
+  const key = `${orgId}|${projectId}|${filter}|${query}|${offset}`
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -50,9 +53,9 @@ export function Decisions() {
   }, [search])
 
   useEffect(() => {
-    if (!orgId) return
+    if (!orgId || !projectId) return
     let cancelled = false
-    const params = new URLSearchParams({ filter, offset: String(offset), limit: String(PAGE) })
+    const params = new URLSearchParams({ project: projectId, filter, offset: String(offset), limit: String(PAGE) })
     if (query) params.set("q", query)
     fetch(`/api/admin/organisations/${orgId}/decisions?${params}`, { cache: "no-store" })
       .then(async (response) => {
@@ -66,11 +69,11 @@ export function Decisions() {
     return () => {
       cancelled = true
     }
-  }, [orgId, filter, query, offset, key])
+  }, [orgId, projectId, filter, query, offset, key])
 
-  const data = state?.data
+  const data = state?.key === key ? state.data : null
   const loading = state?.key !== key
-  const multipleProjects = (data?.projects.length ?? 0) > 1
+  const multipleProjects = false
   const columns = {
     "--columns": multipleProjects
       ? "minmax(0,1.5fr) minmax(0,1fr) minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr) 80px"
@@ -81,10 +84,6 @@ export function Decisions() {
 
   return (
     <div className={dashboard.page}>
-      <header className={dashboard.header}>
-        <h1 className={dashboard.title}>Decisions</h1>
-      </header>
-
       {stats ? (
         <div className={`${styles.panel} ${styles.stats}`}>
           <div className={styles.stat}>

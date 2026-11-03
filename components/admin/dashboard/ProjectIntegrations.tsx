@@ -7,6 +7,7 @@ import { projectStatus } from "./OrgOverview"
 import { useOrganisationSummary } from "./OrganisationSummaryContext"
 import { WEBHOOK_EVENTS, WEBHOOK_EVENT_LABELS, type WebhookEvent } from "@/lib/webhook-events"
 import styles from "./dashboard.module.css"
+import { DeliveryFailures } from "@/components/admin/client/DeliveryFailures"
 import { ApplicationInvitations } from "@/components/admin/client/ApplicationInvitations"
 
 type ApiKey = { id: string; key_prefix: string; label: string | null; scopes?: string[]; last_used_at: string | null; created_at: string; revoked_at: string | null }
@@ -129,11 +130,11 @@ export function ProjectIntegrations({ projectId }: { projectId: string }) {
       </Link>
       <header className={styles.header}>
         <div>
-          <h1 className={styles.title}>{project?.name ?? "Project"}</h1>
+          <h1 className={styles.title}>Integrations</h1>
           {project && status ? (
             <p className={styles.subtitle} style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span className={status.dot} aria-hidden="true" />
-              {status.label}{project.personaName ? ` · ${project.personaName}` : ""}
+              {project.name} · {status.label}{project.personaName ? ` · ${project.personaName}` : ""}
             </p>
           ) : null}
         </div>
@@ -141,8 +142,8 @@ export function ProjectIntegrations({ projectId }: { projectId: string }) {
 
       <nav className={styles.tabs} aria-label="Project">
         <Link className={styles.tab} href={`${orgBase}/projects/${projectId}/edit`}>Setup</Link>
-        <span className={styles.tabActive} aria-current="page">Keys &amp; webhooks</span>
-        <Link className={styles.tab} href={`/admin/sessions?project=${projectId}`}>Conversations</Link>
+        <span className={styles.tabActive} aria-current="page">Integrations</span>
+        <Link className={styles.tab} href={`${orgBase}/integrations/conversations?project=${projectId}`}>Conversation diagnostics</Link>
         <Link className={styles.tab} href={`${orgBase}/advanced?project=${projectId}`}>Advanced</Link>
       </nav>
 
@@ -151,6 +152,8 @@ export function ProjectIntegrations({ projectId }: { projectId: string }) {
       {secret ? <Secret label={secret.label} value={secret.value} onDismiss={() => setSecret(null)} /> : null}
 
       {orgId ? <ApplicationInvitations key={`${orgId}:${projectId}`} orgId={orgId} projectId={projectId} canManage={canManage} /> : null}
+
+      {orgId ? <DeliveryFailures orgId={orgId} projectId={projectId} canManage={canManage} /> : null}
 
       <section className={styles.section} aria-labelledby="api-keys">
         <div className={styles.sectionHeader} style={{ alignItems: "flex-end" }}>

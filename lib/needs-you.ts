@@ -102,7 +102,7 @@ export async function buildNeedsYou(organisationId: string, options: { limit?: n
   }
 }
 
-async function failedDeliveries(projectIds: string[], since: string): Promise<Array<Omit<NeedsYouDelivery, "projectName"> & { projectName?: string }>> {
+export async function failedDeliveries(projectIds: string[], since: string): Promise<Array<Omit<NeedsYouDelivery, "projectName"> & { projectName?: string }>> {
   const { data: hooks, error: hookError } = await supabase.from("webhooks").select("id, url, project_id").in("project_id", projectIds)
   if (hookError) throw hookError
   const hookById = new Map(((hooks ?? []) as Array<{ id: string; url: string; project_id: string }>).map((hook) => [hook.id, hook]))

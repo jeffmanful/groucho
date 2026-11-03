@@ -8,7 +8,7 @@ import type { EntriesPage, EntryFlag, EntryItem, EntryTab, MatchGroup } from "@/
 import { shortDate } from "@/lib/relative-time"
 import { AddToCohortDialog } from "./AddToCohortDialog"
 import styles from "./drops.module.css"
-import { fieldLabel, nf, ProjectSwitch, useDropProject } from "./useDropProject"
+import { fieldLabel, nf, useDropProject } from "./useDropProject"
 
 const PAGE = 50
 const TABS: Array<{ value: EntryTab; label: string; stat: keyof EntriesPage["stats"] }> = [
@@ -44,7 +44,7 @@ async function send(url: string, body: unknown): Promise<Record<string, unknown>
 }
 
 export function Entries() {
-  const { orgId, projects, project, choose, canManage, summary } = useDropProject()
+  const { orgId, project, canManage, summary } = useDropProject()
   const [tab, setTab] = useState<EntryTab>("review")
   const [noFlags, setNoFlags] = useState(false)
   const [field, setField] = useState<string | null>(null)
@@ -282,18 +282,7 @@ export function Entries() {
   )
 
   return (
-    <div className={dashboard.page} style={{ maxWidth: 1440 }}>
-      <header className={styles.head}>
-        <h1 className={dashboard.title}>Entries</h1>
-        <span className={client.muted}>/</span>
-        <ProjectSwitch projects={projects} value={projectId ?? ""} onChange={choose} />
-        <span className={styles.headActions}>
-          <Link className={client.button} href={`/admin/organisations/${orgId}/cohorts${projectId ? `?project=${projectId}` : ""}`}>
-            Cohorts
-          </Link>
-        </span>
-      </header>
-
+    <div className={dashboard.page}>
       {data ? (
         <div className={`${client.panel} ${styles.stats}`}>
           <div>
@@ -416,7 +405,7 @@ export function Entries() {
               </button>
             ) : null}
             {tab === "approved" && allMatching ? (
-              <Link className={client.button} href={`/admin/organisations/${orgId}/cohorts?project=${projectId}`}>
+              <Link className={client.button} href={`/admin/organisations/${orgId}/applications/cohorts?project=${projectId}`}>
                 Place everyone from Cohorts
               </Link>
             ) : null}

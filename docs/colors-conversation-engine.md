@@ -1,101 +1,54 @@
 # COLORS conversation engine
 
-26 October 2026. All COLORS applications move to the newer conversation engine (the former
-"thin pilot", marker `colors_thin_pilot_v1`). The previous engine stays in place for other
-clients and for COLORS conversations that started on it, which finish where they began.
+Current implementation, reviewed 2 November 2026. COLORS uses the shared runtime through `lib/colors-thin-conversation.ts`. “Thin” and `colors_thin_pilot_v1` are retained compatibility names, not a separate recommended pilot engine. See [shared architecture](reusable-conversation-engine.md).
 
-## Where the newer engine runs
+## Routing and voice
 
-| Entry point | Engine |
+| Entry | Selection |
 | --- | --- |
-| COLORS demo, artist and community (`/demo/colors`) | Always the newer engine. `GROUCHO_COLORS_THIN_PILOT` is no longer read. |
-| Public API `/v1/sessions/{id}/start` and `/messages`, and the `/doorcheck` preview | The newer engine for new sessions on projects whose settings contain `"conversation_engine": "colors_forum"`. A client that posts before calling start has the session started first. |
-| Sessions already in progress | The engine recorded on their opening message. |
+| Protected `/demo/colors`, artist/community | Newer adapter explicitly; retired pilot environment flag is not the switch |
+| Project `/v1` API and `/doorcheck` | New sessions use the adapter when project settings contain `conversation_engine: colors_forum` |
+| Compatible historical sessions | Opening metadata determines the previously selected engine |
+| Public Odile/Warden/Mo demos | Separate `conversation_v1` profiles on the same runtime, not COLORS admission conversations |
 
-The project setting lives in `projects.settings` and survives admin edits, which keep unknown keys.
-Routing is in `lib/colors-engine-routing.ts` and `lib/start-gatekeeper-session.ts`.
+The COLORS adapter retains code-defined voice/context, model selection, privacy fallback and rich media catalogue. Community/artist direction comes from persisted audience, not a mutable per-turn persona choice. [Membership brief](colors-forum-membership-brief.md) defines approved product context; [intake](artist-forum-application.md) defines submitted facts.
+
+## Conversation contract
+
+The engine asks through `groucho_converse` or equivalent structured output. It validates clear active questions, repairs missing questions with bounded attempts, handles direct applicant questions, tracks no-new-context progress and closes neutrally. A repair failure is retryable before the answer pair is persisted. It does not score each turn; required `scores` values are neutral compatibility placeholders.
+
+COLORS retains its own media validation and consent handling. The quality rubric is a review standard, not a second executable controller. Pacing/stop rules live in the engine; do not revive an older fixed interview sequence or promise a fixed number of questions. Existing historical paths can differ, so evaluate a fresh session on the intended engine.
 
 ## Completion
 
-When a newer-engine conversation closes outside the demo, it queues the same background
-completion job as the previous engine (`lib/session-completion-jobs.ts`):
+Real newer-engine applications finish `status: completed` and queue `lib/session-completion-jobs.ts`:
 
-1. Reuse the reviewer report and grounded profile if the demo page already produced them;
-   otherwise generate them with `generateColorsThinAssessment` (`lib/colors-thin-assessment.ts`),
-   the same function the demo report route uses. A report started elsewhere less than 90 seconds
-   ago is left to finish and the job retries.
-2. Derive and store `sessions.suitability_score` from the report (below).
-3. Apply the client decision policy (automatic actions remain off unless enabled).
-4. Write the verdict and enqueue signed webhooks. The payload carries `session.status: "completed"`,
-   `suitability_score`, the reviewer report and the grounded profile. `outcome` is a compatibility
-   value derived from the recommendation (recommend → PASS, human_review → REDIRECT,
-   decline → REJECT); access is still decided by `reviewStatus`.
-5. Record cultural signals as before.
+1. Reuse a current ready assessment/profile or generate them via `generateColorsThinAssessment`.
+2. Persist a grounded profile and derive suitability from recommendation/confidence.
+3. Apply the independently configured client decision policy.
+4. Write the compatibility verdict and enqueue subscribed signed webhooks.
+5. Record eligible cultural signals where enabled.
 
-A failed assessment marks the closing message `failed` with its stage and the job retries with
-back-off. Demo sessions skip this pipeline, as reviewer previews always have, because they use the
-real Forum project and its webhooks; they still receive a suitability score when their report is ready.
-Demo sessions are marked `colors_demo_session` on their opening message, so an API turn on one also
-skips the pipeline.
+Report version authority is `COLORS_FORUM_MEMBERSHIP_REPORT_VERSION` in `lib/reviewer-report.ts` (v8 at this review). Failed stages are recorded for retry; assessment recovery in admin does not itself record a new decision. Completion leases/backoff are not proof of exactly-once model execution.
+
+Protected reviewer demos suppress automatic completion jobs/decisions/webhooks and generate a sample report separately. Their opening `colors_demo_session` marker also prevents a later API turn from invoking the real completion path. Public persona simulations suppress assessment altogether and finish with their simulation message instead. Do not queue old reviewer-demo sessions as a score backfill: completion jobs can emit real project events.
 
 ## Suitability score
 
-The newer engine does not score turns. `lib/colors-suitability.ts` derives a 0–1 score from the
-reviewer report: the recommendation sets the range, confidence places the applicant within it.
+`lib/colors-suitability.ts` derives the initial score:
 
-| Recommendation | Score | Band with default thresholds (0.80 / 0.55) |
-| --- | --- | --- |
-| recommend | 0.60 + 0.30 × confidence | Confidence ≥ 0.67 → recommended_acceptance; below → review |
-| human_review | 0.55 + 0.05 × confidence | Always review |
-| decline | 0.45 × (1 − confidence) | Always below_threshold |
+| Recommendation | Formula |
+| --- | --- |
+| recommend | `0.60 + 0.30 × confidence` |
+| human_review | `0.55 + 0.05 × confidence` |
+| decline | `0.45 × (1 − confidence)` |
 
-Decline always sorts below human review, which sorts below recommend. The completion job then
-keeps human review inside the project's review band and decline below its review threshold, so
-neither can be accepted automatically and human review can never be declined automatically,
-whatever thresholds the project sets. Recommend is not adjusted. Thin but positive evidence
-(confidence around 0.5–0.6) stays in review. In the live check on 26 October, two low-effort
-applicants scored 0.765 and 0.78 (review) and two well-evidenced applicants 0.834
-(recommended_acceptance). Projects that change their thresholds move the recommend boundary with them.
+The completion pipeline aligns human-review/decline ranges with project policy so a human-review recommendation cannot be automatically declined or accepted, and decline cannot become automatic acceptance. Recommend remains subject to client thresholds. Confidence/suitability are advisory heuristics, not calibrated probabilities. See [decision policy](client-decision-policy.md#score-bands-and-actions) for authority; its score-band section explains policy actions.
 
-## API and SDK compatibility
+## Integration and rollout
 
-The newer engine finishes with `status: "completed"`, which is now part of `SessionOutcome` in the
-OpenAPI contract. It returns a neutral 0.5 placeholder for the required per-turn `scores`; the real
-score is `suitabilityScore` from `GET /v1/sessions/{id}` once completion has run, and
-`suitability_score` in the webhook.
+Use a compatible SDK source/release that treats `completed` as terminal, or the appropriate custom renderer. Backend deployment does not publish the SDK or update a host. The shared runtime's immediate `profile` property is a string profile ID; extracted profile objects arrive through the separate authorised session/assessment flow. See [SDK surface](sdk-surface.md).
 
-`@groucho-gatekeeper/sdk` releases before this change treat only passed, redirected and rejected as
-finished. On those versions a COLORS conversation would show its closing line and leave the input
-open. The next SDK release (changeset `colors-completed-outcome`) treats `completed` as finished.
+Deploy backend/host support and required migrations before setting a real project's engine. Back up settings, test with an isolated configured project, then verify neutral closing, persisted report/profile/score, decision policy, subscribed deliveries and resume/error recovery. Invitation-only launch requires the extra [pilot rehearsal](colors-admin-pilot.md), not just setting `colors_forum`.
 
-## Rollout
-
-1. Deploy this branch. API clients see no behaviour change until a project has the setting; each
-   message turn makes two extra small lookups to choose the engine.
-2. Publish the SDK release and upgrade the COLORS Forum host. Check its webhook receiver accepts
-   `session.status: "completed"` and reads `suitability_score` and `reviewer_report`.
-3. Set the project setting on `forum-application-test`, run an application through the Forum host
-   end to end, and confirm the verdict, webhook delivery and admin sorting.
-4. Set the same setting on `forum-application`.
-
-```sql
-update projects set settings = settings || '{"conversation_engine": "colors_forum"}'::jsonb
-where slug = 'forum-application-test'; -- then 'forum-application'
-```
-
-Before step 4, the 35 newer-engine demo sessions completed in the previous 30 days have no
-suitability score. They can be scored by queueing completion jobs for them, which also writes
-verdicts and sends webhooks, so do that only if the Forum should receive them.
-
-## Known limits
-
-- Completion jobs run after the message response (`after()`), as before. A newer-engine job makes
-  several model calls; if the function times out mid-job, the job is reclaimed after the
-  5-minute stale lock and retried.
-- If queueing the job fails after the row was actually written, the inline fallback and the
-  queued job can both generate the report. Verdicts, decisions and webhook deliveries are
-  deduplicated, so the cost is a second report.
-- A verdict insert error other than a duplicate is logged and not retried (existing behaviour).
-
-The Converse competition project was retired on 26 October by revoking its only API key; its data
-is unchanged.
+Main/production deployment state must be checked separately from local source. Current integration instructions supersede the earlier thin-pilot setup/scorebackfill recipes. Dated run evidence is in the [archive](archive/README.md).

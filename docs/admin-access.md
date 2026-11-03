@@ -1,6 +1,6 @@
 # Dashboard admin access
 
-Platform administrators manage dashboard access at `/admin/access`. Organisation membership remains separate; a platform administrator can access every organisation and project.
+Platform administrators manage dashboard access at [admin.groucho.app/admin/access](https://admin.groucho.app/admin/access). Organisation membership remains separate; a platform administrator can access every organisation and project.
 
 ## Invite and accept
 
@@ -28,4 +28,4 @@ Unit tests cover expiry, verified email, capability validation/hash storage and 
 
 Integration checks cover anonymous/member denial, wrong-email refusal, no access before acceptance, one-time acceptance, self/core protection, immediate revocation on an existing session, replaced tokens, expiry and cancellation. The script removes its synthetic account and invitations afterward. Real email delivery is not exercised by that test.
 
-Released through PR #7 (`388096d`). Production screen: https://groucho-gatekeeper.vercel.app/admin/access . The full synthetic integration test passed against production; Google sign-in returned to this screen. Synthetic users and access records were removed afterward. An isolated production-server test confirmed that legacy removal blocks both existing cookies and shared-password re-login.
+Released through PR #7 (`388096d`). The full synthetic integration test passed against the then-production Vercel domain; Google sign-in returned to the access screen. Synthetic users and access records were removed afterward. An isolated production-server test confirmed that legacy removal blocks both existing cookies and shared-password re-login. The production domain moved to `admin.groucho.app` on 3 November 2026; see [authentication configuration and verification](authentication.md#production-domain).

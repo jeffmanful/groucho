@@ -20,7 +20,9 @@ This app includes its own `proxy.ts` (pass-through) so it does **not** pick up t
 Open [http://localhost:3001](http://localhost:3001) and use the embedded Gatekeeper.
 
 The example displays the conversation experience; a terminal `passed`, `redirected`,
-or `rejected` value is advisory. Production hosts should read `reviewStatus` and
+`rejected`, or newer-engine `completed` value is a conversation result, not an approval. Production hosts should read `reviewStatus` and
 only continue an approved flow with its matching access secret. Project suitability
 thresholds and automatic actions are configured in Groucho, and both automatic
 actions default off.
+
+This example uses the generic relay and compatibility `GROUPCHO_*` variable names read by its source. Add host authentication/session ownership and appropriate private-field filtering for a real applicant deployment. The public demos use a separate custom controller; see [runtime map](../../docs/architecture.md) and [SDK version boundaries](../../docs/sdk-surface.md).

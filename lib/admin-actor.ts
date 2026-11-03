@@ -1,7 +1,7 @@
 import {
-  hasManagedPlatformAccess,
   legacyPlatformEnabled,
 } from "@/lib/platform-admin-access"
+import { dashboardAccess } from "@/lib/dashboard-access"
 import { cookies } from "next/headers"
 import { verifyPeAuthEmail, isAllowedPlatformEmail } from "@/lib/pe-auth"
 import {
@@ -15,7 +15,7 @@ export type AdminActor =
 
 /**
  * Platform operator (`pe_auth` + allowlist) takes precedence over Supabase session.
- * Org members authenticate with Supabase (same cookies as invite / org signup).
+ * Supabase identities require an existing membership or an active platform grant.
  */
 export async function resolveAdminActor(): Promise<AdminActor | null> {
   const cookieStore = await cookies()
@@ -41,21 +41,9 @@ export async function resolveAdminActor(): Promise<AdminActor | null> {
     data: { user },
   } = await supabase.auth.getUser()
   if (user?.id) {
-    if (
-      user.email &&
-      user.email_confirmed_at &&
-      user.app_metadata?.groucho_role === "platform_admin"
-    ) {
-      return { kind: "platform", email: user.email }
-    }
-    if (
-      user.email &&
-      user.email_confirmed_at &&
-      (await hasManagedPlatformAccess(user.id, user.email))
-    ) {
-      return { kind: "platform", email: user.email }
-    }
-    return { kind: "member", userId: user.id, email: user.email ?? null }
+    const access = await dashboardAccess(user)
+    if (access === "platform") return { kind: "platform", email: user.email! }
+    if (access === "member") return { kind: "member", userId: user.id, email: user.email! }
   }
 
   return null

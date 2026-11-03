@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { supabase } from "@/lib/supabase"
+import { pendingOrganisationInvitation } from "@/lib/dashboard-access"
+import { isSameOriginMutation } from "@/lib/platform-admin-access"
 
 export async function POST(req: NextRequest) {
+  if (!isSameOriginMutation(req)) return NextResponse.json({ error: "Invalid request origin." }, { status: 403 })
   let body: { token?: string }
   try {
     body = await req.json()
@@ -10,7 +13,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 })
   }
 
-  const token = body.token?.trim()
+  const token = typeof body?.token === "string" ? body.token.trim() : ""
   if (!token) {
     return NextResponse.json({ error: "Missing token" }, { status: 400 })
   }
@@ -21,7 +24,7 @@ export async function POST(req: NextRequest) {
     error: userErr,
   } = await authClient.auth.getUser()
 
-  if (userErr || !user?.email) {
+  if (userErr || !user?.email || !user.email_confirmed_at) {
     return NextResponse.json(
       { error: "Sign in with the invited email first (Supabase Auth)." },
       { status: 401 },
@@ -30,23 +33,8 @@ export async function POST(req: NextRequest) {
 
   const emailLower = user.email.trim().toLowerCase()
 
-  const { data: inv, error: invErr } = await supabase
-    .from("invitations")
-    .select("id, organisation_id, email, role, expires_at, accepted_at")
-    .eq("token", token)
-    .maybeSingle()
-
-  if (invErr || !inv) {
-    return NextResponse.json({ error: "Invalid invitation" }, { status: 404 })
-  }
-
-  if (inv.accepted_at) {
-    return NextResponse.json({ error: "Invitation already used" }, { status: 410 })
-  }
-
-  if (new Date(inv.expires_at).getTime() < Date.now()) {
-    return NextResponse.json({ error: "Invitation expired" }, { status: 410 })
-  }
+  const inv = await pendingOrganisationInvitation(token)
+  if (!inv) return NextResponse.json({ error: "Invalid, expired or already used invitation." }, { status: 410 })
 
   if (inv.email.trim().toLowerCase() !== emailLower) {
     return NextResponse.json(
@@ -60,12 +48,22 @@ export async function POST(req: NextRequest) {
 
   const userId = user.id
 
-  const { data: existing } = await supabase
+  const { data: existing, error: membershipError } = await supabase
     .from("organisation_members")
     .select("id")
     .eq("organisation_id", inv.organisation_id)
     .eq("user_id", userId)
     .maybeSingle()
+
+  if (membershipError) return NextResponse.json({ error: "Could not check organisation membership." }, { status: 503 })
+  // Claim before granting access. Revocation, expiry or a concurrent acceptance must win.
+  const acceptedAt = new Date().toISOString()
+  const { data: claimed, error: claimError } = await supabase.from("invitations")
+    .update({ accepted_at: acceptedAt }).eq("id", inv.id).eq("token", token)
+    .eq("email", inv.email).eq("role", inv.role).eq("organisation_id", inv.organisation_id)
+    .is("accepted_at", null).gt("expires_at", acceptedAt).select("id").maybeSingle()
+  if (claimError) return NextResponse.json({ error: "Could not accept invitation." }, { status: 503 })
+  if (!claimed) return NextResponse.json({ error: "Invitation is no longer available." }, { status: 410 })
 
   if (!existing) {
     const { error: insErr } = await supabase.from("organisation_members").insert({
@@ -76,19 +74,12 @@ export async function POST(req: NextRequest) {
     })
 
     if (insErr) {
+      // Restore only our own claim so a transient insert failure can be retried.
+      await supabase.from("invitations").update({ accepted_at: null })
+        .eq("id", inv.id).eq("accepted_at", acceptedAt)
       console.error("organisation_members insert:", insErr)
       return NextResponse.json({ error: "Could not join organisation" }, { status: 500 })
     }
-  }
-
-  const { error: upErr } = await supabase
-    .from("invitations")
-    .update({ accepted_at: new Date().toISOString() })
-    .eq("id", inv.id)
-    .is("accepted_at", null)
-
-  if (upErr) {
-    console.error("invitations accept update:", upErr)
   }
 
   return NextResponse.json({

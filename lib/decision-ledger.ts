@@ -49,7 +49,7 @@ export async function buildDecisionLedger(
     .order("created_at", { ascending: true })
   if (projectError) throw projectError
   const projects = (projectRows ?? []) as Array<{ id: string; name: string }>
-  const projectIds = projectFilter && projects.some((p) => p.id === projectFilter) ? [projectFilter] : projects.map((p) => p.id)
+  const projectIds = projectFilter !== null ? projects.filter((p) => p.id === projectFilter).map((p) => p.id) : projects.map((p) => p.id)
   const projectName = new Map(projects.map((project) => [project.id, project.name]))
   const empty = { entries: [], total: 0, offset, limit, stats: { approved: 0, declined: 0, corrected: 0, joined: 0, outcomesReported: 0 }, projects }
   if (!projectIds.length) return empty

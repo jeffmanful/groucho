@@ -1,8 +1,9 @@
 "use client"
 
-import { createSupabaseBrowserClient } from "@/lib/supabase-browser"
+import { createSupabaseBrowserClient, tryCreateSupabaseBrowserClient } from "@/lib/supabase-browser"
+import Link from "next/link"
 import { useParams } from "next/navigation"
-import { useCallback, useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 
 type InviteMeta = {
   organisationName: string
@@ -23,62 +24,59 @@ export default function InviteAcceptPage() {
   const [busy, setBusy] = useState(false)
   const [stepMsg, setStepMsg] = useState<string | null>(null)
   const [done, setDone] = useState(false)
-
-  const load = useCallback(async () => {
-    if (!token) return
-    const res = await fetch(
-      `/api/invitations/by-token?token=${encodeURIComponent(token)}`,
-    )
-    const b = await res.json().catch(() => ({}))
-    if (!res.ok) {
-      setLoadErr(b.error ?? "Invalid invitation")
-      setMeta(null)
-      return
-    }
-    setMeta(b)
-    setLoadErr(null)
-  }, [token])
+  const [currentEmail, setCurrentEmail] = useState<string | null>(null)
 
   useEffect(() => {
-    void load()
-  }, [load])
+    if (!token) return
+    const controller = new AbortController()
+    fetch(`/api/invitations/by-token?token=${encodeURIComponent(token)}`, { signal: controller.signal, cache: "no-store" })
+      .then(async (response) => {
+        const body = await response.json()
+        if (!response.ok) throw new Error(body.error ?? "Invalid invitation")
+        if (!controller.signal.aborted) { setMeta(body); setLoadErr(null) }
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) { setLoadErr(error.message); setMeta(null) }
+      })
+    tryCreateSupabaseBrowserClient()?.auth.getUser().then(({ data }) => {
+      if (!controller.signal.aborted) setCurrentEmail(data.user?.email ?? null)
+    }).catch(() => {})
+    return () => controller.abort()
+  }, [token])
 
   async function sendOtp() {
     if (!meta) return
     setBusy(true)
     setStepMsg(null)
-    const supabase = createSupabaseBrowserClient()
-    const { error } = await supabase.auth.signInWithOtp({
-      email: meta.email,
-      options: {
-        shouldCreateUser: true,
-        emailRedirectTo:
-          typeof window !== "undefined" ? window.location.href : undefined,
-      },
-    })
-    setBusy(false)
-    if (error) {
-      setStepMsg(error.message)
-      return
-    }
-    setOtpSent(true)
-    setStepMsg("Check your email for the 6-digit code.")
+    try {
+      const response = await fetch("/api/invitations/send-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body.error ?? "Sign-in code could not be sent.")
+      setOtpSent(true)
+      setStepMsg("Check your email for the 6-digit code.")
+    } catch (error) {
+      setStepMsg(error instanceof Error ? error.message : "Sign-in code could not be sent.")
+    } finally { setBusy(false) }
   }
 
-  async function verifyAndAccept() {
-    if (!meta || !code.trim()) return
+  async function verifyAndAccept(alreadySignedIn = false) {
+    if (!meta || (!alreadySignedIn && !code.trim())) return
     setBusy(true)
     setStepMsg(null)
-    const supabase = createSupabaseBrowserClient()
-    const { error: vErr } = await supabase.auth.verifyOtp({
-      email: meta.email,
-      token: code.trim(),
-      type: "email",
-    })
-    if (vErr) {
-      setBusy(false)
-      setStepMsg(vErr.message)
-      return
+    if (!alreadySignedIn) {
+      const supabase = createSupabaseBrowserClient()
+      const { error: vErr } = await supabase.auth.verifyOtp({
+        email: meta.email, token: code.trim(), type: "email",
+      })
+      if (vErr) {
+        setBusy(false)
+        setStepMsg(vErr.message)
+        return
+      }
     }
 
     const res = await fetch("/api/invitations/accept", {
@@ -150,6 +148,8 @@ export default function InviteAcceptPage() {
 
       {!done && (
         <>
+          <p><Link href={`/login?next=${encodeURIComponent(`/invite/${token}`)}`}>Sign in with Google or your Groucho account</Link></p>
+          {currentEmail && <p>Signed in as {currentEmail}. <button type="button" disabled={busy} onClick={() => void verifyAndAccept(true)}>Accept invitation</button></p>}
           {!otpSent ? (
             <button
               type="button"

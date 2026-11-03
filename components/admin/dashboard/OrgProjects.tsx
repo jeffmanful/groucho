@@ -63,9 +63,6 @@ export function OrgProjects() {
         <span className={`${styles.num} ${project.toReview ? styles.attention : styles.dim}`}>{project.toReview ?? "–"}</span>
         <span className={styles.rowActions}>
           {gatekeeper ? <Link className={styles.rowAction} href={`${base}/applications?project=${project.id}`}>Applications</Link> : null}
-          {project.projectType !== "ticket_access" ? (
-            <Link className={styles.rowAction} href={`/admin/sessions?project=${project.id}`}>Conversations</Link>
-          ) : null}
           {summary.canManage ? <Link className={styles.rowAction} href={`${base}/projects/${project.id}/edit`}>Setup</Link> : null}
           {project.projectType !== "ticket_access" ? <Link className={styles.rowAction} href={`${base}/projects/${project.id}`}>Keys</Link> : null}
           {summary.canManage ? (

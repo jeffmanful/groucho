@@ -2,13 +2,13 @@
 import type { ReviewerReport } from "@/lib/reviewer-report"
 
 export const QUEUE_ORDER = [
+  "all",
   "ready_for_review",
   "awaiting_assessment",
   "in_progress",
   "approved",
   "declined",
   "abandoned",
-  "all",
 ] as const
 export type QueueKey = (typeof QUEUE_ORDER)[number]
 
@@ -19,7 +19,7 @@ export const QUEUE_LABEL: Record<QueueKey, string> = {
   approved: "Approved",
   declined: "Declined",
   abandoned: "Abandoned",
-  all: "All",
+  all: "All applications",
 }
 
 export type Recommendation = "recommend" | "human_review" | "decline"
@@ -90,7 +90,7 @@ export type ApplicationFilters = {
 export const PAGE_SIZE = 25
 
 export const DEFAULT_FILTERS: ApplicationFilters = {
-  queue: "ready_for_review",
+  queue: "all",
   audience: "all",
   recommendation: "all",
   band: "all",

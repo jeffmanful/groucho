@@ -1,9 +1,10 @@
-import { legacyPlatformEnabled } from "@/lib/platform-admin-access"
+import { hasManagedPlatformAccess, legacyPlatformEnabled } from "@/lib/platform-admin-access"
 import {
   createSupabaseServerClient,
   isSupabaseServerConfigured,
 } from "@/lib/supabase-server"
 import { checkRateLimit } from "@/lib/rate-limit"
+import { canSignInToDashboard } from "@/lib/dashboard-access"
 import { NextRequest, NextResponse } from "next/server"
 import {
   DEMO_AUTH_COOKIE,
@@ -34,10 +35,32 @@ async function signToken(payload: string, secret: string): Promise<string> {
   return `${payload}.${toBase64Url(sig)}`
 }
 
+async function demoLoginResponse(email: string, platformAdmin = false) {
+  const token = await issueDemoToken({
+    kind: "tester",
+    email,
+    ...(platformAdmin ? { access: "platform_admin" as const } : {}),
+    issuedAt: Date.now(),
+  })
+  if (!token) {
+    return NextResponse.json({ error: "Server misconfigured" }, { status: 500 })
+  }
+  const response = NextResponse.json({ ok: true, role: "colors_demo_tester" })
+  response.cookies.set(DEMO_AUTH_COOKIE, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 7,
+    secure: process.env.NODE_ENV === "production",
+  })
+  return response
+}
+
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
   const email = body?.email
   const password = body?.password
+  const demoLogin = body?.demo === true
 
   if (
     typeof email !== "string" ||
@@ -74,25 +97,7 @@ export async function POST(req: NextRequest) {
     )
 
   if (demoPasswordMatches(emailLower, password)) {
-    const token = await issueDemoToken({
-      kind: "tester",
-      email: emailLower,
-      issuedAt: Date.now(),
-    })
-    if (!token)
-      return NextResponse.json(
-        { error: "Server misconfigured" },
-        { status: 500 },
-      )
-    const res = NextResponse.json({ ok: true, role: "colors_demo_tester" })
-    res.cookies.set(DEMO_AUTH_COOKIE, token, {
-      httpOnly: true,
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 7,
-      secure: process.env.NODE_ENV === "production",
-    })
-    return res
+    return demoLoginResponse(emailLower)
   }
 
   if (isDemoTesterEmail(emailLower)) {
@@ -106,6 +111,28 @@ export async function POST(req: NextRequest) {
       password,
     })
     if (!error && data.user) {
+      if (demoLogin) {
+        const user = data.user
+        const platformAdmin = Boolean(
+          user.email && user.email_confirmed_at && (
+            user.app_metadata?.groucho_role === "platform_admin" ||
+            await hasManagedPlatformAccess(user.id, user.email)
+          ),
+        )
+        if (!platformAdmin) {
+          return NextResponse.json(
+            { error: "Use a demo account or a platform administrator account to open the demos." },
+            { status: 403 },
+          )
+        }
+        const response = await demoLoginResponse(user.email!, true)
+        response.cookies.delete("pe_auth")
+        return response
+      }
+      if (!await canSignInToDashboard(data.user, typeof body?.next === "string" ? body.next : null)) {
+        await client.auth.signOut({ scope: "local" })
+        return NextResponse.json({ error: "Groucho is invite only. Open your invitation link or contact your administrator.", code: "invitation_required" }, { status: 403 })
+      }
       const response = NextResponse.json({ ok: true })
       response.cookies.delete("pe_auth")
       response.cookies.delete(DEMO_AUTH_COOKIE)
@@ -133,7 +160,10 @@ export async function POST(req: NextRequest) {
 
   const token = await signToken(payloadB64, secret)
 
-  const res = NextResponse.json({ ok: true })
+  const res = demoLogin
+    ? await demoLoginResponse(emailLower, true)
+    : NextResponse.json({ ok: true })
+  if (!res.ok) return res
   res.cookies.set("pe_auth", token, {
     httpOnly: true,
     sameSite: "lax",

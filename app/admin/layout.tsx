@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { useEffect, useRef, useState } from "react"
+import { Suspense, useEffect, useRef, useState } from "react"
 import {
   ArrowLeft,
   Building2,
@@ -11,15 +11,12 @@ import {
   ContactRound,
   FolderClosed,
   House,
-  Inbox,
-  ListChecks,
   LogOut,
-  Rows3,
-  UsersRound,
   Menu,
   Settings,
   ShieldCheck,
   Tickets,
+  Plug,
   X,
   FlaskConical,
 } from "lucide-react"
@@ -33,6 +30,8 @@ import {
   OrganisationSummaryProvider,
   useOrganisationSummary,
 } from "@/components/admin/dashboard/OrganisationSummaryContext"
+import { OrganisationProjectProvider, OrganisationProjectGate, OrganisationProjectSwitch, useOrganisationProject } from "@/components/admin/dashboard/OrganisationProjectContext"
+import { ProjectOverviewProvider } from "@/components/admin/dashboard/ProjectOverviewContext"
 import styles from "@/components/admin/admin-workspace.module.css"
 import { ThemeToggle, useThemePreference } from "@/components/admin/ThemeToggle"
 
@@ -47,7 +46,13 @@ export default function AdminLayout({
     <AdminWorkspaceProvider>
       <AdminFeedbackProvider>
         <OrganisationSummaryProvider orgId={orgId}>
-          <WorkspaceShell orgId={orgId}>{children}</WorkspaceShell>
+          <Suspense fallback={<p role="status">Loading dashboard…</p>}>
+            <OrganisationProjectProvider>
+              <ProjectOverviewProvider>
+                <WorkspaceShell orgId={orgId}>{children}</WorkspaceShell>
+              </ProjectOverviewProvider>
+            </OrganisationProjectProvider>
+          </Suspense>
         </OrganisationSummaryProvider>
       </AdminFeedbackProvider>
     </AdminWorkspaceProvider>
@@ -65,6 +70,7 @@ type NavLink = {
   icon: typeof House
   active: boolean
   count?: number | null
+  countLabel?: string
   attention?: boolean
 }
 
@@ -127,6 +133,7 @@ function OrganisationSwitcher({ orgId, onNavigate }: { orgId: string; onNavigate
               </Link>
             </li>
           ))}
+          <li><Link href={`/admin/organisations/${orgId}/organisation-overview`} onClick={choose}>Organisation overview</Link></li>
           <li aria-hidden="true"><hr /></li>
           <li>
             <Link href="/admin" onClick={choose}>All organisations</Link>
@@ -140,6 +147,7 @@ function OrganisationSwitcher({ orgId, onNavigate }: { orgId: string; onNavigate
 function WorkspaceShell({ children, orgId }: { children: React.ReactNode; orgId: string | null }) {
   const { data } = useAdminWorkspace()
   const { summary } = useOrganisationSummary()
+  const { project, href: projectHref } = useOrganisationProject()
   const pathname = usePathname()
   const router = useRouter()
   const navigationRef = useRef<HTMLElement>(null)
@@ -182,7 +190,7 @@ function WorkspaceShell({ children, orgId }: { children: React.ReactNode; orgId:
   }, [menu])
   const theme = useThemePreference()
   // Older setup and conversation pages are still drawn for the dark theme only.
-  const darkOnly = /\/projects\/(new|[^/]+\/(edit|cultural-signals))|\/advanced|^\/admin\/(sessions|projects\/new|personas)/.test(pathname)
+  const darkOnly = /\/projects\/(new|[^/]+\/(edit|cultural-signals))|\/advanced|\/conversations(?:\/|$)|^\/admin\/(sessions|projects\/new|personas)/.test(pathname)
   const resolvedTheme = darkOnly ? "dark" : theme.resolved
   useEffect(() => {
     document.documentElement.dataset.theme = resolvedTheme
@@ -193,25 +201,18 @@ function WorkspaceShell({ children, orgId }: { children: React.ReactNode; orgId:
   const activeProjects = summary ? summary.projects.filter((project) => !project.archived).length : null
   const orgLinks: NavLink[] = orgId
     ? [
-        { href: base, label: "Overview", icon: House, active: pathname === base },
+        { href: projectHref(base), label: "Project overview", icon: House, active: pathname === base },
         {
-          href: `${base}/needs-you`,
-          label: "Needs you",
-          icon: Inbox,
-          active: pathname.startsWith(`${base}/needs-you`) || /\/applications\/[^/]+\/[^/]+/.test(pathname),
-          count: summary?.review.available && summary.review.toReview ? summary.review.toReview : null,
-          attention: Boolean(summary?.review.toReview),
-        },
-        { href: `${base}/entries`, label: "Entries", icon: Rows3, active: pathname.startsWith(`${base}/entries`) },
-        { href: `${base}/cohorts`, label: "Cohorts", icon: UsersRound, active: pathname.startsWith(`${base}/cohorts`) },
-        { href: `${base}/decisions`, label: "Decisions", icon: ListChecks, active: pathname.startsWith(`${base}/decisions`) },
-        {
-          href: `${base}/applications`,
+          href: projectHref(`${base}/applications`),
           label: "Applications",
           icon: ClipboardCheck,
-          active: pathname === `${base}/applications`,
+          active: pathname.startsWith(`${base}/applications`),
+          count: project?.toReview || null,
+          countLabel: `${project?.toReview ?? 0} ready for review`,
+          attention: Boolean(project?.toReview),
         },
-        { href: `${base}/projects`, label: "Projects", icon: FolderClosed, active: pathname.startsWith(`${base}/projects`), count: activeProjects },
+        { href: projectHref(`${base}/integrations`), label: "Integrations", icon: Plug, active: pathname.startsWith(`${base}/integrations`) || /\/projects\/(?!new$)[^/]+$/.test(pathname) },
+        { href: `${base}/projects`, label: "Projects", icon: FolderClosed, active: pathname.startsWith(`${base}/projects`) && !/\/projects\/(?!new$)[^/]+$/.test(pathname), count: activeProjects },
         { href: `${base}/personas`, label: "Personas", icon: ContactRound, active: pathname.startsWith(`${base}/personas`), count: summary?.personasInUse.length ?? null },
         { href: `${base}/settings`, label: "Members & settings", icon: Settings, active: pathname.startsWith(`${base}/settings`) },
       ]
@@ -249,12 +250,12 @@ function WorkspaceShell({ children, orgId }: { children: React.ReactNode; orgId:
   }
 
   const renderLinks = (links: NavLink[]) =>
-    links.map(({ href, label, icon: Icon, active, count, attention }) => (
+    links.map(({ href, label, icon: Icon, active, count, countLabel, attention }) => (
       <Link href={href} key={href} aria-current={active ? "page" : undefined} onClick={() => setMenu(false)}>
         <Icon size={16} strokeWidth={1.75} aria-hidden="true" />
         <span>{label}</span>
         {typeof count === "number" ? (
-          <span className={attention ? styles.countAttention : styles.count}>{count}</span>
+          <span className={attention ? styles.countAttention : styles.count} title={countLabel} aria-label={countLabel}>{count}</span>
         ) : null}
       </Link>
     ))
@@ -282,6 +283,7 @@ function WorkspaceShell({ children, orgId }: { children: React.ReactNode; orgId:
         {orgId ? (
           <>
             <OrganisationSwitcher orgId={orgId} onNavigate={() => setMenu(false)} />
+            <OrganisationProjectSwitch />
             <nav aria-label="Organisation" className={styles.nav}>
               {renderLinks(orgLinks)}
             </nav>
@@ -345,6 +347,7 @@ function WorkspaceShell({ children, orgId }: { children: React.ReactNode; orgId:
           >
             <Menu size={20} strokeWidth={1.75} aria-hidden="true" />
           </button>
+          {orgId ? <div className={styles.mobileProject}><OrganisationProjectSwitch label={summary?.name ?? "Project"} /></div> : null}
           {deeper ? (
             <nav aria-label="Breadcrumb" className={styles.crumbs}>
               <Link href={`${base}/projects`}>
@@ -355,7 +358,7 @@ function WorkspaceShell({ children, orgId }: { children: React.ReactNode; orgId:
           ) : null}
         </header>
         <div id="workspace-content" className={styles.content} tabIndex={-1}>
-          {children}
+          <OrganisationProjectGate>{children}</OrganisationProjectGate>
         </div>
       </div>
     </div>

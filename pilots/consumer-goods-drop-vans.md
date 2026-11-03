@@ -4,7 +4,7 @@
 **Example:** Vans x Satoshi Nakamoto Era “Gems” / “Lucky Charms”. Vans is an
 illustrative case, not a customer, sponsor or confirmed partner. This extends the
 same decision-and-access hypothesis as the ticket pilot without changing the
-[Fi demo scope](./fi-demo-2026-10-23.md).
+[Fi demo scope](../docs/archive/plans/fi-demo-2026-10-23.md).
 
 ## Problem and evidence
 
@@ -309,9 +309,9 @@ export is useful before a purchase integration. A retailer's willingness to shar
 permissioned data and own the checkout boundary is a stronger signal than enthusiasm
 for the demo.
 
-Related: [ticket-access direction](./ticket-access-direction.md),
-[Fi demo plan](./fi-demo-2026-10-23.md),
-[verified registration concept](./verified-fan-registration.md).
+Related: [ticket-access direction](ticket-access-direction.md),
+[Fi demo plan](../docs/archive/plans/fi-demo-2026-10-23.md),
+[verified registration concept](verified-fan-registration.md).
 
 Initial implementation verification: 483 tests across 67 files, TypeScript, focused ESLint and a production
 build passed for this implementation. Browser rehearsal covered demo login, shopper

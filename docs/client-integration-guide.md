@@ -4,16 +4,12 @@ Groucho is the assessment and client-policy layer. Your client application owns
 accounts, permissions, invitations, fulfilment, and any product-specific follow-up.
 
 Use Groucho to run a conversational application, capture applicant identity, record
-the transcript, and emit an advisory conversation outcome:
-
-- `passed`
-- `redirected`
-- `rejected`
+the transcript, and finish in the state defined by its selected runtime. Newer COLORS applications return `completed`; standard gatekeeper retains advisory `passed`, `redirected` and `rejected`. Onboarding and public simulations have different completion semantics. Start with the [runtime map](architecture.md).
 
 Groucho also stores a final suitability score and applies the project's deterministic
 client policy. Final approval or decline comes from that explicitly configured policy
 or a reviewer action—never from the model outcome alone. See
-[Client-owned decision policy](./client-decision-policy.md).
+[Client-owned decision policy](client-decision-policy.md).
 
 ## Recommended Model
 
@@ -87,18 +83,16 @@ Example:
 In Next.js, each route can share one relay helper and only vary which environment
 variable supplies the API key.
 
-Proxy routes forward whatever path the browser asks for, so the key they attach
-must be a **Conversations** key (the default when you create one). Never put an
-Applications key behind a proxy: it can list applications and record decisions.
+Use an explicit applicant path/method allowlist and a **Conversations** key. Never put an Applications key behind a browser relay: it can list applications and record decisions.
 See [Reviewing applications from your own app](#reviewing-applications-from-your-own-app).
 
-Use `createGrouchoRelay` from the SDK. It keeps the key on your server, only lets the browser reach
+Use `createGrouchoRelay` from a compatible SDK source/release. It keeps the key on your server, only lets the browser reach
 the applicant-facing endpoints, and forwards the applicant's IP, user agent and language so Groucho
 can see entries that share a connection. Without it, Groucho only sees your server.
 
 ```ts
 // lib/groucho-relay.ts
-import { createGrouchoRelay } from "@groucho/sdk/server"
+import { createGrouchoRelay } from "@groucho-gatekeeper/sdk/server"
 
 export const forumRelay = createGrouchoRelay({
   baseUrl: process.env.GROUCHO_API_BASE_URL!,
@@ -134,7 +128,7 @@ If you call Groucho from your server yourself (for example `submitEntry` from yo
 pass the applicant's connection:
 
 ```ts
-import { applicantFromRequest } from "@groucho/sdk/server"
+import { applicantFromRequest } from "@groucho-gatekeeper/sdk/server"
 
 await groucho.submitEntry(entry, { applicant: applicantFromRequest(req) })
 ```
@@ -145,6 +139,8 @@ any the browser sent: `X-Groucho-Applicant-IP`, `X-Groucho-Applicant-User-Agent`
 
 Repeat the same route for competition with `GROUCHO_COMPETITION_API_KEY`.
 
+The generic relay is not session-ownership authorisation or a private-response filter. Enforce host ownership and keep reviewer reports, scores and secrets out of applicant responses. `createGrouchoApplicantRelay` adds ownership/request/response filtering for supported real-application integrations; its current allowlist does not preserve the custom public-demo engine/details/completion fields. See [SDK version/contract boundaries](sdk-surface.md).
+
 ## Mounting Two Sessions
 
 Use one provider per proxy route. Pass explicit `sessionId` and `applicant` props
@@ -153,8 +149,8 @@ to each `<Gatekeeper />`.
 ```tsx
 "use client"
 
-import "@groucho/sdk/groucho.css"
-import { Gatekeeper, GrouchoProvider } from "@groucho/sdk/react"
+import "@groucho-gatekeeper/sdk/groucho.css"
+import { Gatekeeper, GrouchoProvider } from "@groucho-gatekeeper/sdk/react"
 
 type Props = {
   user: { id: string; email: string; name?: string }
@@ -306,7 +302,7 @@ moderators approve applicants inside the Forum — with the SDK's server client.
 2. Call it only from server code, after checking that the signed-in user may review:
 
 ```ts
-import { createServerClient } from "@groucho/sdk/server"
+import { createServerClient } from "@groucho-gatekeeper/sdk/server"
 
 const reviews = createServerClient({
   baseUrl: process.env.GROUCHO_API_BASE_URL!,
@@ -450,6 +446,10 @@ A useful dashboard row usually combines:
 
 This lets admins invite selected emails while keeping Groucho focused on the
 conversation and decision record.
+
+## Public persona simulations
+
+Odile, the Warden and Mo use registered `conversation_v1` profiles and a custom same-origin proxy/controller in the separate demos repository. They return named details and explicit simulation completion, not a submitted/approved application. Do not attach downstream fulfilment or assessment expectations to their endings. The shared runtime uses `profile` for a string profile ID on immediate replies; extracted object profiles belong to the separate real-application/session contract. See [shared engine](reusable-conversation-engine.md) and [persona creation](demo-persona-creation.md).
 
 ## Rules of Thumb
 

@@ -42,6 +42,7 @@ export type OverviewRecentSession = {
 export type AdminOverviewPayload = {
   actor: {
     kind: "platform" | "member"
+    userId?: string
     email: string | null
     isPlatform: boolean
   }
@@ -92,6 +93,7 @@ export async function buildAdminOverview(
     return {
       actor: {
         kind: actor.kind,
+        ...(actor.kind === "member" ? { userId: actor.userId } : {}),
         email: actor.email,
         isPlatform: actor.kind === "platform",
       },
@@ -246,6 +248,7 @@ export async function buildAdminOverview(
   return {
     actor: {
       kind: actor.kind,
+      ...(actor.kind === "member" ? { userId: actor.userId } : {}),
       email: actor.email,
       isPlatform: actor.kind === "platform",
     },

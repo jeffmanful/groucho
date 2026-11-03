@@ -1,10 +1,10 @@
-import { Suspense } from "react"
-import { Entries } from "@/components/admin/drops/Entries"
+import { redirect } from "next/navigation"
+import { adminRouteRedirect, type AdminSearchParams } from "@/lib/admin-route-redirect"
 
-export default function EntriesPage() {
-  return (
-    <Suspense fallback={null}>
-      <Entries />
-    </Suspense>
-  )
+export default async function LegacyPage({ params, searchParams }: {
+  params: Promise<{ orgId: string }>
+  searchParams: Promise<AdminSearchParams>
+}) {
+  const [{ orgId }, search] = await Promise.all([params, searchParams])
+  redirect(adminRouteRedirect(`/admin/organisations/${encodeURIComponent(orgId)}/applications/entries`, search))
 }

@@ -1,16 +1,17 @@
 "use client"
 
+import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react"
 import dashboard from "@/components/admin/dashboard/dashboard.module.css"
 import client from "@/components/admin/client/client.module.css"
 import type { AllocationRun, Cohort, CohortsOverview } from "@/lib/cohorts"
-import type { EntryItem } from "@/lib/entry-review"
 import { shortDate } from "@/lib/relative-time"
 import { AddToCohortDialog, NewCohortForm } from "./AddToCohortDialog"
 import { DrawDialog } from "./DrawDialog"
+import { CohortDrawer } from "./CohortDrawer"
 import styles from "./drops.module.css"
-import { fieldLabel, nf, ProjectSwitch, useDropProject } from "./useDropProject"
+import { fieldLabel, nf, useDropProject } from "./useDropProject"
 
 const COLUMNS = { "--columns": "minmax(0,1.6fr) 130px minmax(0,1.1fr) minmax(0,1fr) minmax(250px,auto)" } as CSSProperties
 
@@ -72,15 +73,16 @@ function History({ runs }: { runs: AllocationRun[] }) {
 }
 
 export function Cohorts() {
-  const { orgId, projects, project, choose, canManage, summary } = useDropProject()
+  const { orgId, project, canManage, summary } = useDropProject()
+  const params = useSearchParams()
   const projectId = project?.id ?? null
   const base = orgId && projectId ? `/api/admin/organisations/${orgId}/projects/${projectId}` : ""
   const [reload, setReload] = useState(0)
   const [state, setState] = useState<{ key: string; data?: CohortsOverview; error?: string } | null>(null)
   const [adding, setAdding] = useState<{ source: string; target?: string | null } | null>(null)
   const [drawing, setDrawing] = useState<Cohort | null>(null)
-  const [opening, setOpening] = useState<Cohort | null>(null)
-  const [creating, setCreating] = useState(false)
+  const [openedCohort, setOpening] = useState<Cohort | null | undefined>(undefined)
+  const [creating, setCreating] = useState(() => params.get("new") === "1")
   const [notice, setNotice] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const key = `${base}|${reload}`
@@ -104,6 +106,7 @@ export function Cohorts() {
   }, [base, key])
 
   const data = state?.data
+  const opening = openedCohort === undefined ? data?.cohorts.find((cohort) => cohort.id === params.get("cohort")) ?? null : openedCohort
   const done = (message: string) => {
     setAdding(null)
     setDrawing(null)
@@ -134,15 +137,9 @@ export function Cohorts() {
   }
 
   return (
-    <div className={dashboard.page} style={{ maxWidth: 1240 }}>
+    <div className={dashboard.page}>
       <header className={styles.head}>
-        <h1 className={dashboard.title}>Cohorts</h1>
-        <span className={client.muted}>/</span>
-        <ProjectSwitch projects={projects} value={projectId ?? ""} onChange={choose} />
         <span className={styles.headActions}>
-          <Link className={client.button} href={`/admin/organisations/${orgId}/entries${projectId ? `?project=${projectId}` : ""}`}>
-            Entries
-          </Link>
           {canManage ? (
             <button type="button" className={client.button} onClick={() => setCreating(true)}>
               New cohort
@@ -174,7 +171,7 @@ export function Cohorts() {
           <span>
             Nobody here is approved yet. <span className={client.secondary}>Cohorts only hold approved people, so approve entries first and they’ll show up here, ready to place.</span>
           </span>
-          <Link className={client.button} href={`/admin/organisations/${orgId}/entries?project=${projectId}`}>
+          <Link className={client.button} href={`/admin/organisations/${orgId}/applications/entries?project=${projectId}`}>
             Review entries
           </Link>
         </div>
@@ -238,6 +235,11 @@ export function Cohorts() {
                   </span>
                   <span className={styles.actions}>
                     {cohort.members ? (
+                      <button type="button" className={client.buttonGhost} onClick={() => setOpening(cohort)}>
+                        {canManage ? "Manage people" : "View people"}
+                      </button>
+                    ) : null}
+                    {cohort.members ? (
                       <a className={client.buttonGhost} href={`${base}/cohorts/${cohort.id}/export`}>
                         Export
                       </a>
@@ -281,7 +283,7 @@ export function Cohorts() {
         </section>
       ) : null}
 
-      {creating && base ? <NewCohortDialog base={base} onClose={() => setCreating(false)} onCreated={() => done("Cohort created.")} /> : null}
+      {creating && base && canManage ? <NewCohortDialog base={base} onClose={() => setCreating(false)} onCreated={() => done("Cohort created.")} /> : null}
       {adding && orgId && projectId ? (
         <AddToCohortDialog orgId={orgId} projectId={projectId} source={adding.source} initialTarget={adding.target} onClose={() => setAdding(null)} onDone={done} />
       ) : null}
@@ -290,7 +292,9 @@ export function Cohorts() {
       ) : null}
       {opening && data ? (
         <CohortDrawer
+          key={`${base}/${opening.id}`}
           base={base}
+          onRemoved={(message) => { setNotice(message); refresh() }}
           cohort={data.cohorts.find((c) => c.id === opening.id) ?? opening}
           canManage={canManage}
           onClose={() => setOpening(null)}
@@ -319,97 +323,6 @@ function NewCohortDialog({ base, onClose, onCreated }: { base: string; onClose: 
           </div>
         </div>
         <NewCohortForm base={base} onCancel={onClose} onCreated={onCreated} />
-      </div>
-    </dialog>
-  )
-}
-
-function CohortDrawer({ base, cohort, canManage, onClose, onMove }: { base: string; cohort: Cohort; canManage: boolean; onClose: () => void; onMove: () => void }) {
-  const ref = useRef<HTMLDialogElement>(null)
-  const [offset, setOffset] = useState(0)
-  const [state, setState] = useState<{ offset: number; entries?: Array<EntryItem & { position: number | null }>; total?: number; error?: string } | null>(null)
-  useEffect(() => {
-    ref.current?.showModal()
-  }, [])
-  useEffect(() => {
-    let cancelled = false
-    fetch(`${base}/cohorts/${cohort.id}/members?offset=${offset}`, { cache: "no-store" })
-      .then(async (response) => {
-        const body = await response.json().catch(() => ({}))
-        if (!response.ok) throw new Error(typeof body.error === "string" ? body.error : "Members could not be loaded.")
-        if (!cancelled) setState({ offset, entries: body.entries, total: body.total })
-      })
-      .catch((error: Error) => {
-        if (!cancelled) setState({ offset, error: error.message })
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [base, cohort.id, offset])
-  const total = state?.total ?? cohort.members
-  const fieldKeys = [...new Set((state?.entries ?? []).flatMap((entry) => Object.keys(entry.fields)))].slice(0, 2)
-  const columns = { "--columns": `48px minmax(0,1.6fr) ${fieldKeys.map(() => "72px").join(" ")} minmax(0,1fr)`, minHeight: 48 } as CSSProperties
-
-  return (
-    <dialog ref={ref} className={`${dashboard.dialog} ${styles.drawer}`} onClose={onClose} aria-labelledby="drawer-title">
-      <div className={dashboard.dialogBody}>
-        <div className={dashboard.dialogHeader}>
-          <div>
-            <h2 id="drawer-title">{cohort.name}</h2>
-            <p>
-              {nf.format(cohort.members)} {cohort.members === 1 ? "person" : "people"}
-              {cohort.capacity !== null ? ` of ${nf.format(cohort.capacity)} places` : ""} · {cohort.grantsAccess ? "Grants access" : "No access"}
-              {cohort.lockedAt ? ` · Locked ${shortDate(cohort.lockedAt)}` : ""}
-            </p>
-          </div>
-          <button type="button" className={client.buttonGhost} onClick={onClose} aria-label="Close">
-            ×
-          </button>
-        </div>
-        <div className={styles.inline}>
-          {cohort.members ? (
-            <a className={client.button} href={`${base}/cohorts/${cohort.id}/export`}>
-              Export CSV
-            </a>
-          ) : null}
-          {canManage && cohort.members && !cohort.lockedAt ? (
-            <button type="button" className={client.button} onClick={onMove}>
-              Move people…
-            </button>
-          ) : null}
-        </div>
-        {state?.error ? <p className={client.errorText} role="alert">{state.error}</p> : null}
-        <div className={client.panel} aria-busy={state?.offset !== offset}>
-          {(state?.entries ?? []).map((entry, index) => (
-            <div key={entry.id} className={styles.row} style={columns}>
-              <span className={`${client.mono} ${client.muted}`}>{entry.position ?? offset + index + 1}</span>
-              <span className={client.person}>
-                <span className={client.truncate}>{entry.name ?? entry.email}</span>
-                {entry.name ? <span className={`${client.muted} ${client.small} ${client.truncate}`}>{entry.email}</span> : null}
-              </span>
-              {fieldKeys.map((key) => (
-                <span key={key} className={`${client.mono} ${client.secondary}`}>{entry.fields[key] ?? "–"}</span>
-              ))}
-              <span className={`${client.muted} ${client.small}`}>{shortDate(entry.createdAt)}</span>
-            </div>
-          ))}
-          {state?.entries && !state.entries.length ? <p className={client.muted} style={{ margin: 0, padding: "18px 16px" }}>Nobody here yet.</p> : null}
-        </div>
-        {total > 100 ? (
-          <div className={styles.footer}>
-            <span className={client.muted}>
-              {nf.format(offset + 1)}–{nf.format(Math.min(offset + 100, total))} of {nf.format(total)}
-            </span>
-            <span>
-              <button type="button" className={client.button} disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 100))}>
-                Previous
-              </button>
-              <button type="button" className={client.button} disabled={offset + 100 >= total} onClick={() => setOffset(offset + 100)}>
-                Next
-              </button>
-            </span>
-          </div>
-        ) : null}
       </div>
     </dialog>
   )

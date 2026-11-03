@@ -620,10 +620,12 @@
 }
 @media (max-width: 900px) {
   .sidebar {
+    visibility: hidden;
     transform: translateX(-100%);
     width: 260px;
   }
   .sidebar[data-open="true"] {
+    visibility: visible;
     transform: translateX(0);
   }
   .mainColumn {
@@ -706,4 +708,36 @@
   .activityList li > div:first-child {
     flex-basis: calc(100% - 120px);
   }
+}
+
+.projectField {
+  display: grid;
+  gap: 6px;
+  padding: 0 8px;
+  min-width: 0;
+  max-width: 360px;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+.projectField select {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--foreground);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+}
+.projectField select:focus-visible {
+  outline: 2px solid var(--selection);
+  outline-offset: 2px;
+}
+.mobileProject { display: none; }
+@media (max-width: 900px) {
+  .mobileProject { display: block; flex: 1; min-width: 0; }
+  .mobileProject .projectField { max-width: none; }
 }

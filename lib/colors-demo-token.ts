@@ -7,6 +7,8 @@ export const COLORS_DEMO_TESTER_EMAIL = "philipp@colorsxstudios.com"
 type DemoToken = {
   kind: "tester" | "session"
   email: string
+  // Signed by the login route only after platform administrator authentication.
+  access?: "platform_admin"
   sessionId?: string
   issuedAt: number
 }
@@ -89,7 +91,9 @@ export async function verifyDemoToken(raw: string | undefined, kind: DemoToken["
     )
     if (!valid) return null
     const payload = JSON.parse(decode(body)) as DemoToken
-    if (payload.kind !== kind || !isConfiguredTesterEmail(payload.email)) return null
+    if (payload.kind !== kind || typeof payload.email !== "string" || !payload.email.trim()) return null
+    if (payload.access !== undefined && payload.access !== "platform_admin") return null
+    if (payload.access !== "platform_admin" && !isConfiguredTesterEmail(payload.email)) return null
     if (!Number.isFinite(payload.issuedAt) || payload.issuedAt > Date.now() + 60_000) return null
     const lifetime = kind === "tester" ? 7 * 24 * 60 * 60_000 : 24 * 60 * 60_000
     if (Date.now() - payload.issuedAt > lifetime) return null

@@ -1,17 +1,27 @@
-import LiveConversations from "@/components/admin/LiveConversations"
+"use client"
 
+import Link from "next/link"
+import { useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { useAdminWorkspace } from "@/components/admin/AdminWorkspace"
+
+/** Keep old conversation links working inside the organisation's shared project context. */
 export default function AdminSessionsPage() {
-  return (
-    <div>
-      <div style={{ padding: "28px 32px 0" }}>
-        <h1 style={{ fontSize: "var(--text-2xl)", fontWeight: 500, letterSpacing: "-0.01em", margin: 0 }}>
-          Conversations
-        </h1>
-        <p style={{ color: "var(--text-secondary)", margin: "6px 0 0" }}>
-          Read each conversation as it happened, and the report Groucho wrote about it.
-        </p>
-      </div>
-      <LiveConversations />
-    </div>
-  )
+  const { data, error } = useAdminWorkspace()
+  const params = useSearchParams()
+  const router = useRouter()
+  const requested = params.get("project")
+  const organisation = requested
+    ? data?.organisations.find((org) => org.projects.some((project) => project.id === requested))
+    : data?.organisations.length === 1 ? data.organisations[0] : null
+  useEffect(() => {
+    if (!organisation) return
+    router.replace(`/admin/organisations/${organisation.id}/integrations/conversations${params.size ? `?${params}` : ""}`)
+  }, [organisation, params, router])
+  return <div style={{ padding: 32 }}>
+    {error ? <p role="alert">{error}</p> : !data || organisation ? <p role="status">Opening conversations…</p> : <>
+      <h1>{requested ? "Project unavailable" : "Choose an organisation"}</h1>
+      <Link href="/admin">Open organisations</Link>
+    </>}
+  </div>
 }

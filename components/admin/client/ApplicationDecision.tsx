@@ -1,8 +1,9 @@
 "use client"
 
+import { ProjectObjective } from "@/components/admin/dashboard/ProjectObjective"
+import { useProjectOverview } from "@/components/admin/dashboard/ProjectOverviewContext"
 import Link from "next/link"
 import { useEffect, useState } from "react"
-import { ArrowLeft } from "lucide-react"
 import { useOrganisationSummary } from "@/components/admin/dashboard/OrganisationSummaryContext"
 import dashboard from "@/components/admin/dashboard/dashboard.module.css"
 import type { ApplicationItem } from "@/lib/applications-source"
@@ -60,7 +61,9 @@ function firstName(name: string): string {
 }
 
 export function ApplicationDecision({ projectId, sessionId }: { projectId: string; sessionId: string }) {
-  const { orgId, refresh } = useOrganisationSummary()
+  const { orgId, refresh: refreshOrganisation } = useOrganisationSummary()
+  const { refresh: refreshOverview } = useProjectOverview()
+  const refresh = () => { refreshOrganisation(); refreshOverview() }
   const base = `/api/admin/organisations/${orgId}/projects/${projectId}`
   const [token, setToken] = useState(0)
   const [loaded, setLoaded] = useState<{ key: string; value?: Loaded; error?: string } | null>(null)
@@ -162,13 +165,15 @@ export function ApplicationDecision({ projectId, sessionId }: { projectId: strin
   }
 
   return (
-    <div className={dashboard.page}>
+    <div className={dashboard.page} data-review-workspace>
       <div className={styles.backRow}>
-        <Link className={styles.backLink} href={`/admin/organisations/${orgId}/needs-you`}>
-          <ArrowLeft size={14} aria-hidden="true" /> Needs you
+        <Link className={styles.backLink} href={`/admin/organisations/${orgId}/applications?project=${projectId}`}>
+          Back to applications
         </Link>
         {value ? <span className={styles.muted}>{value.project.name}</span> : null}
       </div>
+
+      <ProjectObjective reviewing />
 
       {loaded?.error ? <p className={dashboard.error} role="alert">{loaded.error}</p> : null}
       {!application && !loaded?.error ? <div className={dashboard.skeleton} style={{ height: 320 }} aria-label="Loading" /> : null}

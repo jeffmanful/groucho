@@ -1,4 +1,5 @@
 import { legacyPlatformEnabled } from "@/lib/platform-admin-access"
+import { dashboardAccess, type DashboardUser } from "@/lib/dashboard-access"
 import { createServerClient, type CookieOptions } from "@supabase/ssr"
 import { NextRequest, NextResponse } from "next/server"
 import {
@@ -15,21 +16,21 @@ const PUBLIC_PATHS = [
   "/api/invitations/",
   "/signup",
   "/api/organisations/signup",
-  "/api/me/",
 ]
 const STATIC_PREFIXES = ["/_next/", "/favicon.ico"]
 const REQUEST_ID_HEADER = "x-request-id"
 
 type ProxyAuthClient = {
-  getUser(): Promise<{ data: { user: { id: string } | null } }>
+  getUser(): Promise<{ data: { user: DashboardUser | null } }>
 }
 
-function authFailure(req: NextRequest) {
+function authFailure(req: NextRequest, invitationRequired = false) {
   const { pathname, search } = req.nextUrl
   if (pathname.startsWith("/api/") || pathname.startsWith("/v1/")) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
   const loginUrl = new URL("/login", req.url)
+  if (invitationRequired) loginUrl.searchParams.set("error", "invitation_required")
   loginUrl.searchParams.set(
     "next",
     pathname === "/" ? "/admin" : `${pathname}${search}`,
@@ -185,7 +186,8 @@ export async function proxy(req: NextRequest) {
       data: { user },
     } = await auth.getUser()
     if (user) {
-      return res
+      if (await dashboardAccess(user)) return res
+      return authFailure(req, true)
     }
   }
 

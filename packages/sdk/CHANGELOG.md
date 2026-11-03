@@ -1,10 +1,10 @@
-# @groucho/sdk
+# @groucho-gatekeeper/sdk
 
 ## Unreleased
 
 ### Added
 
-- `createGrouchoRelay` (in `@groucho/sdk/server`): a relay for your browser-facing route that keeps the
+- `createGrouchoRelay` (in `@groucho-gatekeeper/sdk/server`): a relay for your browser-facing route that keeps the
   key on your server, only reaches applicant-facing endpoints, never forwards cookies, and passes on the
   applicant's IP, user agent and language. `applicantFromRequest` and an `applicant` option on
   `sendMessage`, `startSession` and `submitEntry` do the same for calls you make from your server.
@@ -48,14 +48,14 @@ Initial public release.
 - `createClient(options)` headless client (`sendMessage`, `getSession`, `submitAccessEmail`).
 - `createServerClient(options)` server-only variant that requires `apiKey`.
 - `GrouchoApiError` thrown on non-2xx with `.status` and `.body`.
-- React entry (`@groucho/sdk/react`):
+- React entry (`@groucho-gatekeeper/sdk/react`):
   - `GrouchoProvider` — supports either a `client` instance or a `proxyBasePath` (recommended for browsers; see ADR-0001).
   - `Gatekeeper` — batteries-included door conversation component.
   - Primitives: `Transcript`, `MessageBubble`, `Composer`, `OutcomeBanner`, `ThinkingIndicator`.
   - `useGroucho()` hook.
-- Default dark theme at `@groucho/sdk/groucho.css` exposing `--groucho-*` CSS variables.
+- Default dark theme at `@groucho-gatekeeper/sdk/groucho.css` exposing `--groucho-*` CSS variables.
 - Types generated from the live OpenAPI contract (`PostMessageResponse`, `Session`, `ScoreBreakdown`, `SessionOutcome`, `Profile`, `ProfileCore`, `ProfileExtraction`).
-- `onOutcome(outcome, meta)` carries `meta.profile` on terminal turns when the project has profile extraction enabled. See [`profile-schema-guide.md`](https://github.com/thompson-mcdonald/groucho/blob/main/docs/profile-schema-guide.md).
+- `onOutcome(outcome, meta)` carries `meta.profile` on terminal turns when the project has profile extraction enabled. See [`profile-schema-guide.md`](https://github.com/jeffmanful/groucho/blob/main/docs/profile-schema-guide.md).
 
 ### Build
 
