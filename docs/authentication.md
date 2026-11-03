@@ -16,7 +16,7 @@ Existing allowlisted shared-password operators remain a compatibility path, subj
 
 ## Protected demos versus public demos
 
-`/demos` sign-in sends `demo: true`. Configured demo testers and authenticated authorised platform administrators can enter the protected demo hub. Administrators receive a signed expiring demo cookie carrying their own identity; tester access does not become platform or reviewer permission. Successful login reloads the destination so server-rendered pages see the cookie.
+`/demos` sign-in sends `demo: true`. Configured demo testers and authenticated authorised platform administrators can enter the protected demo hub. Confirmed administrators are checked against trusted `app_metadata` or active managed platform access; legacy operators still require their allowlist, password and access check. Ordinary organisation membership and user-editable metadata do not grant demo access. Administrators receive a signed expiring demo cookie carrying their own identity, which also carries through to COLORS conversation cookies; tester access does not become platform or reviewer permission. Successful login reloads the destination so server-rendered pages see the cookie.
 
 The protected COLORS conversation additionally binds the selected session with its own signed cookie. Its sample report is a controlled reviewer demonstration, not a public applicant response. See [COLORS reviewer demo](colors-forum-demo.md).
 
