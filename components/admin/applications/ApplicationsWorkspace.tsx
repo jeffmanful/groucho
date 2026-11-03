@@ -2,6 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { RefObject } from "react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { useOrganisationProject } from "@/components/admin/dashboard/OrganisationProjectContext"
+import { useOrganisationSummary } from "@/components/admin/dashboard/OrganisationSummaryContext"
+import { DeliveryFailureAlert } from "@/components/admin/client/DeliveryFailures"
+import { ProjectObjective } from "@/components/admin/dashboard/ProjectObjective"
+import { useProjectOverview } from "@/components/admin/dashboard/ProjectOverviewContext"
 import { Download, RefreshCw, X } from "lucide-react"
 import { Badge, type BadgeTone } from "@/components/arc/badge/badge"
 import { Button } from "@/components/arc/button/button"
@@ -77,9 +83,20 @@ function decisionAttribution(decision: NonNullable<ApplicationItem["decision"]>)
 }
 
 export function ApplicationsWorkspace({ organisationId }: { organisationId?: string } = {}) {
-  const [projects, setProjects] = useState<ProjectChoice[]>([DEMO_PROJECT])
-  const [projectId, setProjectId] = useState<string>("")
-  const [filters, setFilters] = useState<ApplicationFilters>(DEFAULT_FILTERS)
+  const { project } = useOrganisationProject()
+  return <ApplicationsWorkspaceContent key={organisationId ? `${organisationId}:${project?.id}` : "sample"} organisationId={organisationId} />
+}
+
+function ApplicationsWorkspaceContent({ organisationId }: { organisationId?: string }) {
+  const selection = useOrganisationProject()
+  const { refresh: refreshOverview } = useProjectOverview()
+  const { summary, refresh: refreshSummary } = useOrganisationSummary()
+  const params = useSearchParams()
+  const pathname = usePathname()
+  const router = useRouter()
+  const [localProjects, setProjects] = useState<ProjectChoice[]>([DEMO_PROJECT])
+  const [localProjectId, setProjectId] = useState<string>("")
+  const [localFilters, setFilters] = useState<ApplicationFilters>(() => ({ ...DEFAULT_FILTERS, sort: params.get("sort") === "longest_waiting" ? "longest_waiting" : DEFAULT_FILTERS.sort }))
   const [searchDraft, setSearchDraft] = useState("")
   const [refreshToken, setRefreshToken] = useState(0)
   // The latest list result and the request it answers; "loading" is a mismatch with the current request.
@@ -101,6 +118,13 @@ export function ApplicationsWorkspace({ organisationId }: { organisationId?: str
   const decisionActions = useRef<HTMLDivElement | null>(null)
   const returnFocus = useRef(false)
 
+  const projects: ProjectChoice[] = useMemo(() => organisationId ? selection.projects.map((candidate) => ({
+    id: candidate.id, name: candidate.name, organisationId, organisationName: summary?.name ?? "", canDecide: summary?.canManage ?? false,
+  })) : localProjects, [organisationId, selection.projects, summary?.name, summary?.canManage, localProjects])
+  const projectId = organisationId ? selection.project?.id ?? "" : localProjectId
+  const requestedQueue = params.get("queue")
+  const queue = QUEUE_ORDER.includes(requestedQueue as QueueKey) ? requestedQueue as QueueKey : DEFAULT_FILTERS.queue
+  const filters = useMemo(() => organisationId ? { ...localFilters, queue } : localFilters, [organisationId, localFilters, queue])
   const project = useMemo(() => projects.find((candidate) => candidate.id === projectId) ?? null, [projects, projectId])
   const source = useMemo<ApplicationsSource | null>(() => {
     if (!project) return null
@@ -108,6 +132,7 @@ export function ApplicationsWorkspace({ organisationId }: { organisationId?: str
   }, [project])
 
   useEffect(() => {
+    if (organisationId) return
     let cancelled = false
     void (async () => {
       const response = await fetch("/api/admin/overview").catch(() => null)
@@ -161,15 +186,15 @@ export function ApplicationsWorkspace({ organisationId }: { organisationId?: str
     source.list(filters).then(
       (next) => { if (!cancelled) setResult({ key: requestKey, page: next }) },
       (loadError) => {
-        if (!cancelled) setResult((current) => ({ key: requestKey, page: current?.page, error: loadError instanceof Error ? loadError.message : "Could not load applications." }))
+        if (!cancelled) setResult({ key: requestKey, error: loadError instanceof Error ? loadError.message : "Could not load applications." })
       },
     )
     return () => { cancelled = true }
   }, [filters, requestKey, source])
-  const page = result?.page ?? null
+  const page = result?.key === requestKey ? result.page ?? null : null
   const loading = Boolean(source) && result?.key !== requestKey
   const error = result?.key === requestKey ? result.error ?? null : null
-  const refresh = () => setRefreshToken((token) => token + 1)
+  const refresh = () => { setRefreshToken((token) => token + 1); if (organisationId) { refreshSummary(); refreshOverview() } }
 
   const selected = opened ? page?.applications.find((item) => item.id === opened.id) ?? opened : null
 
@@ -194,6 +219,7 @@ export function ApplicationsWorkspace({ organisationId }: { organisationId?: str
   }, [source])
 
   function chooseProject(id: string) {
+    if (organisationId) { selection.choose(id); return }
     detailRequest.current++
     setProjectId(id)
     setFilters(DEFAULT_FILTERS)
@@ -205,6 +231,11 @@ export function ApplicationsWorkspace({ organisationId }: { organisationId?: str
   }
 
   function update(patch: Partial<ApplicationFilters>) {
+    if (organisationId && patch.queue) {
+      const next = new URLSearchParams(params.toString())
+      next.set("queue", patch.queue)
+      router.push(`${pathname}?${next}`, { scroll: false })
+    }
     setFilters((current) => ({ ...current, ...patch, offset: "offset" in patch ? patch.offset ?? 0 : 0 }))
   }
 
@@ -268,14 +299,14 @@ export function ApplicationsWorkspace({ organisationId }: { organisationId?: str
   }
 
   return (
-    <div className={styles.workspace}>
+    <div className={styles.workspace} data-review-workspace>
       <header className={styles.header}>
         <div>
           <h1 className={styles.title}>Applications</h1>
-          <p className={styles.subtitle}>Review evidence, record decisions and track your queue. Groucho&apos;s assessment is advisory; only a reviewer or your enabled policy decides.</p>
+          <p className={styles.subtitle}>View every application for {project?.name ?? "your project"}, filter by status and record decisions.</p>
         </div>
         <div className={styles.headerActions}>
-          <label className={styles.field}>
+          {!organisationId ? <label className={styles.field}>
             <span>Project</span>
             <select value={projectId} onChange={(event) => chooseProject(event.target.value)}>
               {projects.map((candidate) => (
@@ -284,7 +315,7 @@ export function ApplicationsWorkspace({ organisationId }: { organisationId?: str
                 </option>
               ))}
             </select>
-          </label>
+          </label> : null}
           <Button variant="secondary" size="sm" onClick={refresh} disabled={!source || loading} aria-label="Refresh applications">
             <RefreshCw size={14} aria-hidden="true" /> Refresh
           </Button>
@@ -294,16 +325,20 @@ export function ApplicationsWorkspace({ organisationId }: { organisationId?: str
         </div>
       </header>
 
+      {organisationId ? <ProjectObjective reviewing /> : null}
+
       {project?.demo ? (
         <p className={styles.demoNote} role="note">
           Sample project: fictional applicants whose conversations and reports were produced by Groucho. Decisions here are not saved and reset when you reload.
         </p>
       ) : null}
 
+      {organisationId && project ? <DeliveryFailureAlert orgId={organisationId} projectId={project.id} token={refreshToken} /> : null}
+
       <section className={styles.metrics} aria-label="Review workload">
         <div className={styles.metric}>
           <span>Awaiting review</span>
-          <strong className={metrics?.awaitingReview ? styles.metricAttention : undefined}>{metrics?.awaitingReview ?? 0}</strong>
+          <strong className={metrics?.awaitingReview ? styles.metricAttention : undefined}>{metrics?.awaitingReview ?? "–"}</strong>
         </div>
         <div className={styles.metric}>
           <span>Oldest waiting</span>
@@ -311,7 +346,7 @@ export function ApplicationsWorkspace({ organisationId }: { organisationId?: str
         </div>
         <div className={styles.metric}>
           <span>Decided, 7 days</span>
-          <strong>{metrics?.decidedLast7Days ?? 0}</strong>
+          <strong>{metrics?.decidedLast7Days ?? "–"}</strong>
         </div>
         <div className={styles.metric}>
           <span>Median time to decision</span>
@@ -399,7 +434,10 @@ export function ApplicationsWorkspace({ organisationId }: { organisationId?: str
           </div>
           {!page && loading ? <p className={styles.empty}>Loading applications…</p> : null}
           {page && page.applications.length === 0 ? (
-            <p className={styles.empty}>{filtersActive ? "No applications match these filters." : `No applications in “${QUEUE_LABEL[filters.queue]}”.`}</p>
+            <div className={styles.empty}>
+              <p>{filtersActive ? "No applications match these filters." : filters.queue === "ready_for_review" ? "No applications ready for review." : filters.queue === "all" ? "No applications yet." : `No applications in “${QUEUE_LABEL[filters.queue]}”.`}</p>
+              {filters.queue !== "all" ? <Button variant="secondary" size="sm" onClick={() => update({ queue: "all" })}>View all applications</Button> : null}
+            </div>
           ) : null}
           <ul className={styles.rows}>
             {page?.applications.map((item) => (

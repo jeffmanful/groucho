@@ -8,7 +8,7 @@ import type { EntriesPage, EntryFlag, EntryItem, EntryTab, MatchGroup } from "@/
 import { shortDate } from "@/lib/relative-time"
 import { AddToCohortDialog } from "./AddToCohortDialog"
 import styles from "./drops.module.css"
-import { fieldLabel, nf, ProjectSwitch, useDropProject } from "./useDropProject"
+import { fieldLabel, nf, useDropProject } from "./useDropProject"
 
 const PAGE = 50
 const TABS: Array<{ value: EntryTab; label: string; stat: keyof EntriesPage["stats"] }> = [
@@ -44,7 +44,7 @@ async function send(url: string, body: unknown): Promise<Record<string, unknown>
 }
 
 export function Entries() {
-  const { orgId, projects, project, choose, canManage, summary } = useDropProject()
+  const { orgId, project, canManage, summary } = useDropProject()
   const [tab, setTab] = useState<EntryTab>("review")
   const [noFlags, setNoFlags] = useState(false)
   const [field, setField] = useState<string | null>(null)
@@ -286,7 +286,7 @@ export function Entries() {
       <header className={styles.head}>
         <h1 className={dashboard.title}>Entries</h1>
         <span className={client.muted}>/</span>
-        <ProjectSwitch projects={projects} value={projectId ?? ""} onChange={choose} />
+        <span className={client.secondary}>{project?.name}</span>
         <span className={styles.headActions}>
           <Link className={client.button} href={`/admin/organisations/${orgId}/cohorts${projectId ? `?project=${projectId}` : ""}`}>
             Cohorts

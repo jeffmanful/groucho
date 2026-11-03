@@ -1,5 +1,6 @@
 "use client"
 
+import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react"
 import dashboard from "@/components/admin/dashboard/dashboard.module.css"
@@ -10,7 +11,7 @@ import { shortDate } from "@/lib/relative-time"
 import { AddToCohortDialog, NewCohortForm } from "./AddToCohortDialog"
 import { DrawDialog } from "./DrawDialog"
 import styles from "./drops.module.css"
-import { fieldLabel, nf, ProjectSwitch, useDropProject } from "./useDropProject"
+import { fieldLabel, nf, useDropProject } from "./useDropProject"
 
 const COLUMNS = { "--columns": "minmax(0,1.6fr) 130px minmax(0,1.1fr) minmax(0,1fr) minmax(250px,auto)" } as CSSProperties
 
@@ -72,15 +73,16 @@ function History({ runs }: { runs: AllocationRun[] }) {
 }
 
 export function Cohorts() {
-  const { orgId, projects, project, choose, canManage, summary } = useDropProject()
+  const { orgId, project, canManage, summary } = useDropProject()
+  const params = useSearchParams()
   const projectId = project?.id ?? null
   const base = orgId && projectId ? `/api/admin/organisations/${orgId}/projects/${projectId}` : ""
   const [reload, setReload] = useState(0)
   const [state, setState] = useState<{ key: string; data?: CohortsOverview; error?: string } | null>(null)
   const [adding, setAdding] = useState<{ source: string; target?: string | null } | null>(null)
   const [drawing, setDrawing] = useState<Cohort | null>(null)
-  const [opening, setOpening] = useState<Cohort | null>(null)
-  const [creating, setCreating] = useState(false)
+  const [openedCohort, setOpening] = useState<Cohort | null | undefined>(undefined)
+  const [creating, setCreating] = useState(() => params.get("new") === "1")
   const [notice, setNotice] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const key = `${base}|${reload}`
@@ -104,6 +106,7 @@ export function Cohorts() {
   }, [base, key])
 
   const data = state?.data
+  const opening = openedCohort === undefined ? data?.cohorts.find((cohort) => cohort.id === params.get("cohort")) ?? null : openedCohort
   const done = (message: string) => {
     setAdding(null)
     setDrawing(null)
@@ -138,7 +141,7 @@ export function Cohorts() {
       <header className={styles.head}>
         <h1 className={dashboard.title}>Cohorts</h1>
         <span className={client.muted}>/</span>
-        <ProjectSwitch projects={projects} value={projectId ?? ""} onChange={choose} />
+        <span className={client.secondary}>{project?.name}</span>
         <span className={styles.headActions}>
           <Link className={client.button} href={`/admin/organisations/${orgId}/entries${projectId ? `?project=${projectId}` : ""}`}>
             Entries
@@ -281,7 +284,7 @@ export function Cohorts() {
         </section>
       ) : null}
 
-      {creating && base ? <NewCohortDialog base={base} onClose={() => setCreating(false)} onCreated={() => done("Cohort created.")} /> : null}
+      {creating && base && canManage ? <NewCohortDialog base={base} onClose={() => setCreating(false)} onCreated={() => done("Cohort created.")} /> : null}
       {adding && orgId && projectId ? (
         <AddToCohortDialog orgId={orgId} projectId={projectId} source={adding.source} initialTarget={adding.target} onClose={() => setAdding(null)} onDone={done} />
       ) : null}

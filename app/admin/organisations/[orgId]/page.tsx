@@ -1,5 +1,5 @@
-import { OrgOverview } from "@/components/admin/dashboard/OrgOverview"
+import { ProjectOverview } from "@/components/admin/dashboard/ProjectOverview"
 
-export default function OrganisationOverviewPage() {
-  return <OrgOverview />
+export default function ProjectOverviewPage() {
+  return <ProjectOverview />
 }

@@ -113,6 +113,10 @@ export async function PATCH(
       ...existingSettings,
       ...(body.settings as Record<string, unknown>),
     }
+    // Reviewers edit this field through its own revision-checked endpoint. A stale
+    // settings form must not replace the team's current objective.
+    if (existingSettings.review_objective !== undefined) merged.review_objective = existingSettings.review_objective
+    else delete merged.review_objective
     const validated = validateProjectSettings(merged)
     if (!validated.ok) {
       return NextResponse.json({ error: validated.error }, { status: 400 })
@@ -140,15 +144,22 @@ export async function PATCH(
     }
   }
 
-  const { data, error } = await supabase
+  let updateQuery = supabase
     .from("projects")
     .update(updates)
     .eq("id", projectId)
     .eq("organisation_id", orgId)
+  if (updates.settings) {
+    updateQuery = project.settings == null ? updateQuery.is("settings", null) : updateQuery.eq("settings", JSON.stringify(project.settings))
+  }
+  const { data, error } = await updateQuery
     .select("id, name, slug, created_at, expose_to_anon_read, settings")
     .single()
 
   if (error) {
+    if (error.code === "PGRST116") {
+      return NextResponse.json({ error: "Project settings changed while you were editing. Refresh before saving again." }, { status: 409 })
+    }
     if (error.code === "23505") {
       return NextResponse.json(
         { error: "A project with that slug already exists in this organisation." },

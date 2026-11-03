@@ -1,8 +1,10 @@
 "use client"
 
+import { useOrganisationProject } from "@/components/admin/dashboard/OrganisationProjectContext"
+import { useOrganisationSummary } from "@/components/admin/dashboard/OrganisationSummaryContext"
 import Link from "next/link"
 import { Suspense, useCallback, useEffect, useState } from "react"
-import { useParams, useSearchParams } from "next/navigation"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { DecisionPolicyFields } from "@/components/admin/DecisionPolicyFields"
 import {
   parseClientDecisionPolicy,
@@ -409,6 +411,8 @@ function OrganisationDetailPageInner() {
   const params = useParams()
   const searchParams = useSearchParams()
   const orgId = params.orgId as string
+  const router = useRouter()
+  const { refresh: refreshSummary } = useOrganisationSummary()
 
   const [org, setOrg] = useState<OrgDetail | null>(null)
   const [name, setName] = useState("")
@@ -417,7 +421,8 @@ function OrganisationDetailPageInner() {
   const [projName, setProjName] = useState("")
   const [projSlug, setProjSlug] = useState("")
   const [projSlugManual, setProjSlugManual] = useState(false)
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
+  const { project: activeProject, choose: setSelectedProjectId } = useOrganisationProject()
+  const selectedProjectId = activeProject?.id ?? null
   const [keys, setKeys] = useState<ApiKeyRow[]>([])
   const [webhooks, setWebhooks] = useState<WebhookRow[]>([])
   const [whUrl, setWhUrl] = useState("")
@@ -492,15 +497,6 @@ function OrganisationDetailPageInner() {
     setLoading(false)
   }, [orgId])
 
-  useEffect(() => {
-    if (!org?.projects?.length) return
-    const fromQuery = searchParams.get("project")?.trim()
-    setSelectedProjectId((prev) => {
-      if (fromQuery && org.projects.some((p) => p.id === fromQuery)) return fromQuery
-      if (prev && org.projects.some((p) => p.id === prev)) return prev
-      return org.projects[0].id
-    })
-  }, [org, searchParams])
 
   useEffect(() => {
     const sessionParam = searchParams.get("session")?.trim()
@@ -812,7 +808,8 @@ function OrganisationDetailPageInner() {
     setProjSlugManual(false)
     setMsg("Project created.")
     await loadOrg()
-    setSelectedProjectId(b.id)
+    refreshSummary()
+    router.push(`/admin/organisations/${orgId}/advanced?project=${encodeURIComponent(b.id)}`)
   }
 
   async function toggleAnonRead(p: Project, next: boolean) {
@@ -887,9 +884,9 @@ function OrganisationDetailPageInner() {
       setErr(b.error ?? "Delete failed")
       return
     }
-    if (selectedProjectId === p.id) setSelectedProjectId(null)
     setMsg("Project deleted.")
     await loadOrg()
+    refreshSummary()
   }
 
   async function createKey() {
@@ -1096,7 +1093,7 @@ function OrganisationDetailPageInner() {
   }
 
   const selected =
-    org.projects.find((p) => p.id === selectedProjectId) ?? org.projects[0]
+    org.projects.find((p) => p.id === selectedProjectId)
   const selectedSession = sessions.find((session) => session.id === selectedSessionId) ?? null
 
   return (
