@@ -4,6 +4,7 @@ import {
   isSupabaseServerConfigured,
 } from "@/lib/supabase-server"
 import { checkRateLimit } from "@/lib/rate-limit"
+import { canSignInToDashboard } from "@/lib/dashboard-access"
 import { NextRequest, NextResponse } from "next/server"
 import {
   DEMO_AUTH_COOKIE,
@@ -127,6 +128,10 @@ export async function POST(req: NextRequest) {
         const response = await demoLoginResponse(user.email!, true)
         response.cookies.delete("pe_auth")
         return response
+      }
+      if (!await canSignInToDashboard(data.user, typeof body?.next === "string" ? body.next : null)) {
+        await client.auth.signOut({ scope: "local" })
+        return NextResponse.json({ error: "Groucho is invite only. Open your invitation link or contact your administrator.", code: "invitation_required" }, { status: 403 })
       }
       const response = NextResponse.json({ ok: true })
       response.cookies.delete("pe_auth")

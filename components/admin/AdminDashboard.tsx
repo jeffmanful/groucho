@@ -251,7 +251,7 @@ export default function AdminDashboard() {
                 <p>
                   {data.organisations.length
                     ? "Create a conversation experience or a synthetic ticket-access pilot."
-                    : "Create an organisation or accept an invitation to get started."}
+                    : "Ask your administrator for an organisation invitation to get started."}
                 </p>
                 {data.organisations.some((o) => o.canCreateProject) ? (
                   <Link
@@ -260,20 +260,14 @@ export default function AdminDashboard() {
                   >
                     Create a project
                   </Link>
-                ) : (
+                ) : data.actor.isPlatform ? (
                   <Link
                     className={styles.secondaryLink}
-                    href={
-                      data.actor.isPlatform
-                        ? "/admin/organisations"
-                        : "/signup/organisation"
-                    }
+                    href="/admin/organisations"
                   >
-                    {data.actor.isPlatform
-                      ? "Manage organisations"
-                      : "Create an organisation"}
+                    Manage organisations
                   </Link>
-                )}
+                ) : null}
               </div>
             )}
           </section>

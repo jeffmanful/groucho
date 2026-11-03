@@ -21,6 +21,8 @@ Roles:
 - `member` can view organisation resources but cannot perform admin writes.
 - Platform admins bypass org membership checks.
 
+Persona ownership/visibility is organisation-scoped too; see [persona ownership](persona-ownership.md). The public demo profile selects an exact active accessible persona.
+
 ## Access Rules
 
 The current server-side checks are:
@@ -34,10 +36,10 @@ Invited members accept invitations through the invite flow. The user must sign i
 
 ## Creating An Organisation
 
-There are two current paths:
+Organisation creation is restricted to platform administrators:
 
 - Platform admin route: `POST /api/admin/organisations`
-- Public signup route: `POST /api/organisations/signup`
+- Public signup is disabled: `POST /api/organisations/signup` returns 403 and `/signup/organisation` redirects to the shared invite-only login. Platform admins create organisations through `POST /api/admin/organisations` and invite clients. See [invite-only authentication](authentication.md).
 
 The platform admin route accepts:
 
@@ -50,7 +52,7 @@ The platform admin route accepts:
 
 Slugs are normalized by the admin slug helper. Duplicate slugs return `409`.
 
-The signup route creates an organisation and an initial `organisation_members` row for the signed-in user.
+Clients join existing organisations through invitations; they cannot create an organisation through the retired signup endpoint.
 
 ## Inviting Members
 

@@ -9,6 +9,8 @@ export default async function LoginPage({
   const { error, next, demo } = await searchParams
   const message = !error
     ? ""
+    : error === "invitation_required"
+    ? "Groucho is invite only. Open your invitation link or contact your administrator."
     : error === "google_unavailable"
     ? "Google sign-in is awaiting configuration. Please use email and password."
     : "Google sign-in could not be completed. Please try again."

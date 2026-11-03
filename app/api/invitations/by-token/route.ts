@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
+import { validOrganisationInviteToken } from "@/lib/dashboard-access"
 
 /**
  * Public metadata for a valid invite token.
@@ -7,7 +8,7 @@ import { supabase } from "@/lib/supabase"
  */
 export async function GET(req: NextRequest) {
   const token = req.nextUrl.searchParams.get("token")?.trim()
-  if (!token) {
+  if (!validOrganisationInviteToken(token)) {
     return NextResponse.json({ error: "Missing token" }, { status: 400 })
   }
 
@@ -43,5 +44,5 @@ export async function GET(req: NextRequest) {
     email: inv.email,
     role: inv.role,
     expiresAt: inv.expires_at,
-  })
+  }, { headers: { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } })
 }

@@ -32,7 +32,7 @@ export default function LoginForm({
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, demo: demoLogin }),
+        body: JSON.stringify({ email, password, demo: demoLogin, next: nextPath }),
       })
 
       if (res.ok) {
@@ -52,7 +52,9 @@ export default function LoginForm({
       if (res.status === 429) {
         setError("Too many attempts. Wait a minute, then try again.")
       } else if (res.status === 403) {
-        setError("Use a demo account or a platform administrator account to open the demos.")
+        setError(demoLogin
+          ? "Use a demo account or a platform administrator account to open the demos."
+          : "Groucho is invite only. Open your invitation link or contact your administrator.")
       } else if (res.status >= 500) {
         setError("Sign-in is temporarily unavailable. Please try again shortly.")
       } else {
@@ -168,10 +170,7 @@ export default function LoginForm({
               </span>
             ) : (
               <>
-                <span>
-                  New to Groucho? <Link href="/signup/organisation">Create an organisation</Link>
-                </span>
-                <span>Invited to a team? Open the link in your invitation email.</span>
+                <span>Groucho is invite only. Open the link in your invitation email to get started.</span>
               </>
             )}
           </div>
