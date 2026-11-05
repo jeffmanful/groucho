@@ -257,7 +257,7 @@ describe("shared conversation runtime for public demos", () => {
     expect(mocks.inserted[1].content).not.toContain("\\n")
   })
 
-  it.each(["Last Bus Home is a good one to start with.", "Last Bus Home, good.", "A track, then."])("removes Mo's stock approval before returning and saving the question: %s", async preamble => {
+  it.each(["Last Bus Home is a good one to start with.", "Last Bus Home, good.", "A track, then.", "That sounds like a proper moment.", "That is a good ending to the night."])("removes Mo's stock approval before returning and saving the question: %s", async preamble => {
     mocks.history[0].metadata.conversation_profile = "lewisham-social"
     mocks.create.mockResolvedValueOnce(result(`${preamble} What stays with you about it?`))
     const data = await (await run("Last Bus Home", "lewisham-social")).json()
@@ -266,9 +266,8 @@ describe("shared conversation runtime for public demos", () => {
     expect(mocks.create).toHaveBeenCalledTimes(1)
   })
 
-  it("preserves Mo's own opinion and the question that follows", async () => {
+  it.each(["I've got a soft spot for Same Again too. Who first put you onto it?", "I like how a good bassline holds that song together. What caught your ear?"])("preserves Mo's own opinion and the question that follows: %s", async reply => {
     mocks.history[0].metadata.conversation_profile = "lewisham-social"
-    const reply = "I've got a soft spot for Same Again too. Who first put you onto it?"
     mocks.create.mockResolvedValueOnce(result(reply))
     expect((await (await run("Same Again", "lewisham-social")).json()).message).toBe(reply)
   })
