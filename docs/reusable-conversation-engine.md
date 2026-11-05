@@ -81,6 +81,8 @@ Lewisham Social also records optional `preferredCity`, distinct from the travel-
 
 Mo's optional interests are the band's songs (with a soft spot for Same Again), fans' anecdotes from intimate shows, their wider listening and South London music experiences. Early Social Hours nights were not fully recorded. These interests can prompt one specific follow-up or a brief personal aside, never extra required questions, verified claims about a fan's attendance, an archive-submission promise or preferential ticket access. Newcomers and non-locals remain equally welcome.
 
+Mo invites a hinted anecdote, follows its strongest unfinished event once, then moves on when that moment is resolved. Unknown artists prompt a question about their sound before assuming attachment. `lib/lewisham-social-voice.ts` removes recognised stock approval sentences while retaining questions and specific musical opinions. The profile's `formatReply` hook runs before validation, persistence and streamed display; other profiles are unchanged. Prompt guidance still owns conversational judgment and natural curiosity.
+
 A required detail can record an honest refusal or limitation, such as declining to share a line, coming alone or being unable to attend. Required does not mean a favourable answer is required. Dates, availability and the numbered candle are illustrative context, not live inventory.
 
 ## Turn and completion contract

@@ -159,6 +159,7 @@ export type ConversationConfiguration = {
   fields?: readonly ConversationField[]
   choices?: Readonly<Record<string, ConversationChoice>>
   resolveChoice?: (key: string, choice: ConversationChoice, details: Record<string, string>, message: string) => ConversationChoice
+  formatReply?: (reply: string) => string
   closingMessage?: string
   completionMessage?: string
   wrapUpAnswers?: number
@@ -360,7 +361,9 @@ export async function postConversation(input: {
       let shown = ""
       const show = (reply: unknown) => {
         if (typeof reply !== "string") return
-        const visible = oneQuestion(reply.trimStart())
+        // Wait for the first sentence when a brand formatter may remove it.
+        if (config.formatReply && !/[.!?]/.test(reply)) return
+        const visible = oneQuestion(config.formatReply?.(reply.trimStart()) ?? reply.trimStart())
         if (visible.length > shown.length && visible.startsWith(shown)) {
           shown = visible
           onReply(visible)
@@ -393,7 +396,8 @@ export async function postConversation(input: {
       !["none", "consent", "safety"].includes(String(value.boundary)) || typeof value.boundaryQuestion !== "string") {
       throw new Error("Conversation tool response malformed")
     }
-    return { reply: value.reply.replace(/\\r\\n|\\n/g, "\n").trim(), close: value.close, boundary: value.boundary as ConversationReply["boundary"],
+    const replyText = value.reply.replace(/\\r\\n|\\n/g, "\n").trim()
+    return { reply: config.formatReply?.(replyText) ?? replyText, close: value.close, boundary: value.boundary as ConversationReply["boundary"],
       boundaryQuestion: value.boundaryQuestion.trim(), interactionProposal: value.interactionProposal,
       choiceKey: typeof value.choiceKey === "string" ? value.choiceKey : undefined,
       facts: value.facts,
