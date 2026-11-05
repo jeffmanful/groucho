@@ -141,7 +141,13 @@ export function conversationalClosing(acknowledgment: string, neutralLine: strin
 
 export type ConversationFact = { key: string; value: string; sourceQuote: string }
 export type ConversationField = { key: string; label: string; required?: boolean; values?: readonly string[] }
-export type ConversationChoice = { question: string; options: readonly string[]; field?: string }
+export type ConversationChoice = {
+  question: string
+  options: readonly string[]
+  field?: string
+  navigationOptions?: readonly string[]
+  factsByOption?: Readonly<Record<string, Readonly<Record<string, string>>>>
+}
 export type ConversationConfiguration = {
   id: string
   marker: string
@@ -152,6 +158,7 @@ export type ConversationConfiguration = {
   operationPrefix?: string
   fields?: readonly ConversationField[]
   choices?: Readonly<Record<string, ConversationChoice>>
+  resolveChoice?: (key: string, choice: ConversationChoice, details: Record<string, string>, message: string) => ConversationChoice
   closingMessage?: string
   completionMessage?: string
   wrapUpAnswers?: number
@@ -243,14 +250,20 @@ export async function postConversation(input: {
     typeof previousDetails[field.key] === "string" ? [[field.key, previousDetails[field.key] as string]] : []))
   const previousChoiceKey = record(lastAssistant?.metadata).conversation_choice_key
   const selectedChoice = typeof previousChoiceKey === "string" && Object.hasOwn(choices, previousChoiceKey) ? choices[previousChoiceKey] : undefined
-  if (selectedChoice?.field && selectedChoice.options.includes(input.message.trim()) && fields.some(field => field.key === selectedChoice.field)) {
+  const navigatingChoice = selectedChoice?.navigationOptions?.includes(input.message.trim()) ? previousChoiceKey as string : undefined
+  if (!navigatingChoice && selectedChoice?.field && selectedChoice.options.includes(input.message.trim()) && fields.some(field => field.key === selectedChoice.field)) {
     detailsBeforeTurn[selectedChoice.field] = input.message.trim()
+    const selectionFacts = selectedChoice.factsByOption?.[input.message.trim()] ?? {}
+    Object.assign(detailsBeforeTurn, conversationFacts(Object.entries(selectionFacts).map(([key, value]) =>
+      ({ key, value, sourceQuote: input.message.trim() })), input.message, fields))
   }
   const detailsFor = (reply: ConversationReply) => ({ ...detailsBeforeTurn, ...conversationFacts(reply.facts, input.message, fields) })
   const missingFor = (reply: ConversationReply) => fields.filter(field => field.required && !detailsFor(reply)[field.key])
   const choiceFor = (reply: ConversationReply): ConversationChoice | undefined => {
-    if (reply.choiceKey && reply.choiceKey !== "none") return Object.hasOwn(choices, reply.choiceKey) ? choices[reply.choiceKey] : undefined
-    return Object.values(choices).find(choice => reply.reply.toLowerCase().includes(choice.question.toLowerCase()))
+    const key = reply.choiceKey && reply.choiceKey !== "none" ? reply.choiceKey
+      : Object.keys(choices).find(key => reply.reply.toLowerCase().includes(choices[key].question.toLowerCase()))
+    if (!key || !Object.hasOwn(choices, key)) return undefined
+    return config.resolveChoice?.(key, choices[key], detailsFor(reply), input.message) ?? choices[key]
   }
   const lastUi = record(record(lastAssistant?.metadata).ui)
   const expectedChoice = normaliseMediaChoiceInteraction(lastUi.mediaChoice)
@@ -380,7 +393,7 @@ export async function postConversation(input: {
       !["none", "consent", "safety"].includes(String(value.boundary)) || typeof value.boundaryQuestion !== "string") {
       throw new Error("Conversation tool response malformed")
     }
-    return { reply: value.reply.trim(), close: value.close, boundary: value.boundary as ConversationReply["boundary"],
+    return { reply: value.reply.replace(/\\r\\n|\\n/g, "\n").trim(), close: value.close, boundary: value.boundary as ConversationReply["boundary"],
       boundaryQuestion: value.boundaryQuestion.trim(), interactionProposal: value.interactionProposal,
       choiceKey: typeof value.choiceKey === "string" ? value.choiceKey : undefined,
       facts: value.facts,
@@ -412,6 +425,11 @@ export async function postConversation(input: {
         turnCount >= (config.wrapUpAnswers ?? WRAP_UP_ANSWERS) ? "The conversation is ready to wrap up. Close now unless the latest answer opened something genuinely new that you do not yet understand. Never continue only to deepen a thread." :
           "Continue only if a useful thread remains; otherwise close naturally.", undefined, streamReply)
     addsNewContext = applicantQuestion ? true : proposal.addsNewContext
+    // A catalogue navigation action changes the visible choices, never the selected field.
+    if (navigatingChoice && proposal.boundary === "none" && !stoppedByApplicant) {
+      proposal = { ...proposal, close: false, choiceKey: navigatingChoice, addsNewContext: true, facts: [] }
+      addsNewContext = true
+    }
     const stalled = turnCount >= 3 && addsNewContext === false && quietTurns >= 1
     const softLimitReached = turnCount >= (config.softCloseAnswers ?? SOFT_CLOSE_ANSWERS)
     if (!applicantQuestion && proposal.boundary === "none" && (stalled || softLimitReached || turnCount >= emergencyLimit)) {

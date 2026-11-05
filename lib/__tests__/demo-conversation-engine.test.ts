@@ -34,6 +34,7 @@ const context = { organisationId: "org", projectId: "project", settings: { appli
 function configuration(id: DemoConversationId = "loptimiste"): ConversationConfiguration {
   const profile = DEMO_CONVERSATION_PROFILES[id]
   return { id, marker: CONVERSATION_ENGINE_MARKER, model: "test-model", fields: profile.fields, choices: profile.choices,
+    resolveChoice: profile.resolveChoice,
     wrapUpAnswers: profile.wrapUpAnswers, softCloseAnswers: profile.softCloseAnswers,
     closingMessage: profile.closing, completionMessage: profile.completion,
     buildPrompt: ({ turnCount }) => demoConversationPrompt(profile, `You are ${id}.\n\nCONVERSATION FLOW\nLegacy pass and reject rules.`, turnCount) }
@@ -180,6 +181,62 @@ describe("shared conversation runtime for public demos", () => {
     expect(data).toMatchObject({ status: "completed", completion: { complete: true } })
     expect(data.secret).toBeUndefined()
     expect(mocks.queue).not.toHaveBeenCalled()
+  })
+
+  it("shows only London dates when travelling from Bristol to London", async () => {
+    mocks.history[0].metadata.conversation_profile = "lewisham-social"
+    mocks.create.mockResolvedValueOnce(result("Which night would you prefer?", false, { choiceKey: "night", facts: [
+      { key: "location", value: "Bristol", sourceQuote: "Bristol" },
+      { key: "preferredCity", value: "London", sourceQuote: "London" },
+    ] }))
+    const data = await (await run("Travelling from Bristol to the London show.", "lewisham-social")).json()
+    expect(data.details).toMatchObject({ location: "Bristol", preferredCity: "London" })
+    expect(data.ui.options).toEqual(["London, Sat 17 Apr", "London, Sun 18 Apr", "See other cities"])
+    expect(data.message).toBe("London, then. What night would you prefer?")
+  })
+
+  it("expands other cities without recording navigation as a night or accepting model-invented facts", async () => {
+    mocks.history[0].metadata.conversation_profile = "lewisham-social"
+    mocks.history[0].metadata.conversation_choice_key = "night"
+    mocks.history[0].metadata.conversation_details = { discovery: "A track", connection: "The guitars", otherInterests: "Muse",
+      companion: "My partner", location: "Bristol", preferredCity: "London" }
+    mocks.create.mockResolvedValueOnce(result("Thank you.", true, { addsNewContext: false, facts: [
+      { key: "night", value: "Bristol, Tue 13 Apr", sourceQuote: "See other cities" },
+    ] }))
+    const data = await (await run("See other cities", "lewisham-social")).json()
+    expect(data.status).toBe("active")
+    expect(data.ui.options).toEqual([...DEMO_CONVERSATION_PROFILES["lewisham-social"].choices.night.options])
+    expect(data.details.night).toBeUndefined()
+    expect(data.details.preferredCity).toBe("London")
+    expect(mocks.create).toHaveBeenCalledTimes(1)
+  })
+
+  it("keeps all tour dates available when only a travel origin is known", async () => {
+    mocks.history[0].metadata.conversation_profile = "lewisham-social"
+    mocks.create.mockResolvedValueOnce(result("Which night would you prefer?", false, { choiceKey: "night", facts: [
+      { key: "location", value: "Bristol", sourceQuote: "Bristol" },
+    ] }))
+    const data = await (await run("Bristol", "lewisham-social")).json()
+    expect(data.ui.options).toHaveLength(7)
+    expect(data.details.preferredCity).toBeUndefined()
+  })
+
+  it("updates the destination when an exact night in another city is selected", async () => {
+    mocks.history[0].metadata.conversation_profile = "lewisham-social"
+    mocks.history[0].metadata.conversation_choice_key = "night"
+    mocks.history[0].metadata.conversation_details = { discovery: "A track", connection: "The guitars", otherInterests: "Muse",
+      companion: "My partner", location: "Bristol", preferredCity: "London" }
+    mocks.create.mockResolvedValueOnce(result("Bristol on the 13th, then.", true))
+    const data = await (await run("Bristol, Tue 13 Apr", "lewisham-social")).json()
+    expect(data).toMatchObject({ status: "completed", details: { location: "Bristol", preferredCity: "Bristol", night: "Bristol, Tue 13 Apr" } })
+  })
+
+  it("normalises escaped line breaks before saving the closing message", async () => {
+    mocks.history[0].metadata.conversation_details = { recipient: "For me", scentMemory: "Woodsmoke", burnLocation: "Living room" }
+    mocks.create.mockResolvedValueOnce(result("Evenings in your living room.\\n\\n", true))
+    const data = await (await run()).json()
+    expect(data.message).toBe("Evenings in your living room.\n\nMerci for spending a little time with me.")
+    expect(mocks.inserted[1].content).not.toContain("\\n")
   })
 })
 

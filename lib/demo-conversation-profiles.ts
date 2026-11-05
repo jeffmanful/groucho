@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server"
-import { postConversation, type ConversationChoice, type ConversationField } from "@/lib/conversation-engine"
+import { postConversation, type ConversationChoice, type ConversationField, type ConversationConfiguration } from "@/lib/conversation-engine"
 import { colorsThinConversationModel } from "@/lib/gatekeeper-models"
 import { resolveActiveGatekeeperPersona } from "@/lib/persona-resolution"
 import type { ProjectContext } from "@/lib/project-resolution"
 import { LEWISHAM_SOCIAL_CONVERSATION_GUIDANCE, LEWISHAM_SOCIAL_OPENING } from "@/lib/lewisham-social-persona"
+import { TOUR_NIGHTS, TOUR_CITIES, SEE_OTHER_CITIES, resolveLewishamChoice } from "@/lib/lewisham-social-tour"
+export { TOUR_NIGHTS } from "@/lib/lewisham-social-tour"
 
 export const CONVERSATION_ENGINE_MARKER = "groucho_conversation_v1"
 export const CONVERSATION_ENGINE_SETTING = "conversation_v1"
@@ -21,12 +23,8 @@ type DemoProfile = {
   typicalAnswers?: string
   wrapUpAnswers?: number
   softCloseAnswers?: number
+  resolveChoice?: ConversationConfiguration["resolveChoice"]
 }
-
-export const TOUR_NIGHTS = [
-  "Glasgow, Thu 8 Apr", "Manchester, Sat 10 Apr", "Leeds, Sun 11 Apr",
-  "Bristol, Tue 13 Apr", "Dublin, Fri 16 Apr", "London, Sat 17 Apr", "London, Sun 18 Apr",
-] as const
 
 export const DEMO_CONVERSATION_PROFILES: Record<DemoConversationId, DemoProfile> = {
   loptimiste: {
@@ -68,7 +66,7 @@ export const DEMO_CONVERSATION_PROFILES: Record<DemoConversationId, DemoProfile>
     id: "lewisham-social", opening: LEWISHAM_SOCIAL_OPENING, openingChoice: "discovery",
     objective: "Understand how they found Lewisham Social, what connects them to the band and why, what else they enjoy, and their companion, travel origin and exact preferred tour night.",
     guidance: LEWISHAM_SOCIAL_CONVERSATION_GUIDANCE,
-    typicalAnswers: "6–9", wrapUpAnswers: 9, softCloseAnswers: 11,
+    typicalAnswers: "6–8", wrapUpAnswers: 9, softCloseAnswers: 11, resolveChoice: resolveLewishamChoice,
     closing: "Thanks for coming through the door.",
     completion: "Demo complete. Your preferred night is shown here; no tickets are reserved and no presale code will be sent.",
     fields: [
@@ -77,11 +75,13 @@ export const DEMO_CONVERSATION_PROFILES: Record<DemoConversationId, DemoProfile>
       { key: "otherInterests", label: "Other music, shows or interests in their own words, or uncertainty / declining", required: true },
       { key: "companion", label: "Who they would bring, or coming alone", required: true },
       { key: "location", label: "Where they are coming from", required: true },
+      { key: "preferredCity", label: "Explicit preferred show city, separate from travel origin", values: TOUR_CITIES },
       { key: "night", label: "Exact preferred tour night", required: true, values: TOUR_NIGHTS },
     ],
     choices: {
       discovery: { field: "discovery", question: LEWISHAM_SOCIAL_OPENING, options: ["A gig", "A track", "Someone brought me along", "I've only just found you"] },
-      night: { field: "night", question: "Which night would you prefer?", options: TOUR_NIGHTS },
+      night: { field: "night", question: "Which night would you prefer?", options: TOUR_NIGHTS, navigationOptions: [SEE_OTHER_CITIES],
+        factsByOption: Object.fromEntries(TOUR_NIGHTS.map(night => [night, { preferredCity: night.split(",")[0] }])) },
     },
   },
 }
@@ -122,7 +122,7 @@ export async function postDemoConversation(input: Omit<Parameters<typeof postCon
   if (!persona || persona.id !== personaId) return NextResponse.json({ error: "Demo persona unavailable" }, { status: 503 })
   return postConversation({ ...input, runCompletion: false, configuration: {
     id: profile.id, marker: CONVERSATION_ENGINE_MARKER, model: colorsThinConversationModel(),
-    fields: profile.fields, choices: profile.choices,
+    fields: profile.fields, choices: profile.choices, resolveChoice: profile.resolveChoice,
     wrapUpAnswers: profile.wrapUpAnswers ?? 7, softCloseAnswers: profile.softCloseAnswers ?? 10,
     closingMessage: profile.closing, completionMessage: profile.completion,
     consentStatement: "Someone else's private information needs their permission before it is shared.",
