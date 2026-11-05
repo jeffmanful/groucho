@@ -405,7 +405,9 @@ export async function postConversation(input: {
       const choice = choiceFor(reply)
       if (choice?.field && detailsFor(reply)[choice.field]) return false
       if (reply.choiceKey && reply.choiceKey !== "none" && !choiceFor(reply)) return false
-      if (/\b(?:which (?:sounds|of these|of those)|choose|pick|select|which one|which night)\b/i.test(reply.reply) && !choiceFor(reply)) return false
+      // Inspect only the text we actually show. Referential questions about a
+      // track ("Which one?", "What made you pick it?") need no button catalogue.
+      if (/\b(?:which (?:sounds|of these|of those)|(?:choose|pick|select) (?:one|an option|from|between)|which night)\b/i.test(oneQuestion(reply.reply)) && !choiceFor(reply)) return false
       if (choiceFor(reply)) return true
     }
     return reply.boundary === "consent" && reply.boundaryQuestion.endsWith("?") ||

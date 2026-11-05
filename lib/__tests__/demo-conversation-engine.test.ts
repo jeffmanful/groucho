@@ -68,6 +68,22 @@ describe("shared conversation runtime for public demos", () => {
     expect(mocks.create).toHaveBeenCalledTimes(1)
   })
 
+  it.each(["Which track was it? I'm curious which one got you to take a look.", "Which one was it?", "What made you choose that track?", "What made you pick it?"])("accepts an ordinary open music question: %s", async reply => {
+    mocks.history[0].metadata.conversation_profile = "lewisham-social"
+    mocks.create.mockResolvedValueOnce(result(reply))
+    const data = await (await run("A track", "lewisham-social")).json()
+    expect(data.status).toBe("active")
+    expect(data.ui.inputType).toBe("text")
+    expect(mocks.create).toHaveBeenCalledTimes(1)
+  })
+
+  it("still repairs an unsupported choice list", async () => {
+    mocks.create.mockResolvedValueOnce(result("Pick one from these options?"))
+      .mockResolvedValueOnce(result("Where would it burn?"))
+    expect((await run()).status).toBe(200)
+    expect(mocks.create).toHaveBeenCalledTimes(2)
+  })
+
   it.each(["invented", "__proto__", "constructor"])("repairs unregistered choice %s instead of returning an empty selector", async choiceKey => {
     mocks.create.mockResolvedValueOnce(result("Which one?", false, { choiceKey }))
       .mockResolvedValueOnce(result("Which sounds most like you?", false, { choiceKey: "ritual" }))
