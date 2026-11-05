@@ -1,0 +1,18 @@
+{
+  "baseCommit": "26457f1b79e89ae7128ef055677e72d361ce6266",
+  "workingTreeIncluded": true,
+  "sha256": {
+    "lib/conversation-engine.ts": "d2a4001457167e5508643e4608309c11a6b8711dc15f067066fb39977f48dc75",
+    "lib/demo-conversation-profiles.ts": "dbbd3deb688d5ff071b62f15fc80f9dc10899c5018c0b7d1598342d9eac486a0",
+    "lib/lewisham-social-persona.ts": "99ba9f7f74108628aee337726145eecf313cc2d9b5748d30005f50f66c973a91",
+    "loadtests/culture/run.ts": "d3efd572631f10a1da7e5e54c760be67225d107e18c76324e57eae2b039687cc",
+    "loadtests/culture/simulated-ai.ts": "69e9c9ee1e21eae06b79e8fac78c24ec01c0ed2dba2238528385c11a5843b05e",
+    "loadtests/culture/workload.ts": "0c472fb8ddae3c324a14fb678f8a83e09f6531aef6a27c5859e71e3bb42bc84c",
+    "loadtests/culture/fixture.ts": "ceee834e0b1db8fa226c4c03c5f7072031b8431b25a7de003a12a6da5e56b773",
+    "loadtests/culture/safety.ts": "465c85b71a53b86fbd120dba128a0f93eb481677b8b77396691c3a1def0a1d2a",
+    "loadtests/culture/application-server.ts": "524d07ef2b476772cd989156b172d6e008ca6a4088048e4a8a0c87c2f28cc92c"
+  },
+  "stagingBranchId": "91378ed6-f442-408f-a283-b7465b779454",
+  "stagingProjectRef": "fzaxbpnqamyijwzulqhs",
+  "scope": "Local Node route handlers against hosted isolated Supabase; all AI simulated; not Vercel deployment capacity"
+}

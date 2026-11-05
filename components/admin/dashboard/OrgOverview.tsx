@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import type { CSSProperties } from "react"
+import { withProject } from "@/lib/admin-project-selection"
 import type { ProjectSummary } from "@/lib/organisation-summary"
 import { useOrganisationSummary } from "./OrganisationSummaryContext"
 import styles from "./dashboard.module.css"
@@ -110,7 +111,12 @@ export function OrgOverview() {
               {active.map((project) => {
                 const status = projectStatus(project)
                 return (
-                  <Link key={project.id} className={styles.row} style={COLUMNS} href={`${base}/applications?project=${project.id}`}>
+                  <Link
+                    key={project.id}
+                    className={styles.row}
+                    style={COLUMNS}
+                    href={project.projectType === "ticket_access" ? `${base}/projects/${project.id}` : withProject(base, project.id)}
+                  >
                     <span className={styles.name}>
                       <span className={status.dot} aria-label={status.label} role="img" />
                       {project.name}

@@ -1,0 +1,125 @@
+.workspace {
+  max-width: 1440px;
+  gap: 24px;
+  container-type: inline-size;
+}
+
+.workspace header a,
+.projectActions a,
+.projectActions .archive {
+  min-height: 44px;
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 500;
+}
+
+.projects {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-surface);
+  background: var(--surface);
+}
+
+.project {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 280px) minmax(0, 290px);
+  align-items: center;
+  gap: 20px;
+  padding: 16px;
+}
+
+.project + .project {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.identity {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.identity h3 {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.projectName:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.projectName:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+  border-radius: var(--radius-control);
+}
+
+.details,
+.projectActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.details,
+.hint {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr 1fr;
+  gap: 8px;
+  margin: 0;
+}
+
+.metrics dt {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+
+.metrics dd {
+  margin: 2px 0 0;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.projectActions {
+  justify-content: flex-end;
+  gap: 0 2px;
+}
+
+.hint {
+  margin: 0;
+}
+
+@container (max-width: 840px) {
+  .project {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 280px);
+    gap: 12px 20px;
+  }
+
+  .projectActions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
+
+@container (max-width: 500px) {
+  .project {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

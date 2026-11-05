@@ -25,7 +25,10 @@
     "example:groucho": "pnpm --filter next-groucho-example run dev",
     "changeset": "changeset",
     "changeset:version": "changeset version",
-    "release": "pnpm run sdk:build && changeset publish"
+    "release": "pnpm run sdk:build && changeset publish",
+    "loadtest:culture": "node --import tsx loadtests/culture/run.ts",
+    "loadtest:culture:100": "node --import tsx loadtests/culture/run.ts --users 100",
+    "loadtest:culture:200": "node --import tsx loadtests/culture/run.ts --users 200"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.77.0",

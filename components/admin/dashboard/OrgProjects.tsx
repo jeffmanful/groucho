@@ -1,18 +1,17 @@
 "use client"
 
 import Link from "next/link"
-import { useState, type CSSProperties } from "react"
+import { useState } from "react"
+import { Button } from "@/components/arc/button/button"
+import { withProject } from "@/lib/admin-project-selection"
 import type { ProjectSummary } from "@/lib/organisation-summary"
 import { projectStatus } from "./OrgOverview"
 import { useOrganisationSummary } from "./OrganisationSummaryContext"
 import styles from "./dashboard.module.css"
-
-const COLUMNS = {
-  "--columns": "minmax(160px, 2fr) 104px minmax(140px, 1.6fr) 72px 72px 80px 350px",
-} as CSSProperties
+import layout from "./org-projects.module.css"
 
 export function OrgProjects() {
-  const { orgId, summary, error, refresh } = useOrganisationSummary()
+  const { orgId, summary, loading, error, refresh } = useOrganisationSummary()
   const [busy, setBusy] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const base = `/admin/organisations/${orgId}`
@@ -36,82 +35,115 @@ export function OrgProjects() {
     }
   }
 
-  if (!summary) {
-    return (
-      <div className={styles.page}>
-        {error ? <p className={styles.error} role="alert">{error}</p> : <div className={styles.skeleton} />}
-      </div>
-    )
-  }
+  const baseProjects = `${base}/projects`
+  const active = summary?.projects.filter((project) => !project.archived) ?? []
+  const archived = summary?.projects.filter((project) => project.archived) ?? []
 
-  const active = summary.projects.filter((project) => !project.archived)
-  const archived = summary.projects.filter((project) => project.archived)
-
-  const row = (project: ProjectSummary) => {
+  function renderProject(project: ProjectSummary) {
     const status = projectStatus(project)
-    const gatekeeper = project.projectType === "gatekeeper"
+    const href = `${baseProjects}/${project.id}`
+    const projectHome = project.archived || project.projectType === "ticket_access" ? href : withProject(base, project.id)
+
     return (
-      <div key={project.id} className={styles.row} style={COLUMNS}>
-        <Link className={styles.name} href={`${base}/projects/${project.id}`}>{project.name}</Link>
-        <span className={styles.status}>
-          <span className={status.dot} aria-hidden="true" />
-          {status.label}
-        </span>
-        <span className={styles.secondaryText}>{project.personaName ?? "Workspace default"}</span>
-        <span className={`${styles.num} ${project.conversations30d ? "" : styles.dim}`}>{project.conversations30d}</span>
-        <span className={styles.num}>{project.conversationsTotal}</span>
-        <span className={`${styles.num} ${project.toReview ? styles.attention : styles.dim}`}>{project.toReview ?? "–"}</span>
-        <span className={styles.rowActions}>
-          {gatekeeper ? <Link className={styles.rowAction} href={`${base}/applications?project=${project.id}`}>Applications</Link> : null}
-          {summary.canManage ? <Link className={styles.rowAction} href={`${base}/projects/${project.id}/edit`}>Setup</Link> : null}
-          {project.projectType !== "ticket_access" ? <Link className={styles.rowAction} href={`${base}/projects/${project.id}`}>Keys</Link> : null}
-          {summary.canManage ? (
-            <button type="button" className={styles.rowAction} disabled={busy === project.id} onClick={() => void setArchived(project, !project.archived)}>
-              {busy === project.id ? "Saving…" : project.archived ? "Restore" : "Archive"}
-            </button>
+      <li key={project.id} className={layout.project}>
+        <div className={layout.identity}>
+          <h3><Link className={layout.projectName} href={projectHome}>{project.name}</Link></h3>
+          <div className={layout.details}>
+            <span className={styles.status}>
+              <span className={status.dot} aria-hidden="true" />
+              {status.label}
+            </span>
+            <span>{project.personaName ?? "Workspace default"}</span>
+          </div>
+        </div>
+        <dl className={layout.metrics}>
+          <div>
+            <dt>Conversations, 30d</dt>
+            <dd>{project.conversations30d}</dd>
+          </div>
+          <div>
+            <dt>All time</dt>
+            <dd>{project.conversationsTotal}</dd>
+          </div>
+          <div>
+            <dt>To review</dt>
+            <dd className={project.toReview ? styles.attention : styles.dim}>
+              {project.toReview ?? <span aria-label="Unavailable">–</span>}
+            </dd>
+          </div>
+        </dl>
+        <div className={layout.projectActions}>
+          {project.projectType === "gatekeeper" ? (
+            <Link className={styles.rowAction} href={`${base}/applications?project=${project.id}`}>Applications</Link>
           ) : null}
-        </span>
-      </div>
+          {summary?.canManage ? <Link className={styles.rowAction} href={`${href}/edit`}>Setup</Link> : null}
+          {project.projectType !== "ticket_access" ? (
+            <Link className={styles.rowAction} href={href}>Integrations</Link>
+          ) : null}
+          {summary?.canManage ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className={layout.archive}
+              loading={busy === project.id}
+              disabled={(busy !== null && busy !== project.id) || (loading && busy === null)}
+              onClick={() => void setArchived(project, !project.archived)}
+            >
+              {project.archived ? "Restore" : "Archive"}
+            </Button>
+          ) : null}
+        </div>
+      </li>
     )
   }
 
   return (
-    <div className={styles.page}>
+    <div className={`${styles.page} ${layout.workspace}`}>
       <header className={styles.header}>
-        <div>
-          <h1 className={styles.title}>Projects</h1>
-          <p className={styles.subtitle}>Archiving hides a project from active lists. It keeps its conversations and settings.</p>
-        </div>
-        {summary.canManage ? (
-          <div className={styles.actions}>
-            <Link className={styles.primary} href={`${base}/projects/new`}>New project</Link>
-          </div>
+        <h1 className={styles.title}>Projects</h1>
+        {summary?.canManage ? (
+          <Link className={styles.primary} href={`${baseProjects}/new`}>New project</Link>
         ) : null}
       </header>
 
       {actionError ? <p className={styles.error} role="alert">{actionError}</p> : null}
 
-      <div className={styles.table}>
-        <div className={styles.tableInner} style={{ minWidth: 1090 }}>
-          <div className={styles.head} style={COLUMNS}>
-            <span>Name</span>
-            <span>Status</span>
-            <span>Persona</span>
-            <span className={styles.num}>30 days</span>
-            <span className={styles.num}>All time</span>
-            <span className={styles.num}>To review</span>
-            <span />
-          </div>
-          <h2 className={styles.groupRow}>Active <span className={styles.dim}>{active.length}</span></h2>
-          {active.length ? active.map(row) : <p className={styles.row} style={{ color: "var(--text-muted)" }}>No active projects.</p>}
+      {error ? (
+        <p className={styles.error} role="alert">
+          {error} <Button type="button" size="sm" variant="ghost" loading={loading} onClick={refresh}>Try again</Button>
+        </p>
+      ) : null}
+
+      {summary ? (
+        <>
+          <section className={styles.section} aria-labelledby="active-projects">
+            <h2 id="active-projects" className={layout.sectionTitle}>
+              Active projects <span className={styles.count}>{active.length}</span>
+            </h2>
+            {active.length ? (
+              <ul className={layout.projects}>{active.map(renderProject)}</ul>
+            ) : (
+              <p className={styles.empty}>No active projects.</p>
+            )}
+          </section>
+
           {archived.length ? (
-            <>
-              <h2 className={styles.groupRow}>Archived <span className={styles.dim}>{archived.length}</span></h2>
-              {archived.map(row)}
-            </>
+            <section className={styles.section} aria-labelledby="archived-projects">
+              <h2 id="archived-projects" className={layout.sectionTitle}>
+                Archived projects <span className={styles.count}>{archived.length}</span>
+              </h2>
+              <ul className={layout.projects}>{archived.map(renderProject)}</ul>
+            </section>
           ) : null}
-        </div>
-      </div>
+
+          {summary.canManage && summary.projects.length ? (
+            <p className={layout.hint}>Archiving hides a project from active lists and keeps its conversations and settings.</p>
+          ) : null}
+        </>
+      ) : !error ? (
+        <p className={layout.hint} role="status">Loading projects…</p>
+      ) : null}
     </div>
   )
 }

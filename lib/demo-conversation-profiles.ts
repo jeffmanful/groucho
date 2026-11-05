@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server"
-import { postConversation, type ConversationChoice, type ConversationField } from "@/lib/conversation-engine"
+import { postConversation, type ConversationChoice, type ConversationField, type ConversationConfiguration } from "@/lib/conversation-engine"
 import { colorsThinConversationModel } from "@/lib/gatekeeper-models"
 import { resolveActiveGatekeeperPersona } from "@/lib/persona-resolution"
 import type { ProjectContext } from "@/lib/project-resolution"
+import { LEWISHAM_SOCIAL_CONVERSATION_GUIDANCE, LEWISHAM_SOCIAL_OPENING } from "@/lib/lewisham-social-persona"
+import { TOUR_NIGHTS, TOUR_CITIES, SEE_OTHER_CITIES, resolveLewishamChoice } from "@/lib/lewisham-social-tour"
+import { formatMoReply } from "@/lib/lewisham-social-voice"
+import { MO_TURN_PLAN } from "@/lib/lewisham-social-turn-plan"
+export { TOUR_NIGHTS } from "@/lib/lewisham-social-tour"
 
 export const CONVERSATION_ENGINE_MARKER = "groucho_conversation_v1"
 export const CONVERSATION_ENGINE_SETTING = "conversation_v1"
@@ -17,12 +22,14 @@ type DemoProfile = {
   completion: string
   fields: readonly ConversationField[]
   choices: Readonly<Record<string, ConversationChoice>>
+  typicalAnswers?: string
+  wrapUpAnswers?: number
+  softCloseAnswers?: number
+  resolveChoice?: ConversationConfiguration["resolveChoice"]
+  formatReply?: ConversationConfiguration["formatReply"]
+  replyGuidance?: string
+  turnPlan?: ConversationConfiguration["turnPlan"]
 }
-
-export const TOUR_NIGHTS = [
-  "Glasgow, Thu 8 Apr", "Manchester, Sat 10 Apr", "Leeds, Sun 11 Apr",
-  "Bristol, Tue 13 Apr", "Dublin, Fri 16 Apr", "London, Sat 17 Apr", "London, Sun 18 Apr",
-] as const
 
 export const DEMO_CONVERSATION_PROFILES: Record<DemoConversationId, DemoProfile> = {
   loptimiste: {
@@ -61,20 +68,27 @@ export const DEMO_CONVERSATION_PROFILES: Record<DemoConversationId, DemoProfile>
     },
   },
   "lewisham-social": {
-    id: "lewisham-social", opening: "Alright! What got you into us?", openingChoice: "discovery",
-    objective: "Hear how they found the band, who they would bring, where they are coming from and which exact tour night they prefer.",
-    guidance: "This is the spring 2027 tour, two face-value tickets per fan. New fans and people coming alone are welcome. A larger group can each try the demo separately; do not imply extra tickets are held. Manchester is marked rammed in the illustrative data; other nights have room. Offer an alternative once and respect their preference. Ask the night choice when choosing a date, and capture night as the exact approved label. London has two nights: never infer a date from London alone. Do not invent gigs, songs, past attendance, live inventory or a booking. No code is issued. A chosen night is a preference, not a reservation.",
+    id: "lewisham-social", opening: LEWISHAM_SOCIAL_OPENING, openingChoice: "discovery",
+    objective: "Understand how they found Lewisham Social, what connects them to the band and why, what else they enjoy, and their companion, travel origin and exact preferred tour night.",
+    guidance: LEWISHAM_SOCIAL_CONVERSATION_GUIDANCE,
+    typicalAnswers: "6–8", wrapUpAnswers: 9, softCloseAnswers: 11, resolveChoice: resolveLewishamChoice, formatReply: formatMoReply,
+    turnPlan: MO_TURN_PLAN,
+    replyGuidance: "MO'S NEXT QUESTION: Follow the visitor's most recent answer. If they change subject or offer another artist instead of answering your last question, follow their new topic; never insist on your unanswered question. An unfamiliar artist is an invitation to ask what they sound like, not to doubt the visitor or say you will take their word for it. When a fan has just revealed an unexpected gig event, ask about its reaction, recovery or consequence before a second topic mentioned in that same answer. Inviting the story earlier does not replace this one follow-up after the event is revealed. Reflecting the event then asking about the second topic does not follow the event. Once they describe the outcome, that story is resolved: move on, without asking for a song title or another retrospective question. For example, a performance falters, the crowd takes over, you ask what the performers did, and their account of the recovery completes that thread. Do not echo their story as a preamble. Prefer a single short question; do not combine identification and interpretation. Do not grade a song choice or announce that you love hearing stories. Let specific attention show Mo's personality. Answer direct questions and honour stopping and runtime limits.",
     closing: "Thanks for coming through the door.",
     completion: "Demo complete. Your preferred night is shown here; no tickets are reserved and no presale code will be sent.",
     fields: [
       { key: "discovery", label: "How they found the band", required: true },
+      { key: "connection", label: "What connects them to the band and why, or being new / unsure / declining", required: true },
+      { key: "otherInterests", label: "Other music, shows or interests in their own words, or uncertainty / declining", required: true },
       { key: "companion", label: "Who they would bring, or coming alone", required: true },
       { key: "location", label: "Where they are coming from", required: true },
+      { key: "preferredCity", label: "Explicit preferred show city, separate from travel origin", values: TOUR_CITIES },
       { key: "night", label: "Exact preferred tour night", required: true, values: TOUR_NIGHTS },
     ],
     choices: {
-      discovery: { field: "discovery", question: "What got you into us?", options: ["A gig", "A track", "Someone dragged me along"] },
-      night: { field: "night", question: "Which night would you prefer?", options: TOUR_NIGHTS },
+      discovery: { field: "discovery", question: LEWISHAM_SOCIAL_OPENING, options: ["A gig", "A track", "Someone brought me along", "I've only just found you"] },
+      night: { field: "night", question: "Which night would you prefer?", options: TOUR_NIGHTS, navigationOptions: [SEE_OTHER_CITIES],
+        factsByOption: Object.fromEntries(TOUR_NIGHTS.map(night => [night, { preferredCity: night.split(",")[0] }])) },
     },
   },
 }
@@ -103,7 +117,7 @@ Purpose: ${profile.objective}
 ${profile.guidance}
 This is a fictional public demonstration, not a real allocation or application. Preserve the character above but replace any contradictory promise or decision instruction with this contract. Do not score, judge eligibility or promise a reservation, shortlist, ticket, code or email.
 Respond to a concrete detail, then leave exactly one answerable question on every active turn. An observation alone is not a question. If asking an approved selection question, set choiceKey; the server supplies its options. Never ask a multiple-choice question without a supported choiceKey. Otherwise ask an open question and set choiceKey to none. Keep replies to two short sentences. Do not praise an answer as perfect or rank the person. Do not repeat details already supplied. Answer the person's questions directly, acknowledge corrections and respect requests to stop.
-The conversation has ${turnCount} applicant answers. Aim for a short natural exchange, usually 3–6 answers, allowing extra turns only for useful clarification or missing required details. Completion requires the supplied required fields, or an honest incomplete close if they stop or the runtime reaches its limit. Never invent missing facts. On close, use a brief specific acknowledgement without a question; the runtime adds the character's final line and an honest demo completion message.
+The conversation has ${turnCount} applicant answers. Aim for a short natural exchange, usually ${profile.typicalAnswers ?? "3–6"} answers, allowing extra turns only for useful clarification or missing required details. Completion requires the supplied required fields, or an honest incomplete close if they stop or the runtime reaches its limit. Never invent missing facts. On close, use a brief specific acknowledgement without a question; the runtime adds the character's final line and an honest demo completion message.
 Call groucho_converse exactly once. Set close only when finished. Set addsNewContext honestly. Set boundary to none unless a concrete safety or privacy concern requires a response. Public music discussion is ordinary conversation, not a consent test. Never reveal internal field keys, scoring, budgets or routing.`
 }
 
@@ -115,8 +129,8 @@ export async function postDemoConversation(input: Omit<Parameters<typeof postCon
   if (!persona || persona.id !== personaId) return NextResponse.json({ error: "Demo persona unavailable" }, { status: 503 })
   return postConversation({ ...input, runCompletion: false, configuration: {
     id: profile.id, marker: CONVERSATION_ENGINE_MARKER, model: colorsThinConversationModel(),
-    fields: profile.fields, choices: profile.choices,
-    wrapUpAnswers: 7, softCloseAnswers: 10,
+    fields: profile.fields, choices: profile.choices, resolveChoice: profile.resolveChoice, formatReply: profile.formatReply, replyGuidance: profile.replyGuidance, turnPlan: profile.turnPlan,
+    wrapUpAnswers: profile.wrapUpAnswers ?? 7, softCloseAnswers: profile.softCloseAnswers ?? 10,
     closingMessage: profile.closing, completionMessage: profile.completion,
     consentStatement: "Someone else's private information needs their permission before it is shared.",
     consentQuestion: "Would you ask for their permission before sharing it?",

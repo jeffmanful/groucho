@@ -56,3 +56,4 @@ Use for internal review or customer questionnaires. Not exhaustive.
 ## Load / availability
 
 - [ ] Run k6 script (`loadtests/k6/chat-messages.js`) against staging before major releases; record latency, error, retry and duplicate-delivery limits for the intended runtime rather than using retired PRD targets.
+- [ ] Run [complete culture flow tests](../loadtests/culture/README.md) with simulated AI against local Supabase; distinguish handler/database capacity from full deployment capacity and in-memory harness verification.

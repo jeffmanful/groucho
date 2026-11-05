@@ -1,0 +1,75 @@
+{
+  "generatedAt": "2026-11-05T10:00:37.996Z",
+  "scope": "Actual culture API handlers and isolated Supabase; synthetic AI; excludes Next hosting, browser, edge and real provider capacity",
+  "databaseMode": "hosted-staging",
+  "options": {
+    "users": 2,
+    "durationSeconds": 0,
+    "rampSeconds": 0,
+    "thinkMs": 100,
+    "requestTimeoutMs": 60000
+  },
+  "aiOptions": {
+    "delayMs": 50,
+    "jitterMs": 0
+  },
+  "rateLimit": 100000,
+  "projectId": "cce94544-6996-41ca-bb06-487c16bb0a13",
+  "results": {
+    "attempts": 2,
+    "started": 2,
+    "completed": 2,
+    "failed": 0,
+    "requests": 16,
+    "errors": 0,
+    "throttled": 0,
+    "successfulTurns": 12,
+    "resumeChecks": 2,
+    "active": 0,
+    "peakActive": 2,
+    "elapsedSeconds": 4.96,
+    "failures": [],
+    "latencyMs": {
+      "start": {
+        "samples": 2,
+        "p50": 557,
+        "p95": 558,
+        "p99": 558
+      },
+      "message": {
+        "samples": 12,
+        "p50": 626,
+        "p95": 665,
+        "p99": 665
+      },
+      "resume": {
+        "samples": 2,
+        "p50": 162,
+        "p95": 206,
+        "p99": 206
+      },
+      "conversation": {
+        "samples": 2,
+        "p50": 4952,
+        "p95": 4955,
+        "p99": 4955
+      }
+    }
+  },
+  "persisted": {
+    "sessions": 2,
+    "completed": 2,
+    "userMessages": 12,
+    "assistantMessages": 14,
+    "completionJobs": 0
+  },
+  "simulatedAi": {
+    "requests": 12,
+    "active": 0,
+    "peakActive": 2,
+    "rejected": 0
+  },
+  "blockedEgress": [],
+  "integrity": true,
+  "passed": true
+}

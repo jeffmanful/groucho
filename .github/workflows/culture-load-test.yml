@@ -1,0 +1,67 @@
+name: Culture load test
+
+on:
+  workflow_dispatch:
+    inputs:
+      users:
+        description: Concurrent synthetic applicants
+        type: choice
+        options: ['100', '200']
+        default: '100'
+      ramp:
+        description: Ramp seconds (0 is a simultaneous opening burst)
+        type: choice
+        options: ['20', '0']
+        default: '20'
+      duration:
+        description: Workload duration (0 is one conversation per applicant)
+        type: choice
+        options: ['0', '300']
+        default: '0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: culture-load-test-staging
+  cancel-in-progress: false
+
+jobs:
+  culture:
+    # Never expose the staging service key to arbitrary dispatch branches.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: loadtest-staging
+    timeout-minutes: 15
+    steps:
+      - name: Checkout reviewed main
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22.14.0'
+      - name: Install pinned package manager and dependencies
+        run: |
+          npm install --global pnpm@11.0.4
+          pnpm install --frozen-lockfile
+      - name: Run culture load tests against the isolated staging database
+        env:
+          LOADTEST_SUPABASE_URL: ${{ vars.LOADTEST_SUPABASE_URL }}
+          LOADTEST_STAGING_PROJECT_REF: ${{ vars.LOADTEST_STAGING_PROJECT_REF }}
+          LOADTEST_SUPABASE_SERVICE_KEY: ${{ secrets.LOADTEST_SUPABASE_SERVICE_KEY }}
+          LOADTEST_USERS: ${{ inputs.users }}
+          LOADTEST_RAMP: ${{ inputs.ramp }}
+          LOADTEST_DURATION: ${{ inputs.duration }}
+        run: |
+          node --import tsx loadtests/culture/run.ts --staging --users 2 --ramp 0 --think-ms 100 --ai-delay-ms 50 --ai-jitter-ms 0
+          node --import tsx loadtests/culture/run.ts --staging --users "$LOADTEST_USERS" --ramp "$LOADTEST_RAMP" --duration "$LOADTEST_DURATION"
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: culture-load-test-${{ github.run_id }}
+          path: loadtests/results/*.json
+          if-no-files-found: ignore
+          retention-days: 7

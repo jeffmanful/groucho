@@ -47,3 +47,6 @@ next-env.d.ts
 # Local browser checks and package-manager cache
 /.playwright-cli/
 /.pnpm-store/
+
+# Synthetic load-test reports
+/loadtests/results/

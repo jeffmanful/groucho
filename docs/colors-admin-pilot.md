@@ -106,3 +106,29 @@ current per-process rate limiter is not a distributed abuse-control service.
   Test sessions/invitations were removed and the temporary API key was revoked.
   No applicant email, real membership grant, app deployment or SDK publication
   was performed.
+
+## Rehearsal record, 4 November 2026
+
+**Staging sign-off is blocked.** No staging URL, test tenant, or staging client
+handoff was verified. The connected Vercel project search returned no Groucho
+projects. The Forum URL above is the default application URL and does not
+establish a staging target. This run created no applicant or decision records.
+
+Local Groucho baseline at `26457f1` with existing dashboard edits in the working
+tree. Running `node node_modules/vitest/vitest.mjs run` returned 787 passed and
+2 skipped. The suite covers default-disabled automatic decisions, decision
+permissions and project scoping, correction event creation, and access checks.
+These results apply to the local tests.
+
+| Rehearsal step | Result | Evidence or action before launch |
+| --- | --- | --- |
+| Applicant notice, AI disclosure and accessible route | Open | The local Forum application page and apply component did not show an explicit privacy notice, AI disclosure, or adjustments route in source review. Verify the rendered entry and add any missing copy and contact route before intake. |
+| Assessment and human decision | Local tests pass. Staging pending. | Verify both switches on the staging project, then complete synthetic applications and check pending status, private assessment visibility, tenant isolation and human reviewer access. |
+| Decision and correction handoff | Integration gap confirmed in source. | The prepared pilot has no webhook subscriptions, and the local Forum handler at `827f0db6` accepts `session.completed` but skips named decision and correction events. For the existing manual pilot, assign a client operator and rehearse recording, communicating and applying both decisions. For an automated handoff, configure a staging receiver and demonstrate signature checks, duplicate handling and access reconciliation. |
+| Applicant challenge and data rights | Open | Assign staffed contacts and run a synthetic challenge, export and erasure through Groucho and Forum. Record the disposition of related reports, profiles, audit records, vendor copies and backups. |
+| Matched applicant and sensitive disclosure checks | Open | Use equivalent synthetic applicant evidence in two communication styles and a synthetic sensitive disclosure. Inspect reports and reviewer reasoning for unsupported differences or use of sensitive data. |
+
+To resume, identify the staging Forum and Groucho targets, the isolated test
+tenant and database, a reviewer account, and a safe client handoff. Use the
+invited application flow and capture synthetic session IDs, current and
+superseded decisions, client outcome evidence and rights-request evidence.

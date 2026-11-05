@@ -12,6 +12,7 @@ Reviewed 2 November 2026. These documents are separate from [current platform gu
 | Proposal | Boundary |
 | --- | --- |
 | [Ticket-access product direction](ticket-access-direction.md) | Discovery direction, not a shipped ticketing product |
+| [Public drop resilience and waiting rooms](public-drop-resilience.md) | Cloudflare and alternative evaluation, proposed admission and spending controls, and pitch wording; not deployed protection |
 | [World ID](fair-ticket-access-world-id.md) | No provider integration or partner agreement established here |
 | [Verified fan registration](verified-fan-registration.md) | Proposed checks/connections, not deployed account verification |
 | [Tidewater story](tidewater-drop-demo.md) | Fictional demo brief; verify listed prerequisites in source before presenting as built |

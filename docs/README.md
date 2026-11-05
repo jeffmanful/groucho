@@ -18,6 +18,7 @@ Current guidance reviewed against repository source on 2 November 2026. Begin wi
 - [Personas](personas.md), [ownership and versions](persona-ownership.md), [profile schemas](profile-schema-guide.md).
 - [Authentication](authentication.md), [dashboard access](admin-access.md), [API-key ADR](adr/0001-api-key-and-client-access.md).
 - [Database setup](database-setup.md), [schema map](database-schema.md), [retention and recovery](backup-retention.md), [security review](security-review-checklist.md).
+- [Culture flow load tests](../loadtests/culture/README.md): 100/200 applicant scenarios with simulated AI, isolated local fixtures and persistence checks.
 - [Decision policy](client-decision-policy.md), [review and allocation workspace](client-decision-workspace.md).
 
 ## COLORS and interactions
@@ -32,6 +33,7 @@ Current guidance reviewed against repository source on 2 November 2026. Begin wi
 - [OpenAPI](api/openapi.yaml), [profile schema](profile-payload.schema.json), [completion webhook schema](event-payload-session-completed.schema.json).
 - [SDK README](../packages/sdk/README.md) and [Next.js example](../examples/next-groucho/README.md).
 - [Pilot proposals and simulations](../pilots/README.md) are not launch commitments or current integration instructions.
+- [Public drop resilience and waiting rooms](../pilots/public-drop-resilience.md): proposed admission, availability and spending safeguards, provider comparison and pitch wording.
 - [Historical evidence and removal map](archive/README.md). Dated replay JSON remains under `docs/replays` for evaluation tooling.
 - [Documentation maintenance rules](documentation-policy.md).
 
