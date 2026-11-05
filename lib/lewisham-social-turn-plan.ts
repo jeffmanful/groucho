@@ -24,7 +24,6 @@ export const MO_TURN_PLAN: ConversationTurnPlan = {
     travel_origin: { question: "Where are you travelling from?" },
     show_city: { question: "What city would you like to see them in?" },
     night_preference: { question: "Which night would you prefer?", choiceKey: "night" },
-    clarify_preference: { question: "What would you prefer?" },
   },
   observations: {
     same_again_favourite: "I've got a soft spot for Same Again.",
@@ -57,4 +56,7 @@ export const MO_TURN_PLAN: ConversationTurnPlan = {
   },
   fieldQuestions: { discovery: "discovery_story", connection: "track_connection", otherInterests: "recent_listening", companion: "companion", location: "travel_origin", night: "night_preference" },
   fallbackQuestion: "recent_listening",
+  answerForQuestion: message => /\b(?:are you|is (?:this|the band|lewisham social|mo))\b/i.test(message) &&
+    /\b(?:real|fictional|fake|made.up)\b/i.test(message) && !/\b(?:tickets?|bookings?|reservations?)\b/i.test(message)
+      ? "fictional" : undefined,
 }

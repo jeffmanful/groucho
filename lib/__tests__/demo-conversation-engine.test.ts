@@ -348,6 +348,19 @@ describe("Mo's server-written turn plans", () => {
     expect(mocks.create).toHaveBeenCalledTimes(3)
   })
 
+  it("discloses the fictional band even if the model's intent needs fallback", async () => {
+    mocks.create.mockResolvedValue(planResult("none", { answerKey: "unknown" }))
+    const data = await (await planned("Are you a real band?")).json()
+    expect(data.message).toBe(`${MO_TURN_PLAN.answers.fictional} How did you first hear about the band?`)
+    expect(data.message.match(/\?/g)).toHaveLength(1)
+  })
+
+  it("preserves a valid direct answer while repairing an invalid next-question intent", async () => {
+    mocks.create.mockResolvedValue(planResult("none", { answerKey: "members" }))
+    const data = await (await planned("Who is in the band?")).json()
+    expect(data.message).toContain(MO_TURN_PLAN.answers.members)
+  })
+
   it("keeps approved questions, asides and answers free of em dashes and extra requests", () => {
     for (const entry of Object.values(MO_TURN_PLAN.questions)) {
       expect(entry.question.match(/\?/g)).toHaveLength(1)

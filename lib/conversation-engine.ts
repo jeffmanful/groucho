@@ -157,6 +157,7 @@ export type ConversationTurnPlan = {
   answers: Readonly<Record<string, string>>
   fieldQuestions: Readonly<Record<string, string>>
   fallbackQuestion: string
+  answerForQuestion?: (message: string) => string | undefined
 }
 export type ConversationConfiguration = {
   id: string
@@ -376,13 +377,15 @@ export async function postConversation(input: {
     if (reply.close) return { ...reply, reply: config.closingMessage ?? DEFAULT_APPLICATION_CLOSING_MESSAGE, interactionProposal: undefined }
     const intent = reply.questionIntent
     const question = intent && Object.hasOwn(plan.questions, intent) ? plan.questions[intent] : undefined
+    const answerKey = applicantQuestion ? plan.answerForQuestion?.(input.message) ?? reply.answerKey : undefined
+    const resolvedAnswerKey = answerKey && Object.hasOwn(plan.answers, answerKey) ? answerKey : "unknown"
     const answer = applicantQuestion
-      ? plan.answers[reply.answerKey && Object.hasOwn(plan.answers, reply.answerKey) ? reply.answerKey : "unknown"] : undefined
+      ? plan.answers[resolvedAnswerKey] : undefined
     const observationKey = reply.observationKey
     const observation = !applicantQuestion && observationKey && Object.hasOwn(plan.observations, observationKey) &&
       record(lastAssistant?.metadata).conversation_observation_key !== observationKey ? plan.observations[observationKey] : undefined
     return { ...reply, reply: question ? [answer, observation, questionOverride ?? question.question].filter(Boolean).join(" ") : "",
-      choiceKey: question?.choiceKey ?? "none", interactionProposal: undefined }
+      choiceKey: question?.choiceKey ?? "none", answerKey: applicantQuestion ? resolvedAnswerKey : reply.answerKey, interactionProposal: undefined }
   }
 
   async function requestReply(operation: string, instruction: string, maxTokens = fields.length ? 1000 : 600,
@@ -519,7 +522,7 @@ export async function postConversation(input: {
         const missing = missingFor(proposal)[0]?.key
         const intent = missing ? plan.fieldQuestions[missing] : plan.fallbackQuestion
         proposal = plannedReply({ ...proposal, close: !missing && !applicantQuestion, boundary: "none",
-          questionIntent: intent ?? plan.fallbackQuestion, observationKey: "none", answerKey: "unknown" })
+          questionIntent: intent ?? plan.fallbackQuestion, observationKey: "none", answerKey: proposal.answerKey ?? "unknown" })
       } else if (!usable) throw new Error("Conversation repair exhausted")
     }
     // The closing acknowledgment is cosmetic. Rather than spend another model round trip on it,
