@@ -79,6 +79,8 @@ Lewisham Social's authored fictional band story and Mo prompt live in `lib/lewis
 
 Lewisham Social also records optional `preferredCity`, distinct from the travel-origin `location`. `lib/lewisham-social-tour.ts` resolves the registered `night` choice to that destination's dates plus “See other cities”. An explicit London preference takes priority over a Bristol origin. Without an explicit destination, the full catalogue is shown. Navigation reopens the full catalogue without recording a night, accepting model-proposed facts or treating the action as lack of progress. Selecting an exact date also sets its destination city. The shared engine exposes server-controlled `resolveChoice`, `navigationOptions` and `factsByOption` hooks; other profiles keep their existing static choices. Model text is normalised for escaped line breaks before validation and persistence.
 
+Mo's optional interests are the band's songs (with a soft spot for Same Again), fans' anecdotes from intimate shows, their wider listening and South London music experiences. Early Social Hours nights were not fully recorded. These interests can prompt one specific follow-up or a brief personal aside, never extra required questions, verified claims about a fan's attendance, an archive-submission promise or preferential ticket access. Newcomers and non-locals remain equally welcome.
+
 A required detail can record an honest refusal or limitation, such as declining to share a line, coming alone or being unable to attend. Required does not mean a favourable answer is required. Dates, availability and the numbered candle are illustrative context, not live inventory.
 
 ## Turn and completion contract
