@@ -29,6 +29,7 @@ vi.mock("@/lib/supabase", () => ({ supabase: {
 import { conversationFacts, postConversation, type ConversationConfiguration } from "@/lib/conversation-engine"
 import { CONVERSATION_ENGINE_MARKER, DEMO_CONVERSATION_PROFILES, demoConversationProfile, demoConversationPrompt, type DemoConversationId } from "@/lib/demo-conversation-profiles"
 import type { ProjectContext } from "@/lib/project-resolution"
+import { MO_TURN_PLAN } from "@/lib/lewisham-social-turn-plan"
 
 const context = { organisationId: "org", projectId: "project", settings: { applicationExperience: { max_turns: 8 }, raw: {} } } as unknown as ProjectContext
 function configuration(id: DemoConversationId = "loptimiste"): ConversationConfiguration {
@@ -270,6 +271,92 @@ describe("shared conversation runtime for public demos", () => {
     mocks.history[0].metadata.conversation_profile = "lewisham-social"
     mocks.create.mockResolvedValueOnce(result(reply))
     expect((await (await run("Same Again", "lewisham-social")).json()).message).toBe(reply)
+  })
+})
+
+describe("Mo's server-written turn plans", () => {
+  beforeEach(() => { mocks.history[0].metadata.conversation_profile = "lewisham-social" })
+  const planned = (message: string, onReplyDelta?: (reply: string) => void) => postConversation({ context, sessionId: "demo-session", message,
+    configuration: { ...configuration("lewisham-social"), turnPlan: MO_TURN_PLAN }, onReplyDelta })
+  const planResult = (intent: string, extra = {}) => result("Which song was it, and why? Tell me about the gig too.", false,
+    { questionIntent: intent, observationKey: "none", answerKey: "none", ...extra })
+
+  it("replaces a compound model question with exactly one approved request", async () => {
+    mocks.create.mockResolvedValueOnce(planResult("identify_track"))
+    const data = await (await planned("A track")).json()
+    expect(data.message).toBe("What track was it?")
+    expect(mocks.inserted[1].content).toBe(data.message)
+    expect(mocks.inserted[1].metadata.conversation_question_intent).toBe("identify_track")
+    const request = mocks.create.mock.calls[0][0]
+    expect(request.tools[0].input_schema.required).toContain("questionIntent")
+  })
+
+  it("keeps a personal aside without permitting another request or an em dash", async () => {
+    mocks.create.mockResolvedValueOnce(planResult("track_connection", { observationKey: "same_again_favourite" }))
+    const data = await (await planned("Same Again")).json()
+    expect(data.message).toBe("I've got a soft spot for Same Again. What stays with you about that one?")
+    expect(data.message.match(/\?/g)).toHaveLength(1)
+    expect(data.message).not.toContain("—")
+  })
+
+  it("does not stream unvalidated model prose", async () => {
+    const delta = vi.fn()
+    mocks.create.mockResolvedValueOnce(planResult("identify_track"))
+    expect((await (await planned("A track", delta)).json()).message).toBe("What track was it?")
+    expect(delta).not.toHaveBeenCalled()
+  })
+
+  it("answers a direct question from approved facts before one next question", async () => {
+    mocks.create.mockResolvedValueOnce(planResult("recent_listening", { answerKey: "members", observationKey: "same_again_favourite" }))
+    const data = await (await planned("Who is in the band?")).json()
+    expect(data.message).toBe(`${MO_TURN_PLAN.answers.members} What have you been listening to lately?`)
+    expect(data.message.match(/\?/g)).toHaveLength(1)
+  })
+
+  it("does not volunteer a song meaning selected in answerKey", async () => {
+    mocks.create.mockResolvedValueOnce(planResult("track_connection", { answerKey: "last_bus_home" }))
+    expect((await (await planned("Last Bus Home")).json()).message).toBe("What stays with you about that one?")
+  })
+
+  it("ignores invented aside keys and preserves a single approved question", async () => {
+    mocks.create.mockResolvedValueOnce(planResult("unfamiliar_artist_sound", { observationKey: "__proto__" }))
+    expect((await (await planned("Harbour Static")).json()).message).toBe("What do they sound like?")
+  })
+
+  it("derives the selector from the intent and persists its key for city navigation", async () => {
+    mocks.create.mockResolvedValueOnce(planResult("night_preference", { choiceKey: "discovery", facts: [
+      { key: "location", value: "Bristol", sourceQuote: "Bristol" }, { key: "preferredCity", value: "London", sourceQuote: "London" },
+    ] }))
+    const data = await (await planned("Bristol to the London show.")).json()
+    expect(data.ui.options).toEqual(["London, Sat 17 Apr", "London, Sun 18 Apr", "See other cities"])
+    expect(mocks.inserted[1].metadata.conversation_choice_key).toBe("night")
+    expect(data.message.match(/\?/g)).toHaveLength(1)
+  })
+
+  it("retains an approved direct answer alongside city-specific buttons", async () => {
+    mocks.history[0].metadata.conversation_details = { preferredCity: "London" }
+    mocks.create.mockResolvedValueOnce(planResult("night_preference", { answerKey: "london_dates" }))
+    const data = await (await planned("What are the London dates?")).json()
+    expect(data.message).toBe(`${MO_TURN_PLAN.answers.london_dates} London, then. What night would you prefer?`)
+  })
+
+  it("falls back to an approved missing-field question after invalid intent repairs", async () => {
+    mocks.create.mockResolvedValue(planResult("invented"))
+    const data = await (await planned("Hello")).json()
+    expect(data.status).toBe("active")
+    expect(data.message).toBe("How did you first hear about the band?")
+    expect(mocks.create).toHaveBeenCalledTimes(3)
+  })
+
+  it("keeps approved questions, asides and answers free of em dashes and extra requests", () => {
+    for (const entry of Object.values(MO_TURN_PLAN.questions)) {
+      expect(entry.question.match(/\?/g)).toHaveLength(1)
+      expect(entry.question).not.toContain("—")
+    }
+    for (const text of [...Object.values(MO_TURN_PLAN.observations), ...Object.values(MO_TURN_PLAN.answers)]) {
+      expect(text).not.toMatch(/[?—]/)
+      expect(text).not.toMatch(/\b(?:tell me|let me know|describe|share with me)\b/i)
+    }
   })
 })
 

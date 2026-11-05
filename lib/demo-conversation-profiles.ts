@@ -6,6 +6,7 @@ import type { ProjectContext } from "@/lib/project-resolution"
 import { LEWISHAM_SOCIAL_CONVERSATION_GUIDANCE, LEWISHAM_SOCIAL_OPENING } from "@/lib/lewisham-social-persona"
 import { TOUR_NIGHTS, TOUR_CITIES, SEE_OTHER_CITIES, resolveLewishamChoice } from "@/lib/lewisham-social-tour"
 import { formatMoReply } from "@/lib/lewisham-social-voice"
+import { MO_TURN_PLAN } from "@/lib/lewisham-social-turn-plan"
 export { TOUR_NIGHTS } from "@/lib/lewisham-social-tour"
 
 export const CONVERSATION_ENGINE_MARKER = "groucho_conversation_v1"
@@ -27,6 +28,7 @@ type DemoProfile = {
   resolveChoice?: ConversationConfiguration["resolveChoice"]
   formatReply?: ConversationConfiguration["formatReply"]
   replyGuidance?: string
+  turnPlan?: ConversationConfiguration["turnPlan"]
 }
 
 export const DEMO_CONVERSATION_PROFILES: Record<DemoConversationId, DemoProfile> = {
@@ -70,6 +72,7 @@ export const DEMO_CONVERSATION_PROFILES: Record<DemoConversationId, DemoProfile>
     objective: "Understand how they found Lewisham Social, what connects them to the band and why, what else they enjoy, and their companion, travel origin and exact preferred tour night.",
     guidance: LEWISHAM_SOCIAL_CONVERSATION_GUIDANCE,
     typicalAnswers: "6–8", wrapUpAnswers: 9, softCloseAnswers: 11, resolveChoice: resolveLewishamChoice, formatReply: formatMoReply,
+    turnPlan: MO_TURN_PLAN,
     replyGuidance: "MO'S NEXT QUESTION: Follow the visitor's most recent answer. If they change subject or offer another artist instead of answering your last question, follow their new topic; never insist on your unanswered question. An unfamiliar artist is an invitation to ask what they sound like, not to doubt the visitor or say you will take their word for it. When a fan has just revealed an unexpected gig event, ask about its reaction, recovery or consequence before a second topic mentioned in that same answer. Inviting the story earlier does not replace this one follow-up after the event is revealed. Reflecting the event then asking about the second topic does not follow the event. Once they describe the outcome, that story is resolved: move on, without asking for a song title or another retrospective question. For example, a performance falters, the crowd takes over, you ask what the performers did, and their account of the recovery completes that thread. Do not echo their story as a preamble. Prefer a single short question; do not combine identification and interpretation. Do not grade a song choice or announce that you love hearing stories. Let specific attention show Mo's personality. Answer direct questions and honour stopping and runtime limits.",
     closing: "Thanks for coming through the door.",
     completion: "Demo complete. Your preferred night is shown here; no tickets are reserved and no presale code will be sent.",
@@ -126,7 +129,7 @@ export async function postDemoConversation(input: Omit<Parameters<typeof postCon
   if (!persona || persona.id !== personaId) return NextResponse.json({ error: "Demo persona unavailable" }, { status: 503 })
   return postConversation({ ...input, runCompletion: false, configuration: {
     id: profile.id, marker: CONVERSATION_ENGINE_MARKER, model: colorsThinConversationModel(),
-    fields: profile.fields, choices: profile.choices, resolveChoice: profile.resolveChoice, formatReply: profile.formatReply, replyGuidance: profile.replyGuidance,
+    fields: profile.fields, choices: profile.choices, resolveChoice: profile.resolveChoice, formatReply: profile.formatReply, replyGuidance: profile.replyGuidance, turnPlan: profile.turnPlan,
     wrapUpAnswers: profile.wrapUpAnswers ?? 7, softCloseAnswers: profile.softCloseAnswers ?? 10,
     closingMessage: profile.closing, completionMessage: profile.completion,
     consentStatement: "Someone else's private information needs their permission before it is shared.",
