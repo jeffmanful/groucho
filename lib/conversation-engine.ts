@@ -160,6 +160,7 @@ export type ConversationConfiguration = {
   choices?: Readonly<Record<string, ConversationChoice>>
   resolveChoice?: (key: string, choice: ConversationChoice, details: Record<string, string>, message: string) => ConversationChoice
   formatReply?: (reply: string) => string
+  replyGuidance?: string
   closingMessage?: string
   completionMessage?: string
   wrapUpAnswers?: number
@@ -349,7 +350,7 @@ export async function postConversation(input: {
     const forcedTool = supportsForcedToolChoice(model)
     const base = {
       model, max_tokens: maxTokens,
-      system: system + "\n\n" + instruction + (forcedTool ? "" : "\n\nReturn the groucho_converse fields as one JSON object."),
+      system: system + "\n\n" + instruction + (config.replyGuidance ? "\n\n" + config.replyGuidance : "") + (forcedTool ? "" : "\n\nReturn the groucho_converse fields as one JSON object."),
       messages: [...conversation, { role: "user" as const, content: currentAnswer }],
     }
     const request = forcedTool

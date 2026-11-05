@@ -36,6 +36,7 @@ function configuration(id: DemoConversationId = "loptimiste"): ConversationConfi
   return { id, marker: CONVERSATION_ENGINE_MARKER, model: "test-model", fields: profile.fields, choices: profile.choices,
     resolveChoice: profile.resolveChoice,
     formatReply: profile.formatReply,
+    replyGuidance: profile.replyGuidance,
     wrapUpAnswers: profile.wrapUpAnswers, softCloseAnswers: profile.softCloseAnswers,
     closingMessage: profile.closing, completionMessage: profile.completion,
     buildPrompt: ({ turnCount }) => demoConversationPrompt(profile, `You are ${id}.\n\nCONVERSATION FLOW\nLegacy pass and reject rules.`, turnCount) }
@@ -256,9 +257,9 @@ describe("shared conversation runtime for public demos", () => {
     expect(mocks.inserted[1].content).not.toContain("\\n")
   })
 
-  it("removes Mo's stock approval before returning and saving the actual question", async () => {
+  it.each(["Last Bus Home is a good one to start with.", "Last Bus Home, good.", "A track, then."])("removes Mo's stock approval before returning and saving the question: %s", async preamble => {
     mocks.history[0].metadata.conversation_profile = "lewisham-social"
-    mocks.create.mockResolvedValueOnce(result("Last Bus Home is a good one to start with. What stays with you about it?"))
+    mocks.create.mockResolvedValueOnce(result(`${preamble} What stays with you about it?`))
     const data = await (await run("Last Bus Home", "lewisham-social")).json()
     expect(data.message).toBe("What stays with you about it?")
     expect(mocks.inserted[1].content).toBe(data.message)

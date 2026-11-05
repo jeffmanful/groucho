@@ -26,6 +26,7 @@ type DemoProfile = {
   softCloseAnswers?: number
   resolveChoice?: ConversationConfiguration["resolveChoice"]
   formatReply?: ConversationConfiguration["formatReply"]
+  replyGuidance?: string
 }
 
 export const DEMO_CONVERSATION_PROFILES: Record<DemoConversationId, DemoProfile> = {
@@ -69,6 +70,7 @@ export const DEMO_CONVERSATION_PROFILES: Record<DemoConversationId, DemoProfile>
     objective: "Understand how they found Lewisham Social, what connects them to the band and why, what else they enjoy, and their companion, travel origin and exact preferred tour night.",
     guidance: LEWISHAM_SOCIAL_CONVERSATION_GUIDANCE,
     typicalAnswers: "6–8", wrapUpAnswers: 9, softCloseAnswers: 11, resolveChoice: resolveLewishamChoice, formatReply: formatMoReply,
+    replyGuidance: "MO'S NEXT QUESTION: When a fan has just described something unexpected at a gig, ask about the reaction, recovery or consequence of that event before asking about a second place, artist or night mentioned afterwards. Inviting the story on a previous turn does not replace this one follow-up after the event is actually revealed. Reflecting the event then asking about the second topic does not follow the event. After hearing the outcome, move on. For example, if a performance falters and the crowd takes over, ask what the performers did next. Do not echo their story as a preamble. For an unfamiliar artist, ask what they sound like. Prefer a single short question; do not combine identification and interpretation. Do not grade a song choice or announce that you love hearing stories. Let specific attention show Mo's personality. Answer direct questions and honour stopping and runtime limits.",
     closing: "Thanks for coming through the door.",
     completion: "Demo complete. Your preferred night is shown here; no tickets are reserved and no presale code will be sent.",
     fields: [
@@ -124,7 +126,7 @@ export async function postDemoConversation(input: Omit<Parameters<typeof postCon
   if (!persona || persona.id !== personaId) return NextResponse.json({ error: "Demo persona unavailable" }, { status: 503 })
   return postConversation({ ...input, runCompletion: false, configuration: {
     id: profile.id, marker: CONVERSATION_ENGINE_MARKER, model: colorsThinConversationModel(),
-    fields: profile.fields, choices: profile.choices, resolveChoice: profile.resolveChoice, formatReply: profile.formatReply,
+    fields: profile.fields, choices: profile.choices, resolveChoice: profile.resolveChoice, formatReply: profile.formatReply, replyGuidance: profile.replyGuidance,
     wrapUpAnswers: profile.wrapUpAnswers ?? 7, softCloseAnswers: profile.softCloseAnswers ?? 10,
     closingMessage: profile.closing, completionMessage: profile.completion,
     consentStatement: "Someone else's private information needs their permission before it is shared.",
