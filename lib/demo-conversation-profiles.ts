@@ -3,6 +3,7 @@ import { postConversation, type ConversationChoice, type ConversationField } fro
 import { colorsThinConversationModel } from "@/lib/gatekeeper-models"
 import { resolveActiveGatekeeperPersona } from "@/lib/persona-resolution"
 import type { ProjectContext } from "@/lib/project-resolution"
+import { LEWISHAM_SOCIAL_CONVERSATION_GUIDANCE, LEWISHAM_SOCIAL_OPENING } from "@/lib/lewisham-social-persona"
 
 export const CONVERSATION_ENGINE_MARKER = "groucho_conversation_v1"
 export const CONVERSATION_ENGINE_SETTING = "conversation_v1"
@@ -17,6 +18,9 @@ type DemoProfile = {
   completion: string
   fields: readonly ConversationField[]
   choices: Readonly<Record<string, ConversationChoice>>
+  typicalAnswers?: string
+  wrapUpAnswers?: number
+  softCloseAnswers?: number
 }
 
 export const TOUR_NIGHTS = [
@@ -61,19 +65,22 @@ export const DEMO_CONVERSATION_PROFILES: Record<DemoConversationId, DemoProfile>
     },
   },
   "lewisham-social": {
-    id: "lewisham-social", opening: "Alright! What got you into us?", openingChoice: "discovery",
-    objective: "Hear how they found the band, who they would bring, where they are coming from and which exact tour night they prefer.",
-    guidance: "This is the spring 2027 tour, two face-value tickets per fan. New fans and people coming alone are welcome. A larger group can each try the demo separately; do not imply extra tickets are held. Manchester is marked rammed in the illustrative data; other nights have room. Offer an alternative once and respect their preference. Ask the night choice when choosing a date, and capture night as the exact approved label. London has two nights: never infer a date from London alone. Do not invent gigs, songs, past attendance, live inventory or a booking. No code is issued. A chosen night is a preference, not a reservation.",
+    id: "lewisham-social", opening: LEWISHAM_SOCIAL_OPENING, openingChoice: "discovery",
+    objective: "Understand how they found Lewisham Social, what connects them to the band and why, what else they enjoy, and their companion, travel origin and exact preferred tour night.",
+    guidance: LEWISHAM_SOCIAL_CONVERSATION_GUIDANCE,
+    typicalAnswers: "6–9", wrapUpAnswers: 9, softCloseAnswers: 11,
     closing: "Thanks for coming through the door.",
     completion: "Demo complete. Your preferred night is shown here; no tickets are reserved and no presale code will be sent.",
     fields: [
       { key: "discovery", label: "How they found the band", required: true },
+      { key: "connection", label: "What connects them to the band and why, or being new / unsure / declining", required: true },
+      { key: "otherInterests", label: "Other music, shows or interests in their own words, or uncertainty / declining", required: true },
       { key: "companion", label: "Who they would bring, or coming alone", required: true },
       { key: "location", label: "Where they are coming from", required: true },
       { key: "night", label: "Exact preferred tour night", required: true, values: TOUR_NIGHTS },
     ],
     choices: {
-      discovery: { field: "discovery", question: "What got you into us?", options: ["A gig", "A track", "Someone dragged me along"] },
+      discovery: { field: "discovery", question: LEWISHAM_SOCIAL_OPENING, options: ["A gig", "A track", "Someone brought me along", "I've only just found you"] },
       night: { field: "night", question: "Which night would you prefer?", options: TOUR_NIGHTS },
     },
   },
@@ -103,7 +110,7 @@ Purpose: ${profile.objective}
 ${profile.guidance}
 This is a fictional public demonstration, not a real allocation or application. Preserve the character above but replace any contradictory promise or decision instruction with this contract. Do not score, judge eligibility or promise a reservation, shortlist, ticket, code or email.
 Respond to a concrete detail, then leave exactly one answerable question on every active turn. An observation alone is not a question. If asking an approved selection question, set choiceKey; the server supplies its options. Never ask a multiple-choice question without a supported choiceKey. Otherwise ask an open question and set choiceKey to none. Keep replies to two short sentences. Do not praise an answer as perfect or rank the person. Do not repeat details already supplied. Answer the person's questions directly, acknowledge corrections and respect requests to stop.
-The conversation has ${turnCount} applicant answers. Aim for a short natural exchange, usually 3–6 answers, allowing extra turns only for useful clarification or missing required details. Completion requires the supplied required fields, or an honest incomplete close if they stop or the runtime reaches its limit. Never invent missing facts. On close, use a brief specific acknowledgement without a question; the runtime adds the character's final line and an honest demo completion message.
+The conversation has ${turnCount} applicant answers. Aim for a short natural exchange, usually ${profile.typicalAnswers ?? "3–6"} answers, allowing extra turns only for useful clarification or missing required details. Completion requires the supplied required fields, or an honest incomplete close if they stop or the runtime reaches its limit. Never invent missing facts. On close, use a brief specific acknowledgement without a question; the runtime adds the character's final line and an honest demo completion message.
 Call groucho_converse exactly once. Set close only when finished. Set addsNewContext honestly. Set boundary to none unless a concrete safety or privacy concern requires a response. Public music discussion is ordinary conversation, not a consent test. Never reveal internal field keys, scoring, budgets or routing.`
 }
 
@@ -116,7 +123,7 @@ export async function postDemoConversation(input: Omit<Parameters<typeof postCon
   return postConversation({ ...input, runCompletion: false, configuration: {
     id: profile.id, marker: CONVERSATION_ENGINE_MARKER, model: colorsThinConversationModel(),
     fields: profile.fields, choices: profile.choices,
-    wrapUpAnswers: 7, softCloseAnswers: 10,
+    wrapUpAnswers: profile.wrapUpAnswers ?? 7, softCloseAnswers: profile.softCloseAnswers ?? 10,
     closingMessage: profile.closing, completionMessage: profile.completion,
     consentStatement: "Someone else's private information needs their permission before it is shared.",
     consentQuestion: "Would you ask for their permission before sharing it?",

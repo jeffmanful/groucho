@@ -34,6 +34,7 @@ const context = { organisationId: "org", projectId: "project", settings: { appli
 function configuration(id: DemoConversationId = "loptimiste"): ConversationConfiguration {
   const profile = DEMO_CONVERSATION_PROFILES[id]
   return { id, marker: CONVERSATION_ENGINE_MARKER, model: "test-model", fields: profile.fields, choices: profile.choices,
+    wrapUpAnswers: profile.wrapUpAnswers, softCloseAnswers: profile.softCloseAnswers,
     closingMessage: profile.closing, completionMessage: profile.completion,
     buildPrompt: ({ turnCount }) => demoConversationPrompt(profile, `You are ${id}.\n\nCONVERSATION FLOW\nLegacy pass and reject rules.`, turnCount) }
 }
@@ -140,6 +141,45 @@ describe("shared conversation runtime for public demos", () => {
     mocks.history[0].metadata.conversation_profile = "saltings"
     expect((await run()).status).toBe(409)
     expect(mocks.create).not.toHaveBeenCalled()
+  })
+
+  it.each(["connection", "otherInterests"])("keeps Mo listening when %s is missing despite complete ticket logistics", async missing => {
+    mocks.history[0].metadata.conversation_profile = "lewisham-social"
+    const details: Record<string, string> = { discovery: "A track", connection: "The guitar on Kitchen Light", otherInterests: "Small guitar gigs",
+      companion: "My sister", location: "Bristol", night: "Bristol, Tue 13 Apr" }
+    delete details[missing]
+    mocks.history[0].metadata.conversation_details = details
+    mocks.create.mockResolvedValueOnce(result("Thanks for telling me.", true))
+      .mockResolvedValueOnce(result(missing === "connection" ? "What caught you in that track?" : "Who else have you been listening to lately?"))
+    const data = await (await run("That covers the travel plans.", "lewisham-social")).json()
+    expect(data.status).toBe("active")
+    expect(mocks.create).toHaveBeenCalledTimes(2)
+    expect(mocks.queue).not.toHaveBeenCalled()
+  })
+
+  it("captures connection and wider interests together without requiring separate survey answers", async () => {
+    mocks.history[0].metadata.conversation_profile = "lewisham-social"
+    mocks.history[0].metadata.conversation_details = { discovery: "A track", companion: "My sister", location: "Bristol", night: "Bristol, Tue 13 Apr" }
+    mocks.create.mockResolvedValueOnce(result("The guitar and those small rooms stayed with you.", true, { facts: [
+      { key: "connection", value: "The quiet guitar in Kitchen Light", sourceQuote: "the quiet guitar in Kitchen Light" },
+      { key: "otherInterests", value: "Wolf Alice and small gigs", sourceQuote: "Wolf Alice and small gigs" },
+    ] }))
+    const data = await (await run("I love the quiet guitar in Kitchen Light. I'm also into Wolf Alice and small gigs.", "lewisham-social")).json()
+    expect(data).toMatchObject({ status: "completed", details: { connection: "The quiet guitar in Kitchen Light", otherInterests: "Wolf Alice and small gigs" }, completion: { complete: true } })
+    expect(mocks.create).toHaveBeenCalledTimes(1)
+  })
+
+  it("lets a newcomer decline to share interests without inventing fandom or blocking completion", async () => {
+    mocks.history[0].metadata.conversation_profile = "lewisham-social"
+    mocks.history[0].metadata.conversation_details = { discovery: "I've only just found you", companion: "Coming alone", location: "Bristol", night: "Bristol, Tue 13 Apr" }
+    mocks.create.mockResolvedValueOnce(result("Thanks for having a look.", true, { facts: [
+      { key: "connection", value: "Still exploring", sourceQuote: "Still exploring" },
+      { key: "otherInterests", value: "Prefers not to share", sourceQuote: "I'd rather not share" },
+    ] }))
+    const data = await (await run("Still exploring. I'd rather not share other interests.", "lewisham-social")).json()
+    expect(data).toMatchObject({ status: "completed", completion: { complete: true } })
+    expect(data.secret).toBeUndefined()
+    expect(mocks.queue).not.toHaveBeenCalled()
   })
 })
 

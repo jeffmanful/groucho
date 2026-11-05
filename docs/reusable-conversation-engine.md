@@ -73,7 +73,9 @@ Engine selection and model selection are separate. Demo profiles call `colorsThi
 | --- | --- | --- | --- |
 | `loptimiste` | Odile | `recipient`, `scentMemory`, `burnLocation` | `recipient`, optional `ritual` |
 | `saltings` | The Warden | `workingOn`, `stuck`, `wants`, `line`, `attendance` | `need`, `attendance` |
-| `lewisham-social` | Mo | `discovery`, `companion`, `location`, `night` | `discovery`, `night` |
+| `lewisham-social` | Mo | `discovery`, `connection`, `otherInterests`, `companion`, `location`, `night` | `discovery` (including newcomers), `night` |
+
+Lewisham Social's authored fictional band story and Mo prompt live in `lib/lewisham-social-persona.ts`. The profile asks about connection to the music and wider interests before travel logistics, following concrete details rather than surveying hobbies or testing fandom. Newness, uncertainty and refusal are valid details. Mo normally takes 6–9 answers, with wrap-up at 9 and a soft close at 11; other demos retain their existing pacing. `scripts/configure-lewisham-social.ts <output.sql>` emits an atomic, scoped update for the organisation-owned Mo persona and this project's opening/max-turn setting. Execute it through the authenticated database connector and verify the returned prompt match; persona version history is maintained by the database trigger. Deploy the updated backend profile as well: database prompt edits alone do not register the new required details or opening choices. Test in fresh sessions.
 
 A required detail can record an honest refusal or limitation, such as declining to share a line, coming alone or being unable to attend. Required does not mean a favourable answer is required. Dates, availability and the numbered candle are illustrative context, not live inventory.
 

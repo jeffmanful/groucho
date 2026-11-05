@@ -21,7 +21,9 @@ const answers: Record<DemoConversationId, Record<string, string>> = {
     attendance: "Yes, the whole fortnight",
   },
   "lewisham-social": {
-    discovery: "My sister took me to a small Deptford show. I loved how the brass left room for the crowd to sing.",
+    discovery: "My sister sent me the live recording of Kitchen Light.",
+    connection: "Kitchen Light reminds me of my old flatmate staying up when I had a bad night. The quiet guitar leaves room for that feeling.",
+    otherInterests: "I listen to Wolf Alice and go to small guitar gigs with my sister. I like hearing a band in a room where you can see everyone's faces.",
     companion: "My sister, just the two of us.", location: "We live in Bristol.", night: "Bristol, Tue 13 Apr",
   },
 }
