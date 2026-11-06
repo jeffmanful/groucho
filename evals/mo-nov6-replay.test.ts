@@ -116,6 +116,7 @@ describe.skipIf(process.env.RUN_MO_LIVE_REPLAY !== "1")("Mo November 6 real-mode
     expect(body.details.preferredCity).toBe("London")
     if (!body.ui?.options) body = await reply("Which London night could we go to?")
     expect(body.ui.options).toEqual(["London, Sat 17 Apr", "London, Sun 18 Apr", "See other cities"])
+    expect(body.message).toBe("Which London date would you prefer?")
     body = await reply("London, Sat 17 Apr")
     expect(body.details.night).toBe("London, Sat 17 Apr")
     expect(body.details.location).toBe("Bristol")

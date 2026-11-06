@@ -200,7 +200,7 @@ describe("shared conversation runtime for public demos", () => {
     const data = await (await run("Travelling from Bristol to the London show.", "lewisham-social")).json()
     expect(data.details).toMatchObject({ location: "Bristol", preferredCity: "London" })
     expect(data.ui.options).toEqual(["London, Sat 17 Apr", "London, Sun 18 Apr", "See other cities"])
-    expect(data.message).toBe("Which night would you prefer?")
+    expect(data.message).toBe("Which London date would you prefer?")
   })
 
   it("expands other cities without recording navigation as a night or accepting model-invented facts", async () => {
@@ -381,16 +381,39 @@ describe("Mo's natural conversation and November 6 regression", () => {
     expect(mocks.create).toHaveBeenCalledTimes(1)
   })
 
-  it("preserves a natural acknowledgement and offers only approved London dates", async () => {
+  it("asks for the date alone while offering only approved London dates", async () => {
     mocks.history = moHistoryBefore(9)
     mocks.create.mockResolvedValueOnce(result("London it is. Which night would suit you?", false, { choiceKey: "night", facts: [
       { key: "location", value: "Bristol", sourceQuote: "Bristol" }, { key: "preferredCity", value: "London", sourceQuote: "London" },
     ] }))
     const data = await (await natural("Bristol to the London show.")).json()
     expect(data.ui.options).toEqual(["London, Sat 17 Apr", "London, Sun 18 Apr", "See other cities"])
-    expect(data.message).toContain("London it is.")
+    expect(data.message).toBe("Which London date would you prefer?")
     expect(data.message.match(/\?/g)).toHaveLength(1)
     expect(mocks.inserted[1].metadata.conversation_choice_key).toBe("night")
+  })
+
+  it("separates a story follow-up from single-night confirmation, then resumes after selection", async () => {
+    mocks.history = moHistoryBefore(1)
+    const story = "I'm travelling from Cardiff to Bristol. Ash dropped both sticks and the room clapped the beat."
+    mocks.create.mockResolvedValueOnce(result("How did Ash get back into the song? Bristol is on 13 April, pick it below.", false, {
+      choiceKey: "night", facts: [
+        { key: "location", value: "Cardiff", sourceQuote: "Cardiff" },
+        { key: "preferredCity", value: "Bristol", sourceQuote: "Bristol" },
+      ], memory: [{ subject: "thread", detail: "The visitor's story about Ash dropping the sticks is unfinished", sourceQuote: "Ash dropped both sticks and the room clapped the beat" }],
+    }))
+    const data = await (await natural(story)).json()
+    expect(data.message).toBe("Would you like the Bristol show on Tue 13 Apr?")
+    expect(data.ui.options).toEqual(["Bristol, Tue 13 Apr", "See other cities"])
+    expect(data.message).not.toContain("Ash")
+    expect(mocks.inserted[1].content).toBe(data.message)
+    mocks.history.push(...mocks.inserted)
+    mocks.create.mockResolvedValueOnce(result("Bristol on the 13th, noted. How did Ash get back into the song?"))
+    const next = await (await natural("Bristol, Tue 13 Apr")).json()
+    expect(next.details.night).toBe("Bristol, Tue 13 Apr")
+    expect(next.message).toContain("How did Ash get back into the song?")
+    expect(next.ui.inputType).toBe("text")
+    expect(mocks.create.mock.calls[1][0].system).toContain("story about Ash")
   })
 
   it("allows the date question again when the visitor changes destination", async () => {
@@ -407,11 +430,13 @@ describe("Mo's natural conversation and November 6 regression", () => {
     expect(mocks.create).toHaveBeenCalledTimes(1)
   })
 
-  it("keeps direct answers when showing exact night choices", async () => {
+  it("answers a dates query with date choices and one standalone question", async () => {
     mocks.history = moHistoryBefore(5)
     mocks.history.at(-1)!.metadata.conversation_details = { preferredCity: "London" }
     mocks.create.mockResolvedValueOnce(result("London is on 17 and 18 April 2027. Which night would suit you?", false, { choiceKey: "night" }))
-    expect((await (await natural("What are the London dates?")).json()).message).toContain("London is on 17 and 18 April 2027.")
+    const data = await (await natural("What are the London dates?")).json()
+    expect(data.message).toBe("Which London date would you prefer?")
+    expect(data.ui.options).toEqual(["London, Sat 17 Apr", "London, Sun 18 Apr", "See other cities"])
   })
 
   it("replaces obsolete stored catalogue instructions and uses free-form reply schema", async () => {

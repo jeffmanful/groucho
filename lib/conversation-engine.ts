@@ -558,7 +558,7 @@ export async function postConversation(input: {
   const boundaryStatement = proposal.reply.split(/\n\s*\n/)[0]
     .replace(/\s*[^.!?]*\?[\s\S]*$/, "").trim()
   const reply = natural && !firstBoundaryTurn
-    ? proposal.reply.trim()
+    ? activeChoice?.question ?? proposal.reply.trim()
     : close
     ? conversationalClosing(
       proposal.reply,

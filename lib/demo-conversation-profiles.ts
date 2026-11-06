@@ -66,7 +66,7 @@ export const DEMO_CONVERSATION_PROFILES: Record<DemoConversationId, DemoProfile>
     },
   },
   "lewisham-social": {
-    id: "lewisham-social", opening: LEWISHAM_SOCIAL_OPENING,
+    id: "lewisham-social", opening: LEWISHAM_SOCIAL_OPENING, openingChoice: "discovery",
     objective: "Welcome the visitor through a natural music conversation and help them choose a tour night, understanding both travel origin and exact show preference.",
     guidance: LEWISHAM_SOCIAL_CONVERSATION_GUIDANCE,
     naturalConversation: true, resolveChoice: resolveLewishamChoice,
@@ -82,6 +82,7 @@ export const DEMO_CONVERSATION_PROFILES: Record<DemoConversationId, DemoProfile>
       { key: "night", label: "Exact preferred tour night", required: true, values: TOUR_NIGHTS },
     ],
     choices: {
+      discovery: { field: "discovery", question: LEWISHAM_SOCIAL_OPENING, options: ["A gig", "A track", "Someone brought me along", "I've only just found you"] },
       night: { field: "night", question: "Which night would you prefer?", options: TOUR_NIGHTS, navigationOptions: [SEE_OTHER_CITIES],
         factsByOption: Object.fromEntries(TOUR_NIGHTS.map(night => [night, { preferredCity: night.split(",")[0] }])) },
     },

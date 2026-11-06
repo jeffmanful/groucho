@@ -137,6 +137,20 @@ describe("startGatekeeperSession", () => {
     expect(state.sessions).toHaveLength(0)
   })
 
+  it("starts Mo with the four opening answer buttons", async () => {
+    const { startGatekeeperSession } = await import("@/lib/start-gatekeeper-session")
+    const settings = { ...projectSettings, raw: {
+      conversation_engine: "conversation_v1", conversation_profile: "lewisham-social", persona_id: "persona1",
+    } }
+    const res = await startGatekeeperSession({ sessionId: "mo_opening_choices_12345678",
+      applicantIdentity: { email: "applicant@example.com" }, projectSettings: settings,
+      context: { organisationId: "org1", projectId: "proj1", apiKeyId: null, settings },
+    })
+    expect(res.status).toBe(200)
+    const body = await jsonFromResponse(res)
+    expect(body.ui).toMatchObject({ inputType: "singleSelect", options: ["A gig", "A track", "Someone brought me along", "I've only just found you"] })
+  })
+
   it("creates session with configured application opener", async () => {
     const { startGatekeeperSession } = await import("@/lib/start-gatekeeper-session")
     const res = await startGatekeeperSession({

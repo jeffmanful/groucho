@@ -13,5 +13,8 @@ export function resolveLewishamChoice(key: string, choice: ConversationChoice, d
   const city = details.preferredCity
   const nights = TOUR_NIGHTS.filter(night => night.split(",")[0] === city)
   if (!nights.length) return choice
-  return { ...choice, question: `${city}, then. What night would you prefer?`, options: [...nights, SEE_OTHER_CITIES] }
+  const question = nights.length === 1
+    ? `Would you like the ${city} show on ${nights[0].split(", ")[1]}?`
+    : `Which ${city} date would you prefer?`
+  return { ...choice, question, options: [...nights, SEE_OTHER_CITIES] }
 }

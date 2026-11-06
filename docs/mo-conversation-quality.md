@@ -17,3 +17,11 @@ Sonnet 5.5 was selected for Mo after comparison with Haiku 5.5 on the same anony
 Validation included four real-model scenarios: recovery at the original partner/newcomer corrections; a fresh newcomer conversation continuing beyond eleven answers; an unfolding gig story with a direct band-history question; and the original short connection answers. A separate real-model walkthrough verified an organic route from Kitchen Light to Bristol travel origin and London, Sat 17 Apr, including exact date options and simulation completion. All five scenarios passed. Transcripts were manually inspected in addition to assertions. The local library suite passed 764 tests.
 
 These are bounded samples, not proof that every future conversation will be good. Future changes must assess full exchanges again, particularly ambiguous replies, newcomers, people who change topic, corrections, and returning to the ticket choice after a story.
+
+
+## Date-choice clarity
+
+A gig-date choice or confirmation is a standalone turn. Its registered question and date buttons are the sole request; no conversational or travel question accompanies them. A single-city/single-night choice explicitly asks whether the visitor wants that show. After the selection, Mo acknowledges the date and can return to an unfinished story. The full visitor message and grounded thread notes remain available, so isolating the choice does not discard the conversation. This improves decision clarity without reinstating a general question script or trimming ordinary replies.
+
+
+The opening answer buttons are retained as an accessible way to start: A gig, A track, Someone brought me along, and I've only just found you. Free text remains available. These starter choices do not select a fixed sequence of follow-up questions.
