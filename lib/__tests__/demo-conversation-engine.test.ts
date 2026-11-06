@@ -340,6 +340,12 @@ describe("Mo's natural conversation and November 6 regression", () => {
     expect(mocks.create).toHaveBeenCalledTimes(2)
   })
 
+  it("recognises rephrased introduction questions", () => {
+    const topic = DEMO_CONVERSATION_PROFILES["lewisham-social"].questionTopic!
+    expect(topic("Who was it that brought you along?")).toBe("discovery")
+    expect(topic("Who's the friend who brought you along?")).toBe("discovery")
+  })
+
   it("does not confuse a specific gig follow-up with a broad listening request", () => {
     const topic = DEMO_CONVERSATION_PROFILES["lewisham-social"].questionTopic!
     expect(topic("Who else was in the room when the lights went out?")).toBeUndefined()
