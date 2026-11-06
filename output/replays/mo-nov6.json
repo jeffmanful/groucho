@@ -1,0 +1,263 @@
+{
+  "model": "claude-haiku-5-5",
+  "evidence": [
+    {
+      "answer": "Ive never been",
+      "response": {
+        "message": "No bother at all, you don't need to have been to anything to be here. Your partner's clearly been a fan for a long time, so it sounds like they're keen to share something they care about. If you fancy a way in before any gig, Kitchen Light is the one a lot of people start with. It's about coming back to a shared flat after a rough night and finding someone's stayed up for you, and it's a scrappy live recording that got passed around between people sending it to someone they missed. Have you had a listen to anything yet?",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "connection": "New to the band; has never been to a show"
+        }
+      }
+    },
+    {
+      "answer": "No",
+      "response": {
+        "message": "No bother at all. You don't need any homework before coming along. If you want a way in, Kitchen Light is probably the one people pass around most. It's about getting back to a shared flat after a bad night and finding someone's stayed up for you, and it started life as a scrappy live recording that people sent to friends they missed. Could be a nice first listen, especially if your partner has opinions on it.",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {}
+      }
+    },
+    {
+      "answer": "Make me laugh? I never mentioned that",
+      "response": {
+        "message": "You're right, I got ahead of myself there. You didn't say anything about it making you laugh, and I shouldn't have put that on you. All I know is that your partner keeps putting it on at home. I'd love to hear what they say about it, if they've ever told you.",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {}
+      }
+    },
+    {
+      "answer": "I already said i dont",
+      "response": {
+        "message": "Fair enough, you did say that, and I'm sorry for asking twice. No need to know anything yet. Your partner's reason for Same Again is theirs to share, so I'll leave that there. If you do fancy a way in, Kitchen Light is a good one: it started out as a scrappy live recording that people passed around to someone they missed, so it's an easy one to hear without any background.",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {}
+      }
+    }
+  ],
+  "attempts": [
+    [
+      {
+        "type": "tool_use",
+        "id": "toolu_01WNA87qRJkk46ZJSrotz1Bz",
+        "name": "groucho_converse",
+        "input": {
+          "reply": "No bother at all, you don't need to have been to anything to be here. Your partner's clearly been a fan for a long time, so it sounds like they're keen to share something they care about. If you fancy a way in before any gig, Kitchen Light is the one a lot of people start with. It's about coming back to a shared flat after a rough night and finding someone's stayed up for you, and it's a scrappy live recording that got passed around between people sending it to someone they missed. Have you had a listen to anything yet?",
+          "close": false,
+          "boundary": "none",
+          "boundaryQuestion": "",
+          "choiceKey": "none",
+          "facts": [
+            {
+              "key": "connection",
+              "value": "New to the band; has never been to a show",
+              "subject": "visitor",
+              "sourceQuote": "Ive never been"
+            }
+          ],
+          "memory": [
+            {
+              "subject": "visitor",
+              "detail": "Has never been to a Lewisham Social show.",
+              "sourceQuote": "Ive never been"
+            },
+            {
+              "subject": "other",
+              "detail": "Partner has been a fan of the band for a long time and wants to share it with the visitor.",
+              "sourceQuote": "They love the band and have for a long time and they want to share that with me"
+            }
+          ]
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    [
+      {
+        "type": "tool_use",
+        "id": "toolu_019Uim1McyEntYTJcq1oum4D",
+        "name": "groucho_converse",
+        "input": {
+          "reply": "No bother at all. You don't need any homework before coming along. If you want a way in, Kitchen Light is probably the one people pass around most. It's about getting back to a shared flat after a bad night and finding someone's stayed up for you, and it started life as a scrappy live recording that people sent to friends they missed. Could be a nice first listen, especially if your partner has opinions on it.",
+          "close": false,
+          "boundary": "none",
+          "boundaryQuestion": "",
+          "choiceKey": "none",
+          "facts": [
+            {
+              "key": "discovery",
+              "value": "Was brought along by their partner",
+              "subject": "visitor",
+              "sourceQuote": "It was my partner"
+            },
+            {
+              "key": "connection",
+              "value": "New to the band; has not been to a show and has not listened to the songs yet",
+              "subject": "visitor",
+              "sourceQuote": "Ive never been"
+            }
+          ],
+          "memory": [
+            {
+              "subject": "visitor",
+              "detail": "Has never been to a Lewisham Social show",
+              "sourceQuote": "Ive never been"
+            },
+            {
+              "subject": "visitor",
+              "detail": "Has not listened to any of the songs yet",
+              "sourceQuote": "No"
+            },
+            {
+              "subject": "other",
+              "detail": "Partner loves the band and has for a long time, and wants to share it with the visitor",
+              "sourceQuote": "They love the band and have for a long time and they want to share that with me"
+            }
+          ]
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    [
+      {
+        "type": "tool_use",
+        "id": "toolu_01VUSAgSqN9LztJgPQNtg1EM",
+        "name": "groucho_converse",
+        "input": {
+          "reply": "You're right, I got ahead of myself there. You didn't say anything about it making you laugh, and I shouldn't have put that on you. All I know is that your partner keeps putting it on at home. I'd love to hear what they say about it, if they've ever told you.",
+          "close": false,
+          "boundary": "none",
+          "boundaryQuestion": "",
+          "choiceKey": "none",
+          "facts": [
+            {
+              "key": "companion",
+              "value": "Partner brought them along; partner has loved the band for a long time",
+              "subject": "visitor",
+              "sourceQuote": "someone brought me along"
+            }
+          ],
+          "memory": [
+            {
+              "subject": "correction",
+              "detail": "Visitor corrected Mo: they did not say Same Again makes them laugh. Do not attribute that feeling to them.",
+              "sourceQuote": "Make me laugh? I never mentioned that"
+            },
+            {
+              "subject": "visitor",
+              "detail": "Visitor has not been to a Lewisham Social show and has not listened to the songs yet.",
+              "sourceQuote": "Ive never been"
+            }
+          ]
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    [
+      {
+        "type": "tool_use",
+        "id": "toolu_012HdCRVGJ5yR9ZamzC9TEWq",
+        "name": "groucho_converse",
+        "input": {
+          "reply": "Fair enough, you did say that, and I'm sorry for asking twice. No need to know anything yet. Your partner's reason for Same Again is theirs to share, so I'll leave that there. If you do fancy a way in, Kitchen Light is a good one: it started out as a scrappy live recording that people passed around to someone they missed, so it's an easy one to hear without any background.",
+          "close": false,
+          "boundary": "none",
+          "boundaryQuestion": "",
+          "choiceKey": "none",
+          "facts": [],
+          "memory": [
+            {
+              "subject": "visitor",
+              "detail": "Has not been to a Lewisham Social show and has not listened to the songs yet.",
+              "sourceQuote": "Ive never been"
+            },
+            {
+              "subject": "visitor",
+              "detail": "Has not listened to any of the songs yet.",
+              "sourceQuote": "No"
+            },
+            {
+              "subject": "visitor",
+              "detail": "Was brought along by their partner, who loves the band and has for a long time.",
+              "sourceQuote": "It was my partner"
+            },
+            {
+              "subject": "other",
+              "detail": "The visitor's partner loves the band, has for a long time, and wants to share that with the visitor. The partner finds Same Again reminds him of his friends.",
+              "sourceQuote": "It reminds him of his friends"
+            }
+          ]
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ]
+  ]
+}

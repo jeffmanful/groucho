@@ -1,0 +1,237 @@
+{
+  "model": "claude-sonnet-5-5",
+  "evidence": [
+    {
+      "answer": "My partner showed me Kitchen Light. The rough guitar and the lyrics grabbed me.",
+      "response": {
+        "message": "Good one to start with. Kitchen Light has a funny life: a scrappy live recording got passed around by people sending it to someone they missed, so it's travelled mostly from person to person. That rough edge is part of why it works, I think. Is there a line or a moment in it that stuck with you most?",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "discovery": "Their partner showed them Kitchen Light",
+          "connection": "The rough guitar and lyrics of Kitchen Light grabbed them"
+        }
+      }
+    },
+    {
+      "answer": "It reminds me of a friend staying up after a long day.",
+      "response": {
+        "message": "That's lovely, and it's very close to the heart of the song. It's about getting back to a shared flat after a bad night and finding someone has stayed up. Nia is reluctant to pin down one true meaning, so I like that it has landed for you as a friend rather than a flat. They're playing a spring tour if you fancy hearing it live. Where would you be travelling from?",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "discovery": "Their partner showed them Kitchen Light",
+          "connection": "Kitchen Light reminds them of a friend staying up after a long day"
+        }
+      }
+    },
+    {
+      "answer": "We both want to see them live.",
+      "response": {
+        "message": "Then it's a good tour to aim at. It's their biggest so far, but they want to keep some of the closeness of the early shows, so it should still feel like a room people are in together. Whereabouts would the two of you be setting off from?",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "discovery": "Their partner showed them Kitchen Light",
+          "connection": "Kitchen Light reminds them of a friend staying up after a long day"
+        }
+      }
+    },
+    {
+      "answer": "We're coming from Bristol, and we want to see them in London.",
+      "response": {
+        "message": "Which London date would you prefer?",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "singleSelect",
+          "emotionalState": "neutral",
+          "visualState": "thinking",
+          "options": [
+            "London, Sat 17 Apr",
+            "London, Sun 18 Apr",
+            "See other cities"
+          ]
+        },
+        "details": {
+          "discovery": "Their partner showed them Kitchen Light",
+          "connection": "Kitchen Light reminds them of a friend staying up after a long day",
+          "location": "Bristol",
+          "preferredCity": "London"
+        }
+      }
+    },
+    {
+      "answer": "London, Sat 17 Apr",
+      "response": {
+        "message": "Saturday 17th in London, then. Nice choice for a pair coming up from Bristol. Last Bus Home closes their set, a song about stretching out a journey because you're not ready for the evening to end, so I'll quietly hope that suits your trip home too.",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "discovery": "Their partner showed them Kitchen Light",
+          "connection": "Kitchen Light reminds them of a friend staying up after a long day",
+          "location": "Bristol",
+          "preferredCity": "London",
+          "night": "London, Sat 17 Apr"
+        }
+      }
+    },
+    {
+      "answer": "That settles it, thanks. Goodbye!",
+      "response": {
+        "message": "Lovely, enjoy it, you two. Safe journey up from Bristol, and say hello to the room for me. Bye for now!",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "completed",
+        "reviewStatus": "not_required",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "discovery": "Their partner showed them Kitchen Light",
+          "connection": "Kitchen Light reminds them of a friend staying up after a long day",
+          "location": "Bristol",
+          "preferredCity": "London",
+          "night": "London, Sat 17 Apr"
+        },
+        "completion": {
+          "mode": "simulation",
+          "complete": true,
+          "message": "Thanks for chatting. Any tour preference is illustrative; no tickets are reserved and no presale code will be sent."
+        }
+      }
+    }
+  ],
+  "attempts": [
+    [
+      {
+        "type": "text",
+        "text": "{\"reply\":\"Good one to start with. Kitchen Light has a funny life: a scrappy live recording got passed around by people sending it to someone they missed, so it's travelled mostly from person to person. That rough edge is part of why it works, I think. Is there a line or a moment in it that stuck with you most?\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[{\"key\":\"discovery\",\"value\":\"Their partner showed them Kitchen Light\",\"subject\":\"visitor\",\"sourceQuote\":\"My partner showed me Kitchen Light.\"},{\"key\":\"connection\",\"value\":\"The rough guitar and lyrics of Kitchen Light grabbed them\",\"subject\":\"visitor\",\"sourceQuote\":\"The rough guitar and the lyrics grabbed me.\"}],\"memory\":[{\"subject\":\"other\",\"detail\":\"Visitor's partner introduced them to Kitchen Light\",\"sourceQuote\":\"My partner showed me Kitchen Light.\"},{\"subject\":\"thread\",\"detail\":\"Visitor was asked which line or moment in Kitchen Light stuck with them; unanswered so far\",\"sourceQuote\":\"The rough guitar and the lyrics grabbed me.\"}]}"
+      }
+    ],
+    [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSwA4KEAgTGAI4AUIIdGhpbmtpbmcSDHxL1J8C30LeCYoEjxoMTZ1tR+F7g0Sg5AXiIjCIoTUNQgslIpvb9CEVlnAgFdGdOzlBqdFXt2ipp87yErsfN+njBLtVcghqJnLl2zwq3Q33phM2ci/3NlRi/AK/E/IFkvCbbHcX07Xf1+USc8BawnFlSpUbDX184bj9d9nb423xeqtbYFdxEDezf2H3g3gV8H2+bdxRP3M8R5gjuRWeLuzgFePjSgS91bmICKTnJF0DHYS1cUdZv7BXTfVVqZtjD4CKJr0e1wqj14aLEAvPTaaVGi/L64RhKKEc5RVD3CoRkmZnUCtlqRcVYLyLNGjXLBcSe+ORl1GrwMd1lwZsFpSxLw1DpdycE8+X+vTCey79ZTBxzADpfwEy7Lz+EjzhIRy5ZTGukF0lqb12blxkkFr4B4Nwv9+INrd/WiJoHtYT7+JrpkpXCH64vGqAo11FpPrZ0Scd/+2cEK8Ew6FrSrR/VbZZi64Q3gIo6wKPH2RcpzVymqIieQC8IAhfksQh3ZyWiwj0nxunKce61r0HG1spJdmrU6i/pULTXM+nHtjqO70eAV+UlFRn+rTNFa4N/uRrFuIWI0/6TzJVB8gQ33daxGJutVfCWqTf4jGa5ANFv7cw8etXlb0zweKH+yGNUpH6D41STqcyLQQ424+7KnJyvviswvkSW+8RC7NrBPwfKnxcPlEG00Bao+wlOweILc7zlnpjaaJ/aqRZFmUa+i38P+W44Nk6msHrG1O/usDcBzrlFb9DnDHG34ae3m4f015McTHBzzCms7OayOkgCg7bCfP3mzwNLYUt4HcJDriE0+tpaRjoAC8TzH2lkGVBr+nArfKI3uzRciQAgOWI4BcHsd72K+Uu/BYqztgG+qjqbx4sq/CT2WlUQ1lza3CHbW2D5RkZuLJmjpzVcAXjeLN67DSTZKrYxNgJRTn/9ijZ9tKA8UC0RKktlO8aab4KTxIuD+IVoJlkUk6J6+33EttxMRzcAMcTM7PLmYjWwL7uucXXzsThshphaofB9LVNAsAx4YqLZEUPuUJ0boHl+Zy6SJZ4dwzw1YiASDfc5qmg5wFfqcf219Q/+E2Nb0uZrIksaXW9sy0cyK6NMVbkpkvH12N3Gf0s0dkAIDphXf9fs7qpOYc+RfMVEP/kRUUo7475kbJJ7aHyPofXZBR/zcWAlIhjJdW9HgOkpX4nJy6CnvLNCZju03Ps5W2YTQeDGraZ/mdJjauxxelejz5Iy7vj6HLlyzPVWy3lhV8idJ/qpapQc3ALHxhtTnB+ELlsvFEMFW4I7Um/ls2lXF0E+dpwkmaarM21nixhn3NxswX2Dsiz3QOGHOsplhz6JMOcilqOZ/zSpuSA2feRRy1wfOLb4B5M+sEPnTnFQv9iIgT9riG4uplzvK4+sOSguG7nAUK5Aktw72yPps5mwgSdQNzLeyRx/PjQsgR1oZDbusP4Py97mUD60Q3Q8RdxuRQN5HwVsbMeXLjaGKgWbdGSVGWlrbrnSpf69gApEP5ghwYr5q6n1LY80OJjdRCwWf4XIZN8s56zv4xVwQ6w0LgxAVvIt96M8a8fCu8ONVXY21VCSbUJS6dAlWrSg3QAwHrEWNRuqxrn+m7sumhRPsDQLYawm4IOv7/rfLQelI0O/U3/wb+bh1tJ9OaseujrQ2UZfUEglDr4Zp7lzuE1dWNcpwQVYTsbg9I1txHfUEb79+97thclRj0I1/cWYEl+pW9cS+0iLksCPKsnZb9OPWSSiQBrsk71F5FKK2v7/1OrSTc40J9xNHY5brnrzTZGQHZLCknZuh98UhlntSKPH/LpgNtIFkLzSzfDZjqixxoDyJqg6aetefPSRiIkeBPA/a0/1C4ZkAkvUF0JnuSL8aIUav5y/cxXWZXju2l9OU1fF/nAWDL+XpfM5oOoprpNXAwPh7hKG432K/a48KBNimT6bM4RJ50jq8SjcDdvPFgNLJUb7jQckVYhGTsEUCzIucILYXefizFMXuPBD5Lgs0YRaW86SBAvQWKD4ph88LnE9G+GGQBEdklXiBJEX/6PJJ3OF1oxWs/a6Z8edA9QXkSQ9jSodQq1UG25ogda8RTsWAh0KtRt9fssbEtE/MoKtkmCpKKOLCBwzYj+deUXe3rBZO7TyxCUoqe5MNOcRzo41RvLXHGlfsZJnpp5qQGhH3iKTztpCuURBlKwvdIlA2wi/B4WZagV1UtSZO0T2gW8ZxPnIroTZNiOkKra0Zvr5B1qC/OfT0JTnPSdzd2PiiYhPWbdhyGSLJyZNuqy3CjUa2J1/5erEDKaa3wcuX1Pl0iARRXXHBRL/EjL/xz/YY//alGpOGknnZjtnZHo8CNzbDgVCIj5xRoBTalldMHglHVKU+xAHyq4RdnZAtQiPZWep35AXKj7Z8rT5Jh8yZ8hxC6To5kmKXbDyNhlmtC1GYhwdDyqeN2IP4s6cA1AjhgB"
+      },
+      {
+        "type": "text",
+        "text": "{\"reply\":\"That's lovely, and it's very close to the heart of the song. It's about getting back to a shared flat after a bad night and finding someone has stayed up. Nia is reluctant to pin down one true meaning, so I like that it has landed for you as a friend rather than a flat. They're playing a spring tour if you fancy hearing it live. Where would you be travelling from?\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[{\"key\":\"connection\",\"value\":\"Kitchen Light reminds them of a friend staying up after a long day\",\"subject\":\"visitor\",\"sourceQuote\":\"It reminds me of a friend staying up after a long day.\"}],\"memory\":[{\"subject\":\"thread\",\"detail\":\"Visitor answered the question about what stuck with them in Kitchen Light: it reminds them of a friend staying up after a long day. Thread settled.\",\"sourceQuote\":\"It reminds me of a friend staying up after a long day.\"}]}"
+      }
+    ],
+    [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "text",
+        "text": "{\"reply\":\"Then it's a good tour to aim at. It's their biggest so far, but they want to keep some of the closeness of the early shows, so it should still feel like a room people are in together. Whereabouts would the two of you be setting off from?\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[],\"memory\":[{\"subject\":\"thread\",\"detail\":\"Visitor says they and another person both want to see the band live; travel origin not yet given and show night not yet chosen\",\"sourceQuote\":\"We both want to see them live.\"}]}"
+      }
+    ],
+    [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSvAsKEAgTGAI4AUIIdGhpbmtpbmcSDHmZ1VRYE3VeNTs+vxoMuIm56gmIv/AybtjOIjCRTdpqnf3mtpyj/rIr3rlAyJ7OtFwO1AXRMk06bJaeJbFBnBEHr0oQ9jhm98caFB8q2Qo2doqorj/M18H2iWgphUsCXwBweQqqarL+zLy2LqpzHOsJGzZqXcSOn6nH8ePDI3CH97G0GEDLPkCwILMligKxGuuQAptjyO/pWfeL6pg1UMEN1zXHLCbGDMdggubg/dX3IPajywrMhXPl2GdNsQCQLvOhMQ8qVTiz8NL9LeACz/bngO+cCol5RfyrTdDgW44vULxLfeAkCvQ7q2j4uGN80tapVemaM4Q80kHdKG9OYw8CjiJLxuBh1P2jfgSBG9mttsGTkBCCiGupnNTxUh6ztnuz1C7ytTo0igAiOUfQHHT+THOedJ5flZD5L4X60jquAFjUC/gU11G+utaeX6OdgdLuW1jdFek1c9n2sieSfrYtIgUOSjIfbD/HR+QZ/77yJGpdMjjk95Gk+eIIxbQnEgxCTzO+A8qgIMoAev8ZBOLQU0ktG+9VGE0ONrCrLmZb48q7tSRmzztdHL+xf5o65nrr3OKWjakw13FYr/oRFA/k8pWCny4vHFFTslrbbtFYasNbf0+Nvlc4CCBdtR/XW0cqnMn11BVkAqI/ONxHaR5yJMzX/ms+jYKOuHCWu/GgY6vd8LPBiSYcYZPJ1eosGkR3xFgS2IFak1Z9bbjdbbRn6+3EYDe6QOLUmahIUoPsjNSmgij1pkR92oNyXj2EPRrV/c2MVp+qHAg+x+pSCY9qUw699zqUAM6JHvGJuKo3zuP+5se6Zp0P7jfTnGjWh+6Kju5kAyfX4NundXwiXP3hmsk+lIYre2d5ZJ0a7OlEzDpIbmpbad6kaAy+NUMp1hBpn40H4GLwx9YJCoYznI103n6UFRnxCpgaa4TPbWn1t5bvjKqlQ5oLngSSqmPLqPQgVEWyzY4xrz6F4UXmD1LkspgB07vB6lCcqjfi5uWDivY3eykyaCswdtdY9l8G5Z+Ff1ZSa/0KN94HznTf4f55JkFT/wmvbpdmt9+lnd3t5MxLaczMAuabL39PTNcBCIRc4gao+wnlbKX/dLSX1oW27SIxYU0x9fHQoTTmP5Qe7ZqtB+JWPo7Fsto68CuHnst/PD2mTm6kM+gJXGv73lpHJ4gSHSUVBxMNPkLZ04SlLKbNEi7ro7ZwTKqrqIcIq8nqcHbI7dBKIvyZCHEJ26ZjvSAaepj0vNTdL54z8frvPw6EUsmdn0LE4VZAw9KnrLebb6/mDX436opWnpbLAtKf9xfxlWBkGEdaCffn97PFPvEzdjtOKEAgebs1oKvByg4a+qIwPn+mvzNabzIC1wrC7ThfGetgevRNMwxj04mUMjV5yvK92VBxjrpSiBrrw+6pTPo554DaVJRSUyJWc6n25vcsR7C3C3izk9J/NQknSJ9Cu5DRavIJJ8UPM6K+FE/6POaUEQ3MphwbmkVkvbljFsqOjx5F+g7CFUqPdMtXrOouBHc7Vw8rGYCBAb6VcErMJkVZE1tJtjGA0N4cam+iGxkpGlHwK3z+lW2NLxpcpJrAPLzMRqQWtPbQeOqvfVSSDaLOqg7knO7uYiQehP3Ke/wDOrxFLt9NhVvp+uMouQZRNa0n1qMIvFOXJmd+oH3GcHY2qqr4d6l6no0uoe0Ep1FDzJeQo1+TQ6yW/zU/qWzbejdOOs3eWy+QAqG/XDrvA0MH7augGl5Q+olv1ZnhFaBVCdak+FDVPBIqHvdTDgRssCoSdGF8Mf9Rscq9GFJXeBcMWLSNAuxzcX/WMX3NoqRgb+Fsnn0yESDHza3JGmmi/4zS4vb8C2uBqlidIZpI4fhCPo0QjBQplGtdPQWWwmNGxz0caY7rgXcsxVgdj0Ax6fPEr5CxhLtBDRNZSAPVTAedw4fXGAE="
+      },
+      {
+        "type": "text",
+        "text": "{\"reply\":\"Bristol to London, that's a simple trip. London has two nights on the tour, so which would you prefer?\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"night\",\"facts\":[{\"key\":\"location\",\"value\":\"Bristol\",\"subject\":\"visitor\",\"sourceQuote\":\"We're coming from Bristol\"},{\"key\":\"preferredCity\",\"value\":\"London\",\"subject\":\"visitor\",\"sourceQuote\":\"we want to see them in London\"}],\"memory\":[{\"subject\":\"thread\",\"detail\":\"Visitor and another person are travelling from Bristol and want to see the band in London; choice between the two London nights is pending\",\"sourceQuote\":\"We're coming from Bristol, and we want to see them in London.\"}]}"
+      }
+    ],
+    [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "text",
+        "text": "{\"reply\":\"Saturday 17th in London, then. Nice choice for a pair coming up from Bristol. Last Bus Home closes their set, a song about stretching out a journey because you're not ready for the evening to end, so I'll quietly hope that suits your trip home too.\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[{\"key\":\"night\",\"value\":\"London, Sat 17 Apr\",\"subject\":\"visitor\",\"sourceQuote\":\"London, Sat 17 Apr\"}],\"memory\":[{\"subject\":\"thread\",\"detail\":\"Visitor chose London, Sat 17 Apr as the preferred night, travelling from Bristol with another person; date choice settled\",\"sourceQuote\":\"London, Sat 17 Apr\"}]}"
+      }
+    ],
+    [
+      {
+        "type": "text",
+        "text": "{\"reply\":\"Lovely, enjoy it, you two. Safe journey up from Bristol, and say hello to the room for me. Bye for now!\",\"close\":true,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[],\"memory\":[]}"
+      }
+    ]
+  ]
+}

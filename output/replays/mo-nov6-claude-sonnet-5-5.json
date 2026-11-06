@@ -1,0 +1,1000 @@
+{
+  "model": "claude-sonnet-5-5",
+  "evidence": [
+    {
+      "answer": "Ive never been",
+      "response": {
+        "message": "Ah, my mistake, I got ahead of myself there. Never been is a perfectly good place to start, and everyone's first time was once. If your partner's been with them a while, they'll have plenty of stories. Kitchen Light is the song that tends to get passed around: a scrappy live recording that spread because people kept sending it to someone they missed. Has your partner played you any of it yet?",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "connection": "New to the band; has never been to a gig; partner introduced them"
+        }
+      }
+    },
+    {
+      "answer": "No",
+      "response": {
+        "message": "That's no problem at all, there's nothing to catch up on. If you want a way in, Kitchen Light is the best-known one. It's about getting back to a shared flat after a bad night and finding someone has stayed up for you. It mostly spread because people kept sending a scrappy live recording to someone they missed. I'd be curious which song your partner would pick to start you off.",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "connection": "New to the band; brought along by their partner and hasn't listened to any songs yet"
+        }
+      }
+    },
+    {
+      "answer": "Make me laugh? I never mentioned that",
+      "response": {
+        "message": "You're right, sorry. I put a reaction on you that you never described. Also, I took \"same again\" to mean the song Same Again, but you might have meant they just put the same thing on every time. Which was it?",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {}
+      }
+    },
+    {
+      "answer": "I already said i dont",
+      "response": {
+        "message": "Sorry, you did say, and I shouldn't have asked twice. That's on me. Coming in completely fresh is a good way to do it, and you've got a guide who knows the songs. If you ever want a starting point, Same Again is fast and a bit uncomfortable: the same friends in the same pub, all quietly wanting something to change. It might be interesting to hear it knowing it makes your partner think of his friends.",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "connection": "New to the band, has not heard any songs; brought along by their partner"
+        }
+      }
+    },
+    {
+      "answer": "My partner introduced me to the band, but I haven't heard them or been to a show.",
+      "response": {
+        "message": "Well, that's a perfectly good way in, and no need to have heard anything or been to a show. If you want a place to start, Kitchen Light is the one most people know. It spread through a scrappy live recording that people kept sending to someone they missed, which is a nice way for a song to travel. It's about getting back to a shared flat after a bad night and finding someone stayed up. Has your partner said which song they'd point you to?",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "discovery": "Introduced to the band by their partner",
+          "connection": "New to the band; has not heard them or been to a show"
+        }
+      }
+    },
+    {
+      "answer": "He has loved them for years and wanted to share that with me.",
+      "response": {
+        "message": "That's a lovely thing to be handed, a band someone's carried around for years. It suits them too, because so much of Lewisham Social has travelled by someone saying \"just listen to this\". If he's been with them that long, he may have a few favourites he's itching to play you. Mine is Same Again, which is fast, funny and a bit uncomfortable, all about a group of friends in the same pub, all quietly wanting something to change. I'd be curious which one he picks first.",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "discovery": "Introduced to the band by their partner",
+          "connection": "New to the band; has not heard them or been to a show"
+        }
+      }
+    },
+    {
+      "answer": "He likes Same Again because it reminds him of his friends. That's his experience, not mine.",
+      "response": {
+        "message": "Fair enough, that one's his. It makes sense that it reminds him of his friends, though. It's all the same faces in the same pub, and people tend to hear their own crowd in it. When you hear it, it can sound like whatever it sounds like to you. Nobody has to agree with him, or with me.",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "discovery": "Introduced to the band by their partner",
+          "connection": "New to the band; has not heard them or been to a show"
+        }
+      }
+    },
+    {
+      "answer": "For me it's The Smiths. I like the vibe and the lyrics.",
+      "response": {
+        "message": "Good company to be keeping. I like that you went for the lyrics as well as the vibe, because that's where Lewisham Social tend to hook people too. Their songs are conversational, about late buses, friendships and the things people can't say straight out. I wouldn't promise they sound like The Smiths, but if words matter to you, they might be worth a listen. What is it about the lyrics that gets you?",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "discovery": "Introduced to the band by their partner",
+          "connection": "New to the band; has not heard them or been to a show",
+          "otherInterests": "The Smiths; likes the vibe and the lyrics"
+        }
+      }
+    },
+    {
+      "answer": "I like how songs can be sad but still make you want to dance.",
+      "response": {
+        "message": "That's a good trait to love, and it's close to the heart of this band. Rosa, who plays bass, wants people dancing, and the basslines are a big part of how they sound. No Forwarding Address is probably the best example. It's bass-led and Rosa's favourite, about a friend leaving London: you're pleased for them, and you also feel a bit abandoned. That's a sad, mixed feeling set to something with a groove. I'd say it's worth trying first, though it's only one way in, and you might hear it differently.",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "discovery": "Introduced to the band by their partner",
+          "connection": "New to the band; has not heard them or been to a show",
+          "otherInterests": "The Smiths; likes the vibe and the lyrics"
+        }
+      }
+    },
+    {
+      "answer": "I don't need a ticket yet, I'm just chatting. Tell me how Lewisham Social got started.",
+      "response": {
+        "message": "Happy to just chat. It started in 2018 in Lewisham, when the four of them lost their usual pub. It closed, and starting a band gave them another reason to meet up every week. They rehearsed in Deptford, in a lock-up Ash borrowed from his uncle at first, and spent eight years playing small rooms across south London. The name came from their pub-organising group chat. Nobody loved it, but the first poster was already printed, so it stuck. I think that's partly why the songs feel like they're about friends rather than about being a band.",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "discovery": "Introduced to the band by their partner",
+          "connection": "New to the band; has not heard them or been to a show",
+          "otherInterests": "The Smiths; likes the vibe and the lyrics"
+        }
+      }
+    },
+    {
+      "answer": "I like that it came from friends wanting to keep meeting.",
+      "response": {
+        "message": "Me too. It's still in the way they do things. Their first regular night was Thursdays at The Railway Rooms, an upstairs room near New Cross where there were sometimes only twenty people. Then came Social Hours, a three-band night with borrowed equipment and friends doing the door. I helped on the door back then, so I'm biased, but I think the band started as an excuse to be in a room together, and the songs never quite stopped sounding like that.",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "discovery": "Introduced to the band by their partner",
+          "connection": "New to the band; has not heard them or been to a show",
+          "otherInterests": "The Smiths; likes the vibe and the lyrics"
+        }
+      }
+    },
+    {
+      "answer": "What's your own favourite song of theirs?",
+      "response": {
+        "message": "Same Again, as I let slip earlier. It's fast and funny, and there's a wince in it, because it's a group of friends in the same pub all avoiding the fact that everyone wants something to change. I have a soft spot for that kind of uneasy humour, where you laugh and then feel slightly caught out. It's also quick enough to dance to, which fits what you said about sad songs that still get you moving. If you'd rather start somewhere gentler, Kitchen Light is the one to try.",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "discovery": "Introduced to the band by their partner",
+          "connection": "New to the band; has not heard them or been to a show",
+          "otherInterests": "The Smiths; likes the vibe and the lyrics"
+        }
+      }
+    },
+    {
+      "answer": "I might listen to that with my partner tonight.",
+      "response": {
+        "message": "Lovely, I hope it goes down well. It's a good one to put on with someone, because it's quick and you'll know within a minute whether it's for you. It'll be interesting to see whether he sings along, given it reminds him of his friends. Whatever you make of it, I'd like to hear, even if it's just \"not for me\".",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "discovery": "Introduced to the band by their partner",
+          "connection": "New to the band; has not heard them or been to a show",
+          "otherInterests": "The Smiths; likes the vibe and the lyrics"
+        }
+      }
+    },
+    {
+      "answer": "And what was it like putting those early nights on?",
+      "response": {
+        "message": "Small and a bit makeshift, mostly. Borrowed equipment, friends on the door, and some Thursdays at The Railway Rooms with only about twenty people. I won't dress it up with specific stories, but the door is a good place to be, because you see people arrive and you hear what the night meant to them afterwards. The nights were never properly recorded, either. There's no full archive, so a lot of it survives only in what people remember and tell each other. I think that's part of the band as much as the records are, and it's why I like hearing people's versions.",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "discovery": "Introduced to the band by their partner",
+          "connection": "New to the band; has not heard them or been to a show",
+          "otherInterests": "The Smiths; likes the vibe and the lyrics"
+        }
+      }
+    },
+    {
+      "answer": "I've helped friends put on a night too. We borrowed everything.",
+      "response": {
+        "message": "Ha, then you know exactly how it goes. Borrowed gear is a bit of a rite of passage, and it does tend to make a night feel like everyone's, because everyone had a hand in it. That's how Social Hours ran, with borrowed equipment and friends on the door. What kind of night was yours, and how did it turn out?",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "discovery": "Introduced to the band by their partner",
+          "connection": "New to the band; has not heard them or been to a show",
+          "otherInterests": "Has helped friends put on a night, borrowing everything"
+        }
+      }
+    },
+    {
+      "answer": "The speakers failed halfway through. Everyone sang until we got them working again.",
+      "response": {
+        "message": "That's a great outcome, honestly. A room full of people singing through a dead PA is probably better than the night going to plan. It's the sort of thing people are still telling each other years later, which is what I mean about nights living in the stories. Jem, their guitarist, repairs amplifiers, so he'd have been a handy person to have around, though I won't pretend I know what he'd have done. Do you remember what everyone was singing?",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "discovery": "Introduced to the band by their partner",
+          "connection": "New to the band; has not heard them or been to a show",
+          "otherInterests": "Helped friends put on a night with borrowed equipment; the speakers failed halfway and everyone sang until they were working again"
+        }
+      }
+    },
+    {
+      "answer": "Thanks, can we stop?",
+      "response": {
+        "message": "Of course. Thanks for chatting, and for the story about the speakers. Enjoy the listen tonight.",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "completed",
+        "reviewStatus": "not_required",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "discovery": "Introduced to the band by their partner",
+          "connection": "New to the band; has not heard them or been to a show",
+          "otherInterests": "Helped friends put on a night with borrowed equipment; the speakers failed halfway and everyone sang until they were working again"
+        },
+        "completion": {
+          "mode": "simulation",
+          "complete": true,
+          "message": "Thanks for chatting. Any tour preference is illustrative; no tickets are reserved and no presale code will be sent."
+        }
+      }
+    },
+    {
+      "answer": "A gig",
+      "response": {
+        "message": "Good, that's the right answer round here. Most of this band's story got told in small rooms, upstairs at pubs, and not all of it was ever recorded. Is it a gig you've been to, or one you're hoping to get to?",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {}
+      }
+    },
+    {
+      "answer": "One of the Social Hours nights upstairs at the Railway Rooms. The last song went completely off plan.",
+      "response": {
+        "message": "Ah, now that's the good stuff. Social Hours was never fully recorded, so nights like that mostly survive because people tell them, and I think that's part of what the band is. I wasn't going to guess what went off plan, so what happened with that last song?",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "discovery": "Went to a Social Hours night upstairs at the Railway Rooms",
+          "connection": "Attended a Social Hours night at the Railway Rooms, where the last song went off plan"
+        }
+      }
+    },
+    {
+      "answer": "Ash dropped both sticks and the room started clapping the beat. Afterwards my mate took me to another night in New Cross.",
+      "response": {
+        "message": "Ash dropping both sticks and the whole room picking up the beat is a lovely image. You can't plan that, and since Social Hours was never fully recorded, it only exists because people like you remember it. Ash is the quiet one in interviews but funny in the van, so I'd like to think he enjoyed it. What was the other night in New Cross like? Was it a similar sort of room?",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "discovery": "Went to a Social Hours night upstairs at the Railway Rooms",
+          "connection": "Attended a Social Hours night at the Railway Rooms, where the last song went off plan",
+          "otherInterests": "Went to another night in New Cross with a mate"
+        }
+      }
+    },
+    {
+      "answer": "He laughed, picked the sticks up and came back in. We were still clapping on the way out.",
+      "response": {
+        "message": "That's the best way for it to go. He laughed, the room kept the beat for him and he walked straight back into it. It fits the band's whole idea of keeping things close. And clapping all the way out of the door is what their closer, Last Bus Home, is about too: stretching the night out because you're not ready for it to end. Funny that you did it without the song.",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "discovery": "Went to a Social Hours night upstairs at the Railway Rooms",
+          "connection": "Attended a Social Hours night at the Railway Rooms, where the last song went off plan",
+          "otherInterests": "Went to another night in New Cross with a mate"
+        }
+      }
+    },
+    {
+      "answer": "How did the band get started?",
+      "response": {
+        "message": "It started with a pub closing, which is very Lewisham. Their usual place shut in 2018, and four friends who'd been meeting there needed another reason to see each other every week, so they started a band. The first rehearsals were in a lock-up Ash borrowed from his uncle, and later they moved to Deptford. The name came from the group chat they used to organise pub nights. Nobody loved it, but the first poster was already printed, so it stuck. I think that's why a drummer dropping his sticks and the room taking over the beat suits them so well.",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "discovery": "Went to a Social Hours night upstairs at the Railway Rooms",
+          "connection": "Attended a Social Hours night at the Railway Rooms, where the last song went off plan",
+          "otherInterests": "Went to another night in New Cross with a mate"
+        }
+      }
+    },
+    {
+      "answer": "Someone brought me along",
+      "response": {
+        "message": "Well, I'm glad they did. Being dragged along by a friend is a fine way in, and it suits a band that started because four friends needed a reason to see each other every week. Was it a night out you were brought to, or more a case of being told about them?",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "discovery": "Someone brought them along"
+        }
+      }
+    },
+    {
+      "answer": "A mate told me about them",
+      "response": {
+        "message": "Good, word of mouth is how this band has mostly travelled. Their best-known song, Kitchen Light, got around because people kept sending a scrappy live recording to someone they missed. If you want a place to start, that's the one I'd point you to. It's about getting back to a shared flat after a bad night and finding someone has stayed up for you.",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "discovery": "A mate told them about the band"
+        }
+      }
+    },
+    {
+      "answer": "the raw vibes",
+      "response": {
+        "message": "Raw is a fair word for it. That Kitchen Light recording is scrappy in the best way, and the early small-room nights were never properly recorded either, so a lot of what survives is just people telling each other what it was like. Is raw the sort of thing you tend to go for, or was it how your mate described them?",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "discovery": "A mate told them about the band"
+        }
+      }
+    },
+    {
+      "answer": "the political sound",
+      "response": {
+        "message": "Political, I can see that. I'd say they're more the everyday kind than a manifesto band: changing neighbourhoods, late buses, friends who all want something to change and nobody says so. Same Again is my soft spot for that. It's fast and funny, and then it gets uncomfortable because it's about the same people in the same pub avoiding the point. That might be a good one to try after Kitchen Light.",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "discovery": "A mate told them about the band"
+        }
+      }
+    },
+    {
+      "answer": "the hook and lyrics",
+      "response": {
+        "message": "Good pairing, because lyrics are where Nia is at her most careful. She's precise about them, but she's reluctant to say what a song is really about, so people tend to hear their own version. Rosa's basslines give the songs the hook, and they're danceable enough that you can miss how sharp the words are until the second or third listen. Are you usually a lyrics person, or does a hook get you first?",
+        "engine": "groucho_conversation_v1",
+        "profile": "lewisham-social",
+        "status": "active",
+        "reviewStatus": "not_ready",
+        "scores": {
+          "specificity": 0.5,
+          "authenticity": 0.5,
+          "cultural_depth": 0.5,
+          "overall": 0.5
+        },
+        "ui": {
+          "intent": "probe",
+          "inputType": "text",
+          "emotionalState": "neutral",
+          "visualState": "thinking"
+        },
+        "details": {
+          "discovery": "A mate told them about the band"
+        }
+      }
+    }
+  ],
+  "attempts": [
+    [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "text",
+        "text": "{\"reply\":\"Ah, my mistake, I got ahead of myself there. Never been is a perfectly good place to start, and everyone's first time was once. If your partner's been with them a while, they'll have plenty of stories. Kitchen Light is the song that tends to get passed around: a scrappy live recording that spread because people kept sending it to someone they missed. Has your partner played you any of it yet?\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[{\"key\":\"connection\",\"value\":\"New to the band; has never been to a gig; partner introduced them\",\"subject\":\"visitor\",\"sourceQuote\":\"Ive never been\"}],\"memory\":[{\"subject\":\"correction\",\"detail\":\"Visitor has never been to a gig; do not place them in a venue or room\",\"sourceQuote\":\"Ive never been\"},{\"subject\":\"other\",\"detail\":\"Visitor's partner has loved the band for a long time and wants to share it with the visitor\",\"sourceQuote\":\"They love the band and have for a long time and they want to share that with me\"}]}"
+      }
+    ],
+    [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "text",
+        "text": "{\"reply\":\"That's no problem at all, there's nothing to catch up on. If you want a way in, Kitchen Light is the best-known one. It's about getting back to a shared flat after a bad night and finding someone has stayed up for you. It mostly spread because people kept sending a scrappy live recording to someone they missed. I'd be curious which song your partner would pick to start you off.\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[{\"key\":\"connection\",\"value\":\"New to the band; brought along by their partner and hasn't listened to any songs yet\",\"subject\":\"visitor\",\"sourceQuote\":\"No\"}],\"memory\":[{\"subject\":\"other\",\"detail\":\"Visitor's partner has loved the band for a long time and wants to share it with the visitor\",\"sourceQuote\":\"They love the band and have for a long time and they want to share that with me\"},{\"subject\":\"visitor\",\"detail\":\"Has never been to a Lewisham Social gig\",\"sourceQuote\":\"Ive never been\"},{\"subject\":\"visitor\",\"detail\":\"Has not listened to any of the band's songs yet\",\"sourceQuote\":\"No\"}]}"
+      }
+    ],
+    [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "text",
+        "text": "{\"reply\":\"You're right, sorry. I put a reaction on you that you never described. Also, I took \\\"same again\\\" to mean the song Same Again, but you might have meant they just put the same thing on every time. Which was it?\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[],\"memory\":[{\"subject\":\"correction\",\"detail\":\"Visitor did not say the song made them laugh; Mo wrongly assumed this. Their reply 'Same again' may mean the song Same Again or just the usual, and is unclear.\",\"sourceQuote\":\"Make me laugh? I never mentioned that\"},{\"subject\":\"other\",\"detail\":\"Visitor's partner has loved the band for a long time and wants to share it with the visitor.\",\"sourceQuote\":\"They love the band and have for a long time and they want to share that with me\"},{\"subject\":\"visitor\",\"detail\":\"Visitor has never been to a gig and has not listened to any of the songs yet.\",\"sourceQuote\":\"Ive never been\"}]}"
+      }
+    ],
+    [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "text",
+        "text": "{\"reply\":\"Sorry, you did say, and I shouldn't have asked twice. That's on me. Coming in completely fresh is a good way to do it, and you've got a guide who knows the songs. If you ever want a starting point, Same Again is fast and a bit uncomfortable: the same friends in the same pub, all quietly wanting something to change. It might be interesting to hear it knowing it makes your partner think of his friends.\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[{\"key\":\"connection\",\"value\":\"New to the band, has not heard any songs; brought along by their partner\",\"subject\":\"visitor\",\"sourceQuote\":\"I already said i dont\"}],\"memory\":[{\"subject\":\"visitor\",\"detail\":\"Has never been to a gig and has not listened to any of the songs; asked not to be asked again\",\"sourceQuote\":\"Ive never been\"},{\"subject\":\"other\",\"detail\":\"Visitor's partner (he) has loved the band for a long time and wants to share it; Same Again is the song he plays at home and it reminds him of his friends\",\"sourceQuote\":\"It reminds him of his friends\"},{\"subject\":\"correction\",\"detail\":\"Visitor never said Same Again makes them laugh; Mo had assumed this and was corrected\",\"sourceQuote\":\"Make me laugh? I never mentioned that\"}]}"
+      }
+    ],
+    [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSnAsKEAgTGAI4AUIIdGhpbmtpbmcSDJ0NWYr4EpHHMZwCXRoMtuweUz/z5dBMxxeqIjDY5z15sNcyE/xKnejoXzHdmlMjHykmgAXRoz9a9rAhssMeZobQQJM/PTgtbL8MVu4quQqsDNQJ8mm63JZegghil9ziX/e43vv0tiZT/fhDJPfHS+CFFjx2miZSZRLSw12737wbczGPHrj4Oc5wjypmbtPZNVqvOk1Gs2FocO/R+/rrpwSrxFbXynaWErlV5tj1k34DDyokmLI1tEkAvwnV+o8GDFTb0++HnZTuISmFKvO8I7FYEv9CAwZHQWrN0xDu/+1wFD6MQboTAmWIxCLG8XlSAv+kGbvm3OqtHZ1UgVI8WhiXbvc5XirFeQ9DsQxoUlrxP80h9PpkER59yfispV0GHFj/xLazJ6uCDo5TSoi6sqiyed0RT1yqplUvXN1ksAnsRCpRdlKi2ZSOXjs2TmvpDZYdQsHObnRafEzJf/JJOURDDxWxqsRajGJvSH/a7XVVJoVqylQYvcWLurtcOytr+5L99eAHX2r1JWk0TAm9Cx9cuLjxk/nI+8nQ3JVaPRhARxnQl/x9raFPdm7M9ioW8xG4WIq3UMhKPi3WjlY+gJnq8U06MFOcS7AiJHCxMfMhD/2aQf9bMtPLCzev/FG7PFPJExyPyAwmFdDAXluz26nFC8CCvq358XHkD+fqoEpK94+OvbPjERRdr3iOzc8s8/ulHw3Bt8fWvKYV50olSjw7x4HYQN7pX+6xrsws/BU0LHNVrkxj9RPe61us+q9R4/CWBsiL5Hn5AVyXJLDwD6Diam+PFkgH1vu0wNsaII02zenNuRDA0LY3fDvDlkMlyv0h2FMp03J8KdxmqEBPevMbnNc4+DWoAGawW/h2JwXIoQwtlGSIWkVv1fn6gBNUYbJb9AY8IBtW3G+G9J1HRZwY2pz2zUc0xO/ZKVdndrlF+pCsYgVe2zNj7BgJdOKuMNOygmblUHM6F+dqofAfx30b822+3AYCLY3Ggs+LBnkcAiOAKSNv94+z5eDbi/Acr6knxwkrj3JUWu2EbOu7tZ0bK9cTC0HUg4SkTJq/HHMG0rI8E3Q92PSyMGJdrYJzjlv8uEJuiLoFrCHYdiGJUQkBkHBKFyohd+cJj+Fp5mxmCxHWg1QLlm81oBfZoEQIn4pPpIms5EUMmrzVd29zZ2YzJ9iNKfZ6kp3kYpr1bOGCQH8ZKmuKKTiTOm9eCL4u66W8MS/KlXUL6XXmyTHRA9vlEDYTLfugdqDi08xB7JEFl7p54RHaARQ6+BAqt5/qAGJdv0e5vkZh3w7pHti42OIRw5mIn9A4iAz0ffYwFhl5o79wfULfBSlpKE4IhMosz1/ovLJ2a7PesbEg9Hn7WRIChLd0viuyCzkhNcskmj5+e6IpKv74AxXj7DQECAahjuR0JtqUojXqrrrtywO2GPri/qfD3JhRBs1ESlCfiNr4VgER4685aMJtriS4Pel+zy8Le4crmLdEi/BYNX7RRgj1x2og/EcKVrWsjhnoqXqSbvHcYVsgTdGs/dmBCVaWeFIFTl+Z2qSkI2UtRs9SmRL3YlBaYpJsPb7H2f0qp0+N9bV/zCANq+Wxj9JVlM5jhdPDk6SFt0bTjoeO4aV7RNLhX6iaCtzTDmRlct9J57DqfZs95xjHO29MhKJXaJUIPVDdOdJ0k0gLdF95eGpRaJ8NUmSsFxSwFgY6k02zi6DV7RYI//iIFdT9dUQjiu29qf9b7MstT+nEu2eCBJpRpRkY7e7xBNckmmm7KZya0lDI4T12j5CsUIwqzvPQ9YDeuIdWJ3CFlSJhtg8qusI6hqvlIOYysj+F/mq0GaYTgrhjbqBC7GjzeHAUuZ3bE1vwjdDMlsZDtSC1uT0eiCiVjDJ9zUrupf96mRgB"
+      },
+      {
+        "type": "text",
+        "text": "{\"reply\":\"Well, that's a perfectly good way in, and no need to have heard anything or been to a show. If you want a place to start, Kitchen Light is the one most people know. It spread through a scrappy live recording that people kept sending to someone they missed, which is a nice way for a song to travel. It's about getting back to a shared flat after a bad night and finding someone stayed up. Has your partner said which song they'd point you to?\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[{\"key\":\"discovery\",\"value\":\"Introduced to the band by their partner\",\"subject\":\"visitor\",\"sourceQuote\":\"My partner introduced me to the band\"},{\"key\":\"connection\",\"value\":\"New to the band; has not heard them or been to a show\",\"subject\":\"visitor\",\"sourceQuote\":\"I haven't heard them or been to a show.\"}],\"memory\":[{\"subject\":\"other\",\"detail\":\"Visitor's partner introduced them to the band\",\"sourceQuote\":\"My partner introduced me to the band\"},{\"subject\":\"visitor\",\"detail\":\"Has not heard the band's music or been to a show\",\"sourceQuote\":\"I haven't heard them or been to a show.\"}]}"
+      }
+    ],
+    [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "text",
+        "text": "{\"reply\":\"That's a lovely thing to be handed, a band someone's carried around for years. It suits them too, because so much of Lewisham Social has travelled by someone saying \\\"just listen to this\\\". If he's been with them that long, he may have a few favourites he's itching to play you. Mine is Same Again, which is fast, funny and a bit uncomfortable, all about a group of friends in the same pub, all quietly wanting something to change. I'd be curious which one he picks first.\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[],\"memory\":[{\"subject\":\"other\",\"detail\":\"Visitor's partner (he) has loved the band for years and wanted to share them with the visitor\",\"sourceQuote\":\"He has loved them for years and wanted to share that with me.\"}]}"
+      }
+    ],
+    [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "text",
+        "text": "{\"reply\":\"Fair enough, that one's his. It makes sense that it reminds him of his friends, though. It's all the same faces in the same pub, and people tend to hear their own crowd in it. When you hear it, it can sound like whatever it sounds like to you. Nobody has to agree with him, or with me.\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[],\"memory\":[{\"subject\":\"other\",\"detail\":\"Visitor's partner likes Same Again because it reminds him of his friends; this is his experience, not the visitor's\",\"sourceQuote\":\"He likes Same Again because it reminds him of his friends. That's his experience, not mine.\"}]}"
+      }
+    ],
+    [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "text",
+        "text": "{\"reply\":\"Good company to be keeping. I like that you went for the lyrics as well as the vibe, because that's where Lewisham Social tend to hook people too. Their songs are conversational, about late buses, friendships and the things people can't say straight out. I wouldn't promise they sound like The Smiths, but if words matter to you, they might be worth a listen. What is it about the lyrics that gets you?\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[{\"key\":\"otherInterests\",\"value\":\"The Smiths; likes the vibe and the lyrics\",\"subject\":\"visitor\",\"sourceQuote\":\"For me it's The Smiths. I like the vibe and the lyrics.\"}],\"memory\":[]}"
+      }
+    ],
+    [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS3AoKEAgTGAI4AUIIdGhpbmtpbmcSDKL0T2zOu81xQiUU9hoM3pZ4oqJkh39ZBnCjIjBp6LxejeK5pHZHc3KGWpaKDZb8COSfgX8oNyjBO1HRwPxpLKZg3x+6WmSNboyQ47Yq+QlDWJXZ7WTVpAjKJ25BOoJYuX6aICy5zI0YWQJMlvNNG3QffScqF58ioqk7yPv5TW2gcJycLVu5t8G65s5CDPKoTI/HfDDNUtMtM1hj8ctHSgjne8r/f0tLg4wGP8u/Gg5WeU3fzVSop3ag1/mMz261A15EyKQUSy2EbDMvJ4Pb9qkFhkunKFegYqFLnNNyj0jvAohzbTYQan99WPSEcB7oBDJp4J/4Auj651i+obpjv3h6yMNZgYEILjIQyQbBdvphcucTnejECbBOig2JD8d+4WUnaE8JawgytqpV7Pi5KeU0Gjoh6T5hOxPWVtHiOIWRDDbxW6KZORQ7+5MEIR9oU4ZoZmx5LFvXH2TJZXuzhL9WtM9d2wjVpycyCi5wdnJA83YDl7LW3B7L0ejzN0Y/3yxfNItHTNamc68v24smSabexqPKH/B/aCKkerqiboKYiX6lfKyj+L1EEi9OvvA2SQfa2ctsPAEe/m0Ntpqc9KLQKQx7VNURVywbZLlB7aghaMFf9r28nGAfck4rV5kG0WvRLMWKRMccOeseL7Z4GTvOfDiwxEfyj3GO/yFJmMceMeZQClBgWJve+ll+JrsuXCcFMDFmJNhjVjcS0IiHxx8PIQQfI9DFuWSUjgYRZShI3WPHuEX0KSeCf1NSuhqQdW0CgRkF/7Jcbsuwuj6/XKS/L6FKTTPB2BuUnUgFnu4Mii650hnZa8kTfW0NTMeFOoXgfWKMGkZiIQoGn7LXqZM4ntr7V+uX122ssq2zxnc5BeDpr+Gkwq9YPwWfgDaSNF5aJBfKYdWc+be5Mli3wnhRV9oHlh06hNKgdmAqlG4KlF/xbbXnQbWRGt6mT34uq8xrNEVaF2pYxv01aIdq2slNtzHtOgtMSYFN4HMfbxYzLcoZb3/vtq2LgJQ4mtLKEiGsUs0KqxkzLEO9f5BeqYwS6eL/iOWnyM/2nrMtutl2Npc7zeJmQPPQwP5PkdvKq2I3O0GLBymyUiPqDNRZ/YVE06WBHrXuBjly552UVZ6IQrVKp1oWkf8nQSHEOrMR4OjNnBkZUIy4h5FtxUxmJWjmZYiCtNQLlzQ9ARnC4MFo5kUHVy6Gy2uelDdNymv3Y9P7/Ax9IIU19V24J1ihNaHNJ2S+xD8uwBbMx8kQ+pD4ZqcR/0xjz+NsAEJiC1jQkTv4XBI9LQpRmWy9V9pup/JmqC4M8HXks7muvsIlhSrQlAuwnFvXjwwlXlk4t0O0+oBcakQU1N4mnLYR1YgQ1gd/cDu6HCBfTjL6Yv4CQlCuokg/4La/R+DMQeS8Lr5/ds++t+qCE1pkjHbQ3j7yHPVRX1sB18Z25oY0NiRZX+ctrRiF6Z/ayxWCPnilk0QCQmPCEqvTdNry3EHQraP4izTEEZ5reBaeuqNWfq34v0ZkqOHHBmDCd+6RtHT7lgkzyxf5+HCgjom8RV+UXpUsG16OZBEgKx2HL6YRZDcL1xzzWamAE6+fhmvWcobKJuA9+3eUqSyCYoQrvb/hbiy3yE+wyMMMeUvbTpgbvfMQuJAEouCLEGuHYuj+Qn7QaHiZR56i3Hf9NM0Yr0CK2feMaYiF9Koaiey/Jvwc9YTvSP7vKBQCbZEjgDrg3C3Oqwp5yU8EVoLhFzG34UMiV7B2al25i4VxkWD7qrBZui69M30Uhc+2o9biZTtxbKbYSVwwNdMD3wgnPLx3GAE="
+      },
+      {
+        "type": "text",
+        "text": "{\"reply\":\"That's a good trait to love, and it's close to the heart of this band. Rosa, who plays bass, wants people dancing, and the basslines are a big part of how they sound. No Forwarding Address is probably the best example. It's bass-led and Rosa's favourite, about a friend leaving London: you're pleased for them, and you also feel a bit abandoned. That's a sad, mixed feeling set to something with a groove. I'd say it's worth trying first, though it's only one way in, and you might hear it differently.\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[],\"memory\":[]}"
+      }
+    ],
+    [
+      {
+        "type": "text",
+        "text": "{\"reply\":\"Happy to just chat. It started in 2018 in Lewisham, when the four of them lost their usual pub. It closed, and starting a band gave them another reason to meet up every week. They rehearsed in Deptford, in a lock-up Ash borrowed from his uncle at first, and spent eight years playing small rooms across south London. The name came from their pub-organising group chat. Nobody loved it, but the first poster was already printed, so it stuck. I think that's partly why the songs feel like they're about friends rather than about being a band.\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[],\"memory\":[{\"subject\":\"thread\",\"detail\":\"Visitor said they don't need a ticket yet and just want to chat; asked how the band got started. Tour dates not wanted for now.\",\"sourceQuote\":\"I don't need a ticket yet, I'm just chatting. Tell me how Lewisham Social got started.\"}]}"
+      }
+    ],
+    [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSsgoKEAgTGAI4AUIIdGhpbmtpbmcSDM7FhhBaRx52nLIskBoM/EODTmN/1vBW16WMIjBWQBnLLElbSfEQPnDWz1CuIiwje6kQ3JeQYLEITXVnRtRt6qFN0s0VA1yKZD0p0/EqzwkLG/nNn7c/N8WkGsnOoDioHpldUT05gMW+AvfTUyk0JSpl7HgE4+zci/OnKUjHuR7ZScMFuRj8K4iltWmVsOol4fk1vmf3ix3LzxnQ2xuDD/4DBkNJYto+JVfA9sZbnQw4gq29+492DF2P7ypeQX10ygwBGih9mrrruWDUHz++Yxk/yQbWwbH+JsFPCywQYhKKprv4IfBtzFcbKHT35ZvQu5QXkq9KG7+vbbsohKsigMeAKQ4Yc/S65fsKu25PDM/RIZ+Ntbpd2mfYwEd8nDNXIlg5h8YTEL/pRKBA9GPyPrhqbDXjAj6hTMxlByhjCCUDiealKTkIHJa50+Y6gLca7EIVDxLRefMkSSy1wg11sBZn7OeawoXw0mDOURDtZ9QFRA0KWkUQ4l+XR9I0O/ZUZLk6Lx+huKK5Ut4yMoTBF9PGV5J+O3f8e/PXDImeuOcTK63Y2KNH8WjlauNJevO9xGuzqLsAneJZJMJCAMv0kWq6L7/t0Nbm+FQwv1qMswDT2T1wiM4US5OwNJ6FK8WmzvxajR1tt8JvGg3LHUbDbE0aJ32hEFJNe1+PpF+djeU8USHtyHlVvQ1VG/GFRODtkAK2c+RMFzEerQch1xDzTgy7PD/KZjh/3Qr3k4jaxGddQmAnlQkwUjfc0fRgh9b3xlfvLKshDavZunH+d0lHYm0uxDPD8cWfAy0St3Xvj9htarZkzsni7OVSsx6lz3JvNPiSfivFvA5Uko74efm3AQ3oVhsV9iZo4sj0VElkAL3ih7pQr3Fq8Z2SferzGEd9XxeMs6hQ4fU3qxWSd8QeejMoECsYO9l+wogeVlAzguSF5bhL9XpAp3LZPXiIdj/36wcNnlxdffqOACJKW4qroYYFmIOtIZMOi0Y0/Uuw+yd5owRi07m2O9JMS3x5GTa4vtT7wObXK7oVAK1HkBqo9FRlof8I9ZZf75EjmccLZ3O/rhSrnB1zjDwMMRnUDixziSYx8BgU+7b9cdhvz/UaOUXLstXLqX/laOJmRBOVPjIc3LFJZs3XkhZZdZwpHFWMViOVPfU9tMsGiI1IKij2cV/0cDmuICEp8zHwmBzrNFv+FGOxAZxCqJho46OPFvn+MCb1ZgGhYkyH5li49tZLWNW7MVcJe+Kd5BHulv8Mvl4ULHg1j7CJ1z25lUpaSCAM02BL0A3XevMjBkLN6B8ZiFdPN02Hbc8Dl10F/AV9ybb4pv3lKw3sl66xDBpSP/yYh/PVtnk3C8KYYg5Jo/I1jIqShbCFDojFaMoY1u23i4+euLzyypFCKBxFkUKfcyrO2mYYjqh3egTmXBwVFYn0/8mh9bX4kOrxiTOYfiuiJZpRkRkW5XScYy7IQqraQGbQSGKWqQpdsXCqSCba39r3B7lxkl9/4E5+NmoOKTDToPv9sOWZs4ZRRA8IqOaH/9TGP1BfGciMp6BJ9X6tn7jPBt8NVPg2kcqS0F18T+FkKhx/DnkGvH0yl6WPxbayEEA80KogPjHM6Yj1RrygyRAooBd1ssheTPAjGzUKpBg/ULI5EcOJIONPOD82JPbtSbQtz96sGSpjhQ0lXh3cP0f/qk7GkGxBTV4sN0vMVFyqEDfIypzZU3RoHDb7CVR/wkw7wqgl+k6ADyHhpGrgz4THGAE="
+      },
+      {
+        "type": "text",
+        "text": "{\"reply\":\"Me too. It's still in the way they do things. Their first regular night was Thursdays at The Railway Rooms, an upstairs room near New Cross where there were sometimes only twenty people. Then came Social Hours, a three-band night with borrowed equipment and friends doing the door. I helped on the door back then, so I'm biased, but I think the band started as an excuse to be in a room together, and the songs never quite stopped sounding like that.\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[],\"memory\":[]}"
+      }
+    ],
+    [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "text",
+        "text": " {\"reply\":\"Same Again, as I let slip earlier. It's fast and funny, and there's a wince in it, because it's a group of friends in the same pub all avoiding the fact that everyone wants something to change. I have a soft spot for that kind of uneasy humour, where you laugh and then feel slightly caught out. It's also quick enough to dance to, which fits what you said about sad songs that still get you moving. If you'd rather start somewhere gentler, Kitchen Light is the one to try.\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[],\"memory\":[]}"
+      }
+    ],
+    [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "text",
+        "text": "{\"reply\":\"Lovely, I hope it goes down well. It's a good one to put on with someone, because it's quick and you'll know within a minute whether it's for you. It'll be interesting to see whether he sings along, given it reminds him of his friends. Whatever you make of it, I'd like to hear, even if it's just \\\"not for me\\\".\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[],\"memory\":[{\"subject\":\"thread\",\"detail\":\"Visitor may listen to Same Again with their partner tonight; no ticket wanted yet, and their reaction is still to come.\",\"sourceQuote\":\"I might listen to that with my partner tonight.\"}]}"
+      }
+    ],
+    [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "text",
+        "text": "{\"reply\":\"Small and a bit makeshift, mostly. Borrowed equipment, friends on the door, and some Thursdays at The Railway Rooms with only about twenty people. I won't dress it up with specific stories, but the door is a good place to be, because you see people arrive and you hear what the night meant to them afterwards. The nights were never properly recorded, either. There's no full archive, so a lot of it survives only in what people remember and tell each other. I think that's part of the band as much as the records are, and it's why I like hearing people's versions.\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[],\"memory\":[]}"
+      }
+    ],
+    [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSlwoKEAgTGAI4AUIIdGhpbmtpbmcSDKfnzCzHSJyzv0ZTIBoM8r0uu+1Ndx9ae3k0IjD9aFZEJ0kAmkjnrcso2KBAgNB8hI177uAStc8VNgYWXxv21kif37h9xvOwRU86dNMqtAkYICAihOPgvyQdMKU/K3f8yv/dmwVPlZsaPejNftWMjy9y0McO16VwPwqQyW1oblcN0OwDzj02ZLn1Fy2flBy0wXd9laTE+IymmTIEaLubX7o534kIZp0YEBki+PpglFblrIgMdnv6BfLRJluvugUC47wqSBNb3JztxixjMFHfDfs2afYYeAz01sr8bH1lz2ZvzeHiE1IodY9NcT87qKe0StoqQulaNxGyrjQ9glOr+O/iZ8xa0qjK+8CPbighUxugO1xQBp4d0zr42mXlkRmnCJxcibztx4njUDDirEzKD/e/d0ELsrJHNzBATProMHjG5Gitf0z304YiM22eqT4eAVcmnLDfFXpX4f5NRNel80gkwtXARGel7oWduAsuvpD16CdzwHgLbh+Oc5MTKv23BzMEKcM2jnGr7O4GBZeFvMtbxTZaGJeh1wem7gwtLkz9Ke0bso/5Gt+TIwdooUUx2qtWGvYULoOdAP7GtO8ztm5GSnKjvvOcfN4H0GP+b1tC+THEux3vfsR4nWN4DtoOZ4Fv+DyotHAgICVeIyXiATQd1R/x0y9S9kf8nV5j2gumExwblIzjRbBy0h+UvZD2AvgDOlInVvMckWtV962UmA74nqywxgt8FqvXqnxWtRmoV9aT0UGioE2ZhgCxKHAb+UrKssiSeRCRtks9GTIE+nZBL6tkG26vbL1TUv/USfjyttqozIMEDNpwkVe4VaRR7IbBxJV+tw2dd3W5fewJz23uTb+PxP9JA7xVgK2w3P7t5hLWb4OtqfmPFJb5Yguj4PacIcjFdazPiTgiuW6q1psck1BZQlJj/fnOaRy6LApi2nrYIrrgEA5gFRpp9IRRmloIIT+1JREnIrT4e46AVam6GWAHCi8T3LFVb2ipH6tL77aSgUNAM1BlnfaPive1bcprxqlRZ+dZrab1XgVuX8ESeL5Temch0o62hc9l/RcB61RWKXXOUFafxyrF9Ir3NNwtojMwNF6lmLEz1XOQe51iDcXOTxaAuIvcE7hdwuq03LGcALlIDPQo/rinsC+MNoUkBYo6vquwNljsXW9MGzZwksCNvaPQXCGfQB+eJMKYDKnn0dxClRign8BlA1B2um1iq2icdciv8farzbgqJBAY0H3i1KxlQZe5DF8snHp6yrw/uo/MUAhXw3B1dkI3ttadqqIk2GAnlqlAn2g9OnfocoSvojV43RS0O7tE3byivr+glnEulJK8JVoK0ABYoGZgeV11I4CGrS+Et9vvlT3myE293kThHE+k9/LcQn+90UUwasVK3avj7fYZ+DWQLb8rdEAzsSPUKhhnQBOpokb9cTNZWK0wfi6rv5z37Ps1dHWZJt1Wd6bkKZciu5hkT5ST9VDwRuAJKdoCZTaLhWk/cIkAtF9MKz0Nn2kQn5qghyQDaKxDgwNgaS+3T+GKThf9b41QqEyXHz5dyOeP/9pK1EpAerAMnlv1oHcD/H4vAPo2ohEMiwH0yxh5fIqPXLk9ZhOwIXD9Cu30WKLUomOBWPIonh8NyDsjKSSih27fG4F0VK80HR9FoZq69mQVzWRWK9n7yq6G/vAy3AoQnRZPAZ/iOANlhKj41kArtNQrK9CdGAE="
+      },
+      {
+        "type": "text",
+        "text": "{\"reply\":\"Ha, then you know exactly how it goes. Borrowed gear is a bit of a rite of passage, and it does tend to make a night feel like everyone's, because everyone had a hand in it. That's how Social Hours ran, with borrowed equipment and friends on the door. What kind of night was yours, and how did it turn out?\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[{\"key\":\"otherInterests\",\"value\":\"Has helped friends put on a night, borrowing everything\",\"subject\":\"visitor\",\"sourceQuote\":\"I've helped friends put on a night too. We borrowed everything.\"}],\"memory\":[{\"subject\":\"thread\",\"detail\":\"Visitor has helped friends put on a night with borrowed equipment; Mo asked what kind of night it was and how it went. Still chatting, no ticket wanted.\",\"sourceQuote\":\"I've helped friends put on a night too. We borrowed everything.\"}]}"
+      }
+    ],
+    [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSgQ8KEAgTGAI4AUIIdGhpbmtpbmcSDNNJqPx/5GIQV2veExoM3x9dsGNMh6vhMAJVIjCVo8PYfC7WFwnqaM8jedqiPQCVtX0xdDPleAsNB2GFNaHG0MhQISRvZNhg2DiJyKwqng79ZmBLWb+mAULYU0zeNKe5Ow1gKXlDtaJog3Q3KazfJ5DUzO2oJE38CJCYM1gk6vzDyHXtOObBGWdaCRvkkWolvoqlSyPnDzuduxcH+qQ8lu/2Q2+JDzfi5/lV7eB92EAPMb2x5wiSo/jp1ejtGXyQdgTTp1n/UidQw4E/fa4uACOFek81jhBfz42FXJD3Trs/bvKdkv1WTYKXvZ7JCk2qhTQcoo23nS9mqvImBkQ8vZlt4c4dPcXdmTtiZ3o7WceEdNikTRNQV2fUR2xUzR9UYM0zv+JfSemCtZakm8D+pbr6mOwd5RbiVUu8cBSDmywpV2OGavy+xwphaJvcDBdkF5/vimrasRfQ7/d4EgGLlxi8t6Xe5voqiD7rpFdMjFUVJfdzf23xfqgA3Xohbpp5/SHhF8ZoltEvabomAtrOBOCejHLcdrxWmiI5aeevK5ur/Ry2FT/YV72DTKEi2cckU9pwihNdFviQbUgv0UZs5PUU8w7c4au7XMFB47wG/oK7+U2wDT5eTuahr1EoDFbOKgmfQKgtrKDBQ/cN0Od1WXjiIhK4x3NsSuZHau724E3P8iMkxyE3WwKIjHPbusbWfMsCwGZqeawqG5g4y3JOWMtjc+4ReFAu/A+L1qDJKhB02NP7/K2luU6DWZWgORuWx1YTaT9qywwvYivh3ZtokZoEcdjB3N/X3WbC4lKzUlqKJHadLgcNfuLd5t9mTnZBNg03HxRlIZ6zCpHvg3GIEYGkG46OxuVz9MzJOttE9iLOrU9/mrWsKo8gG/btOxRWKlRT55Ko3YJ7BtCva/o06+70Gk8TJPKF/6Wtujh6cWlpP0Mv9jQMTTgX+qqexhDxibMNHliJKA+fmq/jPReHQxEQXIM0e9DTxDWmkOV2wqTzrsJc3SBWEyHu3a0pepJWUV0d7PCx2xq5GIhMyUgQgeDk0mx9dcNa6sI1D9vmAzyCNRazd4U32OIDc4k+yaFlk2+JAJRVIHGepA0aISPjwdqesueZWzwUmsTtsnPxNs5sc82n+83y0tEWIlVSfJHCp5S5KrXC/W3XyeYUxy6CZ/z838RJR6fS/scRvbAmzyB8WVlXAQ9iTMRYBJDDqs1j/I2rgbgmNCQ3wYBUC5oyDlWxpRmua6YPi8/sFz9a5UBRYO9WMjrQhIGfN/A2/xpiEji8JntlkcmrhQhFIdMBfLNrBqs0jkWgawNkHbWb/sZQccLqJ09odv3z+KFqA19pMphUA0MP8Ee98Wco4Drby6Uz6va57Vu682TLKT9/QPZmQl0DY2UayhR0ykduUPIISeSZHgcIgirZ73iuAqSVsLSz6kH8WhNDoVuqp/0avMa9u97YF8W6V9KPeCMhzZm16X5qAozCoVp6NgfWFDIu8I2Eb3wNvEJr/saIO30Jr0BrYzKMEc/5BPpccWUh1grkfjRynswSN+A5OdfM7eXiQL9/pJjl31uAxt0dludbzKSUnUXjoFB4LioJx2IH57mX3QBB81NEftq61cgpSfdmHgMrnwCac2xQzw++O9K+mk8KqWXTiNChXI1FqxFVG5eZt/ZP0K6pLiUa6TG03c9aa2OEZ2Mc44jSNokdF/kvNJptF/oPp62CWSZMJMUuQBYYmsdbLG04IO+xnpa3FGuboUv23CLkKmeOBQjMt5Cn7l15jktLUY7Za+sHDU7rlvrCFsYliaKepatlYLEy5uxihqWYpWE6L+tKlJvE9qQxGo02RPDNkFNPuJoZ1fFlFWkLo8g2oSNcj/WN7xPi+ucHX46/vj/e0Eh1h0kE4YoSxvATnIeHyic5WAku5aNYl+5I/6R1E+inAclYHZ9pk8IKKJa/HXPBrmB5qpRD/8+IBXvSVxPy4FTBGP1Dq6LwMIf1Ld2vipH8ZNQ3qps6yJW4bZgIjwao8coCqjXrHm35H/tPYjisdMOhhSNxFAFPxpAY5kLFWoa6yhg2l+gcdFbk72U3VpFoVQ6/oNHbdKmXUNq9JjDrjTlMigaI802p3nc6h/vXKNSuyUbZx9xTtX76mZsvyk43BIrRCf+6kQe5kORrNsdebm6qL4CBza8T9u4Df+6OrxGK/jKKJOQSqAudpwkUaSeARKVjZLRG3J/1zVx8YCxDqEMcsMw3UWTURd+j5bF2pXUkwOabecnw7gSAYEyFXNCCmb7eQXfzitDrAdYNprROe8u5AgeJTcqTPnFoPmiZpMsZcm0AJXt4ZLWlu5PrH848gv3okvEO8ppZSFPwutdK0ILINZWdFox9VqNouLvLPw7gmWFXO39U6k8GfjI1+eoUs7gTHHi4Dx21LI6RmLYtUlDpoOdAiRzqs+7zUCIgCmzXWaW3IxGRsezGycGX+K3K1kJfzAVGhKMRowX/OJWAkx8FmWhffH+zZqrW+rXC9EWgcTJobDTV1tFn0iJRDpwdAMVVc5mGc9hyGAE="
+      },
+      {
+        "type": "text",
+        "text": "{\"reply\":\"That's a great outcome, honestly. A room full of people singing through a dead PA is probably better than the night going to plan. It's the sort of thing people are still telling each other years later, which is what I mean about nights living in the stories. Jem, their guitarist, repairs amplifiers, so he'd have been a handy person to have around, though I won't pretend I know what he'd have done. Do you remember what everyone was singing?\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[{\"key\":\"otherInterests\",\"value\":\"Helped friends put on a night with borrowed equipment; the speakers failed halfway and everyone sang until they were working again\",\"subject\":\"visitor\",\"sourceQuote\":\"The speakers failed halfway through. Everyone sang until we got them working again.\"}],\"memory\":[{\"subject\":\"visitor\",\"detail\":\"Told the story of the night they helped friends put on: speakers failed halfway and everyone sang until they were fixed. Mo asked what they sang; still unanswered.\",\"sourceQuote\":\"The speakers failed halfway through. Everyone sang until we got them working again.\"}]}"
+      }
+    ],
+    [
+      {
+        "type": "text",
+        "text": "{\"reply\":\"Of course. Thanks for chatting, and for the story about the speakers. Enjoy the listen tonight.\",\"close\":true,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[],\"memory\":[{\"subject\":\"thread\",\"detail\":\"Visitor asked to stop the chat; Mo closed warmly. The question about what everyone sang was left unanswered and should not be pursued.\",\"sourceQuote\":\"Thanks, can we stop?\"}]}"
+      }
+    ],
+    [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "text",
+        "text": "{\"reply\":\"Good, that's the right answer round here. Most of this band's story got told in small rooms, upstairs at pubs, and not all of it was ever recorded. Is it a gig you've been to, or one you're hoping to get to?\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[],\"memory\":[{\"subject\":\"thread\",\"detail\":\"Visitor said a gig brought them here; unclear whether they have attended one or want to attend one.\",\"sourceQuote\":\"A gig\"}]}"
+      }
+    ],
+    [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSqgsKEAgTGAI4AUIIdGhpbmtpbmcSDPnGxHjNsFCTcNdRuRoM0gw6DA6MlrSrA2qRIjBJmDiXTFvOHUTTLZbiJJYGq88zH7gDV8ve2wd4f1Mo/2tpjOqABgi5w6gR3MgjJAAqxwoF3cNKYBxTCt11sBZRRrO6KUWMKmHZdamB69S5Wv0C+NuB/EL5QAiwVgDVcZIzuzg+zsrkb0sG0LJrsmwrGCs828P1eXHaVsFrFnt3SzGRu/vnp/rnkHjCQqikiOn13socSc68y+dCxORj9N0OGQTZFNQhD80Coi//5bGTaD6mFe4haXyMkT3Ye4bnN+H9jO2NwJphnAA2Outh6gES+xiGPiq0WcHM3KE3WaiThkmfxcl1U6nGcw8KBMpnQj27k5wfYlvm2jSy7tjGZ0n5f9jXGY9OukzqEgqHBgaTqFor0AZKeyvc1V7uf1Q2tJ/CDyZk7wIDsp+ZX8sEFziullW79/FSlcqtOY+O8qMqVCZvDpZIniidl2Yis1Zo2EoRfEFqDjxY4Jvv9EK6JggdLTX5+dWFd3krCNl9qmNBC3A/0Z3f8hvVfoRLSZRwP1TOfCxpX4ITF4aklw0g/4zipgd/qXet+cidS0v7BUlencDkCrzx8KvN0zuP4kCfVLu81QZbZdDcM9jQxZhbr2PB5oghWM5lUTrfGEUCzB/zH2uuVpSfnwkuYs1gske2HxBQzb9YAr9CGpqmZ3d6MFTQ2j9foVtLQXxQnSzJxH6oxestIqaBE4pvmkuNrhhzqzFeQjgS/ebErdRw4CBOW1mNtHXnzppSgo2x4BnxtKilWNEFN3H5Mn7co9T0L7gcY8CRycRWFDM01KrwQUbg6wdRFrY6I5/6OQdVoaB9X9LVkyNpylPz1xlAUzNzkiMFkQyr8sHaU/J9wvP01rgrGVsolIpH6L2IdISS4G/sLnjVbh265Q7E+nmrOVXy3Inv+sT6soIIk2CooKAEsyICD4Em3liL+JuG5YqBurg9AYfYjS2IVGpT4Z6m5R5g+eqDzIMlcdVJ11kzS8NNop0fyH44xgCULyqbjL2AVEU+Psn/BfoeMpf+VcBkAA0ORDNodsuSdiXezEGx1QBi+oBjIZNW6lp+q0aDn89+jDbg8HlktTkStHo/YrM7gFeArRBR68FDjoeDvogarpiAC2Kd8B/GtspfGtM56SJBjB0cQN6ASVbgBFAZX6IKGJTX+amvw+b0sYi0+1xTg038FVumIUgub3GcISrhFPAvHYs1x8KQ09qjpI2mnenGbkSLqRM7yg4GQVnzFmt2WapIt2tUK14OSb6Gk6vKRx6AqHE4+TBkXa/Q0jfZd/wk8kbkTRkptVpX/5AFC/SoEUDjoiUKNuszgMEz6LSUY/owytgqil0IBIcK8REWQhE/VFU2DicSxN6bHNpf+X68hEgLRn9jtXYPfO2WToq7VDMFH58Ocznkmvhj1l6Q3ndzmn31rDWeOnEgfEg5Ru4D5zAAH2RUS8fJDhwXnUCjob+JFzs2C829n3ihL5FCfbFPIK3aRmlxhpVNTmvs1ft1cKJpU/qIOJJOs5GZMW3hMJHom4t2fPjbxrpkpb8B8+SecLQQDMqwXUxMMkHl7FCp1UTj5ECcfLL+rJX62daAguxprU8icgcQBJ1Lzt8Af7EB+02LUETYjACVmLb5hhqaFWradmMzNwB1nM0LITSYE5mWROHgEMmrYDrXxnetJrvi1IEcPSU8Fv/8+l7iqHjpk+r8SOVKXsvOxRgejwL8dS29OpPzmPnJQWbUV9z1Ewy2xUHLK+31tS+EcQBSwoFZLtJR4vKnwER23lpsJ4lW6d7Qcv6NPU7+hxc7h7OwJIAeo3Dmepz4wUBfJ78xTZoBVWiU3T+K1xsEONLVw+Guqg3cwzDiEo05jMLqLvk4kxz9XJz7aRGhSz/sPAKTZvXhLRJFGAE="
+      },
+      {
+        "type": "text",
+        "text": "{\"reply\":\"Ah, now that's the good stuff. Social Hours was never fully recorded, so nights like that mostly survive because people tell them, and I think that's part of what the band is. I wasn't going to guess what went off plan, so what happened with that last song?\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[{\"key\":\"discovery\",\"value\":\"Went to a Social Hours night upstairs at the Railway Rooms\",\"subject\":\"visitor\",\"sourceQuote\":\"One of the Social Hours nights upstairs at the Railway Rooms.\"},{\"key\":\"connection\",\"value\":\"Attended a Social Hours night at the Railway Rooms, where the last song went off plan\",\"subject\":\"visitor\",\"sourceQuote\":\"The last song went completely off plan.\"}],\"memory\":[{\"subject\":\"thread\",\"detail\":\"Visitor attended a Social Hours night at the Railway Rooms and said the last song went off plan; the story of what happened is still untold.\",\"sourceQuote\":\"The last song went completely off plan.\"}]}"
+      }
+    ],
+    [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "text",
+        "text": "{\"reply\":\"Ash dropping both sticks and the whole room picking up the beat is a lovely image. You can't plan that, and since Social Hours was never fully recorded, it only exists because people like you remember it. Ash is the quiet one in interviews but funny in the van, so I'd like to think he enjoyed it. What was the other night in New Cross like? Was it a similar sort of room?\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[{\"key\":\"otherInterests\",\"value\":\"Went to another night in New Cross with a mate\",\"subject\":\"visitor\",\"sourceQuote\":\"Afterwards my mate took me to another night in New Cross.\"}],\"memory\":[{\"subject\":\"thread\",\"detail\":\"Visitor described the Social Hours last song: Ash dropped both sticks and the room clapped the beat. Afterwards a mate took them to another night in New Cross, which is still untold.\",\"sourceQuote\":\"Ash dropped both sticks and the room started clapping the beat.\"},{\"subject\":\"other\",\"detail\":\"A mate took the visitor to another night in New Cross after the Social Hours gig.\",\"sourceQuote\":\"Afterwards my mate took me to another night in New Cross.\"}]}"
+      }
+    ],
+    [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "text",
+        "text": "{\"reply\":\"That's the best way for it to go. He laughed, the room kept the beat for him and he walked straight back into it. It fits the band's whole idea of keeping things close. And clapping all the way out of the door is what their closer, Last Bus Home, is about too: stretching the night out because you're not ready for it to end. Funny that you did it without the song.\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[],\"memory\":[{\"subject\":\"thread\",\"detail\":\"Visitor finished the sticks story: Ash laughed, picked the sticks up and came back in, and people were still clapping on the way out. The other New Cross night is still untold, and they have not been pressed on it.\",\"sourceQuote\":\"He laughed, picked the sticks up and came back in. We were still clapping on the way out.\"}]}"
+      }
+    ],
+    [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSxgoKEAgTGAI4AUIIdGhpbmtpbmcSDF1gKGhAZcyPngRiMRoMWXXEnO6j3ulNGq94IjAURi8o84rCJ04lIQIHRzRuJuVsKLUi6FLlNnS0yxNRm2pDh3Zd3D5DF3Ily4huF8Uq4wnOaVIUbaog7at5AOcIeE5Q3s8lw0CnLvrWhRO4oHccwOd6YJ9n+ABP9/IE7yO5Co+iH6cFXfV/3nZloWYqEbDozfR4h2jy3bddiKAMmV2wvvL0QDLG+shENPSeJjKOJV87WYOkkS6niZw9EoBCIFQ/tyX1H85pF80e0MwEbNSzhRT+ci7vLkPPBaZUVnrEUMafaBPo867EFxkHYibKNFefxL2gmSFP1qEJpDZWJZbAcarI2RWoL+KTw+NeuQyYvuQi6ARb64oZ9uDlRVtsQQFUZ4xhtgx8N3FexExmS5MWPiUP/ZYhHC3XTm4gwptM4paxTjyi+85D7LWdlOtgZUiN3Jm45v81hLKUbjNPU7K07I7kbUHhWNPRWmQPuo7WcJue25mDvpER3O9TzREEtD/v5QO333y38lHhMvU0wfTnbnjDhh6Rat/+CS/O+lIIKxC6wDuk0T+m7xgh+1da1jSydNex/skGUQ54hHao/VbJlOXaHKI8U+ATEmQCIYB0lydhI4bz1TY4P2j4dEUiE+zyFe0GDr5702XKFzoHmiA472AJ4JxFJiYqs9Yb1zn9oBjOKPDbLnLTs6mIjIsbuNdDrp4tb/OxUypKs0ij3WUhKpjJMnVyt1/aVxpQ85KRhZOx86mept/f7/JiIJ8npYo/eoPgtAwIgrfmrVIm4N73/poSVSXFDWtqR5K/3jGiuPZY2HWLseaR4tHZHVwOGWddTxcuWpjmeopLi+sg43FlVsnXNtTzYxQFRdIkythMNnArLL230lI8sOLgFEQ9w4mDlwFnywlHm5zwsyB7DN1b3ab7WsxwWQbl674MmvhuNj8Sg1b4mOCX7nbCZgqm6U5sSHO3RotoKvGoauU0StQ31IHnw49R5Wi1bSt+OBqTj4U3Jqy0n21wcv2YF0c0/NT2TJAuSTuu0H4TUgPuwn7DB/7VvUINSyqdKfC9kjRNFC7TPWpAemfxpIpX3+2bs12NP6ebc3ddz+QwPuYQGsvYQWpsV3P1vJDghdYS0j6el12mlPKEEKvhfJNAGNilDAJ/IwYcV/wwewu7dizr3sS7Aw0ysSc0dNrSEQpcClJIn/mtwDzo9Mvwg6aqg2ax9oVsJe4f/oLZAaT4ejffTHbyArrRgvgYMDCs3Gy4nXVUthAmqO7Ue37Qm21PnOqoTBDHc5O8LjcOA1WxcuJxawRubqkGiPY3A4xVDHiMbB8W944Oi65/imKSiqkh5JpOsZ3DMRjPyGcnxNGvayyhRjaTgwrmYcoLlBntO78OeVAbVS4Czg1Y2izYm5zu29ccE59nKiPGImPL7ItF3NK0K1XRTRdd+De4jnQOxvHGWPv8e5YUJ9hFhT+RBOh9miwksyEtRUsyFFB63fUF4LQrFRjcA6K48gQIaFiJDWhCx1JRl43ruFU00bPqOXSShEIPGKVkMdRewtjV/CsUHzr0Hze5004TduiWi8nMq+y8zRcgwzxly4rkf/pBn5Pz7JlR7Z65bP4rVy22mdNWzTqKWvOQ9eMQNHdmHtzrDqmYwPbI6iSPvJnGhhsnt+X4Eq83T2joJcB8aRBt6AuLdRfWH5L0XE39teFIJyn1+NBhdXadDD+p7Rgv8X322rg8scqrySoG92g4osSq4yvrFpWfMJMOF/N1+wivLp+o7r+a/6KtT537+e4YAQ=="
+      },
+      {
+        "type": "text",
+        "text": "{\"reply\":\"It started with a pub closing, which is very Lewisham. Their usual place shut in 2018, and four friends who'd been meeting there needed another reason to see each other every week, so they started a band. The first rehearsals were in a lock-up Ash borrowed from his uncle, and later they moved to Deptford. The name came from the group chat they used to organise pub nights. Nobody loved it, but the first poster was already printed, so it stuck. I think that's why a drummer dropping his sticks and the room taking over the beat suits them so well.\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[],\"memory\":[]}"
+      }
+    ],
+    [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSzAoKEAgTGAI4AUIIdGhpbmtpbmcSDDavOuOXKxGKaUArJRoM7f0gskPqpQ7JFdmOIjCzhIZ5J3+TNQskGkogUkiPb6hAYzCgEg8pfn3mCLV50Nc5Gn7BV61ONEr+pwNFuLoq6QlbqaFwkZx0vt4snX+z0bWZLsBvZxiXQlXQZT2EOy6N0A5ajRoxfvKDXaKSRDvfpkbs1AE2EAXNLJaeMzh8pkSvhaFssGDR6jBY3T32pGC2MQYGQpxN6uTFn1b5t0vZ0iNz3Mj+EfsljHN/cW0C2Ct0aPCdScz8WQ2HyfqBpNGu+VFJ9bPxXanjg/st8+gzh/Zdqhwx1UDTBbRL6wzT3WIZENaSeAp5xNMmxg+0m8GHeBsDRGYdjF4jErCP49O8NvlM3UwAlzp/llb5JfBSDGXLNtx1BlnDCp7DX91wzHfw7b0aMlX9ANzTcCgRYOPCK+uQ+yCwfyAguxZaGZ4aPt6AHlHWUigRz5w6SKdjtKuM3KIWys6xBOn8uMZUdjZUusQxki8kXweKut3uwhCglGuEI79suTB0+VUG8TgJYFFx5FhGD9KFNWzVFu9wVbwl+kNJivkdNpiJEK7+m+zZIeIMm4fAN4J4wAL+aSTrSe9PtrP8SC3G+YjtXaBDxy6LRdHe6Q7q2LUGAC64JIMTBzJ5+Hdp9EJOFf2/8k7UfNjhcLyNacq5lSQGppPFhHJzRfDTCzdVtyi+g9enkbAm6O2W0+GAC8AePGwpKFRGQmWQUrW2AwanSANgSI3f1P3q/oCBJkQ4d9Hy8hU1p3gpW9kcdALjgvRud+c9Wymjy0o/i5qFpyN9XDbYmU5BeKy2XjLJ9E2Q6xIKtO2J7fGrHAtKJ9TjKm/NNFVuEVDsyaHCkC+vI2iZl01BDUDpXeLqbUbFzW6F9VFmomOQ98RkJzm+4xV1vaL8T21bf6MPN+nfaOWNlnk6NR5foLen84BjusajyHVLsvgGyPUonb7aesbetyJchahT8Pgq+Z6Xfc3d6Xfbq3Ta1L1We5m2nX2/7lNvSxZW5O27Wf1ym6u2XSkrjLA/RoOXf68jj2q9XGvga+dkS1mv5k/8/UdK+qh2wLuG/xnRP41i3hZ+tqKrmxmjWyNdbWh4pgTjsQ1sN0rZ7aLGwIB/He67EyXMtUf/a0MK7zJMAyGzluazqNfSkpAwrnGkHddd0YbisH+QJaHQy+jjmZjNQnRLZlaa1LTbCp4+pUDjkJfrnzP1SyUrdkb6ytmzK/EhNWJCD0CSdPYw4AqIwOmG85WhfgrR2PvYXhQxjRgxRc7lUCTyPlmMKVG+svK4niNOl2Y/UDhHyXWJoye1KoXEAjk+Pq8+PH+bcVLvvTxR7AIBbPdugpyvJgT5uve09QdvKmyostoXueTbABWr0nKurNl3KCsZ5jw8rXVSc95XJwqNiiOdEXf/KvcF2tTJo9tWpJ8Mwj7Zd27MEv7s3dcoRiu7ycsdzwqnJ4EmQnaEVCFaxHp2kt2NxZbN6jFqxhmT/Hg5BORJaQkWRfCNssWMU2yf/QaEYNoEe+5r+jO+zeZOgg2XajKYr+rOEc0f94RKzcCsMGzqpdD0GOCCEx8Cx/MF61KpeBVhE7OC6LQNzMTUrS9Uu6SDEAveaZQKDJjQdT0Fxnr0SU+MjN1JwCDo9zeAeY3lA+8GjK6X4aHui+Y/d7L+jMh1hb+CxcXW4qRhbUaIhrsRbviis0BUS60Hi9T/GnRI/ZgEZkA/rSh3Bs8IeGy/WYrCsaG1OjiaQ9U762oWpHhaO6URFsUqt/R6D0QUeMYqaipKywSCuNMTBGTkA14YAQ=="
+      },
+      {
+        "type": "text",
+        "text": "{\"reply\":\"Well, I'm glad they did. Being dragged along by a friend is a fine way in, and it suits a band that started because four friends needed a reason to see each other every week. Was it a night out you were brought to, or more a case of being told about them?\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[{\"key\":\"discovery\",\"value\":\"Someone brought them along\",\"subject\":\"visitor\",\"sourceQuote\":\"Someone brought me along\"}],\"memory\":[{\"subject\":\"thread\",\"detail\":\"Visitor said someone brought them along; unclear whether this means a gig or just being introduced to the band.\",\"sourceQuote\":\"Someone brought me along\"}]}"
+      }
+    ],
+    [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSuwsKEAgTGAI4AUIIdGhpbmtpbmcSDF6vPYtQo+lrNv9epxoM4P7gJc/LP3rsJU8nIjBSTNe+sNAoUbCAFP3/GAd9Iwy6WKrsH63nIuhkYVw8nSJRaQWGM2qPb7XuYrP93AQq2Ap82vzCHKrSPnj3QPkKHB+BCFPNZSkXMQhQTLMYDQNcqWn0Pazo0lnYHOyuaZQAF6AZMQXRHtr4CQoKga+4zSEBd9h6OGNj2GHYevm35uEiqn/T67pNrgrJAFH1bUIQWo5EZGDvnSx2RuoKSa8S4p9yGh6XFFvfFU1kux8CRg9V8liz2F9EI7QDPcoDSSNjbQkdaZFEWcp3YWZWOvdJViH6Mmt6wK/JhCxZJZ0EdAaTiz/aSaoybccbIgUIQPC8Vptsz6dtXwdfrQnL1caibkNlpqlfUGuz7vfBT4nhutF6ezp3aipxyoZI64tcO3tv9wSVSnAP7trIlC+lUqjjhepbTv1s8VANCKleDq4xlGdP7tkvIQTwzYoxuJCeY6cMyBz9Tsyg+Ss+J8GlNmtYd8nN4TN8QGLrfvCe7gLYtw18hCVPZ/2Zvqx0jgYa+awk/WE5lGY6Q4M4g/Sh9LOwicGsi7Caa4/G9BsfLvzsF22sLCl/VKUtyZ1ZxBi9whLZjJ2Dn+8lIqLzWCyEK9MkmLnS0ZSyAEVTFSTy5X2ccY1akzjEPUd4tVQQSzt5EHtLOdZC92KkOyDDpOWlKUj+hdUqHBACJRAyTiKOOqy3GLg4qUisyEBqnZYg3wcGL/BthwxznlydJu+JMXLUscpyTduTcG+DibXoY9slzBBcWak/9mmBxXiU5I4t4BGUWYHVhLvOaaTLMzgkEV2LQncUGdYRRYxDlczJp1I5R4nbSfsk2oinKu4kRcMoEkDWI0bO5Ew73zM29FcXjsKhgqc9OiYf+XXd0ruBrhXdE2ifOV9tVDeslaoI43se1DULbIEtZ/NeLqU/mshOXWZB7ryg8cozFCkRRFeFtUZRuad2+N+7mEF1LZ5wTPjEKy6Mx74gM+5sgX/S0HjChCAywh4RoDLBPI90mpa8+GBIo4E1DEiYWA30p5NeWFoK0K/w7Fa0etbVvmsiJlZKu1I4M99fOk+aQxbgn1u+zsJ1dyceocmppOkJggfBtcn2hSfjeogq0uP1Mij4RVtFkRGnrlyVYfHYLvbuk7PCc/zj/Z+p0sNSTyiCusRu6fNTCyLV+8qhq1AVTpTe67Sro+lHnzH405+eHACR4f7l1EbNeuTSxPdiagwmZi8GlpcRZ6KOC4ZUrYDbDJD/bcXEpv3mgaLZ2SmC/hOxl9c+F8/79BhyASnIv/hp6dkbv6xE3NuOYnDtb64FPgo9WoNrU7DVb5E7eEJsob4CQhBkRp4sZIP4Y0sZtYOAQQgbHMoERUXLXo8bp9qyHd/En1q4GZUt8ci+3C5Ggc34VL1Dl4kT5MTxl7D1owbGgPV9RauP68pzaZVZ6iQ2nZIRalrWLHiWlqnh+R0leD/Ug8L8U7UOkDAFAgAj0tTGswuTCIo5DdZise2zntuzOhSH/kSaurRgBwLHerVkQvVp2+Bc+XrdwsAhJb34HUkSW8KCoWNFYDtsPxS5ZkOqv2SqUs+ZcB++gtslP/vd8wAjv65loi4U+hrHoW/hMCNJdRXgy3rQx8kVyCXa7Id9x3OZUp377hVfM/fJpSyF/x901d45JQ2v0xDEAX3A7Qp9WidxNg2DFcT+asDLiP2pAJWNzMmOH8ll5WC771OTSXA8/2N2D2a0IX5tGzvLjt+JNrTaYhKJzMKjha3+TXBt75X5AGGc0vQ56mklrOyj5x4/pKrssa0IMtmSQudt+3E7Ddz/AraEBMY2K16ybnNKDY8oci1Qcu4cXupQnVb5kMcM4A9obES6kbtV4IWVVIvFdYs4xvj/MD7hZEdIBGEWbGPte76gmIwtTGqpP7SnD6Yj9Mh3848YAQ=="
+      },
+      {
+        "type": "text",
+        "text": "{\"reply\":\"Good, word of mouth is how this band has mostly travelled. Their best-known song, Kitchen Light, got around because people kept sending a scrappy live recording to someone they missed. If you want a place to start, that's the one I'd point you to. It's about getting back to a shared flat after a bad night and finding someone has stayed up for you.\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[{\"key\":\"discovery\",\"value\":\"A mate told them about the band\",\"subject\":\"visitor\",\"sourceQuote\":\"A mate told me about them\"}],\"memory\":[{\"subject\":\"thread\",\"detail\":\"Clarified that a mate told them about the band; this does not mean they attended a gig or have heard the music.\",\"sourceQuote\":\"A mate told me about them\"}]}"
+      }
+    ],
+    [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "text",
+        "text": "{\"reply\":\"Raw is a fair word for it. That Kitchen Light recording is scrappy in the best way, and the early small-room nights were never properly recorded either, so a lot of what survives is just people telling each other what it was like. Is raw the sort of thing you tend to go for, or was it how your mate described them?\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[],\"memory\":[]}"
+      }
+    ],
+    [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "text",
+        "text": "{\"reply\":\"Political, I can see that. I'd say they're more the everyday kind than a manifesto band: changing neighbourhoods, late buses, friends who all want something to change and nobody says so. Same Again is my soft spot for that. It's fast and funny, and then it gets uncomfortable because it's about the same people in the same pub avoiding the point. That might be a good one to try after Kitchen Light.\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[],\"memory\":[{\"subject\":\"thread\",\"detail\":\"Visitor mentioned 'the political sound' after the raw vibes; unclear whether this is their own taste or how their mate described the band. Mo has suggested Same Again.\",\"sourceQuote\":\"the political sound\"}]}"
+      }
+    ],
+    [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "text",
+        "text": "{\"reply\":\"Good pairing, because lyrics are where Nia is at her most careful. She's precise about them, but she's reluctant to say what a song is really about, so people tend to hear their own version. Rosa's basslines give the songs the hook, and they're danceable enough that you can miss how sharp the words are until the second or third listen. Are you usually a lyrics person, or does a hook get you first?\",\"close\":false,\"boundary\":\"none\",\"boundaryQuestion\":\"\",\"choiceKey\":\"none\",\"facts\":[],\"memory\":[{\"subject\":\"thread\",\"detail\":\"Visitor has now listed 'the hook and lyrics' after 'raw vibes' and 'the political sound'; still unclear whether these are their own tastes or how their mate described the band. Mo has offered Nia's lyrics and Rosa's basslines as talking points and asked whether lyrics or hooks come first for them.\",\"sourceQuote\":\"the hook and lyrics\"}]}"
+      }
+    ]
+  ]
+}
