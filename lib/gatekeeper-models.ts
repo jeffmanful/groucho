@@ -15,6 +15,9 @@ export function gatekeeperConversationModel(
  * (docs/replays/*tighter-prompt*). The standard engine keeps the low-cost default above.
  * Precedence: engine-specific override, then the shared gatekeeper override, then this default.
  */
+/** Mo favours conversation continuity over the lower-cost default. */
+export const MO_CONVERSATION_MODEL = "claude-sonnet-5-5"
+
 export const DEFAULT_COLORS_THIN_CONVERSATION_MODEL = "claude-haiku-5-5"
 
 export function colorsThinConversationModel(

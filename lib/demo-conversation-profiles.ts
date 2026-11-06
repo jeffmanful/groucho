@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server"
 import { postConversation, type ConversationChoice, type ConversationField, type ConversationConfiguration } from "@/lib/conversation-engine"
-import { colorsThinConversationModel } from "@/lib/gatekeeper-models"
+import { colorsThinConversationModel, MO_CONVERSATION_MODEL } from "@/lib/gatekeeper-models"
 import { resolveActiveGatekeeperPersona } from "@/lib/persona-resolution"
 import type { ProjectContext } from "@/lib/project-resolution"
-import { LEWISHAM_SOCIAL_CONVERSATION_GUIDANCE, LEWISHAM_SOCIAL_OPENING, MO_ACKNOWLEDGEMENT_GUIDANCE } from "@/lib/lewisham-social-persona"
+import { LEWISHAM_SOCIAL_CONVERSATION_GUIDANCE, LEWISHAM_SOCIAL_OPENING, LEWISHAM_SOCIAL_PERSONA_PROMPT } from "@/lib/lewisham-social-persona"
 import { TOUR_NIGHTS, TOUR_CITIES, SEE_OTHER_CITIES, resolveLewishamChoice } from "@/lib/lewisham-social-tour"
-import { formatMoReply, moQuestionTopic } from "@/lib/lewisham-social-voice"
 export { TOUR_NIGHTS } from "@/lib/lewisham-social-tour"
 
 export const CONVERSATION_ENGINE_MARKER = "groucho_conversation_v1"
@@ -26,9 +25,8 @@ type DemoProfile = {
   softCloseAnswers?: number
   resolveChoice?: ConversationConfiguration["resolveChoice"]
   formatReply?: ConversationConfiguration["formatReply"]
+  naturalConversation?: boolean
   replyGuidance?: string
-  preventRepeatedQuestions?: boolean
-  questionTopic?: ConversationConfiguration["questionTopic"]
 }
 
 export const DEMO_CONVERSATION_PROFILES: Record<DemoConversationId, DemoProfile> = {
@@ -68,25 +66,22 @@ export const DEMO_CONVERSATION_PROFILES: Record<DemoConversationId, DemoProfile>
     },
   },
   "lewisham-social": {
-    id: "lewisham-social", opening: LEWISHAM_SOCIAL_OPENING, openingChoice: "discovery",
-    objective: "Understand how they found Lewisham Social, what connects them to the band and why, what else they enjoy, and their companion, travel origin and exact preferred tour night.",
+    id: "lewisham-social", opening: LEWISHAM_SOCIAL_OPENING,
+    objective: "Welcome the visitor through a natural music conversation and help them choose a tour night, understanding both travel origin and exact show preference.",
     guidance: LEWISHAM_SOCIAL_CONVERSATION_GUIDANCE,
-    typicalAnswers: "6–8", wrapUpAnswers: 9, softCloseAnswers: 11, resolveChoice: resolveLewishamChoice, formatReply: formatMoReply,
-    preventRepeatedQuestions: true, questionTopic: moQuestionTopic,
-    replyGuidance: MO_ACKNOWLEDGEMENT_GUIDANCE + "\n\nMO'S NEXT QUESTION: Follow the visitor's most recent answer. If they change subject or offer another artist instead of answering your last question, follow their new topic; never insist on your unanswered question. An unfamiliar artist is an invitation to ask what they sound like, not to doubt the visitor or say you will take their word for it. When a fan has just revealed an unexpected gig event, ask about its reaction, recovery or consequence before a second topic mentioned in that same answer. Inviting the story earlier does not replace this one follow-up after the event is revealed. Reflecting the event then asking about the second topic does not follow the event. Once they describe the outcome, that story is resolved: move on, without asking for a song title or another retrospective question. For example, a performance falters, the crowd takes over, you ask what the performers did, and their account of the recovery completes that thread. Write your own natural reply, not a questionIntent or a catalogue selection. Briefly acknowledge a specific detail when it helps the visitor feel heard; do not mechanically echo every answer. Keep the acknowledgement and one question to two short sentences. Prefer one focused question; do not combine identification and interpretation. Do not grade a song choice or announce that you love hearing stories. Let specific attention show Mo's personality. Answer direct questions and honour stopping and runtime limits.",
+    naturalConversation: true, resolveChoice: resolveLewishamChoice,
     closing: "Thanks for coming through the door.",
-    completion: "Demo complete. Your preferred night is shown here; no tickets are reserved and no presale code will be sent.",
+    completion: "Thanks for chatting. Any tour preference is illustrative; no tickets are reserved and no presale code will be sent.",
     fields: [
-      { key: "discovery", label: "How they found the band", required: true },
-      { key: "connection", label: "What connects them to the band and why, or being new / unsure / declining", required: true },
-      { key: "otherInterests", label: "Other music, shows or interests in their own words, or uncertainty / declining", required: true },
-      { key: "companion", label: "Who they would bring, or coming alone", required: true },
+      { key: "discovery", label: "How they found the band" },
+      { key: "connection", label: "What connects them to the band and why, or being new / unsure / declining" },
+      { key: "otherInterests", label: "Other music, shows or interests in their own words, or uncertainty / declining" },
+      { key: "companion", label: "Who they would bring, or coming alone" },
       { key: "location", label: "Where they are coming from", required: true },
       { key: "preferredCity", label: "Explicit preferred show city, separate from travel origin", values: TOUR_CITIES },
       { key: "night", label: "Exact preferred tour night", required: true, values: TOUR_NIGHTS },
     ],
     choices: {
-      discovery: { field: "discovery", question: LEWISHAM_SOCIAL_OPENING, options: ["A gig", "A track", "Someone brought me along", "I've only just found you"] },
       night: { field: "night", question: "Which night would you prefer?", options: TOUR_NIGHTS, navigationOptions: [SEE_OTHER_CITIES],
         factsByOption: Object.fromEntries(TOUR_NIGHTS.map(night => [night, { preferredCity: night.split(",")[0] }])) },
     },
@@ -109,16 +104,9 @@ export function usesReusableConversationEngine(raw: unknown): boolean {
 
 /** Keep the configured character and tone, replacing legacy scripted outcomes with this runtime's contract. */
 export function demoConversationPrompt(profile: DemoProfile, persona: string, turnCount: number): string {
-  let character = persona.replace(/\\n/g, "\n").split(/\n\s*(?:CONVERSATION FLOW|DECISION GUIDANCE)/)[0]
-  // Older saved Mo personas still instruct the model to emit catalogue keys. Override
-  // that obsolete section at runtime so rollout does not require a database rewrite.
-  if (profile.id === "lewisham-social") {
-    // Saved personas also carry the old terse/echoing examples. Replace them so
-    // the live voice changes with this release, without rewriting project data.
-    character = character.replace(/VOICE EXAMPLES[^\n]*\n[\s\S]*?(?=\nAPPROVED BAND STORY)/, MO_ACKNOWLEDGEMENT_GUIDANCE + "\n")
-    character = character.replace("do not paraphrase it or ask them to justify it again", "a brief acknowledgement is welcome, but do not ask them to justify it again")
-    character = character.replace(/ONE REQUEST PER TURN\n[\s\S]*?(?=\n\nBEFORE EACH REPLY|$)/, "ONE REQUEST PER TURN\nWrite a natural acknowledgement and one focused question in reply. Never emit catalogue keys or placeholder text.")
-  }
+  const character = persona.replace(/\\n/g, "\n").split(/\n\s*(?:CONVERSATION FLOW|DECISION GUIDANCE)/)[0]
+  // Mo has one authored brief; old saved scripting cannot add conflicting rules.
+  if (profile.id === "lewisham-social") return LEWISHAM_SOCIAL_PERSONA_PROMPT
   return `${character}
 
 PROJECT CONVERSATION
@@ -137,8 +125,8 @@ export async function postDemoConversation(input: Omit<Parameters<typeof postCon
   const persona = await resolveActiveGatekeeperPersona([personaId], input.context.organisationId)
   if (!persona || persona.id !== personaId) return NextResponse.json({ error: "Demo persona unavailable" }, { status: 503 })
   return postConversation({ ...input, runCompletion: false, configuration: {
-    id: profile.id, marker: CONVERSATION_ENGINE_MARKER, model: colorsThinConversationModel(),
-    fields: profile.fields, choices: profile.choices, resolveChoice: profile.resolveChoice, formatReply: profile.formatReply, replyGuidance: profile.replyGuidance, preventRepeatedQuestions: profile.preventRepeatedQuestions, questionTopic: profile.questionTopic,
+    id: profile.id, marker: CONVERSATION_ENGINE_MARKER, model: profile.id === "lewisham-social" ? MO_CONVERSATION_MODEL : colorsThinConversationModel(),
+    naturalConversation: profile.naturalConversation, fields: profile.fields, choices: profile.choices, resolveChoice: profile.resolveChoice, formatReply: profile.formatReply, replyGuidance: profile.replyGuidance,
     wrapUpAnswers: profile.wrapUpAnswers ?? 7, softCloseAnswers: profile.softCloseAnswers ?? 10,
     closingMessage: profile.closing, completionMessage: profile.completion,
     consentStatement: "Someone else's private information needs their permission before it is shared.",

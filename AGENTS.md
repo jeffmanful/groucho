@@ -1,3 +1,9 @@
+# Conversation quality gate
+
+Before implementing any feature or fix, explicitly ask: **Will this change positively or negatively affect the conversation experience?** Record the expected effect and tradeoff in the working update or change description. Resolve negative effects before shipping. Conversation quality is a release requirement, not an optional polish step.
+
+For conversational changes, review complete conversations for continuity, warmth, curiosity, useful contribution, correct attribution and respectful handling of corrections. Mechanical checks alone are insufficient. Prefer fewer coherent controls to patches for individual phrases. Keep booking/date validation separate from conversational judgement.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know

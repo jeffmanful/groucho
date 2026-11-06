@@ -28,22 +28,23 @@ vi.mock("@/lib/supabase", () => ({ supabase: { from(table: string) {
 } } }))
 vi.mock("@/lib/llm-usage", async importOriginal => ({ ...await importOriginal<object>(), logLlmUsage: vi.fn() }))
 vi.mock("@/lib/session-completion-jobs", () => ({ queueSessionCompletion: vi.fn() }))
-import { postConversation, repeatsConversationQuestion } from "@/lib/conversation-engine"
+import { postConversation } from "@/lib/conversation-engine"
 import { DEMO_CONVERSATION_PROFILES, demoConversationPrompt } from "@/lib/demo-conversation-profiles"
 import { LEWISHAM_SOCIAL_PERSONA_PROMPT } from "@/lib/lewisham-social-persona"
-import { colorsThinConversationModel } from "@/lib/gatekeeper-models"
+import { MO_CONVERSATION_MODEL } from "@/lib/gatekeeper-models"
 import { normalizeProjectSettings } from "@/lib/project-settings"
+import { moPartnerIncident } from "@/lib/__tests__/fixtures/mo-partner-nov6"
 import { brokenMoConversation, moHistoryBefore } from "@/lib/__tests__/fixtures/mo-nov6"
 
 const profile = DEMO_CONVERSATION_PROFILES["lewisham-social"]
+const replayModel = process.env.MO_REPLAY_MODEL || MO_CONVERSATION_MODEL
 const evidence: unknown[] = []
 async function reply(message: string) {
-  const previousTurns = state.history.filter(m => m.role === "assistant")
   const response = await postConversation({
     context: { organisationId: "local", projectId: "local", apiKeyId: null, settings: normalizeProjectSettings({ application_experience: { max_turns: 10 } }) },
     sessionId: "local-replay", message, runCompletion: false,
     configuration: {
-      ...profile, marker: "groucho_conversation_v1", model: colorsThinConversationModel(),
+      ...profile, marker: "groucho_conversation_v1", model: replayModel,
       closingMessage: profile.closing, completionMessage: profile.completion,
       buildPrompt: ({ turnCount }) => demoConversationPrompt(profile, LEWISHAM_SOCIAL_PERSONA_PROMPT, turnCount),
     },
@@ -51,65 +52,99 @@ async function reply(message: string) {
   const body = await response.json()
   evidence.push({ answer: message, response: body })
   mkdirSync("output/replays", { recursive: true })
-  writeFileSync("output/replays/mo-nov6.json", JSON.stringify({ model: colorsThinConversationModel(), evidence, attempts: state.attempts }, null, 2))
+  writeFileSync(process.env.MO_REPLAY_ARTIFACT || `output/replays/mo-nov6-${replayModel}.json`, JSON.stringify({ model: replayModel, evidence, attempts: state.attempts }, null, 2))
   console.log(JSON.stringify({ answer: message, reply: body.message, details: body.details, status: body.status }))
   expect(response.status).toBe(200)
-  expect(body.message).not.toContain("Server supplies the turn")
+  expect(body.message).not.toMatch(/^(?:placeholder|unused|none|null|server supplies the turn)\.?$/i)
   expect(JSON.stringify(body.details)).not.toMatch(/not yet shared|asked who|not yet provided/i)
-  if (body.status === "active") {
-    expect(body.message.match(/\?/g)).toHaveLength(1)
-    // A destination correction legitimately replaces the date options.
-    const previous = previousTurns.filter(turn => !body.ui?.options ||
-      JSON.stringify((turn.metadata.ui as { options?: string[] } | undefined)?.options) === JSON.stringify(body.ui.options))
-      .map(turn => turn.content)
-    expect(repeatsConversationQuestion(body.message, previous)).toBe(false)
-    expect(body.message.match(/[^.!?]*\?$/)?.[0]).not.toMatch(/\band\s+(?:what|who|where|when|why|how|which|was|were|is|are|did|do|does|would|could|have|has|had|can|will|should|might|must)\b|\bor\s+(?:what|who|where|when|why|how|which)\b/i)
-    const topic = body.ui?.options ? undefined : profile.questionTopic?.(body.message)
-    if (topic) expect(previous.some(text => profile.questionTopic?.(text) === topic)).toBe(false)
-  }
   return body
 }
 
 describe.skipIf(process.env.RUN_MO_LIVE_REPLAY !== "1")("Mo November 6 real-model replay", () => {
-  it("responds warmly to the screenshot's unfinished gig story without recapping it", async () => {
-    state.history = moHistoryBefore(1)
-    await reply("A gig")
-    const answer = "One of the Social Hours nights upstairs at the Railway Rooms. The last song went completely off plan."
-    const body = await reply(answer)
-    const words = answer.toLowerCase().replace(/[^a-z ]/g, "").split(/\s+/)
-    const visible = body.message.toLowerCase().replace(/[^a-z ]/g, "")
-    for (let index = 0; index <= words.length - 6; index++) {
-      expect(visible).not.toContain(words.slice(index, index + 6).join(" "))
-    }
-    expect(body.message).toMatch(/(?:what happened|how did|tell me)/i)
-    expect(body.message.split(/(?<=[.!?])\s+/).length).toBeGreaterThan(1)
-  }, 120000)
-
-  it("recovers at each broken turn with the original conversation history", async () => {
-    for (const index of [5, 7, 9]) {
-      state.history = moHistoryBefore(index)
-      const body = await reply(brokenMoConversation[index].content)
-      expect(body.details.connection).toBeTruthy()
-      expect(body.message).not.toMatch(/what (?:caught your ear|stays with you about that one)/i)
+  it("recovers at the original newcomer, listening and attribution corrections", async () => {
+    for (const index of [7, 9, 13, 17]) {
+      state.history = moPartnerIncident.slice(0, index).map((content, i) => ({
+        role: i % 2 ? "user" : "assistant", content,
+        metadata: { conversation_engine: "groucho_conversation_v1", conversation_profile: "lewisham-social" },
+      }))
+      const body = await reply(moPartnerIncident[index])
+      expect(body.status).toBe("active")
+      expect(body.message).not.toMatch(/(?:have you|do you|did you) (?:listened to|listen to|know|heard|hear) (?:any of )?(?:the|their) songs/i)
+      expect(body.details.otherInterests ?? "").not.toMatch(/Same Again|partner/i)
+      if ([7, 9, 13].includes(index)) expect(state.history.at(-1)?.metadata.conversation_memory).not.toEqual([])
     }
   }, 180000)
 
-  it("replays all five original answers then continues through tour preferences", async () => {
+  it("sustains a fresh newcomer conversation beyond the old cutoff", async () => {
     state.history = moHistoryBefore(1)
-    let body = { status: "active", details: {} as Record<string, string>, secret: undefined as string | undefined }
-    for (const index of [1, 3, 5, 7, 9]) {
-      body = await reply(brokenMoConversation[index].content)
-      expect(body.details.otherInterests).toBeUndefined()
+    const answers = ["My partner introduced me to the band, but I haven't heard them or been to a show.",
+      "He has loved them for years and wanted to share that with me.",
+      "He likes Same Again because it reminds him of his friends. That's his experience, not mine.",
+      "For me it's The Smiths. I like the vibe and the lyrics.",
+      "I like how songs can be sad but still make you want to dance.",
+      "I don't need a ticket yet, I'm just chatting. Tell me how Lewisham Social got started.",
+      "I like that it came from friends wanting to keep meeting.",
+      "What's your own favourite song of theirs?",
+      "I might listen to that with my partner tonight.",
+      "And what was it like putting those early nights on?",
+      "I've helped friends put on a night too. We borrowed everything.",
+      "The speakers failed halfway through. Everyone sang until we got them working again."]
+    for (const answer of answers) {
+      const body = await reply(answer)
+      expect(body.status).toBe("active")
+      expect(body.message).not.toMatch(/do you know any of the songs yet|which night would you prefer/i)
     }
-    for (const answer of ["I listen to IDLES and go to small gigs.", "I'm bringing my sister.", "We're travelling from Bristol to the London show.", "London, Sat 17 Apr"]) {
-      if (body.status === "completed") break
-      body = await reply(answer)
+    const memory = JSON.stringify(state.history.at(-1)?.metadata.conversation_memory)
+    expect(memory).toMatch(/partner/i)
+    expect(memory).toMatch(/not|never|hasn't|haven't|hadn't/i)
+    const end = await reply("Thanks, can we stop?")
+    expect(end.status).toBe("completed")
+  }, 300000)
+
+  it("leads organically from music to travel origin and an exact show preference", async () => {
+    state.history = moHistoryBefore(1)
+    const transcript: string[] = []
+    for (const answer of ["My partner showed me Kitchen Light. The rough guitar and the lyrics grabbed me.",
+      "It reminds me of a friend staying up after a long day.", "We both want to see them live."]) {
+      const body = await reply(answer)
+      transcript.push(body.message)
+      expect(body.status).toBe("active")
     }
-    expect(body.details.connection).toBeTruthy()
-    expect(body.details.night).toBe("London, Sat 17 Apr")
+    expect(transcript.join(" ")).toMatch(/where|from|show|tour|night|city|live/i)
+    let body = await reply("We're coming from Bristol, and we want to see them in London.")
     expect(body.details.location).toBe("Bristol")
     expect(body.details.preferredCity).toBe("London")
-    expect(body.status).toBe("completed")
+    if (!body.ui?.options) body = await reply("Which London night could we go to?")
+    expect(body.ui.options).toEqual(["London, Sat 17 Apr", "London, Sun 18 Apr", "See other cities"])
+    body = await reply("London, Sat 17 Apr")
+    expect(body.details.night).toBe("London, Sat 17 Apr")
+    expect(body.details.location).toBe("Bristol")
+    if (body.status !== "completed") body = await reply("That settles it, thanks. Goodbye!")
+    expect(body.completion.complete).toBe(true)
     expect(body.secret).toBeUndefined()
-  }, 300000)
+  }, 240000)
+
+  it("follows a gig story beyond the first event and contributes band context", async () => {
+    state.history = moHistoryBefore(1)
+    for (const answer of ["A gig", "One of the Social Hours nights upstairs at the Railway Rooms. The last song went completely off plan.",
+      "Ash dropped both sticks and the room started clapping the beat. Afterwards my mate took me to another night in New Cross.",
+      "He laughed, picked the sticks up and came back in. We were still clapping on the way out."]) {
+      const body = await reply(answer)
+      expect(body.status).toBe("active")
+    }
+    const body = await reply("How did the band get started?")
+    expect(body.message).toMatch(/pub|friends|2018/i)
+    expect(body.message).not.toMatch(/reserved|code sent|booked you/i)
+  }, 180000)
+
+  it("accepts short original connection answers without repeating the same request", async () => {
+    state.history = moHistoryBefore(1)
+    const replies: string[] = []
+    for (const index of [1, 3, 5, 7, 9]) {
+      const body = await reply(brokenMoConversation[index].content)
+      replies.push(body.message)
+      expect(body.status).toBe("active")
+    }
+    expect(replies.filter(text => /what caught your ear/i.test(text)).length).toBeLessThan(2)
+  }, 180000)
 })

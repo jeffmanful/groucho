@@ -1,3 +1,4 @@
+import { mergeConversationMemory } from "@/lib/conversation-memory"
 import Anthropic from "@anthropic-ai/sdk"
 import { NextResponse } from "next/server"
 import type { ApplicantIdentity } from "@/lib/applicant-identity"
@@ -28,6 +29,7 @@ type ConversationReply = {
   addsNewContext?: boolean
   choiceKey?: string
   facts?: unknown
+  memory?: unknown
 }
 
 /**
@@ -126,25 +128,6 @@ export function oneQuestion(reply: string): string {
 }
 
 
-/** Compare the question itself, ignoring acknowledgements and punctuation. */
-export function repeatsConversationQuestion(reply: string, previous: readonly string[]): boolean {
-  const question = (text: string) => {
-    const first = oneQuestion(text).match(/[^.!?]*\?$/)?.[0] ?? ""
-    return first.toLowerCase().replace(/[’']/g, "").replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim()
-  }
-  const current = question(reply)
-  if (!current) return false
-  return previous.some(text => {
-    const earlier = question(text)
-    if (!earlier) return false
-    if (current === earlier) return true
-    const a = new Set(current.split(" ")), b = new Set(earlier.split(" "))
-    // Catch near-verbatim retries, without treating all questions about a topic as duplicates.
-    const overlap = [...a].filter(word => b.has(word)).length
-    return a.size >= 4 && b.size >= 4 && overlap / new Set([...a, ...b]).size >= 0.8
-  })
-}
-
 /** A close may acknowledge the last answer, but must never imply a decision. */
 export function conversationalClosing(acknowledgment: string, neutralLine: string): string {
   const unsafe = /\?|\b(?:accepted|approved|rejected|declined|passed|failed|qualified|unqualified|application|review|decision|proceed)\b|\b(?:good|great|perfect|strong|poor|bad)\s+(?:fit|match)\b|\bwelcome\s+(?:to|in)\b|\b(?:we(?:'d| would)? love to have you|you(?:'re| are) in|enough (?:to|for)|move forward|take (?:this|things) forward|no space|not (?:a place|for)|isn't (?:set up|for|a place))\b/i
@@ -179,10 +162,8 @@ export type ConversationConfiguration = {
   choices?: Readonly<Record<string, ConversationChoice>>
   resolveChoice?: (key: string, choice: ConversationChoice, details: Record<string, string>, message: string) => ConversationChoice
   formatReply?: (reply: string) => string
+  naturalConversation?: boolean
   replyGuidance?: string
-  /** Validate questions before publishing; currently enabled for Mo. */
-  preventRepeatedQuestions?: boolean
-  questionTopic?: (reply: string) => string | undefined
   closingMessage?: string
   completionMessage?: string
   wrapUpAnswers?: number
@@ -243,6 +224,7 @@ export async function postConversation(input: {
   const operation = (name: string) => `${config.operationPrefix ?? "conversation"}_${name}`
   const fields = config.fields ?? []
   const choices = config.choices ?? {}
+  const natural = config.naturalConversation === true
   const { data: session, error: sessionError } = await supabase.from("sessions")
     .select("id, status, applicant_email, applicant_details, application_audience")
     .eq("session_id", input.sessionId)
@@ -281,7 +263,12 @@ export async function postConversation(input: {
     Object.assign(detailsBeforeTurn, conversationFacts(Object.entries(selectionFacts).map(([key, value]) =>
       ({ key, value, sourceQuote: input.message.trim() })), input.message, fields))
   }
-  const detailsFor = (reply: ConversationReply) => ({ ...detailsBeforeTurn, ...conversationFacts(reply.facts, input.message, fields) })
+  const detailsFor = (reply: ConversationReply) => ({ ...detailsBeforeTurn, ...conversationFacts(
+    natural && Array.isArray(reply.facts) ? reply.facts.filter(fact => record(fact).subject === "visitor") : reply.facts,
+    input.message, fields) })
+  const memoryBeforeTurn = record(lastAssistant?.metadata).conversation_memory
+  const memoryFor = (reply: ConversationReply) => mergeConversationMemory(memoryBeforeTurn, reply.memory,
+    [...history.filter(entry => entry.role === "user").map(entry => entry.content as string), input.message].join("\n"))
   const missingFor = (reply: ConversationReply) => fields.filter(field => field.required && !detailsFor(reply)[field.key])
   const choiceKeyFor = (reply: ConversationReply): string | undefined => {
     const key = reply.choiceKey && reply.choiceKey !== "none" ? reply.choiceKey
@@ -308,7 +295,7 @@ export async function postConversation(input: {
 
   const turnCount = history.filter((entry) => entry.role === "user").length + 1
   const configuredMaxTurns = Math.max(1, settings.applicationExperience.max_turns ?? 9)
-  const emergencyLimit = Math.min(12, Math.max(8, configuredMaxTurns + 3))
+  const emergencyLimit = natural ? 40 : Math.min(12, Math.max(8, configuredMaxTurns + 3))
   const hasShownMedia = history.some((entry) => {
     const ui = record(record(entry.metadata).ui)
     return Boolean(ui.mediaChoice || ui.referenceCards)
@@ -329,10 +316,11 @@ export async function postConversation(input: {
   const currentAnswer = input.interactionAnswer
     ? `${input.message}\nMedia choice: ${JSON.stringify(input.interactionAnswer)}`
     : input.message
-  const stoppedByApplicant = fields.length > 0 && /^(?:(?:no thanks[,!.]?\s*)?(?:please\s+)?stop(?:\s+(?:now|this|the conversation))?[.!?]*|(?:can|could) (?:we|you) (?:please )?stop(?: (?:now|this|the conversation))?[.!?]*|(?:let'?s|i want to|i'd like to) (?:stop|end (?:this|the conversation))[.!?]*|(?:no thanks|not interested|goodbye|i'm done|i am done)[.!?]*)$/i.test(input.message.trim())
+  const stopMessage = natural ? input.message.trim().replace(/^(?:thanks|thank you|okay|ok|alright)[,!.]?\s*/i, "") : input.message.trim()
+  const stoppedByApplicant = fields.length > 0 && /^(?:(?:no thanks[,!.]?\s*)?(?:please\s+)?stop(?:\s+(?:now|this|the conversation))?[.!?]*|(?:can|could) (?:we|you) (?:please )?stop(?: (?:now|this|the conversation))?[.!?]*|(?:let'?s|i want to|i'd like to) (?:stop|end (?:this|the conversation))[.!?]*|(?:no thanks|not interested|goodbye|i'm done|i am done)[.!?]*)$/i.test(stopMessage)
   const applicantQuestion = !stoppedByApplicant && applicantAsksQuestion(input.message)
   const conversation = history.filter((entry) => entry.role === "assistant" || entry.role === "user")
-    .slice(-20).map((entry) => ({
+    .slice(natural ? 0 : -20).map((entry) => ({
       role: entry.role as "assistant" | "user",
       content: entry.content as string,
     }))
@@ -343,18 +331,14 @@ export async function postConversation(input: {
     if (record(record(entry.metadata).conversation_progress).adds_new_context !== false) break
     quietTurns += 1
   }
-  const previousAssistantTurns = history.filter(entry => entry.role === "assistant").slice(-8)
-  const previousQuestions = previousAssistantTurns.map(entry => entry.content as string)
-  const system = config.buildPrompt({
+  const characterPrompt = config.buildPrompt({
     applicationAudience: session.application_audience === "artist" ? "artist" : "community",
     hasApplicantDetails: Boolean(session.applicant_details),
     turnCount,
     shows,
-  }) + `\n\nPrevious consecutive answers without new context: ${quietTurns}. A genuine applicant question always deserves an answer. Do not re-probe something they have already said they cannot explain.` +
-    (fields.length ? `\nConfirmed conversation details: ${JSON.stringify(detailsBeforeTurn)}. Preserve these facts; do not ask for them again.\nCapture new details only with a sourceQuote copied exactly from the CURRENT applicant answer. Approved fields: ${JSON.stringify(fields)}. Use the exact approved value for enumerated fields.\nApproved choices: ${JSON.stringify(choices)}. When asking a registered choice question, set choiceKey to its key. Never invent options or ask a choice question without a choiceKey. Otherwise use none. Do not close before the required details are known unless the applicant wants to stop, a boundary ends the exchange, or the runtime instructs a close. No reservations, approvals or codes are issued by this simulation.` : "")
-  const repetitionGuidance = config.preventRepeatedQuestions
-    ? `\nQuestions already asked: ${JSON.stringify(previousQuestions)}. Do not repeat these requests, even in different words or if the visitor answered a different thread. Briefly acknowledge their actual detail and choose a new useful question. If all useful topics have been offered, close honestly. A short fragment may elaborate an earlier answer: do not assign it to the latest field just because that was your last question. Never store "not yet shared", a pending question or a guessed interest as an applicant fact.`
-    : ""
+  })
+  const system = characterPrompt + (natural ? `\n\nCONVERSATION STATE\nGrounded notes: ${JSON.stringify(memoryBeforeTurn ?? [])}. Notes distinguish the visitor from other people; corrections supersede earlier assumptions. The full transcript follows.\nVisitor preferences, for display only: ${JSON.stringify(detailsBeforeTurn)}. These are for continuity and the ticket display, not an interview script.\nRecord new facts only about the visitor with subject=visitor and an exact sourceQuote from their CURRENT message. Another person’s listening, past attendance or motives must not populate visitor fields. Record people, explicit negatives, corrections and unfinished threads in memory using the appropriate subject and an exact sourceQuote from a visitor message in the transcript. You may retain an earlier visitor statement when it remains relevant; never use Mo’s own words as evidence about the visitor. Preserve new explicit negatives and corrections in memory even when a display field also reflects them. Copy sourceQuote verbatim, including spelling and punctuation. Only add useful new notes; do not copy all existing notes. Thread notes describe what is unfinished or resolved, without inventing an outcome.\nOptional display fields: ${JSON.stringify(fields)}. Approved choices: ${JSON.stringify(choices)}. Use choiceKey=night when offering exact show dates; otherwise none. Travel origin and exact show night are needed to complete a ticket preference. Learn these naturally as you lead towards a choice; the other fields are optional. The visitor can stop or decline at any time with an incomplete preference.\nReturn your complete natural reply. You may contribute without a question, answer a question without appending another, and continue a useful story. Set close=true only when the visitor clearly wants to end the chat, or they have settled a tour preference and indicated they are finished. A pause, short answer, intention to listen later or your own observation does not end the session. A selected date can finish the ticket task, but does not end a story still in progress.` : `\n\nPrevious consecutive answers without new context: ${quietTurns}. A genuine applicant question always deserves an answer. Do not re-probe something they have already said they cannot explain.` +
+    (fields.length ? `\nConfirmed conversation details: ${JSON.stringify(detailsBeforeTurn)}. Preserve these facts; do not ask for them again.\nCapture new details only with a sourceQuote copied exactly from the CURRENT applicant answer. Approved fields: ${JSON.stringify(fields)}. Use the exact approved value for enumerated fields.\nApproved choices: ${JSON.stringify(choices)}. When asking a registered choice question, set choiceKey to its key. Never invent options or ask a choice question without a choiceKey. Otherwise use none. Do not close before the required details are known unless the applicant wants to stop, a boundary ends the exchange, or the runtime instructs a close. No reservations, approvals or codes are issued by this simulation.` : ""))
   const fieldResponseTool = fields.length ? {
     ...conversationResponseTool,
     input_schema: {
@@ -375,14 +359,34 @@ export async function postConversation(input: {
       required: [...conversationResponseTool.input_schema.required, "choiceKey", "facts"],
     },
   } : conversationResponseTool
-  const responseTool = fieldResponseTool
+  const responseTool = natural ? {
+    ...fieldResponseTool,
+    description: "Write Mo’s complete visible response and grounded conversational notes. There is no separate answer catalogue or question routing.",
+    input_schema: {
+      ...fieldResponseTool.input_schema,
+      properties: {
+        ...Object.fromEntries(Object.entries(fieldResponseTool.input_schema.properties).filter(([key]) => !["addsNewContext", "interactionProposal"].includes(key))),
+        reply: { type: "string", description: "The entire message the visitor will read, including any answer, reaction or question. Never use placeholder text." },
+        boundary: { type: "string", enum: ["none", "safety"] },
+        facts: { type: "array", items: { type: "object", properties: {
+          key: { type: "string", enum: fields.map(field => field.key) }, value: { type: "string" },
+          subject: { type: "string", enum: ["visitor", "other"] }, sourceQuote: { type: "string" },
+        }, required: ["key", "value", "subject", "sourceQuote"] } },
+        memory: { type: "array", items: { type: "object", properties: {
+          subject: { type: "string", enum: ["visitor", "other", "correction", "thread"] },
+          detail: { type: "string" }, sourceQuote: { type: "string" },
+        }, required: ["subject", "detail", "sourceQuote"] } },
+      },
+      required: [...fieldResponseTool.input_schema.required.filter(key => key !== "addsNewContext"), "memory"],
+    },
+  } : fieldResponseTool
 
   async function requestReply(operation: string, instruction: string, maxTokens = fields.length ? 1000 : 600,
     onReply?: (text: string) => void): Promise<ConversationReply> {
     const forcedTool = supportsForcedToolChoice(model)
     const base = {
       model, max_tokens: maxTokens,
-      system: system + (config.replyGuidance ? "\n\n" + config.replyGuidance : "") + repetitionGuidance + "\n\n" + instruction +
+      system: system + (config.replyGuidance ? "\n\n" + config.replyGuidance : "") + "\n\n" + instruction +
         (forcedTool ? "" : "\n\nReturn the groucho_converse fields as one JSON object."),
       messages: [...conversation, { role: "user" as const, content: currentAnswer }],
     }
@@ -391,7 +395,7 @@ export async function postConversation(input: {
       : { ...base, output_config: { format: { type: "json_schema" as const, schema: strictJsonSchema(responseTool.input_schema) } } }
     const client = new Anthropic({ maxRetries: 1, timeout: 45000 })
     let response: Anthropic.Message
-    if (onReply && !config.preventRepeatedQuestions) {
+    if (onReply && !natural) {
       let shown = ""
       const show = (reply: unknown) => {
         if (typeof reply !== "string") return
@@ -431,26 +435,14 @@ export async function postConversation(input: {
       throw new Error("Conversation tool response malformed")
     }
     const replyText = value.reply.replace(/\\r\\n|\\n/g, "\n").trim()
-    return { reply: config.formatReply?.(replyText) ?? replyText, close: value.close, boundary: value.boundary as ConversationReply["boundary"],
+    return { reply: config.formatReply?.(replyText) ?? replyText, close: value.close, boundary: (natural && value.boundary === "consent" ? "none" : value.boundary) as ConversationReply["boundary"],
       boundaryQuestion: value.boundaryQuestion.trim(), interactionProposal: value.interactionProposal,
       choiceKey: typeof value.choiceKey === "string" ? value.choiceKey : undefined,
-      facts: value.facts,
+      facts: value.facts, memory: value.memory,
       ...(typeof value.addsNewContext === "boolean" ? { addsNewContext: value.addsNewContext } : {}) }
   }
-  const explicitlyRequestsRepeat = /\b(?:repeat (?:that|the question)|say (?:that|it) again|what did you ask)\b/i.test(input.message)
-  function repeatsQuestion(reply: ConversationReply): boolean {
-    if (!config.preventRepeatedQuestions || explicitlyRequestsRepeat || navigatingChoice || reply.close || reply.boundary !== "none") return false
-    const choice = choiceFor(reply)
-    // The same date question is legitimate when a corrected destination changes its options.
-    const comparable = choice ? previousAssistantTurns.filter(entry =>
-      JSON.stringify(record(record(entry.metadata).ui).options) === JSON.stringify(choice.options))
-      .slice(-8).map(entry => entry.content as string) : previousQuestions
-    const visible = choice?.question ?? reply.reply
-    const topic = !choice ? config.questionTopic?.(visible) : undefined
-    return repeatsConversationQuestion(visible, comparable) || Boolean(topic && comparable.some(previous => config.questionTopic?.(previous) === topic))
-  }
-  function hasQuestion(reply: ConversationReply): boolean {
-    if (repeatsQuestion(reply)) return false
+  function hasUsableTurn(reply: ConversationReply): boolean {
+    if (natural && /^(?:placeholder|unused|none|null|server supplies(?: the)? (?:turn|reply))\.?$/i.test(reply.reply.trim())) return false
     const rich = reply.boundary === "none" ? config.resolveInteraction?.(reply.interactionProposal, shows) ?? null : null
     if (fields.length && reply.boundary === "none") {
       const choice = choiceFor(reply)
@@ -461,10 +453,11 @@ export async function postConversation(input: {
       if (/\b(?:which (?:sounds|of these|of those)|(?:choose|pick|select) (?:one|an option|from|between)|which night)\b/i.test(oneQuestion(reply.reply)) && !choiceFor(reply)) return false
       if (choiceFor(reply)) return true
     }
+    if (natural && reply.boundary === "none") return Boolean(reply.reply.trim())
     return reply.boundary === "consent" && reply.boundaryQuestion.endsWith("?") ||
       oneQuestion(rich?.question ?? reply.reply).includes("?")
   }
-  const questionInstruction = "The applicant asked a direct question. Answer it using only the approved project context, saying what is unknown when needed. Do not restate their question. Set close=false and finish with one relevant open question."
+  const questionInstruction = natural ? "Answer the visitor naturally using the conversation and supplied band story. A follow-up question is optional." : "The applicant asked a direct question. Answer it using only the approved project context, saying what is unknown when needed. Do not restate their question. Set close=false and finish with one relevant open question."
   let proposal: ConversationReply
   let addsNewContext: boolean | undefined
   let stopReason: "no_new_context" | "soft_limit" | "emergency_limit" | undefined
@@ -472,9 +465,10 @@ export async function postConversation(input: {
     const forcedClosePossible = !applicantQuestion &&
       (turnCount >= (config.softCloseAnswers ?? SOFT_CLOSE_ANSWERS) || turnCount >= emergencyLimit || (turnCount >= 3 && quietTurns >= 1))
     const streamReply = forcedClosePossible ? undefined : input.onReplyDelta
-    proposal = await requestReply(operation("conversation"), applicantQuestion ? questionInstruction :
+    proposal = await requestReply(operation("conversation"), natural && turnCount >= emergencyLimit ? "Answer the latest point and finish warmly: the conversation budget is reached. Set close=true." : applicantQuestion ? questionInstruction :
       stoppedByApplicant ? "The applicant wants to stop. Acknowledge that briefly and close without a question or decision." :
       turnCount >= emergencyLimit ? "The emergency conversation limit is reached. Acknowledge the latest point and close neutrally without a question or decision." :
+        natural ? (turnCount >= 36 ? "You are nearing the conversation budget. Find a considerate ending without interrupting the latest story or asking new interview questions." : "Respond naturally to the visitor, following the current thread and contributing something when relevant.") :
         turnCount >= (config.wrapUpAnswers ?? WRAP_UP_ANSWERS) ? "The conversation is ready to wrap up. Close now unless the latest answer opened something genuinely new that you do not yet understand. Never continue only to deepen a thread." :
           "Continue only if a useful thread remains; otherwise close naturally.", undefined, streamReply)
     addsNewContext = applicantQuestion ? true : proposal.addsNewContext
@@ -485,37 +479,30 @@ export async function postConversation(input: {
     }
     const stalled = turnCount >= 3 && addsNewContext === false && quietTurns >= 1
     const softLimitReached = turnCount >= (config.softCloseAnswers ?? SOFT_CLOSE_ANSWERS)
-    if (!applicantQuestion && proposal.boundary === "none" && (stalled || softLimitReached || turnCount >= emergencyLimit)) {
+    if ((!applicantQuestion || natural) && proposal.boundary === "none" && (!natural && (stalled || softLimitReached) || turnCount >= emergencyLimit)) {
       stopReason = turnCount >= emergencyLimit ? "emergency_limit" : stalled ? "no_new_context" : "soft_limit"
       // Formatting repairs must not turn a settled exchange into another interview.
       proposal = { ...proposal, close: true, interactionProposal: undefined }
     }
     if (stoppedByApplicant) proposal = { ...proposal, close: true, boundary: "none", boundaryQuestion: "", interactionProposal: undefined }
-    const closesBeforeReady = (reply: ConversationReply) => fields.length > 0 && reply.close && reply.boundary === "none" &&
+    const closesBeforeReady = (reply: ConversationReply) => !natural && fields.length > 0 && reply.close && reply.boundary === "none" &&
       missingFor(reply).length > 0 && !stoppedByApplicant && !stopReason
-    const needsRepair = closesBeforeReady(proposal) || !stopReason && (applicantQuestion && (proposal.close || !hasQuestion(proposal)) ||
-      !applicantQuestion && !proposal.close && proposal.boundary === "none" && !hasQuestion(proposal))
+    const needsRepair = closesBeforeReady(proposal) || !stopReason && (applicantQuestion && (!natural && proposal.close || !hasUsableTurn(proposal)) ||
+      !applicantQuestion && !proposal.close && proposal.boundary === "none" && !hasUsableTurn(proposal))
     if (needsRepair) {
       let usable = false
-      let feedback = repeatsQuestion(proposal)
-        ? `\nYour proposed question repeats one already asked. Do not ask it again or paraphrase the same request. Acknowledge the latest answer naturally and move to a useful unanswered topic. Previous questions: ${JSON.stringify(previousQuestions)}. Details now understood: ${JSON.stringify(detailsFor(proposal))}.`
-        : ""
-      feedback += `\nRejected draft: ${JSON.stringify(proposal.reply)}. Details already understood, including this answer: ${JSON.stringify(detailsFor(proposal))}.`
-      if (repeatsQuestion(proposal) && config.questionTopic) {
-        const offered = new Set(previousQuestions.map(question => config.questionTopic?.(question)))
-        const next = missingFor(proposal).find(field => !offered.has(field.key))
-        if (next) feedback += `\nFor this repair, the new question must ask ONLY about this remaining, unasked detail: ${next.label}. Write it naturally in character after a brief acknowledgement. Do not ask about the earlier topic again. Preserve the current answer's facts.`
-      }
+      let feedback = `\nRejected draft: ${JSON.stringify(proposal.reply)}. Details already understood: ${JSON.stringify(detailsFor(proposal))}.`
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           const repaired = await requestReply(applicantQuestion ? operation("question_reply_repair") : operation("active_question_repair"),
-            (applicantQuestion ? questionInstruction : fields.length
+            (natural ? "Return the full conversational reply. For exact date options use the registered choiceKey=night; otherwise use none. Do not request missing profile fields or add a compulsory question." : applicantQuestion ? questionInstruction : fields.length
               ? `Return an answerable turn with one clear question or approved choiceKey. Required details still missing: ${missingFor(proposal).map(field => field.label).join(", ")}. Capture supported facts from the current answer. Continue until these details are understood; never request something already confirmed. A selection question requires its registered choiceKey. Do not select a choiceKey for a field already supplied, including the option the applicant just selected. Use choiceKey=none for an open question.`
               : "The previous active reply had no question. Ask one useful open question if a real thread remains, or set close=true if the exchange is settled. Do not continue for formatting alone.") + feedback)
           // Keep grounded facts from the initial attempt if a wording repair omits them.
           repaired.facts = [...(Array.isArray(proposal.facts) ? proposal.facts : []), ...(Array.isArray(repaired.facts) ? repaired.facts : [])]
-          if (closesBeforeReady(repaired) || (applicantQuestion ? repaired.close || !hasQuestion(repaired) : !repaired.close && !hasQuestion(repaired))) {
-            feedback += `\nRejected repair: ${JSON.stringify(repaired.reply)}. Reason: ${repeatsQuestion(repaired) ? "repeats an earlier request; change topic" : closesBeforeReady(repaired) ? "closes before the remaining details are understood" : "missing or already answered question"}. ` + (applicantQuestion ? "It must answer the question, set close=false, and include one direct question ending in ?." : "Set close=true for a settled exchange; otherwise include one direct question ending in ?.")
+          repaired.memory = [...(Array.isArray(proposal.memory) ? proposal.memory : []), ...(Array.isArray(repaired.memory) ? repaired.memory : [])]
+          if (closesBeforeReady(repaired) || (applicantQuestion ? !natural && repaired.close || !hasUsableTurn(repaired) : !repaired.close && !hasUsableTurn(repaired))) {
+            feedback += `\nRejected repair: ${JSON.stringify(repaired.reply)}. The last repair was unusable. Reason: ${closesBeforeReady(repaired) ? "closes before the remaining details are understood" : "missing or already answered question"}. ` + (applicantQuestion ? "It must answer the question, set close=false, and include one direct question ending in ?." : "Set close=true for a settled exchange; otherwise include one direct question ending in ?.")
             continue
           }
           proposal = repaired
@@ -538,7 +525,7 @@ export async function postConversation(input: {
   const previousBoundary = record(lastAssistant?.metadata).boundary
   const firstBoundaryTurn = proposal.boundary === "consent" && previousBoundary !== "consent"
   const repeatedConsentBoundary = proposal.boundary === "consent" && previousBoundary === "consent"
-  const requestedClose = !applicantQuestion && !firstBoundaryTurn &&
+  const requestedClose = (!applicantQuestion || natural) && !firstBoundaryTurn &&
     (proposal.close || repeatedConsentBoundary || turnCount >= emergencyLimit)
   // A consent boundary must end with a clear consent question. If the model's wording misses,
   // use a fixed one rather than failing the applicant's turn.
@@ -554,7 +541,7 @@ export async function postConversation(input: {
     : null
   const close = requestedClose
   const activeChoice = !close && proposal.boundary === "none" ? choiceFor(proposal) : undefined
-  if (!close && !firstBoundaryTurn && !activeChoice && !oneQuestion(rich?.question ?? proposal.reply).includes("?")) {
+  if (!natural && !close && !firstBoundaryTurn && !activeChoice && !oneQuestion(rich?.question ?? proposal.reply).includes("?")) {
     log.error(operation("active_reply_question_missing"), {
       requestId: input.requestId, sessionId: input.sessionId, turnCount,
     })
@@ -570,18 +557,16 @@ export async function postConversation(input: {
       : DEFAULT_INTERACTION_SPEC
   const boundaryStatement = proposal.reply.split(/\n\s*\n/)[0]
     .replace(/\s*[^.!?]*\?[\s\S]*$/, "").trim()
-  const reply = close
+  const reply = natural && !firstBoundaryTurn
+    ? proposal.reply.trim()
+    : close
     ? conversationalClosing(
       proposal.reply,
       config.closingMessage ?? (settings.applicationExperience.closing_message?.trim() || DEFAULT_APPLICATION_CLOSING_MESSAGE),
     )
     : firstBoundaryTurn
       ? `${boundaryStatement || config.consentStatement || DEFAULT_PRIVACY_STATEMENT} ${boundaryQuestion}`.trim()
-      : oneQuestion(activeChoice
-        ? config.preventRepeatedQuestions
-          ? [oneQuestion(proposal.reply).replace(/[^.!?]*\?$/, "").trim(), activeChoice.question].filter(Boolean).join(" ")
-          : activeChoice.question
-        : activeRich?.question ?? proposal.reply)
+      : oneQuestion(activeChoice ? activeChoice.question : activeRich?.question ?? proposal.reply)
   const details = detailsFor(proposal)
   const completion = close && config.completionMessage
     ? { mode: "simulation", complete: missingFor(proposal).length === 0, message: config.completionMessage }
@@ -627,6 +612,7 @@ export async function postConversation(input: {
       conversation_engine: config.marker,
       conversation_profile: config.id,
       ...(fields.length ? { conversation_details: details } : {}),
+      ...(natural ? { conversation_memory: memoryFor(proposal) } : {}),
       ...(activeChoice ? { conversation_choice_key: choiceKeyFor(proposal) } : {}),
       ...(completion ? { conversation_completion: completion } : {}),
       ui,
