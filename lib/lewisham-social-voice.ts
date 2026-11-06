@@ -22,7 +22,7 @@ export function formatMoReply(reply: string): string {
  */
 export function moQuestionTopic(reply: string): string | undefined {
   const question = reply.split(/[.!]/).find(part => part.includes("?"))?.toLowerCase() ?? ""
-  if (/\bother (?:bands|artists|records|music)\b|\bon repeat\b|\bwho else\b.*\b(?:listen|listening|repeat|see|seeing|go back|put on)\b|\bwhat else\b.*\b(?:listen|listening|had on|music|repeat)\b|\bwhat(?:'s| is| has| have you)\b.*\blistening to\b/.test(question)) return "otherInterests"
+  if (/\bother (?:bands|artists|records|music)\b|\bon (?:repeat|rotation)\b|\bwho else\b.*\b(?:listen|listening|repeat|see|seeing|go back|put on)\b|\bwhat else\b.*\b(?:listen|listening|had on|music|repeat)\b|\bwhat(?:'s| is| has| have you)\b.*\blistening to\b/.test(question)) return "otherInterests"
   if (/\b(?:particular|favourite) (?:moment|lyric|song)\b|\bwhat caught your ear\b|\bwhat (?:is it|was it) about the band\b|\bwhat (?:draws|drew|connects) you\b/.test(question)) return "connection"
   if (/\bhow did you (?:first )?(?:hear|find|discover)\b/.test(question)) return "discovery"
   if (/\bwho (?:are you|will you be|would you be) (?:bringing|taking|going with)\b|\bwho (?:would|will|might|do) you (?:bring|take|go with)\b|\bwho(?:\x27s| is) (?:coming|going) with you\b/.test(question)) return "companion"

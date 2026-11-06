@@ -348,6 +348,7 @@ describe("Mo's natural conversation and November 6 regression", () => {
 
   it.each([
     "What else have you had on lately, in your own words?",
+    "Outside the band, what else has been on rotation lately?",
     "Which other bands or records have that same edge for you?",
     "Who else do you go back to when you want something loud?",
     "Is there other music you've been playing a lot lately, outside Lewisham Social?",
