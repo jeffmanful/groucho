@@ -71,6 +71,20 @@ async function reply(message: string) {
 }
 
 describe.skipIf(process.env.RUN_MO_LIVE_REPLAY !== "1")("Mo November 6 real-model replay", () => {
+  it("responds warmly to the screenshot's unfinished gig story without recapping it", async () => {
+    state.history = moHistoryBefore(1)
+    await reply("A gig")
+    const answer = "One of the Social Hours nights upstairs at the Railway Rooms. The last song went completely off plan."
+    const body = await reply(answer)
+    const words = answer.toLowerCase().replace(/[^a-z ]/g, "").split(/\s+/)
+    const visible = body.message.toLowerCase().replace(/[^a-z ]/g, "")
+    for (let index = 0; index <= words.length - 6; index++) {
+      expect(visible).not.toContain(words.slice(index, index + 6).join(" "))
+    }
+    expect(body.message).toMatch(/(?:what happened|how did|tell me)/i)
+    expect(body.message.split(/(?<=[.!?])\s+/).length).toBeGreaterThan(1)
+  }, 120000)
+
   it("recovers at each broken turn with the original conversation history", async () => {
     for (const index of [5, 7, 9]) {
       state.history = moHistoryBefore(index)

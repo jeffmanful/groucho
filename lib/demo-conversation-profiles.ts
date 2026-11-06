@@ -3,7 +3,7 @@ import { postConversation, type ConversationChoice, type ConversationField, type
 import { colorsThinConversationModel } from "@/lib/gatekeeper-models"
 import { resolveActiveGatekeeperPersona } from "@/lib/persona-resolution"
 import type { ProjectContext } from "@/lib/project-resolution"
-import { LEWISHAM_SOCIAL_CONVERSATION_GUIDANCE, LEWISHAM_SOCIAL_OPENING } from "@/lib/lewisham-social-persona"
+import { LEWISHAM_SOCIAL_CONVERSATION_GUIDANCE, LEWISHAM_SOCIAL_OPENING, MO_ACKNOWLEDGEMENT_GUIDANCE } from "@/lib/lewisham-social-persona"
 import { TOUR_NIGHTS, TOUR_CITIES, SEE_OTHER_CITIES, resolveLewishamChoice } from "@/lib/lewisham-social-tour"
 import { formatMoReply, moQuestionTopic } from "@/lib/lewisham-social-voice"
 export { TOUR_NIGHTS } from "@/lib/lewisham-social-tour"
@@ -73,7 +73,7 @@ export const DEMO_CONVERSATION_PROFILES: Record<DemoConversationId, DemoProfile>
     guidance: LEWISHAM_SOCIAL_CONVERSATION_GUIDANCE,
     typicalAnswers: "6–8", wrapUpAnswers: 9, softCloseAnswers: 11, resolveChoice: resolveLewishamChoice, formatReply: formatMoReply,
     preventRepeatedQuestions: true, questionTopic: moQuestionTopic,
-    replyGuidance: "MO'S NEXT QUESTION: Follow the visitor's most recent answer. If they change subject or offer another artist instead of answering your last question, follow their new topic; never insist on your unanswered question. An unfamiliar artist is an invitation to ask what they sound like, not to doubt the visitor or say you will take their word for it. When a fan has just revealed an unexpected gig event, ask about its reaction, recovery or consequence before a second topic mentioned in that same answer. Inviting the story earlier does not replace this one follow-up after the event is revealed. Reflecting the event then asking about the second topic does not follow the event. Once they describe the outcome, that story is resolved: move on, without asking for a song title or another retrospective question. For example, a performance falters, the crowd takes over, you ask what the performers did, and their account of the recovery completes that thread. Write your own natural reply, not a questionIntent or a catalogue selection. Briefly acknowledge a specific detail when it helps the visitor feel heard; do not mechanically echo every answer. Keep the acknowledgement and one question to two short sentences. Prefer one focused question; do not combine identification and interpretation. Do not grade a song choice or announce that you love hearing stories. Let specific attention show Mo's personality. Answer direct questions and honour stopping and runtime limits.",
+    replyGuidance: MO_ACKNOWLEDGEMENT_GUIDANCE + "\n\nMO'S NEXT QUESTION: Follow the visitor's most recent answer. If they change subject or offer another artist instead of answering your last question, follow their new topic; never insist on your unanswered question. An unfamiliar artist is an invitation to ask what they sound like, not to doubt the visitor or say you will take their word for it. When a fan has just revealed an unexpected gig event, ask about its reaction, recovery or consequence before a second topic mentioned in that same answer. Inviting the story earlier does not replace this one follow-up after the event is revealed. Reflecting the event then asking about the second topic does not follow the event. Once they describe the outcome, that story is resolved: move on, without asking for a song title or another retrospective question. For example, a performance falters, the crowd takes over, you ask what the performers did, and their account of the recovery completes that thread. Write your own natural reply, not a questionIntent or a catalogue selection. Briefly acknowledge a specific detail when it helps the visitor feel heard; do not mechanically echo every answer. Keep the acknowledgement and one question to two short sentences. Prefer one focused question; do not combine identification and interpretation. Do not grade a song choice or announce that you love hearing stories. Let specific attention show Mo's personality. Answer direct questions and honour stopping and runtime limits.",
     closing: "Thanks for coming through the door.",
     completion: "Demo complete. Your preferred night is shown here; no tickets are reserved and no presale code will be sent.",
     fields: [
@@ -113,6 +113,9 @@ export function demoConversationPrompt(profile: DemoProfile, persona: string, tu
   // Older saved Mo personas still instruct the model to emit catalogue keys. Override
   // that obsolete section at runtime so rollout does not require a database rewrite.
   if (profile.id === "lewisham-social") {
+    // Saved personas also carry the old terse/echoing examples. Replace them so
+    // the live voice changes with this release, without rewriting project data.
+    character = character.replace(/VOICE EXAMPLES[^\n]*\n[\s\S]*?(?=\nAPPROVED BAND STORY)/, MO_ACKNOWLEDGEMENT_GUIDANCE + "\n")
     character = character.replace("do not paraphrase it or ask them to justify it again", "a brief acknowledgement is welcome, but do not ask them to justify it again")
     character = character.replace(/ONE REQUEST PER TURN\n[\s\S]*?(?=\n\nBEFORE EACH REPLY|$)/, "ONE REQUEST PER TURN\nWrite a natural acknowledgement and one focused question in reply. Never emit catalogue keys or placeholder text.")
   }

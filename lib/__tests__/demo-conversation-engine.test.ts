@@ -260,13 +260,23 @@ describe("shared conversation runtime for public demos", () => {
     expect(mocks.inserted[1].content).not.toContain("\\n")
   })
 
-  it.each(["Last Bus Home is a good one to start with.", "Last Bus Home, good.", "A track, then.", "That sounds like a proper moment.", "That is a good ending to the night."])("removes Mo's stock approval before returning and saving the question: %s", async preamble => {
+  it.each(["Last Bus Home is a good one to start with.", "Last Bus Home, good.", "A track, then."])("removes Mo's stock approval before returning and saving the question: %s", async preamble => {
     mocks.history[0].metadata.conversation_profile = "lewisham-social"
     mocks.create.mockResolvedValueOnce(result(`${preamble} What stays with you about it?`))
     const data = await (await run("Last Bus Home", "lewisham-social")).json()
     expect(data.message).toBe("What stays with you about it?")
     expect(mocks.inserted[1].content).toBe(data.message)
     expect(mocks.create).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    "Now you've got me curious. What happened?",
+    "Sounds like a good night out. Who were you there with?",
+    "I'd have loved to hear that from the room. How did the band react?",
+  ])("preserves Mo's friendly reaction: %s", async reply => {
+    mocks.history[0].metadata.conversation_profile = "lewisham-social"
+    mocks.create.mockResolvedValueOnce(result(reply))
+    expect((await (await run("The lights went out, but we all kept singing.", "lewisham-social")).json()).message).toBe(reply)
   })
 
   it.each(["I've got a soft spot for Same Again too. Who first put you onto it?", "I like how a good bassline holds that song together. What caught your ear?"])("preserves Mo's own opinion and the question that follows: %s", async reply => {
@@ -283,6 +293,14 @@ describe("persona configuration and grounded state", () => {
     expect(prompt).not.toContain("Legacy pass and reject rules")
     expect(prompt).not.toContain("COLORS")
     expect(prompt).toContain("exactly one answerable question")
+  })
+
+  it("replaces stale Mo voice examples and supplies warm, non-echoing guidance", () => {
+    const prompt = demoConversationPrompt(DEMO_CONVERSATION_PROFILES["lewisham-social"],
+      "You are Mo.\nVOICE EXAMPLES\nMo: Recap every answer.\n\nAPPROVED BAND STORY\nFictional band.", 2)
+    expect(prompt).not.toContain("Recap every answer")
+    expect(prompt).toContain("Now you've got me curious")
+    expect(prompt).toContain("rather than reporting their words back")
   })
 
   it("requires the exact engine and an approved profile", () => {
