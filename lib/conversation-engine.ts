@@ -28,9 +28,6 @@ type ConversationReply = {
   addsNewContext?: boolean
   choiceKey?: string
   facts?: unknown
-  questionIntent?: string
-  observationKey?: string
-  answerKey?: string
 }
 
 /**
@@ -129,6 +126,25 @@ export function oneQuestion(reply: string): string {
 }
 
 
+/** Compare the question itself, ignoring acknowledgements and punctuation. */
+export function repeatsConversationQuestion(reply: string, previous: readonly string[]): boolean {
+  const question = (text: string) => {
+    const first = oneQuestion(text).match(/[^.!?]*\?$/)?.[0] ?? ""
+    return first.toLowerCase().replace(/[’']/g, "").replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim()
+  }
+  const current = question(reply)
+  if (!current) return false
+  return previous.some(text => {
+    const earlier = question(text)
+    if (!earlier) return false
+    if (current === earlier) return true
+    const a = new Set(current.split(" ")), b = new Set(earlier.split(" "))
+    // Catch near-verbatim retries, without treating all questions about a topic as duplicates.
+    const overlap = [...a].filter(word => b.has(word)).length
+    return a.size >= 4 && b.size >= 4 && overlap / new Set([...a, ...b]).size >= 0.8
+  })
+}
+
 /** A close may acknowledge the last answer, but must never imply a decision. */
 export function conversationalClosing(acknowledgment: string, neutralLine: string): string {
   const unsafe = /\?|\b(?:accepted|approved|rejected|declined|passed|failed|qualified|unqualified|application|review|decision|proceed)\b|\b(?:good|great|perfect|strong|poor|bad)\s+(?:fit|match)\b|\bwelcome\s+(?:to|in)\b|\b(?:we(?:'d| would)? love to have you|you(?:'re| are) in|enough (?:to|for)|move forward|take (?:this|things) forward|no space|not (?:a place|for)|isn't (?:set up|for|a place))\b/i
@@ -151,14 +167,6 @@ export type ConversationChoice = {
   navigationOptions?: readonly string[]
   factsByOption?: Readonly<Record<string, Readonly<Record<string, string>>>>
 }
-export type ConversationTurnPlan = {
-  questions: Readonly<Record<string, { question: string; choiceKey?: string }>>
-  observations: Readonly<Record<string, string>>
-  answers: Readonly<Record<string, string>>
-  fieldQuestions: Readonly<Record<string, string>>
-  fallbackQuestion: string
-  answerForQuestion?: (message: string) => string | undefined
-}
 export type ConversationConfiguration = {
   id: string
   marker: string
@@ -172,7 +180,9 @@ export type ConversationConfiguration = {
   resolveChoice?: (key: string, choice: ConversationChoice, details: Record<string, string>, message: string) => ConversationChoice
   formatReply?: (reply: string) => string
   replyGuidance?: string
-  turnPlan?: ConversationTurnPlan
+  /** Validate questions before publishing; currently enabled for Mo. */
+  preventRepeatedQuestions?: boolean
+  questionTopic?: (reply: string) => string | undefined
   closingMessage?: string
   completionMessage?: string
   wrapUpAnswers?: number
@@ -333,6 +343,8 @@ export async function postConversation(input: {
     if (record(record(entry.metadata).conversation_progress).adds_new_context !== false) break
     quietTurns += 1
   }
+  const previousAssistantTurns = history.filter(entry => entry.role === "assistant").slice(-8)
+  const previousQuestions = previousAssistantTurns.map(entry => entry.content as string)
   const system = config.buildPrompt({
     applicationAudience: session.application_audience === "artist" ? "artist" : "community",
     hasApplicantDetails: Boolean(session.applicant_details),
@@ -340,6 +352,9 @@ export async function postConversation(input: {
     shows,
   }) + `\n\nPrevious consecutive answers without new context: ${quietTurns}. A genuine applicant question always deserves an answer. Do not re-probe something they have already said they cannot explain.` +
     (fields.length ? `\nConfirmed conversation details: ${JSON.stringify(detailsBeforeTurn)}. Preserve these facts; do not ask for them again.\nCapture new details only with a sourceQuote copied exactly from the CURRENT applicant answer. Approved fields: ${JSON.stringify(fields)}. Use the exact approved value for enumerated fields.\nApproved choices: ${JSON.stringify(choices)}. When asking a registered choice question, set choiceKey to its key. Never invent options or ask a choice question without a choiceKey. Otherwise use none. Do not close before the required details are known unless the applicant wants to stop, a boundary ends the exchange, or the runtime instructs a close. No reservations, approvals or codes are issued by this simulation.` : "")
+  const repetitionGuidance = config.preventRepeatedQuestions
+    ? `\nQuestions already asked: ${JSON.stringify(previousQuestions)}. Do not repeat these requests, even in different words or if the visitor answered a different thread. Briefly acknowledge their actual detail and choose a new useful question. If all useful topics have been offered, close honestly. A short fragment may elaborate an earlier answer: do not assign it to the latest field just because that was your last question. Never store "not yet shared", a pending question or a guessed interest as an applicant fact.`
+    : ""
   const fieldResponseTool = fields.length ? {
     ...conversationResponseTool,
     input_schema: {
@@ -360,41 +375,14 @@ export async function postConversation(input: {
       required: [...conversationResponseTool.input_schema.required, "choiceKey", "facts"],
     },
   } : conversationResponseTool
-  const plan = config.turnPlan
-  const responseTool = plan ? {
-    ...fieldResponseTool,
-    input_schema: { ...fieldResponseTool.input_schema, properties: {
-      ...fieldResponseTool.input_schema.properties,
-      questionIntent: { type: "string", enum: ["none", ...Object.keys(plan.questions)] },
-      observationKey: { type: "string", enum: ["none", ...Object.keys(plan.observations)] },
-      answerKey: { type: "string", enum: ["none", ...Object.keys(plan.answers)] },
-    }, required: [...fieldResponseTool.input_schema.required, "questionIntent", "observationKey", "answerKey"] },
-  } : fieldResponseTool
-  function plannedReply(reply: ConversationReply, questionOverride?: string): ConversationReply {
-    if (!plan) return reply
-    if (reply.boundary !== "none") return { ...reply, reply: reply.boundary === "consent" ? config.consentStatement ?? DEFAULT_PRIVACY_STATEMENT : "Let's pause this conversation. Would you like to stop here?",
-      boundaryQuestion: config.consentQuestion ?? DEFAULT_PRIVACY_QUESTION, interactionProposal: undefined }
-    if (reply.close) return { ...reply, reply: config.closingMessage ?? DEFAULT_APPLICATION_CLOSING_MESSAGE, interactionProposal: undefined }
-    const intent = reply.questionIntent
-    const question = intent && Object.hasOwn(plan.questions, intent) ? plan.questions[intent] : undefined
-    const answerKey = applicantQuestion ? plan.answerForQuestion?.(input.message) ?? reply.answerKey : undefined
-    const resolvedAnswerKey = answerKey && Object.hasOwn(plan.answers, answerKey) ? answerKey : "unknown"
-    const answer = applicantQuestion
-      ? plan.answers[resolvedAnswerKey] : undefined
-    const observationKey = reply.observationKey
-    const observation = !applicantQuestion && observationKey && Object.hasOwn(plan.observations, observationKey) &&
-      record(lastAssistant?.metadata).conversation_observation_key !== observationKey ? plan.observations[observationKey] : undefined
-    return { ...reply, reply: question ? [answer, observation, questionOverride ?? question.question].filter(Boolean).join(" ") : "",
-      choiceKey: question?.choiceKey ?? "none", answerKey: applicantQuestion ? resolvedAnswerKey : reply.answerKey, interactionProposal: undefined }
-  }
+  const responseTool = fieldResponseTool
 
   async function requestReply(operation: string, instruction: string, maxTokens = fields.length ? 1000 : 600,
     onReply?: (text: string) => void): Promise<ConversationReply> {
     const forcedTool = supportsForcedToolChoice(model)
     const base = {
       model, max_tokens: maxTokens,
-      system: system + "\n\n" + instruction + (config.replyGuidance ? "\n\n" + config.replyGuidance : "") +
-        (plan ? `\nSERVER-WRITTEN TURNS: Choose exactly one questionIntent, an optional observationKey and an answerKey. Do not write your own question or observation in reply; the server replaces it. Set reply to "Server supplies the turn.". Use none for unused keys, and questionIntent=none only when closing or raising a boundary. Most turns need observationKey=none. Use an aside only when relevant, never to praise the visitor. Answer direct visitor questions with the closest approved answerKey, or unknown; never volunteer a song meaning. Choose night_preference for ticket dates; the server supplies the correct city options. One intent requests one piece of information. Question catalogue: ${JSON.stringify(plan.questions)}. Optional asides: ${JSON.stringify(plan.observations)}. Approved direct answers: ${JSON.stringify(plan.answers)}.` : "") +
+      system: system + (config.replyGuidance ? "\n\n" + config.replyGuidance : "") + repetitionGuidance + "\n\n" + instruction +
         (forcedTool ? "" : "\n\nReturn the groucho_converse fields as one JSON object."),
       messages: [...conversation, { role: "user" as const, content: currentAnswer }],
     }
@@ -403,7 +391,7 @@ export async function postConversation(input: {
       : { ...base, output_config: { format: { type: "json_schema" as const, schema: strictJsonSchema(responseTool.input_schema) } } }
     const client = new Anthropic({ maxRetries: 1, timeout: 45000 })
     let response: Anthropic.Message
-    if (onReply && !plan) {
+    if (onReply && !config.preventRepeatedQuestions) {
       let shown = ""
       const show = (reply: unknown) => {
         if (typeof reply !== "string") return
@@ -443,16 +431,26 @@ export async function postConversation(input: {
       throw new Error("Conversation tool response malformed")
     }
     const replyText = value.reply.replace(/\\r\\n|\\n/g, "\n").trim()
-    return plannedReply({ reply: config.formatReply?.(replyText) ?? replyText, close: value.close, boundary: value.boundary as ConversationReply["boundary"],
+    return { reply: config.formatReply?.(replyText) ?? replyText, close: value.close, boundary: value.boundary as ConversationReply["boundary"],
       boundaryQuestion: value.boundaryQuestion.trim(), interactionProposal: value.interactionProposal,
       choiceKey: typeof value.choiceKey === "string" ? value.choiceKey : undefined,
       facts: value.facts,
-      questionIntent: typeof value.questionIntent === "string" ? value.questionIntent : undefined,
-      observationKey: typeof value.observationKey === "string" ? value.observationKey : undefined,
-      answerKey: typeof value.answerKey === "string" ? value.answerKey : undefined,
-      ...(typeof value.addsNewContext === "boolean" ? { addsNewContext: value.addsNewContext } : {}) })
+      ...(typeof value.addsNewContext === "boolean" ? { addsNewContext: value.addsNewContext } : {}) }
+  }
+  const explicitlyRequestsRepeat = /\b(?:repeat (?:that|the question)|say (?:that|it) again|what did you ask)\b/i.test(input.message)
+  function repeatsQuestion(reply: ConversationReply): boolean {
+    if (!config.preventRepeatedQuestions || explicitlyRequestsRepeat || navigatingChoice || reply.close || reply.boundary !== "none") return false
+    const choice = choiceFor(reply)
+    // The same date question is legitimate when a corrected destination changes its options.
+    const comparable = choice ? previousAssistantTurns.filter(entry =>
+      JSON.stringify(record(record(entry.metadata).ui).options) === JSON.stringify(choice.options))
+      .slice(-8).map(entry => entry.content as string) : previousQuestions
+    const visible = choice?.question ?? reply.reply
+    const topic = !choice ? config.questionTopic?.(visible) : undefined
+    return repeatsConversationQuestion(visible, comparable) || Boolean(topic && comparable.some(previous => config.questionTopic?.(previous) === topic))
   }
   function hasQuestion(reply: ConversationReply): boolean {
+    if (repeatsQuestion(reply)) return false
     const rich = reply.boundary === "none" ? config.resolveInteraction?.(reply.interactionProposal, shows) ?? null : null
     if (fields.length && reply.boundary === "none") {
       const choice = choiceFor(reply)
@@ -482,8 +480,7 @@ export async function postConversation(input: {
     addsNewContext = applicantQuestion ? true : proposal.addsNewContext
     // A catalogue navigation action changes the visible choices, never the selected field.
     if (navigatingChoice && proposal.boundary === "none" && !stoppedByApplicant) {
-      proposal = { ...proposal, close: false, choiceKey: navigatingChoice, addsNewContext: true, facts: [],
-        ...(plan ? { questionIntent: Object.keys(plan.questions).find(key => plan.questions[key].choiceKey === navigatingChoice), observationKey: "none", answerKey: "none" } : {}) }
+      proposal = { ...proposal, close: false, choiceKey: navigatingChoice, addsNewContext: true, facts: [] }
       addsNewContext = true
     }
     const stalled = turnCount >= 3 && addsNewContext === false && quietTurns >= 1
@@ -500,15 +497,25 @@ export async function postConversation(input: {
       !applicantQuestion && !proposal.close && proposal.boundary === "none" && !hasQuestion(proposal))
     if (needsRepair) {
       let usable = false
-      let feedback = ""
+      let feedback = repeatsQuestion(proposal)
+        ? `\nYour proposed question repeats one already asked. Do not ask it again or paraphrase the same request. Acknowledge the latest answer naturally and move to a useful unanswered topic. Previous questions: ${JSON.stringify(previousQuestions)}. Details now understood: ${JSON.stringify(detailsFor(proposal))}.`
+        : ""
+      feedback += `\nRejected draft: ${JSON.stringify(proposal.reply)}. Details already understood, including this answer: ${JSON.stringify(detailsFor(proposal))}.`
+      if (repeatsQuestion(proposal) && config.questionTopic) {
+        const offered = new Set(previousQuestions.map(question => config.questionTopic?.(question)))
+        const next = missingFor(proposal).find(field => !offered.has(field.key))
+        if (next) feedback += `\nFor this repair, the new question must ask ONLY about this remaining, unasked detail: ${next.label}. Write it naturally in character after a brief acknowledgement. Do not ask about the earlier topic again. Preserve the current answer's facts.`
+      }
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           const repaired = await requestReply(applicantQuestion ? operation("question_reply_repair") : operation("active_question_repair"),
             (applicantQuestion ? questionInstruction : fields.length
               ? `Return an answerable turn with one clear question or approved choiceKey. Required details still missing: ${missingFor(proposal).map(field => field.label).join(", ")}. Capture supported facts from the current answer. Continue until these details are understood; never request something already confirmed. A selection question requires its registered choiceKey. Do not select a choiceKey for a field already supplied, including the option the applicant just selected. Use choiceKey=none for an open question.`
               : "The previous active reply had no question. Ask one useful open question if a real thread remains, or set close=true if the exchange is settled. Do not continue for formatting alone.") + feedback)
+          // Keep grounded facts from the initial attempt if a wording repair omits them.
+          repaired.facts = [...(Array.isArray(proposal.facts) ? proposal.facts : []), ...(Array.isArray(repaired.facts) ? repaired.facts : [])]
           if (closesBeforeReady(repaired) || (applicantQuestion ? repaired.close || !hasQuestion(repaired) : !repaired.close && !hasQuestion(repaired))) {
-            feedback = "\nThe last repair was unusable. " + (applicantQuestion ? "It must answer the question, set close=false, and include one direct question ending in ?." : "Set close=true for a settled exchange; otherwise include one direct question ending in ?.")
+            feedback += `\nRejected repair: ${JSON.stringify(repaired.reply)}. Reason: ${repeatsQuestion(repaired) ? "repeats an earlier request; change topic" : closesBeforeReady(repaired) ? "closes before the remaining details are understood" : "missing or already answered question"}. ` + (applicantQuestion ? "It must answer the question, set close=false, and include one direct question ending in ?." : "Set close=true for a settled exchange; otherwise include one direct question ending in ?.")
             continue
           }
           proposal = repaired
@@ -518,12 +525,7 @@ export async function postConversation(input: {
           feedback = `\nThe last repair could not be used (${error instanceof Error ? error.message : "invalid response"}). Return the complete required tool with a usable reply.`
         }
       }
-      if (!usable && plan) {
-        const missing = missingFor(proposal)[0]?.key
-        const intent = missing ? plan.fieldQuestions[missing] : plan.fallbackQuestion
-        proposal = plannedReply({ ...proposal, close: !missing && !applicantQuestion, boundary: "none",
-          questionIntent: intent ?? plan.fallbackQuestion, observationKey: "none", answerKey: proposal.answerKey ?? "unknown" })
-      } else if (!usable) throw new Error("Conversation repair exhausted")
+      if (!usable) throw new Error("Conversation repair exhausted")
     }
     // The closing acknowledgment is cosmetic. Rather than spend another model round trip on it,
     // conversationalClosing keeps the first safe reflective sentence of this reply, or falls back
@@ -575,7 +577,11 @@ export async function postConversation(input: {
     )
     : firstBoundaryTurn
       ? `${boundaryStatement || config.consentStatement || DEFAULT_PRIVACY_STATEMENT} ${boundaryQuestion}`.trim()
-      : oneQuestion(plan && activeChoice ? plannedReply(proposal, activeChoice.question).reply : activeChoice?.question ?? activeRich?.question ?? proposal.reply)
+      : oneQuestion(activeChoice
+        ? config.preventRepeatedQuestions
+          ? [oneQuestion(proposal.reply).replace(/[^.!?]*\?$/, "").trim(), activeChoice.question].filter(Boolean).join(" ")
+          : activeChoice.question
+        : activeRich?.question ?? proposal.reply)
   const details = detailsFor(proposal)
   const completion = close && config.completionMessage
     ? { mode: "simulation", complete: missingFor(proposal).length === 0, message: config.completionMessage }
@@ -622,7 +628,6 @@ export async function postConversation(input: {
       conversation_profile: config.id,
       ...(fields.length ? { conversation_details: details } : {}),
       ...(activeChoice ? { conversation_choice_key: choiceKeyFor(proposal) } : {}),
-      ...(plan ? { conversation_question_intent: proposal.questionIntent, conversation_observation_key: proposal.observationKey, conversation_answer_key: proposal.answerKey } : {}),
       ...(completion ? { conversation_completion: completion } : {}),
       ui,
       boundary: proposal.boundary,

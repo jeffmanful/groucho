@@ -29,7 +29,8 @@ vi.mock("@/lib/supabase", () => ({ supabase: {
 import { conversationFacts, postConversation, type ConversationConfiguration } from "@/lib/conversation-engine"
 import { CONVERSATION_ENGINE_MARKER, DEMO_CONVERSATION_PROFILES, demoConversationProfile, demoConversationPrompt, type DemoConversationId } from "@/lib/demo-conversation-profiles"
 import type { ProjectContext } from "@/lib/project-resolution"
-import { MO_TURN_PLAN } from "@/lib/lewisham-social-turn-plan"
+import { brokenMoConversation, moHistoryBefore } from "./fixtures/mo-nov6"
+import { LEWISHAM_SOCIAL_PERSONA_PROMPT } from "@/lib/lewisham-social-persona"
 
 const context = { organisationId: "org", projectId: "project", settings: { applicationExperience: { max_turns: 8 }, raw: {} } } as unknown as ProjectContext
 function configuration(id: DemoConversationId = "loptimiste"): ConversationConfiguration {
@@ -38,6 +39,7 @@ function configuration(id: DemoConversationId = "loptimiste"): ConversationConfi
     resolveChoice: profile.resolveChoice,
     formatReply: profile.formatReply,
     replyGuidance: profile.replyGuidance,
+    preventRepeatedQuestions: profile.preventRepeatedQuestions, questionTopic: profile.questionTopic,
     wrapUpAnswers: profile.wrapUpAnswers, softCloseAnswers: profile.softCloseAnswers,
     closingMessage: profile.closing, completionMessage: profile.completion,
     buildPrompt: ({ turnCount }) => demoConversationPrompt(profile, `You are ${id}.\n\nCONVERSATION FLOW\nLegacy pass and reject rules.`, turnCount) }
@@ -274,105 +276,6 @@ describe("shared conversation runtime for public demos", () => {
   })
 })
 
-describe("Mo's server-written turn plans", () => {
-  beforeEach(() => { mocks.history[0].metadata.conversation_profile = "lewisham-social" })
-  const planned = (message: string, onReplyDelta?: (reply: string) => void) => postConversation({ context, sessionId: "demo-session", message,
-    configuration: { ...configuration("lewisham-social"), turnPlan: MO_TURN_PLAN }, onReplyDelta })
-  const planResult = (intent: string, extra = {}) => result("Which song was it, and why? Tell me about the gig too.", false,
-    { questionIntent: intent, observationKey: "none", answerKey: "none", ...extra })
-
-  it("replaces a compound model question with exactly one approved request", async () => {
-    mocks.create.mockResolvedValueOnce(planResult("identify_track"))
-    const data = await (await planned("A track")).json()
-    expect(data.message).toBe("What track was it?")
-    expect(mocks.inserted[1].content).toBe(data.message)
-    expect(mocks.inserted[1].metadata.conversation_question_intent).toBe("identify_track")
-    const request = mocks.create.mock.calls[0][0]
-    expect(request.tools[0].input_schema.required).toContain("questionIntent")
-  })
-
-  it("keeps a personal aside without permitting another request or an em dash", async () => {
-    mocks.create.mockResolvedValueOnce(planResult("track_connection", { observationKey: "same_again_favourite" }))
-    const data = await (await planned("Same Again")).json()
-    expect(data.message).toBe("I've got a soft spot for Same Again. What stays with you about that one?")
-    expect(data.message.match(/\?/g)).toHaveLength(1)
-    expect(data.message).not.toContain("—")
-  })
-
-  it("does not stream unvalidated model prose", async () => {
-    const delta = vi.fn()
-    mocks.create.mockResolvedValueOnce(planResult("identify_track"))
-    expect((await (await planned("A track", delta)).json()).message).toBe("What track was it?")
-    expect(delta).not.toHaveBeenCalled()
-  })
-
-  it("answers a direct question from approved facts before one next question", async () => {
-    mocks.create.mockResolvedValueOnce(planResult("recent_listening", { answerKey: "members", observationKey: "same_again_favourite" }))
-    const data = await (await planned("Who is in the band?")).json()
-    expect(data.message).toBe(`${MO_TURN_PLAN.answers.members} What have you been listening to lately?`)
-    expect(data.message.match(/\?/g)).toHaveLength(1)
-  })
-
-  it("does not volunteer a song meaning selected in answerKey", async () => {
-    mocks.create.mockResolvedValueOnce(planResult("track_connection", { answerKey: "last_bus_home" }))
-    expect((await (await planned("Last Bus Home")).json()).message).toBe("What stays with you about that one?")
-  })
-
-  it("ignores invented aside keys and preserves a single approved question", async () => {
-    mocks.create.mockResolvedValueOnce(planResult("unfamiliar_artist_sound", { observationKey: "__proto__" }))
-    expect((await (await planned("Harbour Static")).json()).message).toBe("What do they sound like?")
-  })
-
-  it("derives the selector from the intent and persists its key for city navigation", async () => {
-    mocks.create.mockResolvedValueOnce(planResult("night_preference", { choiceKey: "discovery", facts: [
-      { key: "location", value: "Bristol", sourceQuote: "Bristol" }, { key: "preferredCity", value: "London", sourceQuote: "London" },
-    ] }))
-    const data = await (await planned("Bristol to the London show.")).json()
-    expect(data.ui.options).toEqual(["London, Sat 17 Apr", "London, Sun 18 Apr", "See other cities"])
-    expect(mocks.inserted[1].metadata.conversation_choice_key).toBe("night")
-    expect(data.message.match(/\?/g)).toHaveLength(1)
-  })
-
-  it("retains an approved direct answer alongside city-specific buttons", async () => {
-    mocks.history[0].metadata.conversation_details = { preferredCity: "London" }
-    mocks.create.mockResolvedValueOnce(planResult("night_preference", { answerKey: "london_dates" }))
-    const data = await (await planned("What are the London dates?")).json()
-    expect(data.message).toBe(`${MO_TURN_PLAN.answers.london_dates} London, then. What night would you prefer?`)
-  })
-
-  it("falls back to an approved missing-field question after invalid intent repairs", async () => {
-    mocks.create.mockResolvedValue(planResult("invented"))
-    const data = await (await planned("Hello")).json()
-    expect(data.status).toBe("active")
-    expect(data.message).toBe("How did you first hear about the band?")
-    expect(mocks.create).toHaveBeenCalledTimes(3)
-  })
-
-  it("discloses the fictional band even if the model's intent needs fallback", async () => {
-    mocks.create.mockResolvedValue(planResult("none", { answerKey: "unknown" }))
-    const data = await (await planned("Are you a real band?")).json()
-    expect(data.message).toBe(`${MO_TURN_PLAN.answers.fictional} How did you first hear about the band?`)
-    expect(data.message.match(/\?/g)).toHaveLength(1)
-  })
-
-  it("preserves a valid direct answer while repairing an invalid next-question intent", async () => {
-    mocks.create.mockResolvedValue(planResult("none", { answerKey: "members" }))
-    const data = await (await planned("Who is in the band?")).json()
-    expect(data.message).toContain(MO_TURN_PLAN.answers.members)
-  })
-
-  it("keeps approved questions, asides and answers free of em dashes and extra requests", () => {
-    for (const entry of Object.values(MO_TURN_PLAN.questions)) {
-      expect(entry.question.match(/\?/g)).toHaveLength(1)
-      expect(entry.question).not.toContain("—")
-    }
-    for (const text of [...Object.values(MO_TURN_PLAN.observations), ...Object.values(MO_TURN_PLAN.answers)]) {
-      expect(text).not.toMatch(/[?—]/)
-      expect(text).not.toMatch(/\b(?:tell me|let me know|describe|share with me)\b/i)
-    }
-  })
-})
-
 describe("persona configuration and grounded state", () => {
   it.each(["loptimiste", "saltings", "lewisham-social"] as const)("preserves %s without importing COLORS or legacy outcome rules", id => {
     const prompt = configuration(id).buildPrompt({ applicationAudience: "community", hasApplicantDetails: false, turnCount: 1, shows: [] })
@@ -396,5 +299,146 @@ describe("persona configuration and grounded state", () => {
       { key: "unapproved", value: "yes", sourceQuote: "London" },
     ], "London", fields)).toEqual({})
     expect(conversationFacts([{ key: "night", value: "London, Sun 18 Apr", sourceQuote: "London, Sun 18 Apr" }], "London, Sun 18 Apr", fields)).toEqual({ night: "London, Sun 18 Apr" })
+  })
+})
+
+describe("Mo's natural conversation and November 6 regression", () => {
+  const natural = (message: string, onReplyDelta?: (reply: string) => void) => postConversation({ context, sessionId: "demo-session", message,
+    configuration: configuration("lewisham-social"), onReplyDelta })
+
+  it.each([5, 7, 9])("repairs the repeated question at transcript position %s without losing captured facts", async index => {
+    mocks.history = moHistoryBefore(index)
+    const answer = brokenMoConversation[index].content
+    mocks.create.mockResolvedValueOnce(result("What caught your ear?", false, {
+      facts: [{ key: "connection", value: answer, sourceQuote: answer }],
+    })).mockResolvedValueOnce(result("The energy and the words, then. Who else have you been listening to lately?"))
+    const delta = vi.fn()
+    const data = await (await natural(answer, delta)).json()
+    expect(data.message).toBe("The energy and the words, then. Who else have you been listening to lately?")
+    expect(data.details.connection).toBe(answer)
+    expect(mocks.create).toHaveBeenCalledTimes(2)
+    expect(mocks.create.mock.calls[1][0].system).toContain("Do not ask it again or paraphrase the same request")
+    expect(mocks.inserted[1].content).toBe(data.message)
+    expect(delta).not.toHaveBeenCalled()
+  })
+
+  it("moves past a second generic attempt to pin down a song", async () => {
+    mocks.history = moHistoryBefore(5)
+    mocks.history.push({ role: "assistant", content: "Was there a particular moment or song that gave you that feeling?", metadata: {} })
+    mocks.create.mockResolvedValueOnce(result("Do you have a favourite lyric or song where that comes through most?"))
+      .mockResolvedValueOnce(result("The political edge, then. Who else have you been listening to?"))
+    expect((await (await natural("the political sound")).json()).message).toBe("The political edge, then. Who else have you been listening to?")
+    expect(mocks.create).toHaveBeenCalledTimes(2)
+  })
+
+  it("moves past a rephrased companion request from the live replay", async () => {
+    mocks.history = moHistoryBefore(5)
+    mocks.history.push({ role: "assistant", content: "Who would you bring along to a night?", metadata: {} })
+    mocks.create.mockResolvedValueOnce(result("The hook and lyrics, got it. Who would you take along to a night, if anyone?"))
+      .mockResolvedValueOnce(result("The lyrics matter to you too. Where are you travelling from?"))
+    expect((await (await natural("the hook and lyrics")).json()).message).toBe("The lyrics matter to you too. Where are you travelling from?")
+    expect(mocks.create).toHaveBeenCalledTimes(2)
+  })
+
+  it("does not confuse a specific gig follow-up with a broad listening request", () => {
+    const topic = DEMO_CONVERSATION_PROFILES["lewisham-social"].questionTopic!
+    expect(topic("Who else was in the room when the lights went out?")).toBeUndefined()
+    expect(topic("What was it about that IDLES gig that stayed with you?")).toBeUndefined()
+  })
+
+  it.each([
+    "What else have you had on lately, in your own words?",
+    "Which other bands or records have that same edge for you?",
+    "Who else do you go back to when you want something loud?",
+    "Is there other music you've been playing a lot lately, outside Lewisham Social?",
+    "Outside the band, is there anything you've had on repeat lately?",
+  ])("repairs an already offered listening request: %s", async question => {
+    mocks.history = moHistoryBefore(5)
+    mocks.history.push({ role: "assistant", content: "What's been on repeat for you since then, apart from Lewisham Social?", metadata: {} })
+    mocks.create.mockResolvedValueOnce(result(question))
+      .mockResolvedValueOnce(result("The words matter to you too. Who are you bringing along?"))
+    expect((await (await natural("the political sound")).json()).message).toBe("The words matter to you too. Who are you bringing along?")
+    expect(mocks.create).toHaveBeenCalledTimes(2)
+    expect(mocks.create.mock.calls[1][0].system).toContain("new question must ask ONLY about")
+  })
+
+  it.each([
+    "Who brought you along, and what did they say it would be like?",
+    "Who brought you along, and was it a night you'd been looking forward to?",
+  ])("keeps the first natural request from a compound question: %s", async question => {
+    mocks.history = moHistoryBefore(1)
+    mocks.create.mockResolvedValueOnce(result(`A friend's introduction, then. ${question}`))
+    expect((await (await natural("Someone brought me along")).json()).message).toBe("A friend's introduction, then. Who brought you along?")
+    expect(mocks.create).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not let an acknowledgement disguise the same question", async () => {
+    mocks.history = moHistoryBefore(5)
+    mocks.create.mockResolvedValueOnce(result("The energy draws you in. What caught your ear?"))
+      .mockResolvedValueOnce(result("Who else do you listen to?"))
+    expect((await (await natural("the raw vibes")).json()).message).toBe("Who else do you listen to?")
+    expect(mocks.create).toHaveBeenCalledTimes(2)
+  })
+
+  it("fails without saving or streaming a loop when all repairs repeat", async () => {
+    mocks.history = moHistoryBefore(7)
+    mocks.create.mockResolvedValue(result("What caught your ear?"))
+    const delta = vi.fn()
+    expect((await natural("the political sound", delta)).status).toBe(503)
+    expect(mocks.create).toHaveBeenCalledTimes(3)
+    expect(mocks.inserted).toEqual([])
+    expect(delta).not.toHaveBeenCalled()
+  })
+
+  it("allows an explicit request to repeat the question", async () => {
+    mocks.history = moHistoryBefore(5)
+    mocks.create.mockResolvedValueOnce(result("What caught your ear?"))
+    expect((await (await natural("Could you repeat the question?")).json()).message).toBe("What caught your ear?")
+    expect(mocks.create).toHaveBeenCalledTimes(1)
+  })
+
+  it("preserves a natural acknowledgement and offers only approved London dates", async () => {
+    mocks.history = moHistoryBefore(9)
+    mocks.create.mockResolvedValueOnce(result("London it is. Which night would suit you?", false, { choiceKey: "night", facts: [
+      { key: "location", value: "Bristol", sourceQuote: "Bristol" }, { key: "preferredCity", value: "London", sourceQuote: "London" },
+    ] }))
+    const data = await (await natural("Bristol to the London show.")).json()
+    expect(data.ui.options).toEqual(["London, Sat 17 Apr", "London, Sun 18 Apr", "See other cities"])
+    expect(data.message).toContain("London it is.")
+    expect(data.message.match(/\?/g)).toHaveLength(1)
+    expect(mocks.inserted[1].metadata.conversation_choice_key).toBe("night")
+  })
+
+  it("allows the date question again when the visitor changes destination", async () => {
+    mocks.history = moHistoryBefore(5)
+    mocks.history.push({ role: "assistant", content: "Which night would you prefer?", metadata: {
+      conversation_details: { preferredCity: "London" }, conversation_choice_key: "night",
+      ui: { options: ["London, Sat 17 Apr", "London, Sun 18 Apr", "See other cities"] },
+    } })
+    mocks.create.mockResolvedValueOnce(result("Bristol instead, then. Which night would you prefer?", false, { choiceKey: "night", facts: [
+      { key: "preferredCity", value: "Bristol", sourceQuote: "Bristol" },
+    ] }))
+    const data = await (await natural("Actually, I want Bristol instead.")).json()
+    expect(data.ui.options).toEqual(["Bristol, Tue 13 Apr", "See other cities"])
+    expect(mocks.create).toHaveBeenCalledTimes(1)
+  })
+
+  it("keeps direct answers when showing exact night choices", async () => {
+    mocks.history = moHistoryBefore(5)
+    mocks.history.at(-1)!.metadata.conversation_details = { preferredCity: "London" }
+    mocks.create.mockResolvedValueOnce(result("London is on 17 and 18 April 2027. Which night would suit you?", false, { choiceKey: "night" }))
+    expect((await (await natural("What are the London dates?")).json()).message).toContain("London is on 17 and 18 April 2027.")
+  })
+
+  it("replaces obsolete stored catalogue instructions and uses free-form reply schema", async () => {
+    const legacy = LEWISHAM_SOCIAL_PERSONA_PROMPT.replace(/ONE REQUEST PER TURN\n[\s\S]*?(?=\n\nBEFORE EACH REPLY)/,
+      "ONE REQUEST PER TURN\nChoose questionIntent from the server catalogue. Set reply to Server supplies the turn.")
+    const prompt = demoConversationPrompt(DEMO_CONVERSATION_PROFILES["lewisham-social"], legacy, 3)
+    expect(prompt).not.toContain("Choose questionIntent")
+    expect(prompt).not.toContain("Server supplies the turn")
+    mocks.history = moHistoryBefore(5)
+    mocks.create.mockResolvedValueOnce(result("The energy draws you in. Who else have you been listening to?"))
+    await natural("the raw vibes")
+    expect(mocks.create.mock.calls[0][0].tools[0].input_schema.properties).not.toHaveProperty("questionIntent")
   })
 })
