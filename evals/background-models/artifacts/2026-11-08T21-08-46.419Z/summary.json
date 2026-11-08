@@ -1,0 +1,68 @@
+[
+  {
+    "model": "anthropic/claude-haiku-4.5",
+    "task": "profile",
+    "attempts": 12,
+    "structurallyValid": 12,
+    "costsKnown": true,
+    "costUsd": 0.020517999999999998,
+    "usdPer1000Attempts": 1.709833333333333,
+    "medianMs": 1431,
+    "note": "Structural validity is not semantic quality. Review every output against the supplied transcript and rubric."
+  },
+  {
+    "model": "anthropic/claude-haiku-4.5",
+    "task": "cultural",
+    "attempts": 12,
+    "structurallyValid": 12,
+    "costsKnown": true,
+    "costUsd": 0.013104000000000001,
+    "usdPer1000Attempts": 1.092,
+    "medianMs": 1242.5,
+    "note": "Structural validity is not semantic quality. Review every output against the supplied transcript and rubric."
+  },
+  {
+    "model": "mistralai/mistral-small-3.2-24b-instruct",
+    "task": "profile",
+    "attempts": 12,
+    "structurallyValid": 12,
+    "costsKnown": true,
+    "costUsd": 0.0007934099999999999,
+    "usdPer1000Attempts": 0.0661175,
+    "medianMs": 2242,
+    "note": "Structural validity is not semantic quality. Review every output against the supplied transcript and rubric."
+  },
+  {
+    "model": "mistralai/mistral-small-3.2-24b-instruct",
+    "task": "cultural",
+    "attempts": 12,
+    "structurallyValid": 12,
+    "costsKnown": true,
+    "costUsd": 0.000445365,
+    "usdPer1000Attempts": 0.03711375,
+    "medianMs": 1185,
+    "note": "Structural validity is not semantic quality. Review every output against the supplied transcript and rubric."
+  },
+  {
+    "model": "qwen/qwen3-235b-a22b-2507",
+    "task": "profile",
+    "attempts": 12,
+    "structurallyValid": 12,
+    "costsKnown": true,
+    "costUsd": 0.00248264,
+    "usdPer1000Attempts": 0.20688666666666666,
+    "medianMs": 5653.5,
+    "note": "Structural validity is not semantic quality. Review every output against the supplied transcript and rubric."
+  },
+  {
+    "model": "qwen/qwen3-235b-a22b-2507",
+    "task": "cultural",
+    "attempts": 12,
+    "structurallyValid": 12,
+    "costsKnown": true,
+    "costUsd": 0.0011174,
+    "usdPer1000Attempts": 0.09311666666666667,
+    "medianMs": 2912.5,
+    "note": "Structural validity is not semantic quality. Review every output against the supplied transcript and rubric."
+  }
+]

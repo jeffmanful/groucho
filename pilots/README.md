@@ -11,6 +11,7 @@ Reviewed 2 November 2026. These documents are separate from [current platform gu
 
 | Proposal | Boundary |
 | --- | --- |
+| [LangGraph conversation pilot](langgraph-conversation-pilot.md) | Deferred architecture pilot for continuity, corrections and recovery; not implemented or scheduled |
 | [Ticket-access product direction](ticket-access-direction.md) | Discovery direction, not a shipped ticketing product |
 | [Public drop resilience and waiting rooms](public-drop-resilience.md) | Cloudflare and alternative evaluation, proposed admission and spending controls, and pitch wording; not deployed protection |
 | [World ID](fair-ticket-access-world-id.md) | No provider integration or partner agreement established here |
