@@ -26,6 +26,12 @@ export function normaliseApplicantEmail(raw: string): string {
   return raw.trim().toLowerCase()
 }
 
+/** Apple documents these domains for Sign in with Apple forwarding addresses. */
+export function isAppleHideMyEmail(email: string | null | undefined): boolean {
+  return typeof email === "string" &&
+    /^[^\s@]+@(?:private\.icloud\.com|privaterelay\.appleid\.com)$/.test(normaliseApplicantEmail(email))
+}
+
 function parseLinks(raw: unknown, field: string): string[] {
   if (raw === undefined) return []
   if (!Array.isArray(raw) || raw.length > MAX_LINKS) {

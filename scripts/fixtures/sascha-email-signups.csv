@@ -1,0 +1,4 @@
+registration_id,email,signed_up_at,name,phone,connection_group
+fixture-008,groucho-email-check-7f2e0@concu.net,2026-11-06T10:11:00Z,New disposable,,
+fixture-009,groucho-email-check-7f2e0@private.icloud.com,2026-11-06T10:12:00Z,Second Apple relay,,
+fixture-010,groucho-email-control-7f2e0@icloud.com,2026-11-06T10:13:00Z,Ordinary iCloud,,

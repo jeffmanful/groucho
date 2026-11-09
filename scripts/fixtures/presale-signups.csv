@@ -1,0 +1,8 @@
+registration_id,email,signed_up_at,name,phone,connection_group
+fixture-001,alex@example.test,2026-11-06T10:00:00Z,"Alex, Jr.",,household-demo
+fixture-002,bea@example.test,2026-11-06T10:02:00Z,Bea,,household-demo
+fixture-003,casey@example.test,2026-11-06T10:06:00Z,Casey,,
+fixture-004,groucho-fixture-relay-7f2e0@privaterelay.appleid.com,2026-11-06T10:09:00Z,Dev,,household-demo
+fixture-005,groucho-fixture-burst-7f2e0@mailinator.com,2026-11-06T10:10:00Z,Eli,+447700900001,burst-demo
+fixture-006,groucho-fixture-burst-7f2e0@mailinator.com,2026-11-06T10:10:01Z,Fern,+447700900001,burst-demo
+fixture-007,burst003@example.test,2026-11-06T10:10:02Z,Gabi,+447700900001,burst-demo

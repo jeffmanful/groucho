@@ -13,6 +13,8 @@ Reviewed 2 November 2026. These documents are separate from [current platform gu
 | --- | --- |
 | [LangGraph conversation pilot](langgraph-conversation-pilot.md) | Deferred architecture pilot for continuity, corrections and recovery; not implemented or scheduled |
 | [Ticket-access product direction](ticket-access-direction.md) | Discovery direction, not a shipped ticketing product |
+| [Presale review sandbox and email tool watchlist](presale-review-sandbox.md) | Proposed operator rehearsal with synthetic signups and criteria for evaluating email tools |
+| [Sascha sandbox walkthrough](sascha-sandbox-walkthrough.md) | Short synthetic rehearsal from CSV preview to cohort export |
 | [Public drop resilience and waiting rooms](public-drop-resilience.md) | Cloudflare and alternative evaluation, proposed admission and spending controls, and pitch wording; not deployed protection |
 | [World ID](fair-ticket-access-world-id.md) | No provider integration or partner agreement established here |
 | [Verified fan registration](verified-fan-registration.md) | Proposed checks/connections, not deployed account verification |

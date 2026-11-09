@@ -9,6 +9,7 @@ export type EntryTab = (typeof ENTRY_TABS)[number]
 export type EntryFilters = {
   tab: EntryTab
   noFlags: boolean
+  emailFlags?: boolean
   field: string | null
   values: string[]
   conversation: "any" | "finished" | "none"
@@ -80,6 +81,7 @@ export function parseEntryFilters(params: URLSearchParams): EntryFilters {
   return {
     tab,
     noFlags: params.get("noFlags") === "1",
+    emailFlags: params.get("emailFlags") === "1",
     field: /^[a-z][a-z0-9_]{0,39}$/i.test(field) ? field : null,
     values: params.getAll("value").map((value) => value.trim()).filter(Boolean).slice(0, 20),
     conversation: conversation === "finished" || conversation === "none" ? conversation : "any",
@@ -103,6 +105,7 @@ export function applyEntryFilters<Q extends Filterable<Q>>(query: Q, filters: En
   if (filters.tab === "flagged") next = next.in("queue", ["ready_for_review", "awaiting_assessment"]).gt("flag_count", 0)
   if (filters.tab === "approved") next = next.eq("queue", "approved")
   if (filters.tab === "declined") next = next.eq("queue", "declined")
+  if (filters.emailFlags) next = next.or("email_matches.gt.1,disposable_email.eq.true")
   if (filters.noFlags) next = next.eq("flag_count", 0)
   if (filters.field && filters.values.length) {
     const column = `entry->fields->>${filters.field}`
@@ -380,4 +383,85 @@ export async function dismissMatch(input: { projectId: string; token: string; re
     return { ok: false as const, status: 500, error: "Database error" }
   }
   return { ok: true as const }
+}
+
+export type ConnectionGroup = {
+  source: "import" | "live"
+  total: number
+  entries: Array<{
+    id: string
+    name: string | null
+    email: string | null
+    signedUpAt: string | null
+    emailMatches: number
+    phoneMatches: number
+  }>
+}
+
+const CONNECTION_PREVIEW_LIMIT = 50
+
+/** Connection evidence is independent of review flags and never changes eligibility. */
+export async function sharedConnectionGroup(organisationId: string, projectId: string, sessionId: string): Promise<ConnectionGroup | null> {
+  const scopedSessions = <Columns extends string>(columns: Columns, count?: "exact") => supabase.from("sessions")
+    .select(columns, { count })
+    .eq("organisation_id", organisationId)
+    .eq("project_id", projectId)
+    .neq("status", "active")
+    .neq("status", "abandoned")
+  const { data: anchor, error } = await scopedSessions("entry, applicant_ip_hash").eq("id", sessionId).maybeSingle()
+  if (error) throw error
+  if (!anchor) return null
+
+  const fields = anchor.entry?.fields
+  const imported = Boolean(fields?.source_registration_id)
+  const groupKey = imported ? fields?.connection_group : anchor.applicant_ip_hash
+  if (typeof groupKey !== "string" || !groupKey) return null
+
+  const candidates = scopedSessions("id", "exact")
+  const query = imported
+    ? candidates.not("entry->fields->>source_registration_id", "is", null).eq("entry->fields->>connection_group", groupKey)
+    : candidates.is("entry->fields->>source_registration_id", null).eq("applicant_ip_hash", groupKey)
+  const { data: members, count, error: membersError } = await query
+    .order("created_at").order("id").limit(CONNECTION_PREVIEW_LIMIT)
+  if (membersError) throw membersError
+  if (!members || members.length < 2) return null
+
+  const ids = members.map((member) => member.id)
+  const [review, identifiers] = await Promise.all([
+    base(organisationId, projectId, ENTRY_COLUMNS).in("id", ids),
+    supabase.from("entry_identifiers").select("session_id, kind, value")
+      .eq("project_id", projectId).in("session_id", ids).in("kind", ["email", "phone"]),
+  ])
+  if (review.error) throw review.error
+  if (identifiers.error) throw identifiers.error
+
+  const matches = new Map<string, number>()
+  for (const identifier of identifiers.data ?? []) {
+    const key = `${identifier.kind}:${identifier.value}`
+    matches.set(key, (matches.get(key) ?? 0) + 1)
+  }
+  const overlaps = new Map<string, { email?: number; phone?: number }>()
+  for (const identifier of identifiers.data ?? []) {
+    const kind: unknown = identifier.kind
+    if (kind !== "email" && kind !== "phone") continue
+    const counts = overlaps.get(identifier.session_id) ?? {}
+    counts[kind] = matches.get(`${kind}:${identifier.value}`)
+    overlaps.set(identifier.session_id, counts)
+  }
+
+  const entries = ((review.data ?? []) as unknown as EntryRow[]).map((row) => {
+    const time = imported ? row.entry?.fields?.signed_up_at : row.created_at
+    const signedUpAt = time && Number.isFinite(Date.parse(time)) ? new Date(time).toISOString() : null
+    const overlap = overlaps.get(row.id)
+    return {
+      id: row.id,
+      name: row.applicant_name,
+      email: row.applicant_email,
+      signedUpAt,
+      emailMatches: row.email_matches > 1 ? overlap?.email ?? 0 : 0,
+      phoneMatches: row.phone_matches > 1 ? overlap?.phone ?? 0 : 0,
+    }
+  })
+  entries.sort((a, b) => (a.signedUpAt ?? "~").localeCompare(b.signedUpAt ?? "~") || a.id.localeCompare(b.id))
+  return { source: imported ? "import" : "live", total: count ?? entries.length, entries }
 }

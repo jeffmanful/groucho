@@ -98,6 +98,9 @@ Provider outages are unavailable evidence, not failed identity checks.
 
 ### Email and coordination signals
 
+The [presale review sandbox and email tool watchlist](presale-review-sandbox.md)
+scopes the first operator rehearsal and records which email tools to evaluate.
+
 Proposed signals include verification state, known disposable-provider indicators,
 sequential local-part clusters, repeated naming templates and unusual event-level
 submission concentrations. Individual strange-looking addresses are weak evidence.

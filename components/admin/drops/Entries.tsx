@@ -4,9 +4,11 @@ import Link from "next/link"
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import dashboard from "@/components/admin/dashboard/dashboard.module.css"
 import client from "@/components/admin/client/client.module.css"
-import type { EntriesPage, EntryFlag, EntryItem, EntryTab, MatchGroup } from "@/lib/entry-review"
+import type { ConnectionGroup, EntriesPage, EntryFlag, EntryItem, EntryTab, MatchGroup } from "@/lib/entry-review"
+import { isAppleHideMyEmail } from "@/lib/applicant-identity"
 import { shortDate } from "@/lib/relative-time"
 import { AddToCohortDialog } from "./AddToCohortDialog"
+import { ImportEntries } from "./ImportEntries"
 import styles from "./drops.module.css"
 import { fieldLabel, nf, useDropProject } from "./useDropProject"
 
@@ -22,6 +24,12 @@ function flagText(flag: EntryFlag): string {
   if (flag.kind === "disposable") return "Disposable email"
   const what = flag.kind === "email" ? "Same email" : flag.kind === "phone" ? "Same phone" : "Same social"
   return `${what} ×${flag.count}`
+}
+
+function AppleEmailLabel({ email }: { email: string | null }) {
+  return isAppleHideMyEmail(email) ? (
+    <span className={`${client.small} ${client.secondary}`}>Apple Hide My Email · Informational</span>
+  ) : null
 }
 
 function conversationText(entry: EntryItem): string {
@@ -47,6 +55,7 @@ export function Entries() {
   const { orgId, project, canManage, summary } = useDropProject()
   const [tab, setTab] = useState<EntryTab>("review")
   const [noFlags, setNoFlags] = useState(false)
+  const [emailFlags, setEmailFlags] = useState(false)
   const [field, setField] = useState<string | null>(null)
   const [value, setValue] = useState<string>("")
   const [conversation, setConversation] = useState<"any" | "finished" | "none">("any")
@@ -58,6 +67,7 @@ export function Entries() {
   // The selection belongs to one list: changing project or filters starts a fresh one.
   const [selection, setSelection] = useState<{ list: string; ids: Set<string>; all: boolean }>({ list: "", ids: new Set(), all: false })
   const [focused, setFocused] = useState<string | null>(null)
+  const [connectionTarget, setConnectionTarget] = useState<{ base: string; entry: EntryItem } | null>(null)
   const [declining, setDeclining] = useState(false)
   const [adding, setAdding] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -67,7 +77,8 @@ export function Entries() {
   const projectId = project?.id ?? null
   const filterParams = useMemo(() => {
     const params = new URLSearchParams({ tab })
-    if (noFlags && tab !== "flagged") params.set("noFlags", "1")
+    if (emailFlags) params.set("emailFlags", "1")
+    else if (noFlags && tab !== "flagged") params.set("noFlags", "1")
     if (field && value) {
       params.set("field", field)
       params.set("value", value)
@@ -75,7 +86,7 @@ export function Entries() {
     if (conversation !== "any") params.set("conversation", conversation)
     if (query) params.set("q", query)
     return params.toString()
-  }, [tab, noFlags, field, value, conversation, query])
+  }, [tab, noFlags, emailFlags, field, value, conversation, query])
   const key = `${projectId}|${filterParams}|${offset}|${reload}`
 
   useEffect(() => {
@@ -217,6 +228,12 @@ export function Entries() {
                   </Link>
                 )}
                 {entry.name && entry.email ? <span className={`${client.muted} ${client.small} ${client.truncate}`}>{entry.email}</span> : null}
+                <AppleEmailLabel email={entry.email} />
+                {!flaggedTab ? (
+                  <button type="button" className={styles.linkButton} aria-label={`Shared connection for ${name}`} onClick={() => setConnectionTarget({ base, entry })}>
+                    Shared connection
+                  </button>
+                ) : null}
               </span>
               {shownField ? <span className={`${client.mono} ${client.secondary}`}>{entry.fields[shownField] ?? "–"}</span> : null}
               <span className={`${client.secondary} ${client.truncate}`}>{socialsText(entry)}</span>
@@ -283,6 +300,12 @@ export function Entries() {
 
   return (
     <div className={dashboard.page}>
+      {canManage && base ? (
+        <ImportEntries key={base} endpoint={`${base}/entries/import`} onImport={() => {
+          setSelection({ list: "", ids: new Set(), all: false })
+          refresh()
+        }} />
+      ) : null}
       {data ? (
         <div className={`${client.panel} ${styles.stats}`}>
           <div>
@@ -329,8 +352,19 @@ export function Entries() {
             </button>
           ))}
         </div>
+        <button type="button" className={`${styles.chip} ${emailFlags ? "" : styles.chipOff}`} aria-pressed={emailFlags} onClick={() => {
+          setEmailFlags(!emailFlags)
+          setNoFlags(false)
+          setOffset(0)
+        }}>
+          Email flags
+        </button>
         {flaggedTab ? null : (
-          <button type="button" className={`${styles.chip} ${noFlags ? "" : styles.chipOff}`} aria-pressed={noFlags} onClick={() => setNoFlags((v) => !v)}>
+          <button type="button" className={`${styles.chip} ${noFlags ? "" : styles.chipOff}`} aria-pressed={noFlags} onClick={() => {
+            setNoFlags(!noFlags)
+            setEmailFlags(false)
+            setOffset(0)
+          }}>
             No flags{noFlags ? <span className={client.muted} aria-hidden="true">×</span> : null}
           </button>
         )}
@@ -421,6 +455,7 @@ export function Entries() {
             base={base}
             entry={focusedEntry}
             canManage={canManage}
+            onConnection={() => setConnectionTarget({ base, entry: focusedEntry })}
             onDone={(message) => {
               setNotice(message)
               setFocused(null)
@@ -431,6 +466,15 @@ export function Entries() {
       ) : (
         table
       )}
+
+      {connectionTarget && connectionTarget.base === base ? (
+        <ConnectionDialog
+          key={connectionTarget.entry.id}
+          base={base}
+          entry={connectionTarget.entry}
+          onClose={() => setConnectionTarget(null)}
+        />
+      ) : null}
 
       {data && total > PAGE ? (
         <div className={styles.footer}>
@@ -547,7 +591,7 @@ function decisionText(entry: EntryItem): string | null {
 }
 
 /** One flagged entry and everything it matches: keep one and decline the rest, decline all, or not duplicates. */
-function FlagPanel({ base, entry, canManage, onDone }: { base: string; entry: EntryItem; canManage: boolean; onDone: (message: string) => void }) {
+function FlagPanel({ base, entry, canManage, onConnection, onDone }: { base: string; entry: EntryItem; canManage: boolean; onConnection: () => void; onDone: (message: string) => void }) {
   const [groups, setGroups] = useState<MatchGroup[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [groupIndex, setGroupIndex] = useState(0)
@@ -601,6 +645,7 @@ function FlagPanel({ base, entry, canManage, onDone }: { base: string; entry: En
 
   return (
     <aside className={`${client.panel} ${styles.sidePanel}`} aria-label="Resolve flag">
+      <div><button type="button" className={client.button} onClick={onConnection}>Shared connection</button></div>
       {loadError ? (
         <div>
           <p className={client.errorText} role="alert">{loadError}</p>
@@ -640,7 +685,7 @@ function FlagPanel({ base, entry, canManage, onDone }: { base: string; entry: En
           </div>
           <div>
             {disposable ? (
-              <span className={client.secondary}>{entry.email} uses a throwaway email provider. Decline it, or keep reviewing it if the provider is fine for this drop.</span>
+              <span className={client.secondary}>{entry.email} uses a domain on the temporary inbox list. Consider this alongside the other evidence.</span>
             ) : (
               <span className={client.secondary}>Choose the entry to keep. The others are declined as duplicates.</span>
             )}
@@ -707,5 +752,92 @@ function FlagPanel({ base, entry, canManage, onDone }: { base: string; entry: En
         </>
       )}
     </aside>
+  )
+}
+
+const signupTime = new Intl.DateTimeFormat("en-GB", {
+  dateStyle: "medium", timeStyle: "medium", timeZone: "UTC",
+})
+
+function ConnectionDialog({ base, entry, onClose }: { base: string; entry: EntryItem; onClose: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null)
+  const [state, setState] = useState<{ group: ConnectionGroup | null } | { error: string } | null>(null)
+
+  useEffect(() => {
+    ref.current?.showModal()
+  }, [])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch(`${base}/entries/${entry.id}/matches?connection=1`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Shared connections could not be loaded.")
+        const body = await response.json() as { connection: ConnectionGroup | null }
+        setState({ group: body.connection })
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setState({ error: "Shared connections could not be loaded." })
+      })
+    return () => controller.abort()
+  }, [base, entry.id])
+
+  const group = state && "group" in state ? state.group : null
+  const times = group?.entries.flatMap((member) => member.signedUpAt ? [member.signedUpAt] : []) ?? []
+  const first = times[0]
+  const last = times.at(-1)
+  const seconds = first && last ? (Date.parse(last) - Date.parse(first)) / 1000 : 0
+  const span = seconds < 60
+    ? `${nf.format(seconds)} s`
+    : `${nf.format(Math.floor(seconds / 60))} min ${nf.format(Math.floor(seconds % 60))} s`
+
+  return (
+    <dialog ref={ref} className={`${dashboard.dialog} ${styles.dialogWide}`} onClose={onClose} aria-labelledby="shared-connection-title">
+      <div className={dashboard.dialogBody}>
+        <div className={dashboard.dialogHeader}>
+          <div>
+            <h2 id="shared-connection-title">Shared connection</h2>
+            <p>{entry.name ?? entry.email ?? "Selected submission"}</p>
+          </div>
+        </div>
+        {!state ? <p role="status">Loading connection evidence…</p> : null}
+        {state && "error" in state ? <p className={dashboard.error} role="alert">{state.error}</p> : null}
+        {state && "group" in state && !group ? <p>No shared connection was found for this submission.</p> : null}
+        {group ? (
+          <>
+            <div>
+              <strong>{nf.format(group.total)} submissions · {group.source === "import" ? "Imported group" : "Same connection address"}</strong>
+              <p className={client.secondary}>A shared connection can include different people, such as a household.</p>
+              {first && last && times.length > 1 ? (
+                <p className={client.secondary}>
+                  {times.length === group.total ? "Signup window" : "Window for shown timestamps"}: {span}
+                  {" · "}{signupTime.format(Date.parse(first))} to {signupTime.format(Date.parse(last))} UTC
+                </p>
+              ) : null}
+              {group.entries.length < group.total ? <p className={client.secondary}>Showing {group.entries.length} submissions. Match counts below cover the entries shown.</p> : null}
+            </div>
+            <ul className={styles.connectionTimeline}>
+              {group.entries.map((member) => (
+                <li key={member.id}>
+                  <strong>{member.name ?? member.email ?? "Submission"}{member.id === entry.id ? " · Selected" : ""}</strong>
+                  {member.name && member.email ? <span className={client.secondary}>{member.email}</span> : null}
+                  <AppleEmailLabel email={member.email} />
+                  <span className={client.secondary}>
+                    {member.signedUpAt ? `${signupTime.format(Date.parse(member.signedUpAt))} UTC` : "Signup time unavailable"}
+                  </span>
+                  <span className={styles.flags}>
+                    {member.emailMatches > 1 ? <span className={styles.flag}>Same email · {member.emailMatches} in group</span> : null}
+                    {member.phoneMatches > 1 ? <span className={styles.flag}>Same phone · {member.phoneMatches} in group</span> : null}
+                    {member.emailMatches < 2 && member.phoneMatches < 2 ? <span className={client.muted}>No email or phone overlap shown</span> : null}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : null}
+        <div className={dashboard.dialogActions}>
+          <button type="button" className={client.button} onClick={() => ref.current?.close()}>Close</button>
+        </div>
+      </div>
+    </dialog>
   )
 }

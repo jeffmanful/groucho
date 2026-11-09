@@ -26,6 +26,7 @@
     "changeset": "changeset",
     "changeset:version": "changeset version",
     "release": "pnpm run sdk:build && changeset publish",
+    "import:presale": "node --import tsx scripts/import-presale.ts",
     "loadtest:culture": "node --import tsx loadtests/culture/run.ts",
     "loadtest:culture:100": "node --import tsx loadtests/culture/run.ts --users 100",
     "loadtest:culture:200": "node --import tsx loadtests/culture/run.ts --users 200"
