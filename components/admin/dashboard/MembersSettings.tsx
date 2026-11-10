@@ -61,6 +61,7 @@ function RowMenu({
   onRole,
   onRemove,
   onRevoke,
+  onViewLink,
 }: {
   row: Row
   canManageMembers: boolean
@@ -68,6 +69,7 @@ function RowMenu({
   onRole: (role: OrgRole) => void
   onRemove: () => void
   onRevoke: () => void
+  onViewLink?: () => void
 }) {
   const [open, setOpen] = useState(false)
   const [confirming, setConfirming] = useState(false)
@@ -135,12 +137,58 @@ function RowMenu({
               </button>
             </>
           ) : (
-            <button type="button" role="menuitem" className={styles.danger} onClick={() => done(onRevoke)}>
-              Revoke invitation
-            </button>
+            <>
+              {onViewLink ? (
+                <button type="button" role="menuitem" onClick={() => done(onViewLink)}>
+                  View invitation link
+                </button>
+              ) : null}
+              <button type="button" role="menuitem" className={styles.danger} onClick={() => done(onRevoke)}>
+                Revoke invitation
+              </button>
+            </>
           )}
         </div>
       ) : null}
+    </div>
+  )
+}
+
+function InvitationEmail({ orgId, invitationId, email }: { orgId: string; invitationId: string; email: string }) {
+  const requestId = useRef<string | null>(null)
+  const [sending, setSending] = useState(false)
+  const [sent, setSent] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function send() {
+    setSending(true)
+    setError(null)
+    const fallback = "We couldn’t confirm the invitation email was sent. Try again or copy the link."
+    try {
+      requestId.current ??= crypto.randomUUID()
+      await readJson(
+        await fetch(`/api/admin/organisations/${orgId}/invitations/${invitationId}`, {
+          method: "POST",
+          headers: { "Idempotency-Key": requestId.current },
+        }),
+        fallback,
+      )
+      setSent(true)
+    } catch (problem) {
+      setError(problem instanceof Error && !(problem instanceof TypeError) ? problem.message : fallback)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div>
+      {sent ? <p className={styles.notice} role="status">Invitation emailed to {email}.</p> : (
+        <button type="button" className={styles.secondary} disabled={sending} onClick={() => void send()}>
+          {sending ? "Sending…" : "Send invitation email"}
+        </button>
+      )}
+      {error ? <p className={styles.error} role="alert">{error}</p> : null}
     </div>
   )
 }
@@ -149,6 +197,7 @@ function InviteDialog({
   orgId,
   orgName,
   open,
+  invitationId,
   canInviteOwner,
   onClose,
   onCreated,
@@ -156,6 +205,7 @@ function InviteDialog({
   orgId: string
   orgName: string
   open: boolean
+  invitationId: string | null
   canInviteOwner: boolean
   onClose: () => void
   onCreated: () => void
@@ -165,7 +215,7 @@ function InviteDialog({
   const [role, setRole] = useState<OrgRole>("member")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [link, setLink] = useState<{ url: string; email: string } | null>(null)
+  const [link, setLink] = useState<{ id: string; url: string; email: string } | null>(null)
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
@@ -174,6 +224,23 @@ function InviteDialog({
     if (open && !element.open) element.showModal()
     if (!open && element.open) element.close()
   }, [open])
+
+  useEffect(() => {
+    if (!open || !invitationId) return
+    const controller = new AbortController()
+    fetch(`/api/admin/organisations/${orgId}/invitations/${invitationId}`, {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then((response) => readJson<{ token: string; email: string }>(response, "The invitation link could not be loaded."))
+      .then(({ token, email }) => {
+        if (!controller.signal.aborted) setLink({ id: invitationId, url: `${window.location.origin}/invite/${token}`, email })
+      })
+      .catch((problem: Error) => {
+        if (!controller.signal.aborted) setError(problem.message)
+      })
+    return () => controller.abort()
+  }, [open, invitationId, orgId])
 
   function reset() {
     setEmail("")
@@ -188,7 +255,7 @@ function InviteDialog({
     setSaving(true)
     setError(null)
     try {
-      const created = await readJson<{ token?: string; email: string }>(
+      const created = await readJson<{ id: string; token: string; email: string }>(
         await fetch(`/api/admin/organisations/${orgId}/invitations`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -196,7 +263,7 @@ function InviteDialog({
         }),
         "The invitation could not be created.",
       )
-      setLink({ url: created.token ? `${window.location.origin}/invite/${created.token}` : "", email: created.email })
+      setLink({ id: created.id, url: `${window.location.origin}/invite/${created.token}`, email: created.email })
       onCreated()
     } catch (problem) {
       setError(problem instanceof Error ? problem.message : "The invitation could not be created.")
@@ -220,14 +287,11 @@ function InviteDialog({
       <div className={styles.dialogBody}>
         <div className={styles.dialogHeader}>
           <div>
-            <h2 id="invite-title">{link ? "Invite created" : `Invite people to ${orgName}`}</h2>
-            <p>
-              {link
-                ? `Send this link to ${link.email}.`
-                : canInviteOwner
-                  ? "They get a link to join."
-                  : "They get a link to join. Owners can only be invited by Groucho."}
-            </p>
+            <h2 id="invite-title">{invitationId ? "Invitation link" : link ? "Invite created" : `Invite people to ${orgName}`}</h2>
+            {link ? <p>Email the invitation to {link.email} or copy the link to share it yourself.</p> : null}
+            {!link && !invitationId ? (
+              <p>{canInviteOwner ? "They get a link to join." : "They get a link to join. Owners can only be invited by Groucho."}</p>
+            ) : null}
           </div>
           <button type="button" className={styles.iconButton} aria-label="Close" onClick={() => dialog.current?.close()}>
             <X size={16} aria-hidden="true" />
@@ -248,13 +312,17 @@ function InviteDialog({
               </button>
             </div>
             <p className={styles.hint} style={{ margin: 0, lineHeight: 1.5 }}>
-              This link is shown once and works for 14 days. They sign in with an email code when they open it.
+              Invitations expire 14 days after creation. You can find the link again in the pending invitation’s actions menu.
+              The recipient signs in with an email code.
             </p>
+            <InvitationEmail key={link.id} orgId={orgId} invitationId={link.id} email={link.email} />
             <div className={styles.dialogActions}>
-              <button type="button" className={styles.secondary} onClick={reset}>Invite someone else</button>
+              {!invitationId ? <button type="button" className={styles.secondary} onClick={reset}>Invite someone else</button> : null}
               <button type="button" className={styles.primary} onClick={() => dialog.current?.close()}>Done</button>
             </div>
           </>
+        ) : invitationId ? (
+          error ? <p className={styles.error} role="alert">{error}</p> : <p role="status">Loading invitation link…</p>
         ) : (
           <form className={styles.dialogBody} onSubmit={submit}>
             <label className={styles.fieldStack}>
@@ -399,7 +467,8 @@ export function MembersSettings() {
   const [tab, setTab] = useState<"members" | "general">("members")
   const [token, setToken] = useState(0)
   const [data, setData] = useState<{ key: string; members?: Member[]; invitations?: Invitation[]; error?: string } | null>(null)
-  const [inviting, setInviting] = useState(false)
+  const [inviteDialog, setInviteDialog] = useState<{ orgId: string; invitationId: string | null } | null>(null)
+  const currentInviteDialog = inviteDialog?.orgId === orgId ? inviteDialog : null
   const [notice, setNotice] = useState<{ error: boolean; text: string } | null>(null)
   const key = `${orgId}|${token}`
 
@@ -460,9 +529,9 @@ export function MembersSettings() {
           <h1 className={styles.title}>Members &amp; settings</h1>
           <p className={styles.subtitle}>Who can open {summary?.name ?? "this organisation"} in Groucho, and what they can do.</p>
         </div>
-        {canManageInvites && tab === "members" ? (
+        {orgId && canManageInvites && tab === "members" ? (
           <div className={styles.actions}>
-            <button type="button" className={styles.primary} onClick={() => setInviting(true)}>Invite people</button>
+            <button type="button" className={styles.primary} onClick={() => setInviteDialog({ orgId, invitationId: null })}>Invite people</button>
           </div>
         ) : null}
       </header>
@@ -516,6 +585,9 @@ export function MembersSettings() {
                           row={row}
                           canManageMembers={canManageMembers}
                           canManageInvites={canManageInvites}
+                          onViewLink={orgId && row.kind === "invite" && !pending?.expired && (row.role !== "owner" || canManageMembers)
+                            ? () => setInviteDialog({ orgId, invitationId: row.id })
+                            : undefined}
                           onRole={(newRole) =>
                             void act(
                               () => fetch(`/api/admin/organisations/${orgId}/members/${row.id}`, {
@@ -572,11 +644,13 @@ export function MembersSettings() {
 
       {orgId ? (
         <InviteDialog
+          key={orgId}
           orgId={orgId}
           orgName={summary?.name ?? "this organisation"}
-          open={inviting}
+          open={Boolean(currentInviteDialog)}
+          invitationId={currentInviteDialog?.invitationId ?? null}
           canInviteOwner={isPlatform}
-          onClose={() => setInviting(false)}
+          onClose={() => setInviteDialog(null)}
           onCreated={() => setToken((value) => value + 1)}
         />
       ) : null}

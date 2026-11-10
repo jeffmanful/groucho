@@ -53,6 +53,7 @@ import { GET as callback } from "@/app/api/auth/callback/route"
 import { POST as signup } from "@/app/api/organisations/signup/route"
 import { POST as sendCode } from "@/app/api/invitations/send-code/route"
 import { POST as accept } from "@/app/api/invitations/accept/route"
+import { GET as getInvitation, POST as emailInvitation } from "@/app/api/admin/organisations/[orgId]/invitations/[invitationId]/route"
 import { proxy } from "@/proxy"
 const token = "a".repeat(64)
 const origin = "https://admin.groucho.app"
@@ -70,9 +71,80 @@ beforeEach(() => {
   vi.stubEnv("AUTH_SECRET", "test-only-secret"); vi.stubEnv("ALLOWED_EMAILS", "")
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.supabase.co"); vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "test-key")
 })
-afterEach(() => vi.unstubAllEnvs())
+afterEach(() => {
+  vi.unstubAllEnvs()
+  vi.unstubAllGlobals()
+})
 
 describe("invite-only dashboard grants", () => {
+  it("emails the stored invitation and reuses the provider key on retry", async () => {
+    const pending = invitation()
+    state.tables.invitations.push(pending)
+    state.tables.organisations = [{ id: "org", name: "Example Organisation" }]
+    const membership = { user_id: user.id, organisation_id: "org", role: "member" }
+    state.tables.organisation_members.push(membership)
+    vi.stubEnv("RESEND_API_KEY", "test-key")
+    vi.stubEnv("GROUCHO_INVITATION_FROM_EMAIL", "invites@example.test")
+    vi.stubEnv("GROUCHO_INVITATION_BASE_URL", "https://dashboard.example.test")
+    const deliver = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+      .mockResolvedValueOnce(Response.json({ id: "message" }))
+    vi.stubGlobal("fetch", deliver)
+    const send = (requestOrigin = origin) =>
+      emailInvitation(new NextRequest(origin + "/api/admin/organisations/org/invitations/invite", {
+        method: "POST",
+        headers: { origin: requestOrigin, "Idempotency-Key": "cb733380-9d84-4bf5-a851-e602cc3160bd" },
+      }), { params: Promise.resolve({ orgId: "org", invitationId: "invite" }) })
+
+    expect((await send()).status).toBe(403)
+    membership.role = "admin"
+    expect((await send("https://other.example.test")).status).toBe(403)
+    expect(deliver).not.toHaveBeenCalled()
+    expect((await send()).status).toBe(502)
+    expect((await send()).status).toBe(200)
+    const [url, options] = deliver.mock.calls[0]
+    expect(url).toBe("https://api.resend.com/emails")
+    expect(JSON.parse(String(options?.body))).toMatchObject({
+      to: [pending.email],
+      text: expect.stringContaining(`https://dashboard.example.test/invite/${token}`),
+    })
+    expect(deliver.mock.calls[1][1]?.headers).toEqual(options?.headers)
+    Object.assign(pending, { accepted_at: "2026-01-01" })
+    expect((await send()).status).toBe(404)
+    expect(deliver).toHaveBeenCalledTimes(2)
+  })
+
+  it("returns the original pending invitation token only to authorised administrators", async () => {
+    const pending = invitation()
+    state.tables.invitations.push(pending)
+    const membership = { user_id: user.id, organisation_id: "org", role: "member" }
+    state.tables.organisation_members.push(membership)
+    const getLink = (orgId = "org") =>
+      getInvitation(new NextRequest(origin + `/api/admin/organisations/${orgId}/invitations/invite`), {
+        params: Promise.resolve({ orgId, invitationId: "invite" }),
+      })
+
+    expect((await getLink()).status).toBe(403)
+    membership.role = "admin"
+    const response = await getLink()
+    expect(response.headers.get("cache-control")).toContain("no-store")
+    expect(await response.json()).toEqual({ email: pending.email, token })
+
+    state.tables.organisation_members.push({ ...membership, organisation_id: "other-org" })
+    expect((await getLink("other-org")).status).toBe(404)
+    Object.assign(pending, { role: "owner" })
+    expect((await getLink()).status).toBe(403)
+    membership.role = "owner"
+    expect((await getLink()).status).toBe(200)
+
+    Object.assign(pending, { accepted_at: "2026-01-01" })
+    expect((await getLink()).status).toBe(404)
+    Object.assign(pending, { accepted_at: null, expires_at: "2000-01-01" })
+    expect((await getLink()).status).toBe(404)
+    state.tables.invitations = []
+    expect((await getLink()).status).toBe(404)
+  })
+
   it("denies a verified identity without a grant, including user-editable role claims", async () => {
     expect(await dashboardAccess({ ...user, user_metadata: { groucho_role: "platform_admin" } } as typeof user)).toBeNull()
     expect(await resolveAdminActor()).toBeNull()

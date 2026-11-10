@@ -43,7 +43,17 @@ The production dashboard is [admin.groucho.app](https://admin.groucho.app). The 
 
 These settings live in [Supabase URL Configuration](https://supabase.com/dashboard/project/qqbvcmqzwtifpyufkxhh/auth/url-configuration); `supabase/config.toml` configures the local development stack. Existing development and legacy Vercel callbacks remain allowed for compatibility. Keep production entries restricted to the auth paths; see [Supabase redirect URL matching](https://supabase.com/docs/guides/auth/redirect-urls).
 
-The app derives callbacks and invitation links from the request/browser origin, so it requires no new site-URL environment variable or redeployment for this domain change. Supabase and legacy auth cookies are host-only: users sign in again on the new domain. Google's registered provider callback remains `https://qqbvcmqzwtifpyufkxhh.supabase.co/auth/v1/callback`, because Google returns through Supabase before returning to the app.
+The app derives callbacks and links copied from the dashboard from the request or browser origin. Supabase and legacy auth cookies are host-only: users sign in again on the new domain. Google's registered provider callback remains `https://qqbvcmqzwtifpyufkxhh.supabase.co/auth/v1/callback`, because Google returns through Supabase before returning to the app.
+
+### Organisation invitation emails
+
+**Send invitation email** is available after creating an invitation or reopening a pending link in **Members & settings**. Enable delivery with these server environment variables:
+
+- `RESEND_API_KEY` with permission to send email.
+- `GROUCHO_INVITATION_FROM_EMAIL` with a sender address on a domain verified in Resend.
+- `GROUCHO_INVITATION_BASE_URL` with the public HTTPS dashboard origin for that environment. Use `https://admin.groucho.app` in production.
+
+The dashboard keeps **Copy link** available if email delivery is unavailable. The invitation email contains the existing link. Sign-in codes still use Supabase Auth.
 
 ## Deployment verification
 
