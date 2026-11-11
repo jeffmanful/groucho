@@ -56,6 +56,8 @@ export type StartGatekeeperSessionInput = {
   conversationEngine?: string
   /** Recorded on the opening message so API turns on demo sessions never run completion. */
   demoSession?: boolean
+  /** Server-authorised preview snapshot, kept out of application reporting. */
+  personaPreview?: { actor: string; id: string; name: string; version: number; prompt: string }
   invitationToken?: string
 }
 
@@ -144,12 +146,15 @@ export async function startGatekeeperSession(
 
   const { data: existing } = await supabase
     .from("sessions")
-    .select("id, status, applicant_email, applicant_name, applicant_details, application_audience")
+    .select("id, status, applicant_email, applicant_name, applicant_details, application_audience, profile")
     .eq("session_id", sessionId)
     .eq("project_id", projectId)
     .maybeSingle()
 
   if (existing) {
+    if (existing.profile?.persona_preview && !input.personaPreview) {
+      return traceJson(input, { error: "Continue this preview from the dashboard." }, { status: 403 })
+    }
     if (isConcludedSessionStatus(existing.status)) {
       return traceJson(input, { error: "Session concluded" }, { status: 409 })
     }
@@ -215,6 +220,7 @@ export async function startGatekeeperSession(
       organisation_id: organisationId,
       project_id: projectId,
       ...applicantIdentityPayload(applicantIdentity),
+      ...(input.personaPreview ? { profile: { persona_preview: input.personaPreview } } : {}),
     })
     .select("id")
     .single()
@@ -222,10 +228,13 @@ export async function startGatekeeperSession(
   if (createError?.code === "23505") {
     const { data: raced } = await supabase
       .from("sessions")
-      .select("id, status, applicant_email, applicant_name, applicant_details, application_audience")
+      .select("id, status, applicant_email, applicant_name, applicant_details, application_audience, profile")
       .eq("session_id", sessionId)
       .eq("project_id", projectId)
       .maybeSingle()
+    if (raced?.profile?.persona_preview && !input.personaPreview) {
+      return traceJson(input, { error: "Continue this preview from the dashboard." }, { status: 403 })
+    }
     if (raced && !isConcludedSessionStatus(raced.status)) {
       const { data: lastMsg } = await supabase
         .from("messages")
@@ -285,6 +294,7 @@ export async function startGatekeeperSession(
       ...(conversationEngine ? { conversation_engine: conversationEngine } : {}),
       ...(demoProfile ? { conversation_profile: demoProfile.id, demo_simulation: true, ...(demoProfile.openingChoice ? { conversation_choice_key: demoProfile.openingChoice } : {}) } : {}),
       ...(input.demoSession ? { colors_demo_session: true } : {}),
+      ...(input.personaPreview ? { persona_preview: true } : {}),
       ...(colorsForumV1 ? { application_rubric_version: COLORS_FORUM_V1_RUBRIC } : {}),
       ui: openingInteraction,
       ...(openingSignal

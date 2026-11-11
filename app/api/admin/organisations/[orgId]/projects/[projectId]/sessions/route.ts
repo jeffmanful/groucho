@@ -79,6 +79,7 @@ export async function GET(
       "id, session_id, status, persona_id, created_at, updated_at, profile_extracted_at, applicant_email, applicant_name, applicant_details, application_audience, suitability_score",
       { count: "exact" },
     )
+    .is("profile->persona_preview", null)
     .eq("project_id", projectId)
     .order("suitability_score", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
@@ -99,6 +100,7 @@ export async function GET(
         "id, session_id, status, persona_id, created_at, updated_at, profile_extracted_at, applicant_email, applicant_name, applicant_details, application_audience",
         { count: "exact" },
       )
+      .is("profile->persona_preview", null)
       .eq("project_id", projectId)
       .order("created_at", { ascending: false })
       .range(offset, offset + PAGE_SIZE - 1)
@@ -127,6 +129,7 @@ export async function GET(
         ? "id, session_id, status, persona_id, created_at, updated_at, profile_extracted_at, applicant_email, applicant_name, applicant_details, application_audience"
         : "id, session_id, status, persona_id, created_at, updated_at, profile_extracted_at, applicant_email, applicant_name, applicant_details, application_audience, suitability_score")
       .eq("id", focusSessionId)
+      .is("profile->persona_preview", null)
       .eq("project_id", projectId)
       .eq("organisation_id", orgId)
       .maybeSingle()

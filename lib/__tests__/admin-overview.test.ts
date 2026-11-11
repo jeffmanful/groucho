@@ -25,6 +25,15 @@ function createMockSupabase() {
     ],
     sessions: [
       {
+        id: "preview-session",
+        session_id: "preview-client",
+        project_id: "proj-1",
+        status: "active",
+        profile: { persona_preview: { id: "persona" } },
+        updated_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+      },
+      {
         id: "sess-1",
         session_id: "client-1",
         project_id: "proj-1",
@@ -49,6 +58,10 @@ function createMockSupabase() {
         return api
       },
       eq(col: string, val: unknown) {
+        ctx.filters.push({ col, val, op: "eq" })
+        return api
+      },
+      is(col: string, val: unknown) {
         ctx.filters.push({ col, val, op: "eq" })
         return api
       },
@@ -82,7 +95,9 @@ function createMockSupabase() {
 
         for (const f of ctx.filters) {
           if (f.op === "eq") {
-            rows = rows.filter((r) => r[f.col] === f.val)
+            rows = rows.filter((r) => f.col === "profile->persona_preview"
+              ? ((r.profile as { persona_preview?: unknown } | undefined)?.persona_preview ?? null) === f.val
+              : r[f.col] === f.val)
           }
           if (f.op === "in" && Array.isArray(f.val)) {
             const set = new Set(f.val as unknown[])

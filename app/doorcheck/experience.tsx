@@ -1196,6 +1196,7 @@ function ColorsTranscript({
   messages,
   showSlowResponse,
   streamingReply,
+  personaPreview = false,
 }: {
   applicantEmail: string
   colorsInteractionPhase: ColorsInteractionPhase
@@ -1203,6 +1204,7 @@ function ColorsTranscript({
   messages: Message[]
   showSlowResponse: boolean
   streamingReply: string | null
+  personaPreview?: boolean
 }) {
   const firstApplicationMessageId = applicantEmail
     ? messages.find((message) => message.role === "bot")?.id
@@ -1263,8 +1265,10 @@ function ColorsTranscript({
                     together to guide, understand and shape the culture.
                   </p>
                   <p className="colors-chat-intro-expectations">
+                    {personaPreview ? "Try your saved persona in a test conversation. Restart to load your latest saved changes." : <>
                     It takes about five minutes and there are no right answers.
                     The COLORS team reads every application.
+                    </>}
                   </p>
                 </div>
               ) : null}
@@ -1334,18 +1338,21 @@ function ColorsTranscript({
 export function DoorCheckExperience({
   demoMode,
   intakeMode = "community",
+  personaPreview,
 }: {
   demoMode?: "colors"
+  personaPreview?: { apiBase: string; storageKey: string; version: number }
   intakeMode?: "email" | "community" | "artist"
 }) {
   const isColorsDemo = demoMode === "colors"
+  const demoApi = personaPreview?.apiBase ?? "/api/demo/colors"
   const applicationSessionKey = intakeMode === "email" ? SESSION_KEY : `${SESSION_KEY}:${intakeMode}`
-  const colorsSessionKey = intakeMode === "email" ? COLORS_DEMO_SESSION_KEY : `${COLORS_DEMO_SESSION_KEY}:${intakeMode}${intakeMode === "artist" ? ":thin-v1" : ""}`
+  const colorsSessionKey = personaPreview ? `persona-preview:${personaPreview.storageKey}:${intakeMode}` : intakeMode === "email" ? COLORS_DEMO_SESSION_KEY : `${COLORS_DEMO_SESSION_KEY}:${intakeMode}${intakeMode === "artist" ? ":thin-v1" : ""}`
   const [intakeApplicant, setIntakeApplicant] = useState<ApplicantIdentity | null>(null)
   const supabase = useMemo(() => createDoorcheckSupabase(), [])
-  const [messages, setMessages] = useState<Message[]>(EMAIL_CAPTURE_MESSAGES)
+  const [messages, setMessages] = useState<Message[]>(personaPreview ? [] : EMAIL_CAPTURE_MESSAGES)
   const [input, setInput] = useState("")
-  const [applicantEmail, setApplicantEmail] = useState("")
+  const [applicantEmail, setApplicantEmail] = useState(personaPreview ? "persona-preview@example.invalid" : "")
   const [applicantEmailError, setApplicantEmailError] = useState<string | null>(
     null,
   )
@@ -1552,7 +1559,7 @@ export function DoorCheckExperience({
         setSessionId(sid)
         return
       }
-      void fetch(`/api/demo/colors/state?sessionId=${encodeURIComponent(sid)}`, {
+      void fetch(`${demoApi}/state?sessionId=${encodeURIComponent(sid)}`, {
         credentials: "same-origin",
       }).then(async (response) => {
         if (!response.ok) return
@@ -1573,7 +1580,7 @@ export function DoorCheckExperience({
       }).catch(() => {}).finally(() => setSessionId(sid))
     })
     return () => window.cancelAnimationFrame(frame)
-  }, [isColorsDemo, colorsSessionKey, applicationSessionKey])
+  }, [isColorsDemo, colorsSessionKey, applicationSessionKey, demoApi])
 
   useEffect(() => {
     if (isColorsDemo) return
@@ -1589,7 +1596,7 @@ export function DoorCheckExperience({
   }, [isColorsDemo])
 
   useEffect(() => {
-    fetch(isColorsDemo ? "/api/demo/colors/project" : "/api/doorcheck/projects")
+    fetch(isColorsDemo ? `${demoApi}/project` : "/api/doorcheck/projects")
       .then((r) => r.json())
       .then((raw: ProjectOption[] | { project: ProjectOption }) => {
         const data = isColorsDemo && !Array.isArray(raw) ? [raw.project] : raw
@@ -1617,7 +1624,7 @@ export function DoorCheckExperience({
         }
       })
       .catch(() => {})
-  }, [isColorsDemo])
+  }, [isColorsDemo, demoApi])
 
   const requestDemoReport = useCallback(async (sid: string, generate = true) => {
     setDemoReportState("loading")
@@ -1666,10 +1673,10 @@ export function DoorCheckExperience({
   }, [colorsSessionKey])
 
   useEffect(() => {
-    if (!isColorsDemo || !concluded || !sessionId || reviewerReport?.detailed_opinion || demoReportState === "failed") return
+    if (personaPreview || !isColorsDemo || !concluded || !sessionId || reviewerReport?.detailed_opinion || demoReportState === "failed") return
     const timer = window.setTimeout(() => { void requestDemoReport(sessionId) }, 0)
     return () => window.clearTimeout(timer)
-  }, [isColorsDemo, concluded, sessionId, reviewerReport, demoReportState, requestDemoReport])
+  }, [isColorsDemo, concluded, sessionId, reviewerReport, demoReportState, requestDemoReport, personaPreview])
 
   const bootstrapSession = useCallback(
     async (
@@ -1684,7 +1691,7 @@ export function DoorCheckExperience({
       bootstrapInFlightRef.current = true
       setBootstrapping(true)
       try {
-        const res = await fetch(isColorsDemo ? "/api/demo/colors/start" : "/api/onboarding/start", {
+        const res = await fetch(isColorsDemo ? `${demoApi}/start` : "/api/onboarding/start", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "same-origin",
@@ -1692,6 +1699,7 @@ export function DoorCheckExperience({
             sessionId: sid,
             projectId,
             personaId: persona,
+            ...(personaPreview ? { previewVersion: personaPreview.version } : {}),
             applicant: intakeApplicant ?? { email },
             ...(opener?.trim() ? { openingMessage: opener.trim() } : {}),
             ...(openingInteraction
@@ -1759,7 +1767,7 @@ export function DoorCheckExperience({
         setBootstrapping(false)
       }
     },
-    [commitBootstrapResponse, isColorsDemo, intakeApplicant],
+    [commitBootstrapResponse, isColorsDemo, intakeApplicant, demoApi, personaPreview],
   )
 
   function applyProjectSelection(projectId: string) {
@@ -1986,7 +1994,7 @@ export function DoorCheckExperience({
     try {
       const personaId = selectedPersonaId || undefined
       const projectId = selectedProjectId || undefined
-      let res = await fetch(isColorsDemo ? "/api/demo/colors/message" : "/api/chat", {
+      let res = await fetch(isColorsDemo ? `${demoApi}/message` : "/api/chat", {
         method: "POST",
         // The COLORS demo accepts a streamed reply; the route only streams for the newer engine
         // and otherwise answers with ordinary JSON, which is handled below as before.
@@ -2151,7 +2159,7 @@ export function DoorCheckExperience({
       if (isColorsDemo && sessionId) {
         try {
           const stateResponse = await fetch(
-            `/api/demo/colors/state?sessionId=${encodeURIComponent(sessionId)}`,
+            `${demoApi}/state?sessionId=${encodeURIComponent(sessionId)}`,
             { credentials: "same-origin" },
           )
           if (stateResponse.ok) {
@@ -2242,6 +2250,11 @@ export function DoorCheckExperience({
   }
 
   function restart() {
+    if (personaPreview) {
+      localStorage.removeItem(colorsSessionKey)
+      window.location.reload()
+      return
+    }
     const newId = resetSession(isColorsDemo ? colorsSessionKey : applicationSessionKey)
     localStorage.removeItem(SECRET_KEY)
     localStorage.removeItem(PROFILE_KEY)
@@ -2508,6 +2521,7 @@ export function DoorCheckExperience({
           isGatekeeperPreview && "doorcheck-stage",
           isColorsProject && "colors-doorcheck",
         )}
+        style={personaPreview ? { height: "calc(100dvh - 56px)" } : undefined}
         data-scene={isGatekeeperPreview ? doorcheckScene.id : undefined}
       >
         {isGatekeeperPreview ? (
@@ -2571,9 +2585,15 @@ export function DoorCheckExperience({
             </div>
           ) : null}
           <div className="flex items-center gap-2">
+            {personaPreview ? (
+              <button type="button" className="pointer-events-auto shrink-0 rounded border border-white/40 px-3 py-2 text-xs text-white hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-50" onClick={restart} disabled={loading || bootstrapping} aria-label="Restart with latest changes">
+                <span className="sm:hidden">Restart</span>
+                <span className="hidden sm:inline">Restart with latest changes</span>
+              </button>
+            ) : null}
             {isColorsProject ? (
               <span className="colors-doorcheck-context">
-                {isColorsDemo ? "Forum demo" : "Forum application"}
+                {personaPreview ? "Persona preview" : isColorsDemo ? "Forum demo" : "Forum application"}
               </span>
             ) : null}
             {isGatekeeperPreview && !isColorsProject ? (
@@ -2847,6 +2867,7 @@ export function DoorCheckExperience({
               </MessageScroller.Item>
             ) : isColorsProject ? (
               <ColorsTranscript
+                personaPreview={Boolean(personaPreview)}
                 applicantEmail={applicantEmail}
                 colorsInteractionPhase={colorsInteractionPhase}
                 commitHandoff={commitColorsHandoff}
@@ -3164,7 +3185,7 @@ export function DoorCheckExperience({
                 </motion.div>
               </MessageScroller.Item>
             ) : null}
-            {isColorsDemo && showConclusionActions && !reviewerReport ? (
+            {isColorsDemo && !personaPreview && showConclusionActions && !reviewerReport ? (
               <MessageScroller.Item messageId="reviewer-report-status">
                 <div className="mx-auto mb-5 w-full max-w-[720px] rounded-xl border border-amber-200/20 bg-amber-100/[0.06] p-4 text-sm leading-relaxed text-white/65">
                   <p className="font-medium text-amber-100/85">Sample reviewer report</p>
@@ -3235,7 +3256,7 @@ export function DoorCheckExperience({
                 cursor: "pointer",
               }}
             >
-              start over
+              {personaPreview ? "Restart with latest changes" : "start over"}
             </button>
           </motion.div>
         )}

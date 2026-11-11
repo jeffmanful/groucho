@@ -17,8 +17,9 @@ export {
   CONVERSATION_OUTPUT_SCHEMA as COLORS_THIN_OUTPUT_SCHEMA,
 } from "@/lib/conversation-engine"
 
-export function postColorsThinConversation(input: Omit<Parameters<typeof postConversation>[0], "configuration">) {
-  return postConversation({ ...input, configuration: {
+export function postColorsThinConversation(input: Omit<Parameters<typeof postConversation>[0], "configuration"> & { personaPrompt?: string }) {
+  const { personaPrompt, ...turn } = input
+  return postConversation({ ...turn, configuration: {
     id: "colors_forum",
     marker: COLORS_THIN_PILOT_MARKER,
     model: colorsThinConversationModel(),
@@ -29,6 +30,7 @@ export function postColorsThinConversation(input: Omit<Parameters<typeof postCon
     resolveInteraction: (proposal, items) => resolveApplicationRichInteraction(proposal, items as ColorsYoutubeShow[]),
     buildPrompt: ({ shows, ...context }) => colorsThinConversationPrompt({
       ...context, objective: COLORS_FORUM_MEMBERSHIP_OBJECTIVE,
+      personaPrompt,
       mediaCatalog: colorsInteractionCatalog(shows as ColorsYoutubeShow[]),
     }),
   } })

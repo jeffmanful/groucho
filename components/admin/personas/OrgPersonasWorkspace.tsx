@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Link from "next/link"
 import { Badge } from "@/components/arc/badge/badge"
 import { Button } from "@/components/arc/button/button"
 import styles from "./org-personas.module.css"
@@ -304,6 +305,8 @@ export function OrgPersonasWorkspace({ orgId }: { orgId: string }) {
             <PersonaPanel
               key={`${current.data.persona.id}:${current.data.persona.version}`}
               detail={current.data}
+              orgId={orgId}
+              canPreview={orgName.toLowerCase() === "colors"}
               canManage={canManage}
               busy={busy}
               onSave={(draft) => savePersona(current.data!, draft)}
@@ -318,12 +321,16 @@ export function OrgPersonasWorkspace({ orgId }: { orgId: string }) {
 
 function PersonaPanel({
   detail,
+  orgId,
+  canPreview,
   canManage,
   busy,
   onSave,
   onAccept,
 }: {
   detail: DetailResponse
+  orgId: string
+  canPreview: boolean
   canManage: boolean
   busy: string | null
   onSave: (draft: { name: string; prompt: string; isActive: boolean }) => void
@@ -344,6 +351,15 @@ function PersonaPanel({
         <p className={styles.muted}>
           {detail.editable ? "Your persona" : "Groucho persona"} · v{persona.version} · {usedByText(detail.usedBy)}
         </p>
+        {canPreview && persona.is_active ? (
+          <div className={styles.actions}>
+            {dirty ? <p className={styles.muted}>Save your changes before trying this persona.</p> : (
+              <Link className={styles.tryPersona} href={`/demo/colors?orgId=${encodeURIComponent(orgId)}&personaId=${encodeURIComponent(persona.id)}`} target="_blank" rel="noopener noreferrer">
+                Try persona
+              </Link>
+            )}
+          </div>
+        ) : null}
       </div>
 
       {cloneStatus.state === "update_available" && source ? (

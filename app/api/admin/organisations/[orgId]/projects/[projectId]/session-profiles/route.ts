@@ -67,6 +67,7 @@ export async function GET(
     .select(
       "id, session_id, status, created_at, updated_at, persona_id, profile, profile_extracted_at, suitability_score",
     )
+    .is("profile->persona_preview", null)
     .eq("project_id", projectId)
     .eq("organisation_id", orgId)
     .not("profile", "is", null)
@@ -123,6 +124,7 @@ export async function GET(
       )
     `,
     )
+    .is("profile->persona_preview", null)
     .eq("project_id", projectId)
     .eq("organisation_id", orgId)
     .order("created_at", { ascending: false })

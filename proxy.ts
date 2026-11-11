@@ -132,7 +132,7 @@ export async function proxy(req: NextRequest) {
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p)))
     return NextResponse.next()
 
-  if (pathname === "/demo/colors" || pathname.startsWith("/api/demo/colors/")) {
+  if ((pathname === "/demo/colors" && !req.nextUrl.searchParams.has("personaId") && !req.nextUrl.searchParams.has("orgId")) || pathname.startsWith("/api/demo/colors/")) {
     const tester = await verifyDemoToken(
       req.cookies.get(DEMO_AUTH_COOKIE)?.value,
       "tester",

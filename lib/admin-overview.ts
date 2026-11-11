@@ -145,6 +145,7 @@ export async function buildAdminOverview(
     const { data: sessionRows, error: sessErr } = await supabase
       .from("sessions")
       .select("id, session_id, project_id, status, updated_at, created_at")
+      .is("profile->persona_preview", null)
       .in("project_id", projectIds)
       .order("updated_at", { ascending: false })
       .limit(500)

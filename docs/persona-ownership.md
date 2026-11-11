@@ -111,6 +111,19 @@ Application on COLORS's clone; COLORS then accepts the update from its personas 
 
 The organisation personas page is at `/admin/organisations/<id>/personas`, linked from the organisation page.
 
+## Try a saved COLORS persona
+
+Select an active persona in the COLORS organisation's personas page, save any edits, then choose **Try persona**.
+The COLORS demo opens in a new tab with the saved name and version. It uses the organisation login and a
+synthetic visitor address. The selected persona's prompt supplies the character, alongside the existing
+COLORS conversation guidance. **Restart with latest changes** starts a fresh conversation using the latest
+saved version. A conversation already underway keeps its original prompt snapshot.
+
+Apply `20261111144003_persona_preview_isolation.sql` before releasing this feature. It excludes preview
+sessions from the application review view and prevents direct public Data API reads of preview snapshots
+and messages. Preview API requests recheck organisation membership and persona visibility, and only the
+creator can resume a preview. Preview conversations skip reports, decisions and completion webhooks.
+
 ## Follow-ups
 
 - Write two or three general Groucho personas (community application, artist application) from what has

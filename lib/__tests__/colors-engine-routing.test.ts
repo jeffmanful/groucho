@@ -71,6 +71,16 @@ describe("routing COLORS conversations to the newer engine", () => {
     expect(mocks.post).toHaveBeenLastCalledWith(expect.objectContaining({ runCompletion: true }))
   })
 
+  it("requires the authenticated preview endpoint for saved-persona sessions", async () => {
+    mocks.session = { id: "preview" }
+    mocks.opening = { metadata: { conversation_engine: "colors_thin_pilot_v1", persona_preview: true } }
+    expect(await route(colorsSettings)).toBe("persona-preview")
+    const context = { settings: { raw: colorsSettings } } as unknown as ProjectContext
+    const response = await postColorsEngineTurn({ route: "persona-preview", context, sessionId: "session-1", message: "Hello", likelyBot: false })
+    expect(response.status).toBe(403)
+    expect(mocks.post).not.toHaveBeenCalled()
+  })
+
   it("recognises the project setting only for the exact value", () => {
     expect(projectUsesColorsEngine(colorsSettings)).toBe(true)
     expect(projectUsesColorsEngine({ conversation_engine: "standard" })).toBe(false)
