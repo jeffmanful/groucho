@@ -1,6 +1,6 @@
 # Session privacy, retention and deletion
 
-Implemented in source on 13 November 2026. Not deployed or applied to a hosted database. The legal entity remains pending. This is a session lifecycle foundation, not a complete GDPR rights service or legal retention policy.
+Implemented in source on 13 November 2026. The database migration was applied to the hosted Groucho project on 23 November 2026; no retention policies were created or enabled. The privacy application routes were not deployed as part of this database operation. The legal entity remains pending. This is a session lifecycle foundation, not a complete GDPR rights service or legal retention policy.
 
 ## Behaviour
 
@@ -43,7 +43,7 @@ Already-delivered exports/webhooks, provider requests and webhook HTTP requests 
 
 ## Migration and scheduling
 
-Apply [the privacy migration](../supabase/migrations/20261113165156_session_privacy_retention.sql) before deploying the updated access-capture route. Missing lifecycle RPCs fail closed rather than falling back to the old non-atomic write sequence. No hosted migration was run during implementation.
+Apply [the privacy migration](../supabase/migrations/20261113165156_session_privacy_retention.sql) before deploying the updated access-capture route. Missing lifecycle RPCs fail closed rather than falling back to the old non-atomic write sequence. The hosted Groucho migration and service-role verification completed on 23 November 2026; see [the migration record](archive/reviews/hosted-migrations-2026-11-23.md).
 
 The migration registers a `pg_cron` job at minute 43 each hour, following the existing database abandonment scheduler. It calls `process_session_retention(100)` and does nothing without enabled project policies. Each call deletes at most 100 sessions; monitor backlog and runtime before increasing frequency/limits. PostgreSQL policy/hold checks and deletion share a transaction; a database failure rolls back that drain. No provider call runs inside it.
 
