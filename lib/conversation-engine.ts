@@ -615,6 +615,18 @@ export async function postConversation(input: {
   const repeatedConsentBoundary = proposal.boundary === "consent" && previousBoundary === "consent"
   const requestedClose = visitorStopped || hardLimitReached || (!applicantQuestion || natural) && !firstBoundaryTurn &&
     (proposal.close || repeatedConsentBoundary || turnCount >= emergencyLimit)
+  if (requestedClose && config.signals?.length) {
+    // Closing prose and evidence have separate jobs. A brief goodbye must not
+    // cause corrections in the last applicant answer to disappear from storage.
+    try {
+      const reviewed = await requestReply(operation("closing_evidence"),
+        "Review the CURRENT applicant answer for signal evidence independently of the goodbye. The conversation is ending; do not ask another question. Your spoken reply is unused. Return all grounded signalEvidence updates supported by this answer. In particular, replace every earlier interpretation affected by a correction or retraction with supersedes=true and exact quotes from this answer. Preserve only prior details that remain valid in the updated summary/reason; never leave a corrected claim in another affected signal. If there is no new evidence or correction, return an empty signalEvidence array. Do not interpret a stop alone as new evidence of participation or contribution.")
+      proposal.signalEvidence = [...(Array.isArray(proposal.signalEvidence) ? proposal.signalEvidence : []), ...(Array.isArray(reviewed.signalEvidence) ? reviewed.signalEvidence : [])]
+    } catch (error) {
+      log.error(operation("closing_evidence_failed"), { requestId: input.requestId, sessionId: input.sessionId, detail: error instanceof Error ? error.message : String(error) })
+      return json({ error: "Groucho could not finish updating the conversation. Please try again.", retryable: true }, input.requestId, 503)
+    }
+  }
   // A consent boundary must end with a clear consent question. If the model's wording misses,
   // use a fixed one rather than failing the applicant's turn.
   let boundaryQuestion = proposal.boundaryQuestion

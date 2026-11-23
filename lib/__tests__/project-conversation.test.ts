@@ -347,11 +347,21 @@ describe("grounded signal evidence", () => {
 })
 
 describe("complete signal conversations", () => {
+  it("keeps a closing turn retryable without persisting stale evidence when its evidence review fails", async () => {
+    mocks.create.mockResolvedValueOnce(reply("We can stop here.", { visitorIntent: "stop" }))
+    mocks.create.mockRejectedValueOnce(new Error("Temporary evidence review failure"))
+    const response = await postConversation({ context, sessionId: "preview", message: "Please stop here.", previewTranscript: opening(signalConfig), configuration: projectConversationConfiguration(signalConfig) })
+    expect(response.status).toBe(503)
+    expect(await response.json()).toMatchObject({ retryable: true })
+    expect(mocks.database).not.toHaveBeenCalled()
+    expect(mocks.queue).not.toHaveBeenCalled()
+  })
   it("replaces superseded evidence when a correction and stop arrive in the same final answer", async () => {
     const history = opening(signalConfig)
     mocks.create.mockResolvedValueOnce(reply("What matters about that group?", { signalEvidence: [evidenceUpdate("I run the group online.")] }))
     const first = await (await postConversation({ context, sessionId: "preview", message: "I run the group online.", previewTranscript: history, configuration: projectConversationConfiguration(signalConfig) })).json()
-    mocks.create.mockResolvedValueOnce(reply("Thanks for correcting that.", { visitorIntent: "stop", signalEvidence: [evidenceUpdate("I run the group in person, not online.", { supersedes: true, summary: "Runs an in-person group.", reason: "Their explicit correction replaces the online account." })] }))
+    mocks.create.mockResolvedValueOnce(reply("Thanks for correcting that.", { visitorIntent: "stop", signalEvidence: [] }))
+    mocks.create.mockResolvedValueOnce(reply("Evidence reviewed.", { signalEvidence: [evidenceUpdate("I run the group in person, not online.", { supersedes: true, summary: "Runs an in-person group.", reason: "Their explicit correction replaces the online account." })] }))
     const final = await (await postConversation({ context, sessionId: "preview", message: "I run the group in person, not online. Please stop here.", previewTranscript: first.previewTranscript, configuration: projectConversationConfiguration(signalConfig) })).json()
     expect(final.status).toBe("completed")
     expect(final.message).not.toContain("?")
@@ -381,7 +391,7 @@ describe("complete signal conversations", () => {
     expect(result.message).toBe(authored.closingMessage)
     expect(result.completion.complete).toBe(false)
     expect(result.signalEvidence.s_community.status).toBe("not_explored")
-    expect(mocks.create).toHaveBeenCalledTimes(1)
+    expect(mocks.create).toHaveBeenCalledTimes(2)
   })
   it("carries partial context, adds motivation, handles corrections and closes on a refusal to continue", async () => {
     let history = opening(signalConfig)
@@ -403,6 +413,7 @@ describe("complete signal conversations", () => {
     expect(corrected.signalEvidence.s_community.status).toBe("not_explored")
     expect(corrected.signalEvidence.s_community.sources).toHaveLength(1)
     mocks.create.mockResolvedValueOnce(reply("Of course, we can leave it there.", { visitorIntent: "stop" }))
+    mocks.create.mockResolvedValueOnce(reply("Evidence reviewed.", { signalEvidence: [] }))
     const final = await runSignalTurn("I would rather not say more.")
     expect(final.status).toBe("completed")
     expect(final.completion.complete).toBe(false)
@@ -415,7 +426,7 @@ describe("complete signal conversations", () => {
     const result = await response.json()
     expect(result.status).toBe("completed")
     expect(result.completion.complete).toBe(false)
-    expect(mocks.create).toHaveBeenCalledTimes(1)
+    expect(mocks.create).toHaveBeenCalledTimes(2)
   })
   it("enforces the hard limit while preserving unverified, uncollected signals as unknown", async () => {
     const limited = { ...signalConfig, maxAnswers: 1 }
@@ -431,11 +442,11 @@ describe("complete signal conversations", () => {
     const liveContext = { ...context, settings: normalizeProjectSettings(projectConversationSettings(signalConfig)) }
     mocks.history = opening(signalConfig)
     const live = await (await postDemoConversation({ context: liveContext, sessionId: "stored", message })).json()
-    const liveRequest = mocks.create.mock.calls[0][0]
+    const liveRequests = mocks.create.mock.calls.map(call => call[0])
     const preview = await (await postConversation({ context: liveContext, sessionId: "preview", message, previewTranscript: opening(signalConfig), configuration: projectConversationConfiguration(signalConfig) })).json()
     const visible = { ...preview }; delete visible.previewTranscript
     expect(visible).toEqual(live)
-    expect(mocks.create.mock.calls[1][0]).toEqual(liveRequest)
+    expect(mocks.create.mock.calls.slice(2).map(call => call[0])).toEqual(liveRequests)
     expect(preview.signalEvidence.s_community.sources).toEqual([{ quote: message, turn: 1 }])
     expect(mocks.writes.at(-1)?.metadata).toMatchObject({ conversation_signal_evidence: preview.signalEvidence })
     expect(mocks.queue).not.toHaveBeenCalled()
