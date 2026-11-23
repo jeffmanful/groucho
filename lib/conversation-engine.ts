@@ -619,9 +619,29 @@ export async function postConversation(input: {
     // Closing prose and evidence have separate jobs. A brief goodbye must not
     // cause corrections in the last applicant answer to disappear from storage.
     try {
-      const reviewed = await requestReply(operation("closing_evidence"),
-        "Review the CURRENT applicant answer for signal evidence independently of the goodbye. The conversation is ending; do not ask another question. Your spoken reply is unused. Return all grounded signalEvidence updates supported by this answer. In particular, replace every earlier interpretation affected by a correction or retraction with supersedes=true and exact quotes from this answer. Preserve only prior details that remain valid in the updated summary/reason; never leave a corrected claim in another affected signal. If there is no new evidence or correction, return an empty signalEvidence array. Do not interpret a stop alone as new evidence of participation or contribution.")
-      proposal.signalEvidence = [...(Array.isArray(proposal.signalEvidence) ? proposal.signalEvidence : []), ...(Array.isArray(reviewed.signalEvidence) ? reviewed.signalEvidence : [])]
+      const schema = { type: "object", properties: { signalEvidence: (signalResponseTool.input_schema.properties as Record<string, unknown>).signalEvidence }, required: ["signalEvidence"] }
+      const tool = { name: "groucho_converse", description: "Return grounded evidence updates only. This is evidence review, not a conversation reply.", input_schema: schema }
+      const forcedTool = supportsForcedToolChoice(model)
+      const request = {
+        model, max_tokens: 2200,
+        system: `You maintain evidence about an applicant. You are not the host and do not write a goodbye.
+Signals: ${JSON.stringify(config.signals)}
+Evidence before the current answer: ${JSON.stringify(evidenceBeforeTurn)}
+Review the current applicant answer against all signals. Return signalEvidence updates for new information, refusals and corrections. A correction must replace every affected earlier summary, reason and source with supersedes=true, even if the applicant also stops. Keep valid prior context in the updated summary but quote only exact substrings of the current answer. Do not quote earlier answers, examples or assistant words. Other people's experiences are not applicant evidence. Set subject=applicant only for the applicant's own account or explicit correction. Use evidence_found for an informative account, partly_understood for relevant incomplete context, not_explored for retracted evidence, declined for a refusal to share. A stop alone is not evidence of participation or contribution. Return an empty array only if no signal changed. ${forcedTool ? "Call groucho_converse exactly once." : "Return one JSON object with signalEvidence."}`,
+        messages: [...conversation, { role: "user" as const, content: input.message }],
+      }
+      const client = new Anthropic({ maxRetries: 1, timeout: 45000 })
+      const response = await client.messages.create((forcedTool
+        ? { ...request, tools: [tool], tool_choice: { type: "tool", name: tool.name } }
+        : { ...request, output_config: { format: { type: "json_schema", schema: strictJsonSchema(schema) } } }) as Anthropic.MessageCreateParamsNonStreaming)
+      await logLlmUsage({ operation: operation("closing_evidence"), provider: "anthropic", model, usage: response.usage, providerResponseId: response.id, requestId: input.requestId, organisationId, projectId: input.previewTranscript ? undefined : projectId, sessionId: input.previewTranscript ? undefined : input.sessionId })
+      if (response.stop_reason === "max_tokens" || response.stop_reason === "refusal") throw new Error("Evidence review was incomplete")
+      const call = response.content.find(block => block.type === "tool_use" && block.name === tool.name)
+      const reviewed = forcedTool
+        ? call?.type === "tool_use" ? record(call.input) : {}
+        : record(JSON.parse(response.content.flatMap(block => block.type === "text" ? [block.text] : []).join("")))
+      if (!Array.isArray(reviewed.signalEvidence)) throw new Error("Evidence review response missing")
+      proposal.signalEvidence = [...(Array.isArray(proposal.signalEvidence) ? proposal.signalEvidence : []), ...reviewed.signalEvidence]
     } catch (error) {
       log.error(operation("closing_evidence_failed"), { requestId: input.requestId, sessionId: input.sessionId, detail: error instanceof Error ? error.message : String(error) })
       return json({ error: "Groucho could not finish updating the conversation. Please try again.", retryable: true }, input.requestId, 503)

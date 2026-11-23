@@ -53,7 +53,7 @@ function request(body: unknown, origin = "https://example.test") {
 }
 function reply(text: string, extra = {}) {
   return { stop_reason: "tool_use", usage: {}, content: [{ type: "tool_use", name: "groucho_converse", input: {
-    reply: text, close: false, boundary: "none", boundaryQuestion: "", addsNewContext: true, choiceKey: "none", facts: [], ...extra,
+    reply: text, close: false, boundary: "none", boundaryQuestion: "", addsNewContext: true, choiceKey: "none", facts: [], signalEvidence: [], ...extra,
   } }] }
 }
 function opening(c: ProjectConversationConfig = config): ConversationTranscriptEntry[] {
