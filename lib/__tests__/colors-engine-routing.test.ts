@@ -26,6 +26,7 @@ vi.mock("@/lib/colors-thin-conversation", () => ({ postColorsThinConversation: m
 import { colorsEngineRoute, postColorsEngineTurn } from "@/lib/colors-engine-routing"
 import { projectUsesColorsEngine } from "@/lib/colors-engine"
 import type { ProjectContext } from "@/lib/project-resolution"
+import { DEFAULT_SIGNAL_CONVERSATION, projectConversationSettings } from "@/lib/project-conversation-config"
 
 const colorsSettings = { project_type: "gatekeeper", conversation_engine: "colors_forum" }
 const route = (rawSettings: unknown) => colorsEngineRoute({ projectId: "project-1", sessionId: "session-1", rawSettings })
@@ -57,6 +58,20 @@ describe("routing COLORS conversations to the newer engine", () => {
     expect(await route({ project_type: "gatekeeper" })).toBe("colors")
     mocks.opening = { metadata: { gatekeeper_bootstrap: true } }
     expect(await route(colorsSettings)).toBe("standard")
+  })
+
+  it("migrates only new application sessions, retaining legacy, COLORS and preview routing", async () => {
+    const settings = projectConversationSettings({ ...DEFAULT_SIGNAL_CONVERSATION, intent: "Forum membership", applicationReview: "colors_forum" })
+    expect(await route(settings)).toBe("start-demo-conversation")
+    mocks.session = { id: "existing" }
+    mocks.opening = { metadata: { gatekeeper_bootstrap: true } }
+    expect(await route(settings)).toBe("standard")
+    mocks.opening = { metadata: { conversation_engine: "colors_thin_pilot_v1" } }
+    expect(await route(settings)).toBe("colors")
+    mocks.opening = { metadata: { conversation_engine: "colors_thin_pilot_v1", conversation_profile: "project:revision" } }
+    expect(await route(settings)).toBe("demo-conversation")
+    mocks.opening.metadata = { conversation_engine: "colors_thin_pilot_v1", persona_preview: true, conversation_profile: "project:revision" }
+    expect(await route(settings)).toBe("persona-preview")
   })
 
   it("never runs completion for an API turn on a demo session", async () => {

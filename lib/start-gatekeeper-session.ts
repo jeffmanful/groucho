@@ -1,4 +1,5 @@
 import { readProjectConversation } from "@/lib/project-conversation-config"
+import { projectConversationConfiguration } from "@/lib/project-conversation-runtime"
 import { COLORS_THIN_PILOT_MARKER, projectUsesColorsEngine } from "@/lib/colors-engine"
 import { CONVERSATION_ENGINE_MARKER, demoConversationProfile, usesReusableConversationEngine } from "@/lib/demo-conversation-profiles"
 import { ARTIST_APPLICATION_OPENING } from "@/lib/artist-application"
@@ -70,7 +71,8 @@ async function resolvePersonaId(
       ? input.projectSettings.raw.persona_id
       : null
   // A caller-supplied persona only counts if this organisation may use it; then the project's, then the default.
-  if (readProjectConversation(input.projectSettings.raw)) return null
+  const custom = readProjectConversation(input.projectSettings.raw)
+  if (custom && !(custom.version === 2 && custom.applicationReview)) return null
   return resolveActivePersonaId(
     [input.personaId, settingsPersonaId],
     input.context.organisationId,
@@ -103,10 +105,11 @@ export async function startGatekeeperSession(
   }
   // Projects configured for the newer COLORS engine start every new session on it.
   const demoProfile = demoConversationProfile(projectSettings.raw)
+  const projectConversation = readProjectConversation(projectSettings.raw)
   if (usesReusableConversationEngine(projectSettings.raw) && !demoProfile) {
     return traceJson(input, { error: "Demo conversation profile is not configured" }, { status: 503 })
   }
-  const conversationEngine = demoProfile ? CONVERSATION_ENGINE_MARKER : input.conversationEngine ??
+  const conversationEngine = projectConversation ? projectConversationConfiguration(projectConversation).marker : demoProfile ? CONVERSATION_ENGINE_MARKER : input.conversationEngine ??
     (projectUsesColorsEngine(projectSettings.raw) ? COLORS_THIN_PILOT_MARKER : undefined)
   const configuredSignals = applicationSignalDefinitions(
     projectSettings.applicationExperience.required_signals,
@@ -295,6 +298,7 @@ export async function startGatekeeperSession(
       gatekeeper_bootstrap: true,
       ...(conversationEngine ? { conversation_engine: conversationEngine } : {}),
       ...(demoProfile ? { conversation_profile: demoProfile.id, ...(!readProjectConversation(projectSettings.raw) ? { demo_simulation: true } : {}), ...(demoProfile.openingChoice ? { conversation_choice_key: demoProfile.openingChoice } : {}) } : {}),
+      ...(projectConversation?.version === 2 && projectConversation.applicationReview ? { project_conversation: projectConversation } : {}),
       ...(input.demoSession ? { colors_demo_session: true } : {}),
       ...(input.personaPreview ? { persona_preview: true } : {}),
       ...(colorsForumV1 ? { application_rubric_version: COLORS_FORUM_V1_RUBRIC } : {}),

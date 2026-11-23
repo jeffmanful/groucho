@@ -26,6 +26,7 @@ export function ProjectOverview() {
     <div className={styles.page}>
       <header className={dashboard.header}>
         <div><h1 className={styles.title}>Project overview</h1><p className={dashboard.subtitle}>{project?.name}</p></div>
+        {summary?.canManage && project ? <Link className={dashboard.primary} href={`${base}/projects/${project.id}/edit`}>Edit project</Link> : null}
       </header>
       <ProjectObjective />
       {!data && !error ? <div className={dashboard.skeleton} style={{ height: 280 }} role="status" aria-label="Loading cohort progress and applications" /> : null}

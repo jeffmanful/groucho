@@ -120,6 +120,7 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
     <main className={styles.wizard}>
       <Link href={`/admin/organisations/${orgId}/projects`}>Projects</Link>
       <header><h1>{project ? "Configure conversation" : "Create a conversation"}</h1><p>Define its purpose and character, then try the exact flow your visitors will use.</p></header>
+      {config.applicationReview && <p>Application reporting and integrations remain enabled for saved conversations. This preview tests the conversation without creating an application or sending webhooks. Changes apply to new conversations; conversations already in progress keep their original configuration.</p>}
       <nav aria-label="Project setup" className={styles.steps}>
         {["Purpose & context", "Persona", "Conversation flow", "Signals & examples", "Test & save"].map((label, index) => <button key={label} type="button" aria-current={step === index ? "step" : undefined} disabled={busy || saving || index > step} onClick={() => { setStep(index); setError("") }}>{label}</button>)}
       </nav>

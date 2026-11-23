@@ -7,6 +7,7 @@ import type { ProjectContext } from "@/lib/project-resolution"
 import { startGatekeeperSession } from "@/lib/start-gatekeeper-session"
 import { supabase } from "@/lib/supabase"
 import { CONVERSATION_ENGINE_MARKER, usesReusableConversationEngine, postDemoConversation } from "@/lib/demo-conversation-profiles"
+import { readProjectConversation } from "@/lib/project-conversation-config"
 
 export type ColorsEngineRoute = "colors" | "colors-demo" | "persona-preview" | "start-colors" | "demo-conversation" | "start-demo-conversation" | "standard"
 
@@ -28,7 +29,9 @@ export async function colorsEngineRoute(input: {
   if (error) throw error
   if (!session) return usesReusableConversationEngine(input.rawSettings) ? "start-demo-conversation" : projectUsesColorsEngine(input.rawSettings) ? "start-colors" : "standard"
   // Configured demos never fall back to the legacy engine. Old sessions receive a restart response.
-  if (usesReusableConversationEngine(input.rawSettings)) return "demo-conversation"
+  const custom = readProjectConversation(input.rawSettings)
+  const application = custom?.version === 2 && custom.applicationReview === "colors_forum"
+  if (usesReusableConversationEngine(input.rawSettings) && !application) return "demo-conversation"
   const { data: opening, error: openingError } = await supabase.from("messages")
     .select("metadata")
     .eq("session_id", session.id)
@@ -40,6 +43,7 @@ export async function colorsEngineRoute(input: {
   const metadata = opening?.metadata && typeof opening.metadata === "object" && !Array.isArray(opening.metadata)
     ? opening.metadata as Record<string, unknown> : {}
   if (metadata.persona_preview === true) return "persona-preview"
+  if (application && typeof metadata.conversation_profile === "string" && metadata.conversation_profile.startsWith("project:")) return metadata.colors_demo_session === true ? "persona-preview" : "demo-conversation"
   if (metadata.conversation_engine !== COLORS_THIN_PILOT_MARKER) return "standard"
   // Demo sessions live on the real Forum project; an API turn on one must not reach its webhooks.
   return metadata.colors_demo_session === true ? "colors-demo" : "colors"
@@ -71,7 +75,8 @@ export async function postColorsEngineTurn(input: {
       })
       if (!started.ok) return started
     }
-    return postDemoConversation({ ...input, applicant: input.applicant ?? undefined, runCompletion: false })
+    const custom = readProjectConversation(input.context.settings.raw)
+    return postDemoConversation({ ...input, applicant: input.applicant ?? undefined, runCompletion: !!(custom?.version === 2 && custom.applicationReview) })
   }
   if (input.route === "start-colors") {
     const started = await startGatekeeperSession({

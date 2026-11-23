@@ -177,6 +177,8 @@ export type ConversationConfiguration = {
   closingMessage?: string
   completionMessage?: string
   completionMode?: "simulation" | "conversation"
+  /** Application conversations retain the server-authored configuration they started with. */
+  resolveOpeningConfiguration?: (metadata: Record<string, unknown>) => ConversationConfiguration | null
   /** Hard answer budget for client-authored flows; legacy profiles keep their pacing. */
   maxAnswers?: number
   wrapUpAnswers?: number
@@ -258,11 +260,8 @@ export async function postConversation(input: {
   runCompletion?: boolean
 }): Promise<NextResponse> {
   const { organisationId, projectId, settings } = input.context
-  const config = input.configuration
+  let config = input.configuration
   const operation = (name: string) => `${config.operationPrefix ?? "conversation"}_${name}`
-  const fields = config.fields ?? []
-  const choices = config.choices ?? {}
-  const natural = config.naturalConversation === true
   const { data: session, error: sessionError } = input.previewTranscript ? { data: { id: input.sessionId, status: "active", applicant_email: null, applicant_details: null, application_audience: "community" }, error: null } : await supabase.from("sessions")
     .select("id, status, applicant_email, applicant_details, application_audience")
     .eq("session_id", input.sessionId)
@@ -282,6 +281,10 @@ export async function postConversation(input: {
     .eq("session_id", session.id)
     .order("sent_at", { ascending: true })
   if (historyError || !history?.length) return json({ error: "Transcript unavailable" }, input.requestId, 503)
+  if (!input.previewTranscript) config = config.resolveOpeningConfiguration?.(record(history[0].metadata)) ?? config
+  const fields = config.fields ?? []
+  const choices = config.choices ?? {}
+  const natural = config.naturalConversation === true
   if (record(history[0].metadata).conversation_engine !== config.marker) {
     return json({ error: "Session uses a different conversation engine" }, input.requestId, 409)
   }

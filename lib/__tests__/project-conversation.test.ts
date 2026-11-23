@@ -232,6 +232,16 @@ const signalConfig: SignalProjectConversationConfig = {
 const evidenceUpdate = (quote: string, extra = {}) => ({ signalId: "s_community", status: "evidence_found", subject: "applicant", summary: "Regular involvement in a community gathering.", reason: "They describe their own participation and motivation.", quotes: [quote], supersedes: false, ...extra })
 
 describe("signal configuration and compatibility", () => {
+  it("preserves legacy application settings while enabling the existing COLORS review pipeline", () => {
+    const application = { ...signalConfig, applicationReview: "colors_forum" as const }
+    const legacy = { opening_message: "Original opening", max_turns: 9, required_signals: ["Original signal"] }
+    const settings = { application_experience: legacy, persona_id: "original-persona", decision_policy: { automatic_acceptance_enabled: false }, webhook_url: "https://example.test/hook", ...projectConversationSettings(application) }
+    expect(validateProjectSettings(settings).ok).toBe(true)
+    expect(settings.application_experience).toBe(legacy)
+    expect(readProjectConversation(settings)).toEqual(application)
+    expect(projectConversationConfiguration(application)).toMatchObject({ marker: "colors_thin_pilot_v1", completionMessage: undefined })
+    expect(validateProjectConversation({ ...application, applicationReview: "unknown" }).ok).toBe(false)
+  })
   it("preserves old revisions and canonicalises equivalent project settings regardless of key order", () => {
     expect(projectConversationProfile(signalConfig).id).toBe(`project:${createHash("sha256").update(JSON.stringify(signalConfig)).digest("hex")}`)
     const authored = { ...signalConfig, projectContext: "A community project", closingMessage: "Thanks for chatting." }
@@ -347,6 +357,33 @@ describe("grounded signal evidence", () => {
 })
 
 describe("complete signal conversations", () => {
+  it("queues private application processing on a saved application close, while preview stays isolated", async () => {
+    const application = { ...signalConfig, applicationReview: "colors_forum" as const }
+    const liveContext = { ...context, settings: normalizeProjectSettings(projectConversationSettings(application)) }
+    mocks.history = opening(application)
+    mocks.create.mockResolvedValue(reply("We can stop here.", { visitorIntent: "stop" }))
+    const live = await (await postDemoConversation({ context: liveContext, sessionId: "stored", message: "Please stop." })).json()
+    expect(live).toMatchObject({ status: "completed", reviewStatus: "pending" })
+    expect(live.completion).toBeUndefined()
+    expect(mocks.queue).toHaveBeenCalledTimes(1)
+    mocks.queue.mockClear(); mocks.database.mockClear()
+    const preview = await (await postConversation({ context: liveContext, sessionId: "preview", message: "Please stop.", previewTranscript: opening(application), configuration: projectConversationConfiguration(application), runCompletion: false })).json()
+    expect(preview.status).toBe("completed")
+    expect(mocks.queue).not.toHaveBeenCalled()
+    expect(mocks.database).not.toHaveBeenCalled()
+  })
+  it("continues an application with its opening snapshot after the client changes the project", async () => {
+    const application = { ...signalConfig, applicationReview: "colors_forum" as const }
+    const changed = { ...application, intent: "A new project objective" }
+    mocks.history = opening(application)
+    mocks.history[0].metadata.project_conversation = application
+    mocks.create.mockResolvedValue(reply("What keeps you coming back?"))
+    const liveContext = { ...context, settings: normalizeProjectSettings(projectConversationSettings(changed)) }
+    const response = await postDemoConversation({ context: liveContext, sessionId: "stored", message: "I host an online group." })
+    expect(response.status).toBe(200)
+    expect(mocks.create.mock.calls[0][0].system).toContain(application.intent)
+    expect(mocks.create.mock.calls[0][0].system).not.toContain(changed.intent)
+  })
   it("keeps a closing turn retryable without persisting stale evidence when its evidence review fails", async () => {
     mocks.create.mockResolvedValueOnce(reply("We can stop here.", { visitorIntent: "stop" }))
     mocks.create.mockRejectedValueOnce(new Error("Temporary evidence review failure"))

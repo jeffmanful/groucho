@@ -33,6 +33,8 @@ export type SignalProjectConversationConfig = Omit<LegacyProjectConversationConf
   conversationGuidance?: string
   closingGuidance?: string
   closingMessage?: string
+  /** Keep the existing COLORS private assessment and application delivery pipeline. */
+  applicationReview?: "colors_forum"
   signals: ProjectConversationSignal[]
 }
 export const DEFAULT_PROJECT_CLOSING_MESSAGE = "Thank you for taking the time to chat."
@@ -62,6 +64,7 @@ export function validateProjectConversation(value: unknown): Result {
   const persona = o.persona as Record<string, unknown> | null
   if (!persona || !validText(persona.name, 80) || !validText(persona.instructions, 6000)) return { ok: false, error: "Add a persona name (up to 80 characters) and instructions (up to 6,000 characters)." }
   if (o.version === 2) {
+    if (o.applicationReview !== undefined && o.applicationReview !== "colors_forum") return { ok: false, error: "Unsupported application review pipeline." }
     const projectControls: Pick<SignalProjectConversationConfig, "projectContext" | "conversationGuidance" | "closingGuidance" | "closingMessage"> = {}
     for (const [key, label, limit] of [
       ["projectContext", "project context", 6000],
@@ -94,7 +97,7 @@ export function validateProjectConversation(value: unknown): Result {
       if (choice && (options.length < 2 || options.length > 12 || new Set(options).size !== options.length)) return { ok: false, error: `${label} needs 2–12 distinct options.` }
       signals.push({ id: signal.id, name: signal.name.trim(), understanding: signal.understanding.trim(), evidence: signal.evidence.trim(), examples: signal.examples.map((v: string) => v.trim()).filter(Boolean), explore: signal.explore, question: signal.question.trim(), answerType: signal.answerType as ProjectConversationSignal["answerType"], options: choice ? options : [] })
     }
-    return { ok: true, config: { version: 2, openingMessage: o.openingMessage.trim(), openingQuestion: o.openingQuestion.trim(), maxAnswers: Number(o.maxAnswers), intent: o.intent.trim(), persona: { name: persona.name.trim(), instructions: persona.instructions.trim() }, ...projectControls, signals } }
+    return { ok: true, config: { version: 2, openingMessage: o.openingMessage.trim(), openingQuestion: o.openingQuestion.trim(), maxAnswers: Number(o.maxAnswers), intent: o.intent.trim(), persona: { name: persona.name.trim(), instructions: persona.instructions.trim() }, ...projectControls, ...(o.applicationReview === "colors_forum" ? { applicationReview: "colors_forum" as const } : {}), signals } }
   }
   if (!Array.isArray(o.questions) || o.questions.length > 12) return { ok: false, error: "Use up to 12 questions." }
   const ids = new Set<string>()
@@ -131,7 +134,8 @@ export function projectConversationSettings(config: ProjectConversationConfig) {
   return {
     project_type: "gatekeeper", conversation_engine: "conversation_v1", conversation_profile: "project",
     project_conversation: config,
-    application_experience: { opening_message: projectOpeningQuestion(config), max_turns: config.maxAnswers },
+    // Application projects retain their legacy experience for conversations already in progress.
+    ...(config.version === 2 && config.applicationReview ? {} : { application_experience: { opening_message: projectOpeningQuestion(config), max_turns: config.maxAnswers } }),
   }
 }
 

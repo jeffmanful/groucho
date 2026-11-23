@@ -138,6 +138,20 @@ describe("startGatekeeperSession", () => {
     expect((state.messages[0].metadata as FakeRow).demo_simulation).toBeUndefined()
   })
 
+  it("pins the application configuration at startup and retains the existing library persona and review marker", async () => {
+    const { startGatekeeperSession } = await import("@/lib/start-gatekeeper-session")
+    const { DEFAULT_SIGNAL_CONVERSATION, projectConversationSettings } = await import("@/lib/project-conversation-config")
+    const { normalizeProjectSettings } = await import("@/lib/project-settings")
+    const application = { ...DEFAULT_SIGNAL_CONVERSATION, intent: "Forum membership", applicationReview: "colors_forum" as const }
+    const settings = normalizeProjectSettings({ persona_id: "persona1", ...projectConversationSettings(application) })
+    const response = await startGatekeeperSession({ sessionId: "application", applicantIdentity: { email: "synthetic@example.invalid" }, projectSettings: settings, context: { organisationId: "org1", projectId: "proj1", apiKeyId: null, settings } })
+    expect(response.status).toBe(200)
+    const state = (await import("@/lib/supabase") as unknown as { __state: { sessions: FakeRow[]; messages: FakeRow[] } }).__state
+    expect(state.sessions[0].persona_id).toBe("persona1")
+    expect(state.messages[0].metadata).toMatchObject({ conversation_engine: "colors_thin_pilot_v1", project_conversation: application })
+    expect((state.messages[0].metadata as FakeRow).demo_simulation).toBeUndefined()
+  })
+
   it("rejects ticket-access demo projects without creating live sessions", async () => {
     const { startGatekeeperSession } = await import("@/lib/start-gatekeeper-session")
     const settings = { ...projectSettings, projectType: "ticket_access" as const }
