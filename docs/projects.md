@@ -1,6 +1,6 @@
 # Projects
 
-Current configuration guide, reviewed 2 November 2026. A project belongs to one organisation and scopes settings, API keys, sessions, integrations and review/allocation. See [architecture](architecture.md) before selecting a flow.
+Current configuration guide, reviewed 16 November 2026. A project belongs to one organisation and scopes settings, API keys, sessions, integrations and review/allocation. See [architecture](architecture.md) before selecting a flow.
 
 ## Types and engines
 
@@ -8,6 +8,7 @@ Current configuration guide, reviewed 2 November 2026. A project belongs to one 
 
 | Configuration | Behaviour |
 | --- | --- |
+| Gatekeeper + `conversation_engine: conversation_v1`, `conversation_profile: project` and `project_conversation` | Client-created flow and project-owned persona; shared runtime, hard answer budget and conversation completion; no assessment or delivery jobs |
 | Gatekeeper + `conversation_engine: conversation_v1` and registered `conversation_profile` | Shared public-demo runtime, named fields/options and simulation completion |
 | Gatekeeper + `conversation_engine: colors_forum` | Newer COLORS conversation and separate assessment pipeline |
 | Gatekeeper without either setting | Supported standard gatekeeper and its legacy advisory terminal outcomes |
@@ -42,7 +43,9 @@ Profile IDs, metadata markers, models and `project_type` are different concepts.
 
 For real applications, endings are neutral: do not expose a private recommendation or promise acceptance. `completed`, `passed`, `redirected` and `rejected` are conversation states, not approval. The [client decision policy](client-decision-policy.md) owns independent thresholds and automatic switches, both off by default. Turn limits differ by runtime; the old nine-question/two-follow-up recipe is not a universal current engine guarantee.
 
-`persona_id` must reference an active persona the organisation may use. [Ownership](persona-ownership.md) governs original/clone access. Public demo adapters reject an unavailable exact persona instead of substituting a default. See [persona creation](demo-persona-creation.md) for adding a profile.
+For client-created flows, `project_conversation` owns the intent, persona, opening, answer limit and signal definitions. Version 2 adds informative-evidence guidance and illustrative examples, with optional exact questions and answer formats inside each signal. Version-1 question lists continue to run unchanged. Configure and preview these through the [project wizard](platform-project-wizard.md).
+
+For library-persona flows, `persona_id` must reference an active persona the organisation may use. [Ownership](persona-ownership.md) governs original/clone access. Public demo adapters reject an unavailable exact persona instead of substituting a default. See [persona creation](demo-persona-creation.md) for adding a profile.
 
 ## Onboarding
 

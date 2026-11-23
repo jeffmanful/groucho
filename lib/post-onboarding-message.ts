@@ -7,6 +7,7 @@ import type { ConversationMessage } from "@/lib/scoring"
 import { log } from "@/lib/logger"
 import { REQUEST_ID_HEADER } from "@/lib/request-trace"
 import { supabase } from "@/lib/supabase"
+import { ERASED_SESSION_CODE, ERASED_SESSION_MESSAGE } from "@/lib/session-privacy"
 import { resolveActiveGatekeeperPersona } from "@/lib/persona-resolution"
 import { isConcludedSessionStatus } from "@/lib/session-status"
 import {
@@ -215,6 +216,9 @@ export async function postOnboardingMessage(
       .select("id")
       .single()
 
+    if (createError?.code === ERASED_SESSION_CODE) {
+      return traceJson(input, { error: ERASED_SESSION_MESSAGE }, { status: 410 })
+    }
     if (createError || !created) {
       log.error("onboarding_session_create_failed", {
         requestId: input.requestId,

@@ -1,5 +1,6 @@
 "use client"
 
+import { ConversationProjectWizard } from "@/components/admin/ConversationProjectWizard"
 import { defaultPersonaOption, fetchPersonaOptions, type PersonaOption } from "@/lib/persona-options"
 import Link from "next/link"
 import TicketProjectSetup from "@/components/ticket-access/TicketProjectSetup"
@@ -95,6 +96,13 @@ function btn(primary: boolean): React.CSSProperties {
 
 export default function NewProjectWizardPage() {
   const params = useParams()
+  const [advanced, setAdvanced] = useState(false)
+  if (!advanced) return <ConversationProjectWizard orgId={params.orgId as string} onAdvanced={() => setAdvanced(true)} />
+  return <AdvancedProjectWizard />
+}
+
+function AdvancedProjectWizard() {
+  const params = useParams()
   const router = useRouter()
   const orgId = params.orgId as string
 
@@ -153,29 +161,20 @@ export default function NewProjectWizardPage() {
   const [createdProjectId, setCreatedProjectId] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!slugManual) setSlug(slugify(name))
-  }, [name, slugManual])
-
-  const loadMeta = useCallback(async () => {
-    const res = await fetch(`/api/admin/organisations/${orgId}`)
-    if (res.ok) {
-      const o = await res.json()
-      setOrgName(o.name ?? "")
-    }
-  }, [orgId])
-
-  const loadPersonas = useCallback(async () => {
-    const list = await fetchPersonaOptions(orgId)
-    const active = list.filter((p) => p.is_active)
-    setPersonas(active.length ? active : list)
-    const def = defaultPersonaOption(list)
-    if (def) setPersonaId(def.id)
-  }, [orgId])
-
-  useEffect(() => {
-    void loadMeta()
-    void loadPersonas()
-  }, [loadMeta, loadPersonas])
+    let cancelled = false
+    void Promise.all([
+      fetch(`/api/admin/organisations/${orgId}`).then(res => res.ok ? res.json() : null),
+      fetchPersonaOptions(orgId),
+    ]).then(([organisation, list]) => {
+      if (cancelled) return
+      if (organisation) setOrgName(organisation.name ?? "")
+      const active = list.filter((p) => p.is_active)
+      setPersonas(active.length ? active : list)
+      const def = defaultPersonaOption(list)
+      if (def) setPersonaId(def.id)
+    }).catch(() => { if (!cancelled) showError("Could not load project setup. Please reload and try again.") })
+    return () => { cancelled = true }
+  }, [orgId, showError])
 
   const step1Valid = useMemo(() => {
     const n = name.trim()
@@ -441,7 +440,7 @@ export default function NewProjectWizardPage() {
           </h2>
           <div style={{ marginBottom: "1rem" }}>
             <label style={label}>Display name (2–64 characters)</label>
-            <input style={input} value={name} onChange={(e) => setName(e.target.value)} />
+            <input style={input} value={name} onChange={(e) => { setName(e.target.value); if (!slugManual) setSlug(slugify(e.target.value)) }} />
           </div>
           <div style={{ marginBottom: "1rem" }}>
             <label style={label}>URL slug (used in logs; 2–31 chars, lowercase)</label>

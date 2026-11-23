@@ -13,6 +13,7 @@ Current schema authority is the ordered SQL in [supabase/migrations](../supabase
 | Delivery | `webhooks`, `webhook_deliveries`; signed events and retry state |
 | Application invitations | `application_invitations`: hashed, scoped tokens and one assigned conversation |
 | Cultural signals | Project-scoped derived observations/snapshots with source deletion dependencies |
+| Privacy lifecycle | `project_retention_policies`, `session_privacy_holds`, private pseudonymous erasure receipts; [operations](session-privacy-operations.md) |
 
 `sessions.session_id` is the client-provided key. `sessions.id` is the internal UUID referenced by `messages.session_id` and completion jobs. Do not join a client key as if it were the internal ID.
 

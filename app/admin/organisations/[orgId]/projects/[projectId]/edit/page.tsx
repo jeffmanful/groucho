@@ -1,5 +1,7 @@
 "use client"
 
+import { ConversationProjectWizard } from "@/components/admin/ConversationProjectWizard"
+import { readProjectConversation } from "@/lib/project-conversation-config"
 import { defaultPersonaOption, fetchPersonaOptions, personaUpdateUrl, type PersonaOption } from "@/lib/persona-options"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
@@ -41,7 +43,6 @@ import {
   setupBtn,
   setupInput,
   setupLabel,
-  slugify,
 } from "@/components/admin/project-setup-ui"
 
 type Persona = PersonaOption
@@ -77,7 +78,6 @@ export default function EditProjectPage() {
   const [hydrated, setHydrated] = useState(false)
   const { alert, showError, showSuccess, showInfo, clearAlert } = useAdminFeedback()
   const formTopRef = useRef<HTMLDivElement>(null)
-  const [slugManual, setSlugManual] = useState(true)
   const [existingSettings, setExistingSettings] = useState<Record<string, unknown>>({})
   const [flowEditorKey, setFlowEditorKey] = useState("")
   const flowFlushRef = useRef<(() => OnboardingFlowStep[]) | null>(null)
@@ -125,10 +125,6 @@ export default function EditProjectPage() {
   )
 
   useEffect(() => {
-    if (!slugManual) patchForm({ slug: slugify(form.name) })
-  }, [form.name, slugManual, patchForm])
-
-  useEffect(() => {
     let cancelled = false
 
     async function load() {
@@ -174,9 +170,11 @@ export default function EditProjectPage() {
           : {}
 
       const nextForm = formStateFromProject(row)
+      if (!nextForm.personaId && !readProjectConversation(settings)) {
+        nextForm.personaId = defaultPersonaOption(personaRes)?.id ?? ""
+      }
       setExistingSettings(settings)
       setForm(nextForm)
-      setSlugManual(true)
       setFlowEditorKey(
         `${row.id}-${nextForm.flowSteps.map((s) => s.id).join(",")}`,
       )
@@ -191,12 +189,6 @@ export default function EditProjectPage() {
     // Load once per org/project — do not depend on toast/alert callbacks (they reset the form).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId, projectId])
-
-  useEffect(() => {
-    if (!hydrated || !personas.length || form.personaId) return
-    const def = defaultPersonaOption(personas)
-    if (def) patchForm({ personaId: def.id })
-  }, [hydrated, personas, form.personaId, patchForm])
 
   const step1Valid = useMemo(() => {
     const n = form.name.trim()
@@ -287,6 +279,9 @@ export default function EditProjectPage() {
     }, 1200)
   }
 
+  const conversation = readProjectConversation(existingSettings)
+  if (!loading && hydrated && !loadError && conversation) return <ConversationProjectWizard key={projectId} orgId={orgId} project={{ id: projectId, name: form.name, slug: form.slug, config: conversation }} />
+
   if (loading) {
     return (
       <div style={{ padding: "2rem", opacity: 0.45 }}>
@@ -373,10 +368,7 @@ export default function EditProjectPage() {
           <input
             style={setupInput}
             value={form.slug}
-            onChange={(e) => {
-              setSlugManual(true)
-              patchForm({ slug: e.target.value })
-            }}
+            onChange={(e) => patchForm({ slug: e.target.value })}
           />
           {!isValidProjectSlug(form.slug) && form.slug.length > 0 && (
             <p style={{ fontSize: "0.7rem", opacity: 0.35, marginTop: "0.35rem" }}>

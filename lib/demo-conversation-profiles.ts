@@ -1,3 +1,5 @@
+import { readProjectConversation } from "@/lib/project-conversation-config"
+import { projectConversationProfile, projectConversationConfiguration } from "@/lib/project-conversation-runtime"
 import { NextResponse } from "next/server"
 import { postConversation, type ConversationChoice, type ConversationField, type ConversationConfiguration } from "@/lib/conversation-engine"
 import { colorsThinConversationModel, MO_CONVERSATION_MODEL } from "@/lib/gatekeeper-models"
@@ -89,7 +91,9 @@ export const DEMO_CONVERSATION_PROFILES: Record<DemoConversationId, DemoProfile>
   },
 }
 
-export function demoConversationProfile(raw: unknown): DemoProfile | null {
+export function demoConversationProfile(raw: unknown): DemoProfile | ReturnType<typeof projectConversationProfile> | null {
+  const custom = readProjectConversation(raw)
+  if (custom) return projectConversationProfile(custom)
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
   const settings = raw as Record<string, unknown>
   if (settings.conversation_engine !== CONVERSATION_ENGINE_SETTING) return null
@@ -120,7 +124,9 @@ Call groucho_converse exactly once. Set close only when finished. Set addsNewCon
 }
 
 export async function postDemoConversation(input: Omit<Parameters<typeof postConversation>[0], "configuration"> & { context: ProjectContext }) {
-  const profile = demoConversationProfile(input.context.settings.raw)
+  const custom = readProjectConversation(input.context.settings.raw)
+  if (custom) return postConversation({ ...input, runCompletion: custom.version === 2 && custom.applicationReview ? input.runCompletion !== false : false, configuration: projectConversationConfiguration(custom) })
+  const profile = demoConversationProfile(input.context.settings.raw) as DemoProfile | null
   const personaId = input.context.settings.raw.persona_id
   if (!profile || typeof personaId !== "string") return NextResponse.json({ error: "Demo conversation is not configured" }, { status: 503 })
   const persona = await resolveActiveGatekeeperPersona([personaId], input.context.organisationId)

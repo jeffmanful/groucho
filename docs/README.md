@@ -14,6 +14,8 @@ Current guidance reviewed against repository source on 2 November 2026. Begin wi
 
 ## Configuration and operations
 
+- [Compliance and legal workstream](compliance-review.md): initial GDPR/data-flow review, legal decisions, prioritised actions and launch evidence; not a compliance certification.
+- [Session privacy operations](session-privacy-operations.md): configurable retention, transactional deletion, holds, replay suppression, deployment and restore boundaries.
 - [Projects](projects.md), [project creation](platform-project-wizard.md), [organisations](organisations.md).
 - [Personas](personas.md), [ownership and versions](persona-ownership.md), [profile schemas](profile-schema-guide.md).
 - [Authentication](authentication.md), [dashboard access](admin-access.md), [API-key ADR](adr/0001-api-key-and-client-access.md).

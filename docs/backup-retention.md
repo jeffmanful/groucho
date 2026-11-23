@@ -1,6 +1,6 @@
 # Backup, retention, and deletion (Groucho v1)
 
-Operational checklist, reviewed 2 November 2026. These are deployment responsibilities, not a claim that an automatic retention schedule or provider recovery policy is implemented. Define the organisation’s retention/recovery policy separately and verify it against [the schema/migrations](database-schema.md).
+Operational checklist, updated 13 November 2026. Configurable session retention, transactional deletion and expiring holds are now implemented in source; see [session privacy operations](session-privacy-operations.md) for activation, coverage and limitations. No project policy is enabled automatically. Provider recovery and approved retention periods remain deployment responsibilities. Verify against [the schema/migrations](database-schema.md).
 
 ## Data stores
 
@@ -12,14 +12,16 @@ Operational checklist, reviewed 2 November 2026. These are deployment responsibi
 - Rely on **Supabase** (or your Postgres provider) automated backups and point-in-time recovery according to your plan.
 - Document **RPO/RTO** in your internal runbook; Groucho does not prescribe vendor-specific steps.
 
-## Retention (suggested starting points)
+## Retention (policy decisions required)
+
+Do not treat an active organisation account as sufficient justification to retain every applicant transcript. Set documented, purpose-based retention periods and deletion triggers per data class and client instruction. No universal GDPR duration applies; see [ICO storage limitation guidance](https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/data-protection-principles/a-guide-to-the-data-protection-principles/storage-limitation/). The following are policy decisions to resolve; the implemented session schedule removes the entire session and its dependent records together. Separate periods per data class remain future work. See the [compliance workstream](compliance-review.md).
 
 | Class | Suggestion |
 |-------|------------|
-| Session transcripts + messages | Retain while the organisation account is active; optional TTL per project in a future release. |
-| Verdicts / webhook delivery rows | Retain for audit; archive or purge per legal hold after org deletion window. |
-| Application decisions / policy snapshots | Retain with the application audit record so a human or automatic decision can be explained; purge under the same legal and erasure policy as its session. |
-| API access logs (edge) | Follow platform default (e.g. 7–30 days) unless longer audit required. |
+| Session transcripts + messages | Define separate periods/triggers for demos, abandoned applications and completed applications; include derived profiles and reports. Implement and verify expiry. |
+| Verdicts / webhook delivery rows | Define the necessary operational/audit period, minimise retained payloads and account for recipient copies. |
+| Application decisions / policy snapshots | Define the necessary explanation, dispute and legal-claim period. Append-only history does not create an unlimited retention exemption; scope and expire any justified hold. |
+| API access logs (edge) | Verify the actual provider settings and data fields, then justify/configure the necessary period. Provider defaults are not a retention rationale. |
 
 ## Right to erasure / org deletion
 

@@ -19,6 +19,7 @@ import { checkRateLimit, readRateLimitConfig } from "@/lib/rate-limit"
 import { log } from "@/lib/logger"
 import { REQUEST_ID_HEADER } from "@/lib/request-trace"
 import { supabase } from "@/lib/supabase"
+import { ERASED_SESSION_CODE, ERASED_SESSION_MESSAGE } from "@/lib/session-privacy"
 import { isConcludedSessionStatus } from "@/lib/session-status"
 import { readApplicantSignals, scheduleApplicantSignals } from "@/lib/applicant-signals"
 import { botSignalForApplicant } from "@/lib/bot-signals"
@@ -997,6 +998,9 @@ export async function postSessionMessage(
       .select("id")
       .single()
 
+    if (createError?.code === ERASED_SESSION_CODE) {
+      return traceJson(input, { error: ERASED_SESSION_MESSAGE }, { status: 410 })
+    }
     if (createError || !created) {
       log.error("session_create_failed", {
         requestId: input.requestId,

@@ -1,6 +1,7 @@
 // Entries submitted without a conversation (drops): name, email, phone, socials and drop fields.
 import { normaliseApplicantEmail } from "@/lib/applicant-identity"
 import { supabase } from "@/lib/supabase"
+import { ERASED_SESSION_CODE, ERASED_SESSION_MESSAGE } from "@/lib/session-privacy"
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const MAX_FIELDS = 20
@@ -92,6 +93,9 @@ export async function createEntry(input: {
     })
     .select("id")
     .single()
+  if (error?.code === ERASED_SESSION_CODE) {
+    return { ok: false, status: 410, error: ERASED_SESSION_MESSAGE }
+  }
   if (error?.code === "23505") {
     const { data: existing } = await supabase
       .from("sessions")

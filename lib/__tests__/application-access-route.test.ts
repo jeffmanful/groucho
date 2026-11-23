@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const testState = vi.hoisted(() => ({
   decision: null as null | { decision: string; access_secret: string | null },
+  capture: vi.fn(),
 }))
 
 vi.mock("@/lib/project-resolution", () => ({
@@ -19,6 +20,7 @@ vi.mock("@/lib/rate-limit", () => ({
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
+    rpc: (...args: unknown[]) => testState.capture(...args),
     from(table: string) {
       const chain = {
         select() {
@@ -66,6 +68,7 @@ function request(secret: string) {
 describe("application access route", () => {
   beforeEach(() => {
     testState.decision = null
+    testState.capture.mockResolvedValue({ data: null, error: null })
   })
 
   it("does not grant access from a legacy passed session without human approval", async () => {
@@ -92,5 +95,24 @@ describe("application access route", () => {
     await expect(response.json()).resolves.toEqual({
       error: "Invalid or missing secret",
     })
+  })
+
+  it("captures the profile atomically after approval", async () => {
+    testState.decision = { decision: "approved", access_secret: "human-approval-secret" }
+    const { POST } = await import("@/app/v1/sessions/[sessionId]/access/route")
+    const response = await POST(request("human-approval-secret"), { params: Promise.resolve({ sessionId: "client-session" }) })
+    expect(response.status).toBe(200)
+    expect(testState.capture).toHaveBeenCalledWith("capture_session_access_profile", {
+      p_project_id: "project-1", p_session_id: "session-row-1", p_email: "listener@example.com",
+    })
+  })
+
+  it("does not recreate a profile if erasure won the race", async () => {
+    testState.decision = { decision: "approved", access_secret: "human-approval-secret" }
+    testState.capture.mockResolvedValue({ error: { code: "GR410" } })
+    const { POST } = await import("@/app/v1/sessions/[sessionId]/access/route")
+    const response = await POST(request("human-approval-secret"), { params: Promise.resolve({ sessionId: "client-session" }) })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ ok: true })
   })
 })

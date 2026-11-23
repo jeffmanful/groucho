@@ -188,4 +188,18 @@ describe("saving the team's review objective", () => {
     expect(readProjectObjective(db.tables.projects[0].settings)).toEqual(objective)
     expect(db.tables.projects[0].settings).toMatchObject({ archived: true })
   })
+
+  it("rejects an older wizard dropping application processing while retaining ordinary edits", async () => {
+    const { DEFAULT_SIGNAL_CONVERSATION, projectConversationSettings } = await import("@/lib/project-conversation-config")
+    const application = { ...DEFAULT_SIGNAL_CONVERSATION, intent: "Forum membership", applicationReview: "colors_forum" as const }
+    db.tables.projects[0].settings = { ...original, ...projectConversationSettings(application) }
+    const { PATCH } = await import("@/app/api/admin/organisations/[orgId]/projects/[projectId]/route")
+    const params = { params: Promise.resolve({ orgId: "colors", projectId: "p" }) }
+    const stale = await PATCH(new NextRequest("http://localhost/project", { method: "PATCH", body: JSON.stringify({ settings: projectConversationSettings({ ...application, applicationReview: undefined }) }) }), params)
+    expect(stale.status).toBe(409)
+    expect(db.writes).toEqual([])
+    const updated = await PATCH(new NextRequest("http://localhost/project", { method: "PATCH", body: JSON.stringify({ settings: projectConversationSettings({ ...application, intent: "Updated membership objective" }) }) }), params)
+    expect(updated.status).toBe(200)
+    expect(db.tables.projects[0].settings).toMatchObject({ project_conversation: { intent: "Updated membership objective", applicationReview: "colors_forum" } })
+  })
 })

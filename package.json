@@ -45,6 +45,7 @@
   },
   "devDependencies": {
     "@changesets/cli": "^2.31.0",
+    "@electric-sql/pglite": "0.5.16",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^25.6.0",
     "@types/react": "^19",

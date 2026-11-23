@@ -1,6 +1,6 @@
 # Creating a demo persona
 
-Use this guide for public demos on `conversation_v1`. Read [Reusable conversation engine](reusable-conversation-engine.md) for the implementation and rationale, and [Persona ownership](persona-ownership.md) for permissions, visibility and versioning.
+Use the [project wizard](platform-project-wizard.md) for client-created flows with an inline project persona and no code registration. This guide covers authored, branded public demos on `conversation_v1`. Read [Reusable conversation engine](reusable-conversation-engine.md) for the implementation and rationale, and [Persona ownership](persona-ownership.md) for permissions, visibility and versioning.
 
 ## Write a brief first
 

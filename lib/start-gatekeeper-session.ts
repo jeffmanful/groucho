@@ -1,3 +1,5 @@
+import { readProjectConversation } from "@/lib/project-conversation-config"
+import { projectConversationConfiguration } from "@/lib/project-conversation-runtime"
 import { COLORS_THIN_PILOT_MARKER, projectUsesColorsEngine } from "@/lib/colors-engine"
 import { CONVERSATION_ENGINE_MARKER, demoConversationProfile, usesReusableConversationEngine } from "@/lib/demo-conversation-profiles"
 import { ARTIST_APPLICATION_OPENING } from "@/lib/artist-application"
@@ -9,6 +11,7 @@ import {
 import { log } from "@/lib/logger"
 import { REQUEST_ID_HEADER } from "@/lib/request-trace"
 import { supabase } from "@/lib/supabase"
+import { ERASED_SESSION_CODE, ERASED_SESSION_MESSAGE } from "@/lib/session-privacy"
 import { resolveActivePersonaId } from "@/lib/persona-resolution"
 import type { ProjectContext } from "@/lib/project-resolution"
 import { touchApiKeyLastUsed } from "@/lib/project-resolution"
@@ -69,6 +72,8 @@ async function resolvePersonaId(
       ? input.projectSettings.raw.persona_id
       : null
   // A caller-supplied persona only counts if this organisation may use it; then the project's, then the default.
+  const custom = readProjectConversation(input.projectSettings.raw)
+  if (custom && !(custom.version === 2 && custom.applicationReview)) return null
   return resolveActivePersonaId(
     [input.personaId, settingsPersonaId],
     input.context.organisationId,
@@ -101,10 +106,11 @@ export async function startGatekeeperSession(
   }
   // Projects configured for the newer COLORS engine start every new session on it.
   const demoProfile = demoConversationProfile(projectSettings.raw)
+  const projectConversation = readProjectConversation(projectSettings.raw)
   if (usesReusableConversationEngine(projectSettings.raw) && !demoProfile) {
     return traceJson(input, { error: "Demo conversation profile is not configured" }, { status: 503 })
   }
-  const conversationEngine = demoProfile ? CONVERSATION_ENGINE_MARKER : input.conversationEngine ??
+  const conversationEngine = projectConversation ? projectConversationConfiguration(projectConversation).marker : demoProfile ? CONVERSATION_ENGINE_MARKER : input.conversationEngine ??
     (projectUsesColorsEngine(projectSettings.raw) ? COLORS_THIN_PILOT_MARKER : undefined)
   const configuredSignals = applicationSignalDefinitions(
     projectSettings.applicationExperience.required_signals,
@@ -127,7 +133,7 @@ export async function startGatekeeperSession(
   )
   const demoOpeningChoice = demoProfile?.openingChoice ? demoProfile.choices[demoProfile.openingChoice] : undefined
   const openingInteraction = demoProfile
-    ? { ...DEFAULT_INTERACTION_SPEC, ...(demoOpeningChoice ? { inputType: "singleSelect" as const, options: [...demoOpeningChoice.options] } : {}) }
+    ? { ...DEFAULT_INTERACTION_SPEC, ...(demoOpeningChoice ? { inputType: demoOpeningChoice.inputType ?? "singleSelect" as const, options: [...demoOpeningChoice.options] } : {}) }
     : applicantIdentity?.artist
     ? { ...DEFAULT_INTERACTION_SPEC, inputType: "text" as const }
     : isColorsForumSignalSet(openingSignals) &&
@@ -225,6 +231,9 @@ export async function startGatekeeperSession(
     .select("id")
     .single()
 
+  if (createError?.code === ERASED_SESSION_CODE) {
+    return traceJson(input, { error: ERASED_SESSION_MESSAGE }, { status: 410 })
+  }
   if (createError?.code === "23505") {
     const { data: raced } = await supabase
       .from("sessions")
@@ -292,7 +301,8 @@ export async function startGatekeeperSession(
     metadata: {
       gatekeeper_bootstrap: true,
       ...(conversationEngine ? { conversation_engine: conversationEngine } : {}),
-      ...(demoProfile ? { conversation_profile: demoProfile.id, demo_simulation: true, ...(demoProfile.openingChoice ? { conversation_choice_key: demoProfile.openingChoice } : {}) } : {}),
+      ...(demoProfile ? { conversation_profile: demoProfile.id, ...(!readProjectConversation(projectSettings.raw) ? { demo_simulation: true } : {}), ...(demoProfile.openingChoice ? { conversation_choice_key: demoProfile.openingChoice } : {}) } : {}),
+      ...(projectConversation?.version === 2 && projectConversation.applicationReview ? { project_conversation: projectConversation } : {}),
       ...(input.demoSession ? { colors_demo_session: true } : {}),
       ...(input.personaPreview ? { persona_preview: true } : {}),
       ...(colorsForumV1 ? { application_rubric_version: COLORS_FORUM_V1_RUBRIC } : {}),

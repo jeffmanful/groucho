@@ -102,39 +102,18 @@ export async function POST(
     )
   }
 
-  if (!session.applicant_email) {
-    await supabase
-      .from("sessions")
-      .update({ applicant_email: email })
-      .eq("id", session.id)
-  }
-
-  const { data: profile, error: pErr } = await supabase
-    .from("profiles")
-    .upsert({ email }, { onConflict: "email" })
-    .select("id")
-    .single()
-
-  if (pErr || !profile) {
+  const { error: captureError } = await supabase.rpc("capture_session_access_profile", {
+    p_project_id: projectId, p_session_id: session.id, p_email: email,
+  })
+  if (captureError) {
+    // A concurrent erasure must not recreate an orphan profile or reveal existence.
+    if (captureError.code === "GR410") return tracedJson(req, { ok: true })
     log.error("v1_access_profile_failed", {
       requestId,
       projectId,
-      detail: pErr?.message,
+      code: captureError.code,
     })
-    return tracedJson(req, { ok: true })
-  }
-
-  const { error: eErr } = await supabase.from("profile_eligibility").insert({
-    profile_id: profile.id,
-    session_id: session.id,
-  })
-
-  if (eErr && eErr.code !== "23505") {
-    log.error("v1_access_eligibility_failed", {
-      requestId,
-      projectId,
-      detail: eErr.message,
-    })
+    return tracedJson(req, { error: "Access capture unavailable. Please retry." }, { status: 503 })
   }
 
   return tracedJson(req, { ok: true })

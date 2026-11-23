@@ -6,6 +6,7 @@ import {
 import { log } from "@/lib/logger"
 import { REQUEST_ID_HEADER } from "@/lib/request-trace"
 import { supabase } from "@/lib/supabase"
+import { ERASED_SESSION_CODE, ERASED_SESSION_MESSAGE } from "@/lib/session-privacy"
 import { resolveActivePersonaId } from "@/lib/persona-resolution"
 import type { ProjectContext } from "@/lib/project-resolution"
 import { touchApiKeyLastUsed } from "@/lib/project-resolution"
@@ -187,6 +188,9 @@ export async function startOnboardingSession(
     return traceJson(input, { error: createError.message }, { status: 400 })
   }
 
+  if (createError?.code === ERASED_SESSION_CODE) {
+    return traceJson(input, { error: ERASED_SESSION_MESSAGE }, { status: 410 })
+  }
   if (createError?.code === "23505") {
     const { data: raced } = await supabase
       .from("sessions")

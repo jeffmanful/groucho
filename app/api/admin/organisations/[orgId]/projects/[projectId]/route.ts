@@ -3,6 +3,7 @@ import { resolveAdminActor } from "@/lib/admin-actor"
 import { normalizeAdminSlug } from "@/lib/admin-slug"
 import { requireOrgAdmin, requireOrgMember, unauthorized } from "@/lib/org-access"
 import { validateProjectSettings } from "@/lib/project-settings"
+import { readProjectConversation } from "@/lib/project-conversation-config"
 import { projectPersonaChoiceError } from "@/lib/persona-ownership"
 import {
   changedProjectSettingKeys,
@@ -117,6 +118,12 @@ export async function PATCH(
     // settings form must not replace the team's current objective.
     if (existingSettings.review_objective !== undefined) merged.review_objective = existingSettings.review_objective
     else delete merged.review_objective
+    const previousConversation = readProjectConversation(existingSettings)
+    const nextConversation = readProjectConversation(merged)
+    if (previousConversation?.version === 2 && previousConversation.applicationReview &&
+      !(nextConversation?.version === 2 && nextConversation.applicationReview === previousConversation.applicationReview)) {
+      return NextResponse.json({ error: "Application reporting cannot be removed by conversation setup. Reload the project before editing." }, { status: 409 })
+    }
     const validated = validateProjectSettings(merged)
     if (!validated.ok) {
       return NextResponse.json({ error: validated.error }, { status: 400 })
@@ -171,6 +178,7 @@ export async function PATCH(
   }
 
   if (updates.settings) {
+    invalidateProjectSettingsCache(projectId)
     const changedKeys = changedProjectSettingKeys(existingSettings, updates.settings)
     if (changedKeys.length > 0) {
       const { error: auditError } = await supabase

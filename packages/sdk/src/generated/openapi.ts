@@ -463,32 +463,49 @@ export interface components {
         };
         DemoConversationCompletion: {
             /** @enum {string} */
-            mode: "simulation";
+            mode: "simulation" | "conversation";
             /** @description Required details were captured. False is an honest incomplete ending, not rejection or transport failure. */
             complete: boolean;
-            /** @description Honest demo outcome; no real booking, allocation, submission or email is implied. */
+            /** @description Honest completion outcome. Client-authored flows use conversation; public demos use simulation. No booking, allocation, submission or email is implied. */
             message: string;
         };
-        /** @description Immediate reply from the shared COLORS/public-demo engine. Its profile property is a string runtime ID, unlike the extracted object profile in standard message/session responses. Public simulations supply details and completion; real COLORS assessment follows separately. */
+        /** @description Grounded interpretation of an applicant account. It is not independent verification or an acceptance decision. */
+        ConversationSignalEvidence: {
+            /** @enum {string} */
+            status: "evidence_found" | "partly_understood" | "not_explored" | "declined";
+            summary: string;
+            reason: string;
+            sources: {
+                /** @description Exact words from the applicant's answer. */
+                quote: string;
+                /** @description One-based applicant answer number in this conversation. */
+                turn: number;
+            }[];
+        };
+        /** @description Immediate reply from the shared COLORS, public-demo or client-authored engine. Its profile property is a string runtime ID, unlike the extracted object profile in standard message/session responses. Public simulations supply details and completion; real COLORS assessment follows separately. */
         SharedConversationResponse: {
             message: string;
             /** @enum {string} */
             status: "active" | "completed";
             /** @description groucho_conversation_v1 for public profiles; colors_thin_pilot_v1 for COLORS. */
             engine: string;
-            /** @description Runtime profile ID, not extracted applicant data. */
+            /** @description Runtime profile ID, not extracted applicant data. Client-authored profiles use project:<configuration SHA-256>. */
             profile: string;
             /**
-             * @description Public simulation completion is not_required; real application decisions have a separate lifecycle.
+             * @description Public simulation and client-authored conversation completion is not_required; real application decisions have a separate lifecycle.
              * @enum {string}
              */
             reviewStatus?: "not_ready" | "pending" | "not_required";
             /** @description Neutral 0.5 compatibility placeholders, not an assessment of the visitor. */
             scores: components["schemas"]["ScoreBreakdown"];
             ui: components["schemas"]["GrouchoInteractionUi"];
-            /** @description Accumulated approved fields for public-demo rendering. */
+            /** @description Accumulated approved fields for public-demo or client-authored flow rendering. */
             details?: {
                 [key: string]: string;
+            };
+            /** @description Client-authored version-2 signal states, keyed by configured signal ID. Unexplored signals remain unknown. Corrections replace superseded interpretations. */
+            signalEvidence?: {
+                [key: string]: components["schemas"]["ConversationSignalEvidence"];
             };
             completion?: components["schemas"]["DemoConversationCompletion"];
         };
