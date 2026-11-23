@@ -1,3 +1,5 @@
+import { mergeSignalEvidence } from "@/lib/project-conversation-evidence"
+import type { ProjectConversationSignal } from "@/lib/project-conversation-config"
 import { mergeConversationMemory } from "@/lib/conversation-memory"
 import Anthropic from "@anthropic-ai/sdk"
 import { NextResponse } from "next/server"
@@ -28,6 +30,9 @@ type ConversationReply = {
   interactionProposal?: unknown
   addsNewContext?: boolean
   choiceKey?: string
+  choiceIntroduction?: string
+  visitorIntent?: "continue" | "stop"
+  signalEvidence?: unknown
   facts?: unknown
   memory?: unknown
 }
@@ -144,6 +149,7 @@ export function conversationalClosing(acknowledgment: string, neutralLine: strin
 export type ConversationFact = { key: string; value: string; sourceQuote: string }
 export type ConversationField = { key: string; label: string; required?: boolean; values?: readonly string[] }
 export type ConversationChoice = {
+  inputType?: "singleSelect" | "multiSelect"
   question: string
   options: readonly string[]
   field?: string
@@ -158,14 +164,21 @@ export type ConversationConfiguration = {
   loadMedia?: () => Promise<unknown[]>
   resolveInteraction?: (proposal: unknown, items: unknown[]) => ApplicationRichInteraction | null
   operationPrefix?: string
+  signals?: readonly ProjectConversationSignal[]
   fields?: readonly ConversationField[]
   choices?: Readonly<Record<string, ConversationChoice>>
   resolveChoice?: (key: string, choice: ConversationChoice, details: Record<string, string>, message: string) => ConversationChoice
   formatReply?: (reply: string) => string
   naturalConversation?: boolean
+  /** Compose a brief acknowledgement with the exact registered question. */
+  choiceIntroductions?: boolean
+  visitorIntent?: boolean
   replyGuidance?: string
   closingMessage?: string
   completionMessage?: string
+  completionMode?: "simulation" | "conversation"
+  /** Hard answer budget for client-authored flows; legacy profiles keep their pacing. */
+  maxAnswers?: number
   wrapUpAnswers?: number
   softCloseAnswers?: number
   consentQuestion?: string
@@ -193,7 +206,32 @@ export function conversationFacts(raw: unknown, answer: string, fields: readonly
   return out
 }
 
+export type ConversationTranscriptEntry = { id?: string; role: string; content: string; metadata: Record<string, unknown> }
+
+/** Decode both the JSON preview input and the existing SDK's labelled selection format.
+ * Ambiguous comma-containing labels remain free text instead of inventing a selection. */
+export function conversationSelections(message: string, options: readonly string[]): string[] | null {
+  try {
+    const selected: unknown = JSON.parse(message)
+    if (Array.isArray(selected) && selected.length && new Set(selected).size === selected.length && selected.every(v => typeof v === "string" && options.includes(v))) return selected
+  } catch { /* The SDK sends a labelled text answer. */ }
+  if (!message.startsWith("Selected: ")) return null
+  const matches: string[][] = []
+  const walk = (remaining: string, selected: string[]) => {
+    if (matches.length > 1) return
+    for (const option of options) {
+      if (selected.includes(option)) continue
+      if (remaining === option) matches.push([...selected, option])
+      else if (remaining.startsWith(option + ", ")) walk(remaining.slice(option.length + 2), [...selected, option])
+    }
+  }
+  walk(message.slice(10), [])
+  return matches.length === 1 ? matches[0] : null
+}
+
 export async function postConversation(input: {
+  /** Server-verified draft transcript. Executes without reading/writing application records. */
+  previewTranscript?: ConversationTranscriptEntry[]
   configuration: ConversationConfiguration
 
   context: ProjectContext
@@ -225,7 +263,7 @@ export async function postConversation(input: {
   const fields = config.fields ?? []
   const choices = config.choices ?? {}
   const natural = config.naturalConversation === true
-  const { data: session, error: sessionError } = await supabase.from("sessions")
+  const { data: session, error: sessionError } = input.previewTranscript ? { data: { id: input.sessionId, status: "active", applicant_email: null, applicant_details: null, application_audience: "community" }, error: null } : await supabase.from("sessions")
     .select("id, status, applicant_email, applicant_details, application_audience")
     .eq("session_id", input.sessionId)
     .eq("organisation_id", organisationId)
@@ -239,7 +277,7 @@ export async function postConversation(input: {
     return json({ error: "Applicant identity does not match this session" }, input.requestId, 409)
   }
 
-  const { data: history, error: historyError } = await supabase.from("messages")
+  const { data: history, error: historyError } = input.previewTranscript ? { data: input.previewTranscript, error: null } : await supabase.from("messages")
     .select("id, role, content, metadata")
     .eq("session_id", session.id)
     .order("sent_at", { ascending: true })
@@ -248,7 +286,7 @@ export async function postConversation(input: {
     return json({ error: "Session uses a different conversation engine" }, input.requestId, 409)
   }
   if (fields.length && record(history[0].metadata).conversation_profile !== config.id) {
-    return json({ error: "Start a new conversation for this demo" }, input.requestId, 409)
+    return json({ error: "Start a new conversation for this configuration" }, input.requestId, 409)
   }
   const lastAssistant = [...history].reverse().find((entry) => entry.role === "assistant")
   const previousDetails = record(record(lastAssistant?.metadata).conversation_details)
@@ -263,13 +301,23 @@ export async function postConversation(input: {
     Object.assign(detailsBeforeTurn, conversationFacts(Object.entries(selectionFacts).map(([key, value]) =>
       ({ key, value, sourceQuote: input.message.trim() })), input.message, fields))
   }
+  if (selectedChoice?.inputType === "multiSelect" && selectedChoice.field) {
+    const selected = conversationSelections(input.message, selectedChoice.options)
+    if (selected) {
+      detailsBeforeTurn[selectedChoice.field] = selected.join("; ")
+    }
+  }
   const detailsFor = (reply: ConversationReply) => ({ ...detailsBeforeTurn, ...conversationFacts(
     natural && Array.isArray(reply.facts) ? reply.facts.filter(fact => record(fact).subject === "visitor") : reply.facts,
     input.message, fields) })
   const memoryBeforeTurn = record(lastAssistant?.metadata).conversation_memory
   const memoryFor = (reply: ConversationReply) => mergeConversationMemory(memoryBeforeTurn, reply.memory,
     [...history.filter(entry => entry.role === "user").map(entry => entry.content as string), input.message].join("\n"))
-  const missingFor = (reply: ConversationReply) => fields.filter(field => field.required && !detailsFor(reply)[field.key])
+  const evidenceBeforeTurn = record(lastAssistant?.metadata).conversation_signal_evidence
+  const evidenceFor = (reply: ConversationReply) => mergeSignalEvidence(evidenceBeforeTurn, reply.signalEvidence, input.message, turnCount, config.signals ?? [])
+  const missingFor = (reply: ConversationReply): ConversationField[] => config.signals
+    ? config.signals.filter(signal => signal.explore && !["evidence_found", "declined"].includes(evidenceFor(reply)[signal.id].status)).map(signal => ({ key: signal.id, label: signal.name }))
+    : fields.filter(field => field.required && !detailsFor(reply)[field.key])
   const choiceKeyFor = (reply: ConversationReply): string | undefined => {
     const key = reply.choiceKey && reply.choiceKey !== "none" ? reply.choiceKey
       : Object.keys(choices).find(key => reply.reply.toLowerCase().includes(choices[key].question.toLowerCase()))
@@ -295,7 +343,8 @@ export async function postConversation(input: {
 
   const turnCount = history.filter((entry) => entry.role === "user").length + 1
   const configuredMaxTurns = Math.max(1, settings.applicationExperience.max_turns ?? 9)
-  const emergencyLimit = natural ? 40 : Math.min(12, Math.max(8, configuredMaxTurns + 3))
+  const emergencyLimit = config.maxAnswers ?? (natural ? 40 : Math.min(12, Math.max(8, configuredMaxTurns + 3)))
+  const hardLimitReached = config.maxAnswers !== undefined && turnCount >= config.maxAnswers
   const hasShownMedia = history.some((entry) => {
     const ui = record(record(entry.metadata).ui)
     return Boolean(ui.mediaChoice || ui.referenceCards)
@@ -320,7 +369,7 @@ export async function postConversation(input: {
   const stoppedByApplicant = fields.length > 0 && /^(?:(?:no thanks[,!.]?\s*)?(?:please\s+)?stop(?:\s+(?:now|this|the conversation))?[.!?]*|(?:can|could) (?:we|you) (?:please )?stop(?: (?:now|this|the conversation))?[.!?]*|(?:let'?s|i want to|i'd like to) (?:stop|end (?:this|the conversation))[.!?]*|(?:no thanks|not interested|goodbye|i'm done|i am done)[.!?]*)$/i.test(stopMessage)
   const applicantQuestion = !stoppedByApplicant && applicantAsksQuestion(input.message)
   const conversation = history.filter((entry) => entry.role === "assistant" || entry.role === "user")
-    .slice(natural ? 0 : -20).map((entry) => ({
+    .slice(natural || config.maxAnswers !== undefined ? 0 : -20).map((entry) => ({
       role: entry.role as "assistant" | "user",
       content: entry.content as string,
     }))
@@ -338,7 +387,8 @@ export async function postConversation(input: {
     shows,
   })
   const system = characterPrompt + (natural ? `\n\nCONVERSATION STATE\nGrounded notes: ${JSON.stringify(memoryBeforeTurn ?? [])}. Notes distinguish the visitor from other people; corrections supersede earlier assumptions. The full transcript follows.\nVisitor preferences, for display only: ${JSON.stringify(detailsBeforeTurn)}. These are for continuity and the ticket display, not an interview script.\nRecord new facts only about the visitor with subject=visitor and an exact sourceQuote from their CURRENT message. Another person’s listening, past attendance or motives must not populate visitor fields. Record people, explicit negatives, corrections and unfinished threads in memory using the appropriate subject and an exact sourceQuote from a visitor message in the transcript. You may retain an earlier visitor statement when it remains relevant; never use Mo’s own words as evidence about the visitor. Preserve new explicit negatives and corrections in memory even when a display field also reflects them. Copy sourceQuote verbatim, including spelling and punctuation. Only add useful new notes; do not copy all existing notes. Thread notes describe what is unfinished or resolved, without inventing an outcome.\nOptional display fields: ${JSON.stringify(fields)}. Approved choices: ${JSON.stringify(choices)}. Use choiceKey=night when offering exact show dates; otherwise none. Travel origin and exact show night are needed to complete a ticket preference. Learn these naturally as you lead towards a choice; the other fields are optional. The visitor can stop or decline at any time with an incomplete preference.\nReturn your complete natural reply. You may contribute without a question, answer a question without appending another, and continue a useful story. Set close=true only when the visitor clearly wants to end the chat, or they have settled a tour preference and indicated they are finished. A pause, short answer, intention to listen later or your own observation does not end the session. A selected date can finish the ticket task, but does not end a story still in progress.` : `\n\nPrevious consecutive answers without new context: ${quietTurns}. A genuine applicant question always deserves an answer. Do not re-probe something they have already said they cannot explain.` +
-    (fields.length ? `\nConfirmed conversation details: ${JSON.stringify(detailsBeforeTurn)}. Preserve these facts; do not ask for them again.\nCapture new details only with a sourceQuote copied exactly from the CURRENT applicant answer. Approved fields: ${JSON.stringify(fields)}. Use the exact approved value for enumerated fields.\nApproved choices: ${JSON.stringify(choices)}. When asking a registered choice question, set choiceKey to its key. Never invent options or ask a choice question without a choiceKey. Otherwise use none. Do not close before the required details are known unless the applicant wants to stop, a boundary ends the exchange, or the runtime instructs a close. No reservations, approvals or codes are issued by this simulation.` : ""))
+    (fields.length ? `\nConfirmed conversation details: ${JSON.stringify(detailsBeforeTurn)}. Preserve these facts; do not ask for them again.\nCapture new details only with a sourceQuote copied exactly from the CURRENT applicant answer. Approved fields: ${JSON.stringify(fields)}. Use the exact approved value for enumerated fields.\nApproved choices: ${JSON.stringify(choices)}. When asking a registered choice question, set choiceKey to its key. Never invent options or ask a choice question without a choiceKey. Otherwise use none. Do not close before the required details are known unless the applicant wants to stop, a boundary ends the exchange, or the runtime instructs a close. ${config.completionMode === "conversation" ? "No external actions or deliveries are configured for this conversation." : "No reservations, approvals or codes are issued by this simulation."}` : ""))
+  const signalState = config.signals?.length ? `\n\nSIGNAL EVIDENCE SO FAR\n${JSON.stringify(mergeSignalEvidence(evidenceBeforeTurn, [], input.message, turnCount, config.signals))}\nUnexplored signals remain unknown. Follow the story and acknowledge corrections; never turn an example into a requirement.` : ""
   const fieldResponseTool = fields.length ? {
     ...conversationResponseTool,
     input_schema: {
@@ -359,6 +409,37 @@ export async function postConversation(input: {
       required: [...conversationResponseTool.input_schema.required, "choiceKey", "facts"],
     },
   } : conversationResponseTool
+  const authoredResponseTool = config.visitorIntent ? {
+    ...fieldResponseTool,
+    input_schema: {
+      ...fieldResponseTool.input_schema,
+      properties: {
+        ...fieldResponseTool.input_schema.properties,
+        choiceIntroduction: { type: "string", description: "A brief acknowledgement of the visitor's latest point or correction before a registered choice. No question. Empty if unnecessary or not offering a choice." },
+        visitorIntent: { type: "string", enum: ["continue", "stop"], description: config.signals ? "Use stop when the applicant wants to end or declines to say more, including indirectly. If unsure whether the refusal is about a topic or the conversation, stop unless they explicitly continue with another topic or question." : "Choose stop when the visitor wants to end or declines further conversation, including indirectly. A refusal to answer just one topic is not necessarily a request to end." },
+      },
+      required: [...fieldResponseTool.input_schema.required, "choiceIntroduction", "visitorIntent"],
+    },
+  } : fieldResponseTool
+  const signalResponseTool = config.signals?.length ? {
+    ...authoredResponseTool,
+    input_schema: {
+      ...authoredResponseTool.input_schema,
+      properties: {
+        ...authoredResponseTool.input_schema.properties,
+        signalEvidence: { type: "array", description: "Update every signal supported or corrected by the current applicant answer, including on the final turn. A correction replaces superseded evidence even when the applicant also stops. Only quote the applicant's own account; another person's activities are not partial applicant evidence. Empty only when no signal changed.", items: {
+          type: "object", properties: {
+            signalId: { type: "string", enum: config.signals.map(s => s.id) },
+            status: { type: "string", enum: ["evidence_found", "partly_understood", "not_explored", "declined"] },
+            subject: { type: "string", enum: ["applicant", "other"] },
+            summary: { type: "string" }, reason: { type: "string" },
+            quotes: { type: "array", items: { type: "string" } },
+            supersedes: { type: "boolean" },
+          }, required: ["signalId", "status", "subject", "summary", "reason", "quotes", "supersedes"],
+        } },
+      }, required: [...authoredResponseTool.input_schema.required, "signalEvidence"],
+    },
+  } : authoredResponseTool
   const responseTool = natural ? {
     ...fieldResponseTool,
     description: "Write Mo’s complete visible response and grounded conversational notes. There is no separate answer catalogue or question routing.",
@@ -379,14 +460,15 @@ export async function postConversation(input: {
       },
       required: [...fieldResponseTool.input_schema.required.filter(key => key !== "addsNewContext"), "memory"],
     },
-  } : fieldResponseTool
+  } : signalResponseTool
 
-  async function requestReply(operation: string, instruction: string, maxTokens = fields.length ? 1000 : 600,
+  async function requestReply(operation: string, instruction: string, maxTokens = config.signals?.length ? 2200 : fields.length ? 1000 : 600,
     onReply?: (text: string) => void): Promise<ConversationReply> {
     const forcedTool = supportsForcedToolChoice(model)
     const base = {
       model, max_tokens: maxTokens,
-      system: system + (config.replyGuidance ? "\n\n" + config.replyGuidance : "") + "\n\n" + instruction +
+      system: system + signalState + (config.replyGuidance ? "\n\n" + config.replyGuidance : "") + "\n\n" + instruction +
+        (config.signals?.length ? "\nIndependently of whether this reply continues or closes, update all signals supported by the CURRENT applicant answer. Apply corrections to earlier evidence with supersedes=true, replacing outdated summaries and sources. Do not drop new evidence or corrections because the applicant also wants to stop. Keep the spoken closing brief while returning the complete evidence updates." : "") +
         (forcedTool ? "" : "\n\nReturn the groucho_converse fields as one JSON object."),
       messages: [...conversation, { role: "user" as const, content: currentAnswer }],
     }
@@ -415,7 +497,7 @@ export async function postConversation(input: {
       response = await client.messages.create(request as Anthropic.MessageCreateParamsNonStreaming)
     }
     await logLlmUsage({ operation, provider: "anthropic", model, usage: response.usage,
-      providerResponseId: response.id, requestId: input.requestId, organisationId, projectId, sessionId: input.sessionId })
+      providerResponseId: response.id, requestId: input.requestId, organisationId, projectId: input.previewTranscript ? undefined : projectId, sessionId: input.previewTranscript ? undefined : input.sessionId })
     if (response.stop_reason === "max_tokens" || response.stop_reason === "refusal") throw new Error(`Conversation model stopped: ${response.stop_reason}`)
     let value: Record<string, unknown>
     if (forcedTool) {
@@ -438,6 +520,9 @@ export async function postConversation(input: {
     return { reply: config.formatReply?.(replyText) ?? replyText, close: value.close, boundary: (natural && value.boundary === "consent" ? "none" : value.boundary) as ConversationReply["boundary"],
       boundaryQuestion: value.boundaryQuestion.trim(), interactionProposal: value.interactionProposal,
       choiceKey: typeof value.choiceKey === "string" ? value.choiceKey : undefined,
+      signalEvidence: value.signalEvidence,
+      choiceIntroduction: typeof value.choiceIntroduction === "string" ? value.choiceIntroduction.trim() : undefined,
+      visitorIntent: value.visitorIntent === "stop" ? "stop" : "continue",
       facts: value.facts, memory: value.memory,
       ...(typeof value.addsNewContext === "boolean" ? { addsNewContext: value.addsNewContext } : {}) }
   }
@@ -460,35 +545,37 @@ export async function postConversation(input: {
   const questionInstruction = natural ? "Answer the visitor naturally using the conversation and supplied band story. A follow-up question is optional." : "The applicant asked a direct question. Answer it using only the approved project context, saying what is unknown when needed. Do not restate their question. Set close=false and finish with one relevant open question."
   let proposal: ConversationReply
   let addsNewContext: boolean | undefined
+  let visitorStopped = stoppedByApplicant
   let stopReason: "no_new_context" | "soft_limit" | "emergency_limit" | undefined
   try {
-    const forcedClosePossible = !applicantQuestion &&
+    const forcedClosePossible = hardLimitReached || config.visitorIntent === true || !applicantQuestion &&
       (turnCount >= (config.softCloseAnswers ?? SOFT_CLOSE_ANSWERS) || turnCount >= emergencyLimit || (turnCount >= 3 && quietTurns >= 1))
     const streamReply = forcedClosePossible ? undefined : input.onReplyDelta
-    proposal = await requestReply(operation("conversation"), natural && turnCount >= emergencyLimit ? "Answer the latest point and finish warmly: the conversation budget is reached. Set close=true." : applicantQuestion ? questionInstruction :
+    proposal = await requestReply(operation("conversation"), (hardLimitReached || natural && turnCount >= emergencyLimit) ? "Answer the latest point and finish warmly: the conversation budget is reached. Set close=true." : applicantQuestion ? questionInstruction :
       stoppedByApplicant ? "The applicant wants to stop. Acknowledge that briefly and close without a question or decision." :
       turnCount >= emergencyLimit ? "The emergency conversation limit is reached. Acknowledge the latest point and close neutrally without a question or decision." :
         natural ? (turnCount >= 36 ? "You are nearing the conversation budget. Find a considerate ending without interrupting the latest story or asking new interview questions." : "Respond naturally to the visitor, following the current thread and contributing something when relevant.") :
         turnCount >= (config.wrapUpAnswers ?? WRAP_UP_ANSWERS) ? "The conversation is ready to wrap up. Close now unless the latest answer opened something genuinely new that you do not yet understand. Never continue only to deepen a thread." :
           "Continue only if a useful thread remains; otherwise close naturally.", undefined, streamReply)
+    visitorStopped = stoppedByApplicant || config.visitorIntent === true && proposal.visitorIntent === "stop"
     addsNewContext = applicantQuestion ? true : proposal.addsNewContext
     // A catalogue navigation action changes the visible choices, never the selected field.
     if (navigatingChoice && proposal.boundary === "none" && !stoppedByApplicant) {
       proposal = { ...proposal, close: false, choiceKey: navigatingChoice, addsNewContext: true, facts: [] }
       addsNewContext = true
     }
-    const stalled = turnCount >= 3 && addsNewContext === false && quietTurns >= 1
+    const stalled = config.maxAnswers === undefined && turnCount >= 3 && addsNewContext === false && quietTurns >= 1
     const softLimitReached = turnCount >= (config.softCloseAnswers ?? SOFT_CLOSE_ANSWERS)
-    if ((!applicantQuestion || natural) && proposal.boundary === "none" && (!natural && (stalled || softLimitReached) || turnCount >= emergencyLimit)) {
+    if (hardLimitReached || (!applicantQuestion || natural) && proposal.boundary === "none" && (!natural && (stalled || softLimitReached) || turnCount >= emergencyLimit)) {
       stopReason = turnCount >= emergencyLimit ? "emergency_limit" : stalled ? "no_new_context" : "soft_limit"
       // Formatting repairs must not turn a settled exchange into another interview.
       proposal = { ...proposal, close: true, interactionProposal: undefined }
     }
-    if (stoppedByApplicant) proposal = { ...proposal, close: true, boundary: "none", boundaryQuestion: "", interactionProposal: undefined }
-    const closesBeforeReady = (reply: ConversationReply) => !natural && fields.length > 0 && reply.close && reply.boundary === "none" &&
-      missingFor(reply).length > 0 && !stoppedByApplicant && !stopReason
-    const needsRepair = closesBeforeReady(proposal) || !stopReason && (applicantQuestion && (!natural && proposal.close || !hasUsableTurn(proposal)) ||
-      !applicantQuestion && !proposal.close && proposal.boundary === "none" && !hasUsableTurn(proposal))
+    if (visitorStopped) proposal = { ...proposal, close: true, boundary: "none", boundaryQuestion: "", interactionProposal: undefined }
+    const closesBeforeReady = (reply: ConversationReply) => !config.signals && !natural && fields.length > 0 && reply.close && reply.boundary === "none" &&
+      missingFor(reply).length > 0 && !visitorStopped && !stopReason
+    const needsRepair = !visitorStopped && (closesBeforeReady(proposal) || !stopReason && (applicantQuestion && (!natural && proposal.close || !hasUsableTurn(proposal)) ||
+      !applicantQuestion && !proposal.close && proposal.boundary === "none" && !hasUsableTurn(proposal)))
     if (needsRepair) {
       let usable = false
       let feedback = `\nRejected draft: ${JSON.stringify(proposal.reply)}. Details already understood: ${JSON.stringify(detailsFor(proposal))}.`
@@ -499,6 +586,7 @@ export async function postConversation(input: {
               ? `Return an answerable turn with one clear question or approved choiceKey. Required details still missing: ${missingFor(proposal).map(field => field.label).join(", ")}. Capture supported facts from the current answer. Continue until these details are understood; never request something already confirmed. A selection question requires its registered choiceKey. Do not select a choiceKey for a field already supplied, including the option the applicant just selected. Use choiceKey=none for an open question.`
               : "The previous active reply had no question. Ask one useful open question if a real thread remains, or set close=true if the exchange is settled. Do not continue for formatting alone.") + feedback)
           // Keep grounded facts from the initial attempt if a wording repair omits them.
+          repaired.signalEvidence = [...(Array.isArray(proposal.signalEvidence) ? proposal.signalEvidence : []), ...(Array.isArray(repaired.signalEvidence) ? repaired.signalEvidence : [])]
           repaired.facts = [...(Array.isArray(proposal.facts) ? proposal.facts : []), ...(Array.isArray(repaired.facts) ? repaired.facts : [])]
           repaired.memory = [...(Array.isArray(proposal.memory) ? proposal.memory : []), ...(Array.isArray(repaired.memory) ? repaired.memory : [])]
           if (closesBeforeReady(repaired) || (applicantQuestion ? !natural && repaired.close || !hasUsableTurn(repaired) : !repaired.close && !hasUsableTurn(repaired))) {
@@ -525,7 +613,7 @@ export async function postConversation(input: {
   const previousBoundary = record(lastAssistant?.metadata).boundary
   const firstBoundaryTurn = proposal.boundary === "consent" && previousBoundary !== "consent"
   const repeatedConsentBoundary = proposal.boundary === "consent" && previousBoundary === "consent"
-  const requestedClose = (!applicantQuestion || natural) && !firstBoundaryTurn &&
+  const requestedClose = visitorStopped || hardLimitReached || (!applicantQuestion || natural) && !firstBoundaryTurn &&
     (proposal.close || repeatedConsentBoundary || turnCount >= emergencyLimit)
   // A consent boundary must end with a clear consent question. If the model's wording misses,
   // use a fixed one rather than failing the applicant's turn.
@@ -549,7 +637,7 @@ export async function postConversation(input: {
   }
   const activeRich = close ? null : rich
   const ui = activeChoice
-    ? { ...DEFAULT_INTERACTION_SPEC, inputType: "singleSelect" as const, options: [...activeChoice.options] }
+    ? { ...DEFAULT_INTERACTION_SPEC, inputType: activeChoice.inputType ?? "singleSelect" as const, options: [...activeChoice.options] }
     : activeRich?.kind === "reference"
     ? { ...DEFAULT_INTERACTION_SPEC, inputType: "text" as const, referenceCards: activeRich.cards }
     : activeRich?.kind === "choice"
@@ -557,6 +645,10 @@ export async function postConversation(input: {
       : DEFAULT_INTERACTION_SPEC
   const boundaryStatement = proposal.reply.split(/\n\s*\n/)[0]
     .replace(/\s*[^.!?]*\?[\s\S]*$/, "").trim()
+  const choiceReply = activeChoice && config.choiceIntroductions ? proposal.choiceIntroduction ?? "" : ""
+  const composedChoice = activeChoice
+    ? [choiceReply && choiceReply.length <= 500 && !choiceReply.includes("?") ? choiceReply : "", activeChoice.question].filter(Boolean).join("\n\n")
+    : undefined
   const reply = natural && !firstBoundaryTurn
     ? activeChoice?.question ?? proposal.reply.trim()
     : close
@@ -566,11 +658,48 @@ export async function postConversation(input: {
     )
     : firstBoundaryTurn
       ? `${boundaryStatement || config.consentStatement || DEFAULT_PRIVACY_STATEMENT} ${boundaryQuestion}`.trim()
-      : oneQuestion(activeChoice ? activeChoice.question : activeRich?.question ?? proposal.reply)
+      : oneQuestion(composedChoice ?? activeRich?.question ?? proposal.reply)
   const details = detailsFor(proposal)
   const completion = close && config.completionMessage
-    ? { mode: "simulation", complete: missingFor(proposal).length === 0, message: config.completionMessage }
+    ? { mode: config.completionMode ?? "simulation", complete: missingFor(proposal).length === 0, message: config.completionMessage }
     : undefined
+
+  const assistantMetadata = {
+      conversation_engine: config.marker,
+      conversation_profile: config.id,
+      ...(config.signals ? { conversation_signal_evidence: evidenceFor(proposal) } : {}),
+      ...(fields.length ? { conversation_details: details } : {}),
+      ...(natural ? { conversation_memory: memoryFor(proposal) } : {}),
+      ...(activeChoice ? { conversation_choice_key: choiceKeyFor(proposal) } : {}),
+      ...(completion ? { conversation_completion: completion } : {}),
+      ui,
+      boundary: proposal.boundary,
+      conversation_progress: { ...(addsNewContext === undefined ? {} : { adds_new_context: addsNewContext }), ...(stopReason ? { stop_reason: stopReason } : {}) },
+      conversation_model: model,
+      ...(rich ? { application_rich_interaction: {
+        kind: rich.kind,
+        purpose: rich.purpose,
+      } } : {}),
+      ...(close ? { application_closing: true } : {}),
+      ...(close && !config.completionMessage ? { colors_demo_report_status: "pending" } : {}),
+    }
+  const responseBody = {
+    message: reply, engine: config.marker, profile: config.id,
+    status: close ? "completed" : "active",
+    reviewStatus: close ? (config.completionMessage ? "not_required" : "pending") : "not_ready",
+    scores: UNSCORED_TURN, ui,
+    ...(config.signals ? { signalEvidence: evidenceFor(proposal) } : {}),
+    ...(fields.length ? { details } : {}), ...(completion ? { completion } : {}),
+  }
+  if (input.previewTranscript) return json({ ...responseBody, previewTranscript: [
+    ...history.map(entry => {
+      if (!config.signals) return entry
+      const metadata = { ...entry.metadata }
+      delete metadata.conversation_signal_evidence
+      return { ...entry, metadata }
+    }), { role: "user", content: input.message, metadata: {} },
+    { role: "assistant", content: reply, metadata: assistantMetadata },
+  ] }, input.requestId)
 
   const { data: savedUser, error: userError } = await supabase.from("messages").insert({
     session_id: session.id,
@@ -608,24 +737,7 @@ export async function postConversation(input: {
     project_id: projectId,
     role: "assistant",
     content: reply,
-    metadata: {
-      conversation_engine: config.marker,
-      conversation_profile: config.id,
-      ...(fields.length ? { conversation_details: details } : {}),
-      ...(natural ? { conversation_memory: memoryFor(proposal) } : {}),
-      ...(activeChoice ? { conversation_choice_key: choiceKeyFor(proposal) } : {}),
-      ...(completion ? { conversation_completion: completion } : {}),
-      ui,
-      boundary: proposal.boundary,
-      conversation_progress: { ...(addsNewContext === undefined ? {} : { adds_new_context: addsNewContext }), ...(stopReason ? { stop_reason: stopReason } : {}) },
-      conversation_model: model,
-      ...(rich ? { application_rich_interaction: {
-        kind: rich.kind,
-        purpose: rich.purpose,
-      } } : {}),
-      ...(close ? { application_closing: true } : {}),
-      ...(close && !config.completionMessage ? { colors_demo_report_status: "pending" } : {}),
-    },
+    metadata: assistantMetadata,
   })
   if (assistantError) {
     if (close) await supabase.from("sessions").update({ status: "active" }).eq("id", session.id)
@@ -641,17 +753,5 @@ export async function postConversation(input: {
       requestId: input.requestId,
     })
   }
-  return json({
-    message: reply,
-    engine: config.marker,
-    profile: config.id,
-    status: close ? "completed" : "active",
-    reviewStatus: close ? (config.completionMessage ? "not_required" : "pending") : "not_ready",
-    // The API contract requires per-turn scores. This engine does not score turns, so this is a
-    // neutral placeholder; suitability is derived from the reviewer report after completion.
-    scores: UNSCORED_TURN,
-    ui,
-    ...(fields.length ? { details } : {}),
-    ...(completion ? { completion } : {}),
-  }, input.requestId)
+  return json(responseBody, input.requestId)
 }

@@ -940,19 +940,45 @@ components:
       properties:
         mode:
           type: string
-          enum: [simulation]
+          enum: [simulation, conversation]
         complete:
           type: boolean
           description: Required details were captured. False is an honest incomplete ending, not rejection or transport failure.
         message:
           type: string
           minLength: 1
-          description: Honest demo outcome; no real booking, allocation, submission or email is implied.
+          description: Honest completion outcome. Client-authored flows use conversation; public demos use simulation. No booking, allocation, submission or email is implied.
+
+    ConversationSignalEvidence:
+      type: object
+      description: Grounded interpretation of an applicant account. It is not independent verification or an acceptance decision.
+      required: [status, summary, reason, sources]
+      properties:
+        status:
+          type: string
+          enum: [evidence_found, partly_understood, not_explored, declined]
+        summary:
+          type: string
+        reason:
+          type: string
+        sources:
+          type: array
+          items:
+            type: object
+            required: [quote, turn]
+            properties:
+              quote:
+                type: string
+                description: Exact words from the applicant's answer.
+              turn:
+                type: integer
+                minimum: 1
+                description: One-based applicant answer number in this conversation.
 
     SharedConversationResponse:
       type: object
       description: >-
-        Immediate reply from the shared COLORS/public-demo engine. Its profile
+        Immediate reply from the shared COLORS, public-demo or client-authored engine. Its profile
         property is a string runtime ID, unlike the extracted object profile in
         standard message/session responses. Public simulations supply details
         and completion; real COLORS assessment follows separately.
@@ -969,11 +995,11 @@ components:
           description: groucho_conversation_v1 for public profiles; colors_thin_pilot_v1 for COLORS.
         profile:
           type: string
-          description: Runtime profile ID, not extracted applicant data.
+          description: Runtime profile ID, not extracted applicant data. Client-authored profiles use project:<configuration SHA-256>.
         reviewStatus:
           type: string
           enum: [not_ready, pending, not_required]
-          description: Public simulation completion is not_required; real application decisions have a separate lifecycle.
+          description: Public simulation and client-authored conversation completion is not_required; real application decisions have a separate lifecycle.
         scores:
           allOf:
             - $ref: "#/components/schemas/ScoreBreakdown"
@@ -984,7 +1010,12 @@ components:
           type: object
           additionalProperties:
             type: string
-          description: Accumulated approved fields for public-demo rendering.
+          description: Accumulated approved fields for public-demo or client-authored flow rendering.
+        signalEvidence:
+          type: object
+          description: Client-authored version-2 signal states, keyed by configured signal ID. Unexplored signals remain unknown. Corrections replace superseded interpretations.
+          additionalProperties:
+            $ref: "#/components/schemas/ConversationSignalEvidence"
         completion:
           $ref: "#/components/schemas/DemoConversationCompletion"
 

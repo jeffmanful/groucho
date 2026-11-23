@@ -124,6 +124,20 @@ describe("startGatekeeperSession", () => {
     raw: {},
   }
 
+  it("starts a signal flow with its configured opening choices and without a library persona or demo marker", async () => {
+    const { startGatekeeperSession } = await import("@/lib/start-gatekeeper-session")
+    const { DEFAULT_SIGNAL_CONVERSATION, projectConversationSettings } = await import("@/lib/project-conversation-config")
+    const { normalizeProjectSettings } = await import("@/lib/project-settings")
+    const settings = normalizeProjectSettings(projectConversationSettings({ ...DEFAULT_SIGNAL_CONVERSATION, intent: "Understand community involvement", signals: [{ id: "s_community", name: "Community", understanding: "How they take part", evidence: "", examples: [], explore: true, question: "How do you take part?", answerType: "singleSelect", options: ["Hosting", "Joining in"] }] }))
+    const res = await startGatekeeperSession({ sessionId: "custom-signals-session", applicantIdentity: { email: "synthetic@example.invalid" }, projectSettings: settings, context: { organisationId: "org1", projectId: "proj1", apiKeyId: null, settings } })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ ui: { inputType: "singleSelect", options: ["Hosting", "Joining in"] } })
+    const state = (await import("@/lib/supabase") as unknown as { __state: { sessions: FakeRow[]; messages: FakeRow[] } }).__state
+    expect(state.sessions[0].persona_id).toBeNull()
+    expect(state.messages[0].metadata).toMatchObject({ conversation_choice_key: "s_community" })
+    expect((state.messages[0].metadata as FakeRow).demo_simulation).toBeUndefined()
+  })
+
   it("rejects ticket-access demo projects without creating live sessions", async () => {
     const { startGatekeeperSession } = await import("@/lib/start-gatekeeper-session")
     const settings = { ...projectSettings, projectType: "ticket_access" as const }

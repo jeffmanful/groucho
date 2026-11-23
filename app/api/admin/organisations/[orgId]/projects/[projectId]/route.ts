@@ -171,6 +171,7 @@ export async function PATCH(
   }
 
   if (updates.settings) {
+    invalidateProjectSettingsCache(projectId)
     const changedKeys = changedProjectSettingKeys(existingSettings, updates.settings)
     if (changedKeys.length > 0) {
       const { error: auditError } = await supabase

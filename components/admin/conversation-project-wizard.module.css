@@ -1,0 +1,55 @@
+.wizard { max-width: 880px; margin: 0 auto; padding: clamp(20px, 4vw, 48px); color: var(--foreground); }
+.wizard h1 { font-size: clamp(24px, 3vw, 34px); font-weight: 500; letter-spacing: -0.03em; margin: 24px 0 12px; text-wrap: balance; }
+.wizard h2 { font-size: 20px; font-weight: 500; margin: 0 0 24px; }
+.wizard h3 { font-size: 16px; margin-top: 32px; }
+.wizard p { color: var(--text-secondary); line-height: 1.6; font-size: 14px; text-wrap: pretty; }
+.wizard a { text-underline-offset: 4px; }
+.steps { display: flex; flex-wrap: wrap; gap: 8px; padding: 24px 0; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
+.wizard button { min-height: 44px; padding: 10px 16px; border: 1px solid var(--border); border-radius: var(--radius-control, 6px); background: var(--surface); color: inherit; font: inherit; cursor: pointer; transition: background-color 120ms, opacity 120ms; }
+.wizard button:hover:not(:disabled) { background: var(--surface-hover, rgba(128,128,128,.12)); }
+.wizard button:disabled { opacity: .45; cursor: default; }
+.steps button[aria-current] { border-color: currentColor; }
+.fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.fields label { display: grid; gap: 8px; margin: 20px 0; font-size: 14px; }
+.fields input:not([type=checkbox]), .fields textarea, .fields select { box-sizing: border-box; width: 100%; border: 1px solid var(--border); border-radius: var(--radius-control, 6px); background: var(--surface); color: inherit; padding: 12px; font: inherit; line-height: 1.5; }
+.fields input[type=number] { max-width: 120px; font-variant-numeric: tabular-nums; }
+.fields textarea { resize: vertical; }
+.fields .check { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+.check input { width: 18px; height: 18px; flex: 0 0 auto; accent-color: currentColor; }
+.wizard :is(button, input, textarea, select, a):focus-visible { outline: 2px solid var(--focus-ring, currentColor); outline-offset: 3px; }
+.signal { border-top: 1px solid var(--border); margin: 24px 0; padding: 4px 0 20px; }
+.actions, .choices { display: flex; flex-wrap: wrap; gap: 12px; margin: 24px 0; }
+.actions { border-top: 1px solid var(--border); padding-top: 24px; }
+.summary { display: grid; gap: 12px; margin: 24px 0; }
+.summary > div { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 16px; }
+.wizard dt { color: var(--text-secondary); font-size: 14px; }
+.wizard dd { margin: 0 0 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.transcript { margin: 24px 0; padding: 8px 24px; border: 1px solid var(--border); border-radius: var(--radius-surface, 8px); max-height: 520px; overflow: auto; }
+.transcript article { padding: 16px 0; }
+.transcript article + article { border-top: 1px solid var(--border); }
+.transcript strong { font-weight: 500; font-size: 14px; }
+.transcript p { white-space: pre-wrap; overflow-wrap: anywhere; color: inherit; margin-bottom: 0; }
+.error { border: 1px solid currentColor; padding: 12px 16px; }
+.wizard .advanced { padding: 0; border: 0; background: transparent; text-align: left; color: var(--text-secondary); font-size: 13px; }
+.preview details { margin-top: 24px; }
+.preview summary { cursor: pointer; min-height: 44px; }
+@media (max-width: 540px) { .steps { flex-direction: column; } .summary > div { grid-template-columns: 1fr; gap: 4px; } .actions > button { flex: 1; } }
+
+.wizard .primary { background: var(--foreground); color: var(--background); border-color: var(--foreground); }
+.wizard .primary:hover:not(:disabled) { background: var(--foreground); opacity: .88; }
+
+.signal h4, .evidence h4 { font-size: 15px; font-weight: 500; margin: 24px 0 8px; }
+.example { margin: 16px 0 24px; }
+.optionalControls { margin-top: 24px; padding: 16px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.optionalControls summary { cursor: pointer; min-height: 44px; box-sizing: border-box; padding: 12px 0; display: list-item; font-size: 14px; }
+.optionalControls summary:focus-visible { outline: 2px solid var(--focus-ring, currentColor); outline-offset: 3px; }
+.evidence { margin-top: 32px; }
+.evidenceItem { border-top: 1px solid var(--border); padding: 20px 0; }
+.evidenceItem header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.evidenceItem header h4 { margin: 0; }
+.evidenceItem header span, .evidenceItem a { font-size: 13px; color: var(--text-secondary); }
+.evidenceItem h5 { margin: 20px 0 8px; font-size: 14px; font-weight: 400; color: var(--text-secondary); }
+.evidenceItem blockquote { border-left: 2px solid var(--border-strong, var(--border)); padding: 0 16px; margin: 12px 0 20px; }
+.evidenceItem blockquote p { color: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
+.transcript article { scroll-margin-top: 24px; }
+.transcript article:target { outline: 1px solid var(--foreground); outline-offset: 4px; }

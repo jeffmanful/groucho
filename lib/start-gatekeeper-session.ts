@@ -1,3 +1,4 @@
+import { readProjectConversation } from "@/lib/project-conversation-config"
 import { COLORS_THIN_PILOT_MARKER, projectUsesColorsEngine } from "@/lib/colors-engine"
 import { CONVERSATION_ENGINE_MARKER, demoConversationProfile, usesReusableConversationEngine } from "@/lib/demo-conversation-profiles"
 import { ARTIST_APPLICATION_OPENING } from "@/lib/artist-application"
@@ -69,6 +70,7 @@ async function resolvePersonaId(
       ? input.projectSettings.raw.persona_id
       : null
   // A caller-supplied persona only counts if this organisation may use it; then the project's, then the default.
+  if (readProjectConversation(input.projectSettings.raw)) return null
   return resolveActivePersonaId(
     [input.personaId, settingsPersonaId],
     input.context.organisationId,
@@ -127,7 +129,7 @@ export async function startGatekeeperSession(
   )
   const demoOpeningChoice = demoProfile?.openingChoice ? demoProfile.choices[demoProfile.openingChoice] : undefined
   const openingInteraction = demoProfile
-    ? { ...DEFAULT_INTERACTION_SPEC, ...(demoOpeningChoice ? { inputType: "singleSelect" as const, options: [...demoOpeningChoice.options] } : {}) }
+    ? { ...DEFAULT_INTERACTION_SPEC, ...(demoOpeningChoice ? { inputType: demoOpeningChoice.inputType ?? "singleSelect" as const, options: [...demoOpeningChoice.options] } : {}) }
     : applicantIdentity?.artist
     ? { ...DEFAULT_INTERACTION_SPEC, inputType: "text" as const }
     : isColorsForumSignalSet(openingSignals) &&
@@ -292,7 +294,7 @@ export async function startGatekeeperSession(
     metadata: {
       gatekeeper_bootstrap: true,
       ...(conversationEngine ? { conversation_engine: conversationEngine } : {}),
-      ...(demoProfile ? { conversation_profile: demoProfile.id, demo_simulation: true, ...(demoProfile.openingChoice ? { conversation_choice_key: demoProfile.openingChoice } : {}) } : {}),
+      ...(demoProfile ? { conversation_profile: demoProfile.id, ...(!readProjectConversation(projectSettings.raw) ? { demo_simulation: true } : {}), ...(demoProfile.openingChoice ? { conversation_choice_key: demoProfile.openingChoice } : {}) } : {}),
       ...(input.demoSession ? { colors_demo_session: true } : {}),
       ...(input.personaPreview ? { persona_preview: true } : {}),
       ...(colorsForumV1 ? { application_rubric_version: COLORS_FORUM_V1_RUBRIC } : {}),

@@ -39,6 +39,14 @@ COLORS callers -> COLORS compatibility adapter -> shared engine
 | `lib/colors-thin-conversation.ts` | COLORS adapter and stable exports |
 | `lib/colors-conversation-profile.ts` | COLORS prompt and consent wording |
 
+## Client-created flows
+
+The project wizard now creates arbitrary organisation-owned flows without adding a code profile. Set `conversation_engine: conversation_v1`, `conversation_profile: project` and a validated `project_conversation` document (version 2 for signals; version 1 for existing question configurations). `lib/project-conversation-runtime.ts` composes its intent, inline project persona, opening, signals and optional question controls into the shared runtime. The runtime ID includes a hash of the complete configuration; edits require a fresh session.
+
+The hard answer budget, semantic stopping intent, quoted signal evidence and registered single/multi-select choices apply equally in preview and saved conversations. Custom choices retain a short model-authored acknowledgement before the exact registered question. The draft preview runs the same runtime with a server-verified temporary transcript rather than application storage. See [project wizard](platform-project-wizard.md) for permissions, isolation and operational behaviour.
+
+Client-created flows finish with `completion.mode: conversation`, without application assessment, scoring, notifications or external delivery. Existing public demos retain their registered profiles and simulation endings below.
+
 ## Configuration
 
 `lib/conversation-engine.ts` owns the response contract, question repair, pacing, validated interactions, persistence and completion. `lib/colors-thin-conversation.ts` is the compatibility adapter for COLORS. Its existing marker, prompts, media catalogue, model selection, human-review behaviour and public exports remain available.
@@ -63,7 +71,7 @@ Example project settings, merged with existing settings rather than replacing th
 }
 ```
 
-The project setting is `conversation_v1`; the response/metadata marker is `groucho_conversation_v1`. Only the three registered profile IDs are currently supported. Creating an arbitrary persona or slug does not register a new demo.
+The project setting is `conversation_v1`; the response/metadata marker is `groucho_conversation_v1`. For authored public demos, the three registered profile IDs above are supported; client-created flows use the separate `project` profile. Creating an arbitrary persona or slug does not register a new demo.
 
 The profile supplies its opening and closing. Changing only the project opening text does not change the demo runtime opening; keep those values aligned. An invalid profile or unavailable configured persona returns `503`; incompatible session markers/profiles return `409` and require a fresh start. The adapter requires the resolved persona ID to equal `settings.persona_id`, preventing fallback to a different character.
 

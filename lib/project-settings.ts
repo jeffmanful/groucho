@@ -1,3 +1,4 @@
+import { validateProjectConversation } from "@/lib/project-conversation-config"
 /**
  * Project settings helpers: `project_type`, application/onboarding experience, validation.
  */
@@ -552,6 +553,15 @@ export function validateProjectSettings(
   const projectType: ProjectType = parseProjectType(settings)
 
   const out: Record<string, unknown> = { ...settings, project_type: projectType }
+  if (settings.conversation_profile === "project" || settings.project_conversation !== undefined) {
+    if (projectType !== "gatekeeper" || settings.conversation_engine !== "conversation_v1" || settings.conversation_profile !== "project") {
+      return { ok: false, error: "Custom conversations require the shared conversation engine and project profile." }
+    }
+    const result = validateProjectConversation(settings.project_conversation)
+    if (!result.ok) return result
+    out.project_conversation = result.config
+  }
+
   if (projectType === "ticket_access") {
     // A separate simulation workspace; never run live conversation or approval policy.
     return { ok: true, settings: {
