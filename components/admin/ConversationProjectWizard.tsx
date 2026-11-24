@@ -10,6 +10,7 @@ import { ConversationSignalEditor } from "./ConversationSignalEditor"
 import { ConversationSignalEvidence, ConversationSignalTurn } from "./ConversationSignalEvidence"
 import { SavedConversationPreviews } from "./SavedConversationPreviews"
 import type { SignalEvidenceMap } from "@/lib/project-conversation-evidence"
+import { COLORS_THIN_STREAM_CONTENT_TYPE, readColorsThinStream } from "@/lib/colors-thin-stream"
 import type { SignalTurn } from "@/lib/project-conversation-progress"
 import styles from "./conversation-project-wizard.module.css"
 
@@ -51,6 +52,8 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
   const [preview, setPreview] = useState<Preview | null>(null)
   const [testedConfig, setTestedConfig] = useState("")
   const [transcript, setTranscript] = useState<Array<{ role: string; content: string; signalTurn?: SignalTurn }>>([])
+  // The answer being sent and the reply as it streams in, shown until the final response arrives.
+  const [pending, setPending] = useState<{ answer: string; reply: string } | null>(null)
   const [answer, setAnswer] = useState("")
   const [selected, setSelected] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
@@ -105,15 +108,24 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
   async function send(message: string) {
     if (!preview || stale || requestInFlight.current || !message.trim()) return
     requestInFlight.current = true; setBusy(true); setError("")
+    const display = preview.ui?.inputType === "multiSelect" && selected.length ? selected.join(", ") : message
+    setPending({ answer: display, reply: "" })
     try {
-      const data = await readResponse(await fetch(`/api/admin/organisations/${orgId}/conversation-preview`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "message", token: preview.token, message }),
-      }))
-      const display = preview.ui?.inputType === "multiSelect" && selected.length ? selected.join(", ") : message
+      const response = await fetch(`/api/admin/organisations/${orgId}/conversation-preview`, {
+        method: "POST", headers: { "Content-Type": "application/json", Accept: `${COLORS_THIN_STREAM_CONTENT_TYPE}, application/json` },
+        body: JSON.stringify({ action: "message", token: preview.token, message }),
+      })
+      let data
+      if (response.headers.get("content-type")?.includes(COLORS_THIN_STREAM_CONTENT_TYPE)) {
+        const final = await readColorsThinStream(response, reply => setPending(current => current && { ...current, reply }))
+        const body = final.body && typeof final.body === "object" ? final.body as Record<string, unknown> : {}
+        if (final.status >= 400) throw new Error(typeof body.error === "string" ? body.error : "Something went wrong. Please retry.")
+        data = body as unknown as Preview
+      } else data = await readResponse(response)
       setTranscript(previous => [...previous, { role: "user", content: display }, { role: "assistant", content: data.message, signalTurn: data.signalTurn }])
       setPreview({ ...data, settingsConflict: data.settingsConflict ?? preview.settingsConflict }); setAnswer(""); setSelected([])
     } catch (e) { setError(e instanceof Error ? e.message : "Could not send your answer.") }
-    finally { requestInFlight.current = false; setBusy(false) }
+    finally { requestInFlight.current = false; setBusy(false); setPending(null) }
   }
   async function save() {
     if (!validated.ok || !validProjectName || !preview || stale || requestInFlight.current) return
@@ -179,6 +191,16 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
           <label>Persona name<input value={config.persona.name} maxLength={80} onChange={e => patch({ persona: { ...config.persona, name: e.target.value } })} /></label>
           <label>Persona instructions<textarea value={config.persona.instructions} maxLength={6000} rows={6} onChange={e => patch({ persona: { ...config.persona, instructions: e.target.value } })} /></label>
           <p>Set the host’s voice. The preview can flag a possible conflict between your settings.</p>
+          <label>Conversation style
+            <select aria-describedby="conversation-mode-description" value={config.conversationMode === "open" ? "open" : "guided"} onChange={event => patch({ conversationMode: event.target.value === "open" ? "open" : undefined })}>
+              <option value="open">Open conversation</option>
+              <option value="guided">Guided and reviewed</option>
+            </select>
+          </label>
+          <p id="conversation-mode-description">{config.conversationMode === "open"
+            ? "The host leads: it follows what matters most in each answer, remembers the rest and brings the project’s areas in near the end. Replies appear as they are written."
+            : "Each reply follows the reply style below and is checked before it is shown. Replies appear only once checked, which adds response time."}</p>
+          {config.conversationMode !== "open" && <>
           <label>Reply style
             <select aria-describedby="reply-style-description" value={replyStyle ?? ""} onChange={event => patch({ replyStyle: (event.target.value || undefined) as ProjectReplyStyle | undefined })}>
               {!hasDefaultReplyStyle && <option value="">Follow persona instructions</option>}
@@ -191,6 +213,7 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
             : replyStyle === "acknowledge"
               ? "Groucho starts with a brief reaction in the persona’s voice, then asks a follow-up. Replies are checked for repetition."
               : "Use the reply style in your persona instructions, or choose a style for this project."}</p>
+          </>}
         </section>}
         {step === 2 && <section>
           <h2>Conversation flow</h2>
@@ -216,7 +239,8 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
         <dl className={styles.summary}>
           <div><dt>Objective</dt><dd>{config.intent}</dd></div>
           <div><dt>Persona</dt><dd>{config.persona.name}</dd></div>
-          <div><dt>Reply style</dt><dd>{replyStyle ? replyStyleLabels[replyStyle] : "Follow persona instructions"}</dd></div>
+          <div><dt>Conversation style</dt><dd>{config.conversationMode === "open" ? "Open conversation" : "Guided and reviewed"}</dd></div>
+          {config.conversationMode !== "open" && <div><dt>Reply style</dt><dd>{replyStyle ? replyStyleLabels[replyStyle] : "Follow persona instructions"}</dd></div>}
           <div><dt>Opening question</dt><dd>{projectOpeningQuestion(config)}</dd></div>
           <div><dt>Flow</dt><dd>{config.conversationGuidance || "Follow the applicant’s story and explore relevant signals naturally."}</dd></div>
           <div><dt>Answer limit</dt><dd>{config.maxAnswers}</dd></div>
@@ -230,8 +254,12 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
         {transcript.length > 0 && <div className={styles.transcript} role="log" aria-label="Preview conversation" aria-live="polite">{transcript.map((entry, index) => <article key={index} id={entry.role === "user" ? `preview-answer-${transcript.slice(0, index + 1).filter(item => item.role === "user").length}` : undefined}>
           <strong>{entry.role === "assistant" ? previewConfig.persona.name : "You"}</strong><p>{entry.content}</p>
           <ConversationSignalTurn turn={entry.signalTurn} signals={previewConfig.signals} hasQuestion={/[?？]/.test(entry.content)} />
-        </article>)}</div>}
-        {busy && <p role="status">Preparing response…</p>}
+        </article>)}
+          {pending && <>
+            <article><strong>You</strong><p>{pending.answer}</p></article>
+            {pending.reply && <article aria-busy="true"><strong>{previewConfig.persona.name}</strong><p>{pending.reply}</p></article>}
+          </>}</div>}
+        {busy && !pending?.reply && <p role="status">Preparing response…</p>}
         {preview?.status === "active" && !stale && <form onSubmit={e => { e.preventDefault(); void send(answer.trim() || JSON.stringify(selected)) }}>
           <fieldset className={styles.fields} disabled={busy || saving}>
             {preview.ui?.options?.length ? <div className={styles.choices} role="group" aria-label="Answer choices">{preview.ui.options.map(option => preview.ui?.inputType === "multiSelect" ? <label key={option} className={styles.check}><input type="checkbox" checked={selected.includes(option)} onChange={e => setSelected(previous => e.target.checked ? [...previous, option] : previous.filter(item => item !== option))} />{option}</label> : <button key={option} type="button" onClick={() => void send(option)}>{option}</button>)}</div> : null}

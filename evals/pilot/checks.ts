@@ -94,6 +94,11 @@ export function checkRun(flow: PilotFlow, scenario: Scenario, run: PilotRun): Ch
     const question = questionOf(turn.reply)
     return question && /,?\s\b(?:and|or)\s+(?:what|who|where|when|why|how|which|is|are|do|does|did|have|has|would|could)\b/i.test(question) ? [`answer ${turn.answerNumber}: “${question}”`] : []
   }))
+  // Hypothetical questions show what someone thinks a good answer is, not what they do.
+  add("hypothetical_question", false, run.turns.flatMap(turn => {
+    const question = questionOf(turn.reply)
+    return question && /\bif (?:someone|somebody|another|a friend|you were|you had|you joined|you did)\b|\bwhat would you (?:tell|say|do|suggest)\b|\bhow would you (?:respond|react|handle|give)\b/i.test(question) ? [`answer ${turn.answerNumber}: “${question}”`] : []
+  }))
   // Groucho should simply change the subject, not announce it, and not justify a question by describing the project.
   add("announced_subject_change", false, run.turns.filter(turn => /\b(?:changing|change|switching|switch) (?:the )?(?:subject|topic|gears)\b|\bon (?:another|a different) note\b/i.test(turn.reply)).map(turn => `answer ${turn.answerNumber}: “${turn.reply.split(/(?<=[.!?])\s+/).find(sentence => /subject|topic|gears|note/i.test(sentence)) ?? turn.reply}”`))
   add("project_justified_question", false, run.turns.filter(turn => /\b(?:people|members|artists|creatives) (?:share|swap|post|bring)\b[^.?!]*\b(?:here|in the forum)\b[^?]*,\s*so\b/i.test(turn.reply)).map(turn => `answer ${turn.answerNumber}`))

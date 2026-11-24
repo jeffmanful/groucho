@@ -179,6 +179,11 @@ export type ConversationConfiguration = {
   openConversation?: boolean
   /** The project's purpose, used by the evidence review to judge how relevant a thread is. */
   purpose?: string
+  /**
+   * Reasoning for the reply model. "off" sends thinking `between_tools`, which runs no thinking on a
+   * request without tool calls; "low" lowers effort. Omitted: the model's defaults.
+   */
+  replyReasoning?: "off" | "low"
   /** Model for the per-turn evidence review. Defaults to the conversation model. */
   evidenceModel?: string
   buildPrompt: (input: { applicationAudience: "community" | "artist"; hasApplicantDetails: boolean; turnCount: number; shows: unknown[] }) => string
@@ -567,7 +572,9 @@ export async function postConversation(input: {
     }
     const request = forcedTool
       ? { ...base, tools: [responseTool], tool_choice: { type: "tool" as const, name: responseTool.name } }
-      : { ...base, output_config: { format: { type: "json_schema" as const, schema: strictJsonSchema(responseTool.input_schema) } } }
+      : { ...base, output_config: { format: { type: "json_schema" as const, schema: strictJsonSchema(responseTool.input_schema) },
+        ...(config.replyReasoning === "low" ? { effort: "low" as const } : {}) },
+        ...(config.replyReasoning === "off" ? { thinking: { type: "between_tools" } } : {}) }
     const client = new Anthropic({ maxRetries: 1, timeout: 45000 })
     let response: Anthropic.Message
     if (onReply && !natural) {
@@ -696,7 +703,10 @@ Return signalEvidence updates for new information, refusals and corrections. A c
   try {
     const forcedClosePossible = answerLimitReached || config.visitorIntent === true || !applicantQuestion &&
       (turnCount >= (config.softCloseAnswers ?? SOFT_CLOSE_ANSWERS) || turnCount >= emergencyLimit || (turnCount >= 3 && quietTurns >= 1))
-    const streamReply = forcedClosePossible || oneQuestionMode ? undefined : input.onReplyDelta
+    // An open conversation has no reply review, so its draft is usually what the applicant sees and
+    // can stream. The final response stays authoritative if the reply is later replaced.
+    const streamReply = config.openConversation ? (answerLimitReached || stoppedByApplicant ? undefined : input.onReplyDelta)
+      : forcedClosePossible || oneQuestionMode ? undefined : input.onReplyDelta
     proposal = await requestReply(operation("conversation"), answerLimitReached ? limitInstruction : applicantQuestion ? questionInstruction :
       stoppedByApplicant ? "The applicant wants to stop. Acknowledge that briefly and close without a question or decision." :
       turnCount >= emergencyLimit ? "The emergency conversation limit is reached. Acknowledge the latest point and close neutrally without a question or decision." :

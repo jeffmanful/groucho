@@ -8,6 +8,7 @@ import { postConversation, type ConversationTranscriptEntry } from "@/lib/conver
 import { readProjectConversation, validateProjectConversation, projectConversationOpening, projectConversationReplyStyle, projectConversationSettings } from "@/lib/project-conversation-config"
 import { projectConversationConfiguration, projectConversationProfile, projectConversationRevision } from "@/lib/project-conversation-runtime"
 import { signProjectPreview, verifyProjectPreview } from "@/lib/project-conversation-preview"
+import { colorsThinEventStream, wantsColorsThinStream } from "@/lib/colors-thin-stream"
 import { normalizeProjectSettings } from "@/lib/project-settings"
 import { emptySignalEvidence } from "@/lib/project-conversation-evidence"
 import { DEFAULT_INTERACTION_SPEC } from "@/lib/gatekeeper-interaction-spec"
@@ -132,19 +133,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ org
     const message = typeof body.message === "string" ? body.message.trim() : ""
     if (!message || message.length > 4000) return json({ error: "Enter a message of up to 4,000 characters." }, 400)
     const context = { organisationId: orgId, projectId: preview.projectId ?? "preview", apiKeyId: null, settings: normalizeProjectSettings(projectConversationSettings(preview.config)) }
-    const response = await postConversation({
-      configuration: projectConversationConfiguration(preview.config, context),
-      context,
-      sessionId: randomUUID(), message, previewTranscript: preview.transcript, runCompletion: false, reviewAuthoredSettings: true,
-    })
-    const result = await response.json()
-    if (!response.ok) return json(result, response.status)
-    const { previewTranscript, ...visible } = result
-    const signalTurn = (previewTranscript as ConversationTranscriptEntry[]).at(-1)?.metadata.conversation_signal_turn
-    return json({ ...visible, ...(signalTurn ? { signalTurn } : {}), token: signProjectPreview({
-      ...preview, transcript: previewTranscript, status: result.status,
-      settingsConflict: visible.settingsConflict ?? preview.settingsConflict,
-    }) })
+    const turn = async (onReplyDelta?: (text: string) => void) => {
+      const response = await postConversation({
+        configuration: projectConversationConfiguration(preview.config, context),
+        context,
+        sessionId: randomUUID(), message, previewTranscript: preview.transcript, runCompletion: false, reviewAuthoredSettings: true, onReplyDelta,
+      })
+      const result = await response.json()
+      if (!response.ok) return json(result, response.status)
+      const { previewTranscript, ...visible } = result
+      const signalTurn = (previewTranscript as ConversationTranscriptEntry[]).at(-1)?.metadata.conversation_signal_turn
+      return json({ ...visible, ...(signalTurn ? { signalTurn } : {}), token: signProjectPreview({
+        ...preview, transcript: previewTranscript, status: result.status,
+        settingsConflict: visible.settingsConflict ?? preview.settingsConflict,
+      }) })
+    }
+    // The reply streams as it is written when the client asks; the final event carries the usual body.
+    if (wantsColorsThinStream(req.headers.get("accept"))) return colorsThinEventStream(turn)
+    return turn()
   } catch {
     return json({ error: "Preview is unavailable. Please retry." }, 503)
   }

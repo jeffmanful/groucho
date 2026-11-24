@@ -92,6 +92,8 @@ You are the host at the door. You set the tone and lead the conversation, and yo
 Choosing what to ask
 - When an answer holds several things, pick the one that would tell you most about them in relation to the purpose above, usually what they do for or with other people, and go into it. You do not need to mention the others. Your notes keep them.
 - Follow the feeling. When an answer carries emotion or a moment with another person (someone cried, they were nervous, they were chuffed, a friend reacted), that is usually the thread that shows who they are. Ask about it before anything else in that answer.
+- Ask about what has actually happened, not hypotheticals. A question like "If someone played you their track, what would you tell them?" only shows what they think a good answer is, not what they do. To understand how they give feedback or help others, ask about a real time it happened ("When did you last give someone feedback on something they made?") or about their own experience of it ("What feedback on your own music has stuck with you?"). If they have no real example, accept that and move on rather than asking them to imagine one. Asking what they could offer or would ask others for is fine when it is tied to what they already do.
+- Ask about the applicant, not about other people in their life. Do not ask who they shared something with, who heard it, who was involved or who they helped, unless they have brought those people up themselves; ask what it means to them or what they get from it instead.
 - Ask about them, not about the thing or the logistics. Find out why something matters to them, what draws them to it, what they get from it, how it changed how they see things, or what they do because of it. Do not ask for facts: which record or venue, who was in the lineup, when exactly, what they did last time they went somewhere, whether someone has seen something yet, how they found someone. If they mention an artist, ask what it is about that artist for them.
 - Stay with a thread until you understand what it says about them, usually two or three questions, then move on.
 - Bring a held thread back only when the conversation reaches something it connects to, and make the connection, as in "You mentioned reading old jazz criticism. Has it changed how you give feedback on music?" Never go back to something just to cover it. A question they skipped can come back once, the same way.
@@ -127,14 +129,26 @@ YOUR REPLY
 Write the reply the applicant will read. Set close=true when you are ending. Set buildsOnQuote to the exact words of theirs your question is about, copied from the transcript, or an empty string for a question about something new. Set questionSignalId to "none" unless you are asking about one of the areas your notes list as not yet covered. Leave signalEvidence as an empty list: a separate review records what you learn. Use choiceKey "none" unless you are offering a registered choice. Call groucho_converse exactly once.`
 }
 
+/** Reasoning for the open conversation's reply model. GROUCHO_OPEN_REPLY_REASONING overrides it for measurement. */
+function openReplyReasoning(): { replyReasoning?: "off" | "low" } {
+  const value = process.env.GROUCHO_OPEN_REPLY_REASONING?.trim()
+  return value === "off" || value === "low" ? { replyReasoning: value } : {}
+}
+
+/** Whether a configuration runs as an open conversation. */
+export function usesOpenConversation(config: ProjectConversationConfig) {
+  return config.version === 2 && config.conversationMode === "open"
+}
+
+/** `options.open` overrides the configured conversation style, for side-by-side evaluation. */
 export function projectConversationConfiguration(config: ProjectConversationConfig, project?: Pick<ProjectContext, "organisationId" | "projectId">, options: { open?: boolean } = {}): ConversationConfiguration {
   const profile = projectConversationProfile(config)
   const application = config.version === 2 && config.applicationReview === "colors_forum"
-  const open = options.open === true && config.version === 2
+  const open = (options.open ?? usesOpenConversation(config)) && config.version === 2
   const replyStyle = open ? undefined : projectConversationReplyStyle(config, project)
   return {
     ...profile, ...(config.version === 2 ? { signals: config.signals } : {}), marker: application ? "colors_thin_pilot_v1" : "groucho_conversation_v1", model: open ? OPEN_CONVERSATION_MODEL : colorsThinConversationModel(),
-    ...(open ? { openConversation: true, evidenceModel: colorsThinConversationModel() } : {}),
+    ...(open ? { openConversation: true, evidenceModel: colorsThinConversationModel(), ...openReplyReasoning() } : {}),
     purpose: config.intent,
     resolveOpeningConfiguration: application ? metadata => {
       const pinned = validateProjectConversation(metadata.project_conversation)

@@ -62,6 +62,8 @@ export type PilotTurn = {
   /** Open threads and the record of questions asked, as stored after this turn. */
   workingMemory?: WorkingMemory
   latencyMs: number
+  /** Time until the first streamed reply text, when the reply streamed. */
+  firstTextMs?: number
   calls: ModelCall[]
   retries: number
   model?: string
