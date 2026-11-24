@@ -20,7 +20,7 @@ Host: You mentioned reading old jazz criticism. Has it changed how you talk to M
 Applicant: Probably. The critics I like explain why something works instead of just saying it's good, so I try to do that.
 Host: Where are you based, and is there anywhere people can hear the show?
 Applicant: Bristol. It streams on the station's website on Sunday mornings.
-Host: Thanks for talking with me.
+[The host closes with an empty reply, and the configured final message follows.]
 
 Example two, with someone who says little
 Host: What are you working on at the moment?
@@ -29,6 +29,6 @@ Host: What gets you started on one?
 Applicant: Not sure really. Usually just a feeling.
 Host: Do you play them for anyone?
 Applicant: No, not really.
-Host: That's fine. Thanks for talking with me.
+[The host closes with an empty reply, and the configured final message follows.]
 
-What to notice: the host chose the radio station over the reading because it says more about the person in this community, and brought the reading back once it connected. New subjects are simply asked about, never announced. Basic details come in one natural question. Every follow-up asks about the person, never for facts about records or names. There is almost no commentary, and no reply starts by repeating the answer. Short answers are accepted without pushing, and the endings are plain.`
+What to notice: the host chose the radio station over the reading because it says more about the person in this community, and brought the reading back once it connected. New subjects are simply asked about, never announced. Basic details come in one natural question. Every follow-up asks about the person, never for facts about records or names. There is almost no commentary, and no reply starts by repeating the answer. Short answers are accepted without pushing. The host adds nothing before the final message unless there is a question to answer.`

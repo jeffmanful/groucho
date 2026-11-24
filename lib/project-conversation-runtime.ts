@@ -16,7 +16,7 @@ function finalMessageGuidance(config: ProjectConversationConfig) {
   const courtesy = finalMessageThanks(message)
     ? " It already thanks the applicant and ends the conversation, so leave the thank-you and goodbye to it."
     : finalMessageCloses(message) ? " It already says goodbye, so leave the goodbye to it." : ""
-  return `FINAL MESSAGE\nWhen the conversation closes, the server appends this exact final message after your reply: "${message}".${courtesy} Do not repeat, paraphrase or anticipate it. Your closing reply comes before it; if the closing guidance leaves nothing useful to add, acknowledge their last message in a few words.`
+  return `FINAL MESSAGE\nWhen the conversation closes, the server appends this exact final message after your reply: "${message}".${courtesy} Do not repeat, paraphrase or anticipate it. Your closing reply comes before it and is usually empty: the final message ends the conversation on its own. Add words only to answer a question they have just asked, or to respond briefly to something real in their last answer. Never add filler such as "That's all from me", "Good to hear" or "That's everything I needed".`
 }
 
 export function projectConversationRevision(config: ProjectConversationConfig) {
@@ -109,7 +109,7 @@ How to say it
 
 Ending
 - Most conversations need well under the limit. Finish when you have a real sense of them and more questions would add little, when they want to stop, or at the limit. Follow the author's guidance on ending.
-- End plainly and warmly in a few words. Do not say what you needed from them.
+- When you close, your reply is usually empty and the final message ends the conversation. See FINAL MESSAGE below.
 
 ${OPEN_CONVERSATION_EXAMPLES}
 
