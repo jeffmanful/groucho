@@ -1,6 +1,7 @@
 import { readProjectConversation } from "@/lib/project-conversation-config"
 import { projectConversationConfiguration } from "@/lib/project-conversation-runtime"
 import { COLORS_THIN_PILOT_MARKER, projectUsesColorsEngine } from "@/lib/colors-engine"
+import { legacyEngineEnabled, retiredEngineBody, usesRetiredEngine } from "@/lib/retired-engine"
 import { CONVERSATION_ENGINE_MARKER, demoConversationProfile, usesReusableConversationEngine } from "@/lib/demo-conversation-profiles"
 import { ARTIST_APPLICATION_OPENING } from "@/lib/artist-application"
 import { NextResponse } from "next/server"
@@ -92,6 +93,9 @@ export async function startGatekeeperSession(
   } = input
   if (projectSettings.projectType === "ticket_access") {
     return traceJson(input, { error: "Ticket access is simulation-only. Open the admin ticket workspace." }, { status: 409 })
+  }
+  if (!input.conversationEngine && usesRetiredEngine(projectSettings.raw) && !legacyEngineEnabled()) {
+    return traceJson(input, retiredEngineBody, { status: 410 })
   }
   const { organisationId, projectId, apiKeyId } = context
   if (projectSettings.raw.application_invitation_required === true) {

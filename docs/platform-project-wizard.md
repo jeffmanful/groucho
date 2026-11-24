@@ -32,11 +32,10 @@ By default, saved custom conversations persist their sessions/messages through t
 
 ## Existing project types
 
-The alternate setup link retains the existing four-step wizard for legacy Gatekeeper, guided Onboarding and synthetic Ticket access projects. Existing projects remain on their configured engine.
+The alternate setup link retains the four-step wizard for guided Onboarding and synthetic Ticket access projects. The original Gatekeeper engine is retired: a gatekeeper project with no `conversation_engine` setting cannot start conversations (`410`, code `engine_retired`), and its edit page opens this wizard to reconfigure it. Earlier sessions and reports stay available. Other projects remain on their configured engine.
 
 | Type | Configure |
 | --- | --- |
-| Legacy `gatekeeper` | Accessible library persona, application experience and independent decision policy |
 | `onboarding` | Project-owned ordered `flow_config.steps`, tone and optional LLM/extraction toggles |
 | `ticket_access` | Isolated test/dry-run operator simulation; not live inventory or a ticketing provider |
 

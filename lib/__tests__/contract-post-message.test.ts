@@ -1,4 +1,9 @@
-import { describe, expect, it, vi, beforeEach } from "vitest"
+import { describe, expect, it, vi, beforeEach, beforeAll, afterAll } from "vitest"
+
+// These tests exercise the retired original engine, so they turn it back on. Removed with the engine.
+beforeAll(() => { process.env.GROUCHO_LEGACY_ENGINE = "enabled" })
+afterAll(() => { delete process.env.GROUCHO_LEGACY_ENGINE })
+
 
 type FakeRow = Record<string, unknown>
 

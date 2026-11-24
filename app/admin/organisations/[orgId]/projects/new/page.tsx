@@ -117,7 +117,8 @@ function AdvancedProjectWizard() {
   const [slug, setSlug] = useState("")
   const [slugManual, setSlugManual] = useState(false)
   const [useCase, setUseCase] = useState<UseCaseId>("community_gate")
-  const [projectType, setProjectType] = useState<ProjectType>("gatekeeper")
+  // Qualification flows are built in the conversation wizard; the original gatekeeper engine is retired.
+  const [projectType, setProjectType] = useState<ProjectType>("onboarding")
   const [flowSteps, setFlowSteps] = useState<OnboardingFlowStep[]>(() =>
     defaultOnboardingSteps(),
   )
@@ -479,14 +480,6 @@ function AdvancedProjectWizard() {
           <div style={{ marginBottom: "1.5rem" }}>
             <label style={label}>Project type</label>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "1.25rem", fontSize: "0.82rem" }}>
-              <label style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
-                <input
-                  type="radio"
-                  checked={projectType === "gatekeeper"}
-                  onChange={() => setProjectType("gatekeeper")}
-                />
-                Gatekeeper (qualify)
-              </label>
               <label style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
                 <input
                   type="radio"

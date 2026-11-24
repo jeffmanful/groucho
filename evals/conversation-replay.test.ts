@@ -1,7 +1,12 @@
 import { createHash } from "node:crypto"
 import type Anthropic from "@anthropic-ai/sdk"
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it, vi, beforeAll, afterAll } from "vitest"
 import { ARMS, EXPERIENCE, PERSONA, REPLAY_CASES, SHORT_GUIDANCE, type Arm } from "@/evals/conversation-replay-cases"
+
+// These tests exercise the retired original engine, so they turn it back on. Removed with the engine.
+beforeAll(() => { process.env.GROUCHO_LEGACY_ENGINE = "enabled" })
+afterAll(() => { delete process.env.GROUCHO_LEGACY_ENGINE })
+
 
 type Row = Record<string, unknown>
 type Capture = { request: Anthropic.MessageCreateParamsNonStreaming; response: Anthropic.Message; ms: number }

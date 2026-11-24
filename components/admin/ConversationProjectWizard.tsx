@@ -250,7 +250,7 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
         {step < 4 ? <button type="button" className={styles.primary} disabled={busy || saving} onClick={next}>Continue</button> : <button type="button" className={styles.primary} disabled={!preview || stale || busy || saving || !validated.ok || !validProjectName} onClick={() => void save()}>{saving ? "Saving…" : saveLabel}</button>}
       </footer>
       {step === 4 && !preview && <p>Start a preview before saving your configuration.</p>}
-      {onAdvanced && <button type="button" className={styles.advanced} disabled={busy || saving} onClick={onAdvanced}>Set up a qualification flow, guided onboarding or ticket simulation</button>}
+      {onAdvanced && <button type="button" className={styles.advanced} disabled={busy || saving} onClick={onAdvanced}>Set up guided onboarding or a ticket simulation</button>}
     </main>
   )
 }
