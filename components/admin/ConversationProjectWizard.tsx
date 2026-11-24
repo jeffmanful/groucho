@@ -26,6 +26,8 @@ type Preview = {
 type Props = {
   orgId: string
   project?: { id: string; name: string; slug: string; config: ProjectConversationConfig }
+  /** The project has no stored conversation yet, so the starting configuration is unsaved. */
+  unsaved?: boolean
   onAdvanced?: () => void
 }
 const replyStyleLabels = {
@@ -38,7 +40,7 @@ async function readResponse(response: Response) {
   if (!response.ok) throw new Error(result.error || "Something went wrong. Please retry.")
   return result
 }
-export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props) {
+export function ConversationProjectWizard({ orgId, project, unsaved, onAdvanced }: Props) {
   const router = useRouter()
   const { refresh: refreshOrganisation } = useOrganisationSummary()
   const [step, setStep] = useState(0)
@@ -62,6 +64,9 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
   const [savedId, setSavedId] = useState(project?.id ?? "")
   const [archivedToken, setArchivedToken] = useState("")
   const [historyRevision, setHistoryRevision] = useState(0)
+  // What was last saved, to show whether there are unsaved changes. Empty until a first save.
+  const [savedSnapshot, setSavedSnapshot] = useState("")
+  const [savedMessage, setSavedMessage] = useState("")
   const requestInFlight = useRef(false)
   const errorRef = useRef<HTMLParagraphElement>(null)
   useEffect(() => { if (error) errorRef.current?.focus() }, [error])
@@ -71,9 +76,17 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
   const stale = !!preview && currentConfig !== testedConfig
   const canSavePreview = !!preview && transcript.some(entry => entry.role === "user") && preview.token !== archivedToken
   const validProjectName = name.trim().length >= 2 && name.trim().length <= 64 && isValidProjectSlug(slug)
+  const snapshot = JSON.stringify({ name: name.trim(), slug, config: validated.ok ? validated.config : config })
+  const baseline = savedSnapshot || (project && !unsaved ? JSON.stringify({ name: project.name.trim(), slug: project.slug, config: (() => {
+    const initial = validateProjectConversation({ ...upgradeProjectConversation(project.config), openingQuestion: projectOpeningQuestion(upgradeProjectConversation(project.config)) })
+    return initial.ok ? initial.config : null
+  })() }) : "")
+  const hasUnsavedChanges = snapshot !== baseline
+  // A preview is saved with the configuration only when it tested exactly what is being saved.
+  const savesPreview = canSavePreview && !stale
   const saveLabel = savedId
-    ? canSavePreview ? "Save configuration and preview" : "Save configuration"
-    : canSavePreview ? "Create project and save preview" : "Create project"
+    ? savesPreview ? "Save configuration and preview" : "Save configuration"
+    : savesPreview ? "Create project and save preview" : "Create project"
   const replyStyle = projectConversationReplyStyle(config, { organisationId: orgId, projectId: project?.id })
   const hasDefaultReplyStyle = isForumEarlyAccessProject(orgId, project?.id)
   const patch = (value: Partial<SignalProjectConversationConfig>) => { setConfig(previous => ({ ...previous, ...value })); setError("") }
@@ -128,7 +141,9 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
     finally { requestInFlight.current = false; setBusy(false); setPending(null) }
   }
   async function save() {
-    if (!validated.ok || !validProjectName || !preview || stale || requestInFlight.current) return
+    if (requestInFlight.current) return
+    if (!validProjectName) { setStep(0); setError("Use a project name of 2–64 characters and a slug of 2–31 lowercase letters, numbers or hyphens."); return }
+    if (!validated.ok) { setError(validated.error); return }
     requestInFlight.current = true; setSaving(true); setError("")
     let settingsSaved = false
     try {
@@ -140,17 +155,18 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
         } }),
       })
       const data = await readResponse(response)
+      const created = !savedId
       setSavedId(data.id)
       settingsSaved = true
+      setSavedSnapshot(snapshot)
       refreshOrganisation()
-      if (canSavePreview) await archivePreview(data.id, preview.token)
-      router.push(`/admin/organisations/${orgId}/projects/${data.id}`)
+      if (savesPreview && preview) await archivePreview(data.id, preview.token)
+      setSavedMessage(created ? "Project created. You can keep editing and save again at any time." : "Saved.")
       router.refresh()
     } catch (e) {
       const message = e instanceof Error ? e.message : "Could not save the project."
       setError(settingsSaved ? `Configuration saved. ${message}` : message)
-      setSaving(false)
-    } finally { requestInFlight.current = false }
+    } finally { requestInFlight.current = false; setSaving(false) }
   }
   async function archivePreview(projectId: string, token: string) {
     await readResponse(await fetch(`/api/admin/organisations/${orgId}/conversation-preview`, {
@@ -172,7 +188,7 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
       <header><h1>{project ? "Configure conversation" : "Create a conversation"}</h1><p>Define its purpose and character, then try the exact flow your visitors will use.</p></header>
       {config.applicationReview && <p>Application reporting and integrations remain enabled for saved conversations. This preview tests the conversation without creating an application or sending webhooks. Changes apply to new conversations; conversations already in progress keep their original configuration.</p>}
       <nav aria-label="Project setup" className={styles.steps}>
-        {["Purpose & context", "Persona", "Conversation flow", "Signals & examples", "Test & save"].map((label, index) => <button key={label} type="button" aria-current={step === index ? "step" : undefined} disabled={busy || saving || (index > step && !(index === 4 && !!savedId && validated.ok && validProjectName))} onClick={() => { setStep(index); setError("") }}>{label}</button>)}
+        {["Purpose & context", "Persona", "Conversation flow", "Signals & examples", "Test & save"].map((label, index) => <button key={label} type="button" aria-current={step === index ? "step" : undefined} disabled={busy || saving} onClick={() => { setStep(index); setError("") }}>{label}</button>)}
       </nav>
       {error && <p role="alert" ref={errorRef} tabIndex={-1} className={styles.error}>{error}</p>}
       <fieldset disabled={busy || saving} className={styles.fields}>
@@ -180,16 +196,16 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
           <h2>Purpose &amp; context</h2>
           <label>Project name<input value={name} maxLength={64} onChange={e => { setName(e.target.value); if (!manualSlug) setSlug(slugify(e.target.value)) }} /></label>
           <label>Project slug<input value={slug} maxLength={31} onChange={e => { setManualSlug(true); setSlug(e.target.value) }} /></label>
-          <label>Conversation objective<textarea value={config.intent} maxLength={2000} rows={4} placeholder="What should this conversation help someone explore, choose or share?" onChange={e => patch({ intent: e.target.value })} /></label>
+          <label>Conversation objective<textarea value={config.intent} maxLength={2000} rows={6} placeholder="What should this conversation help someone explore, choose or share?" onChange={e => patch({ intent: e.target.value })} /></label>
           <p>What should someone get from this conversation, and what should you learn?</p>
-          <label>Project context<textarea value={config.projectContext ?? ""} maxLength={6000} rows={6} placeholder="Describe the project, who it is for and any facts the host can use to answer questions." onChange={e => patch({ projectContext: e.target.value })} /></label>
+          <label>Project context<textarea value={config.projectContext ?? ""} maxLength={6000} rows={14} placeholder="Describe the project, who it is for and any facts the host can use to answer questions." onChange={e => patch({ projectContext: e.target.value })} /></label>
           <p>Include approved information such as what the project offers and how it works. The host will say when something is unknown.</p>
         </section>}
         {step === 1 && <section>
           <h2>Persona</h2>
           <p>Define who hosts the conversation. Its purpose and flow belong to this project.</p>
           <label>Persona name<input value={config.persona.name} maxLength={80} onChange={e => patch({ persona: { ...config.persona, name: e.target.value } })} /></label>
-          <label>Persona instructions<textarea value={config.persona.instructions} maxLength={6000} rows={6} onChange={e => patch({ persona: { ...config.persona, instructions: e.target.value } })} /></label>
+          <label>Persona instructions<textarea value={config.persona.instructions} maxLength={6000} rows={14} onChange={e => patch({ persona: { ...config.persona, instructions: e.target.value } })} /></label>
           <p>Set the host’s voice. The preview can flag a possible conflict between your settings.</p>
           <label>Conversation style
             <select aria-describedby="conversation-mode-description" value={config.conversationMode === "open" ? "open" : "guided"} onChange={event => patch({ conversationMode: event.target.value === "open" ? "open" : undefined })}>
@@ -217,15 +233,15 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
         </section>}
         {step === 2 && <section>
           <h2>Conversation flow</h2>
-          <label>Opening message<textarea value={config.openingMessage} maxLength={500} rows={2} onChange={e => patch({ openingMessage: e.target.value })} /></label>
-          <label>Opening question<textarea value={config.openingQuestion} maxLength={500} rows={2} placeholder="What brings you here?" onChange={e => patch({ openingQuestion: e.target.value })} /></label>
+          <label>Opening message<textarea value={config.openingMessage} maxLength={500} rows={4} onChange={e => patch({ openingMessage: e.target.value })} /></label>
+          <label>Opening question<textarea value={config.openingQuestion} maxLength={500} rows={3} placeholder="What brings you here?" onChange={e => patch({ openingQuestion: e.target.value })} /></label>
           <p>The conversation starts with this message and question. You can start broadly before exploring any signals. Leave the question empty to use the first signal’s question, or “What brings you here?” if there are no signals.</p>
-          <label>Conversation guidance<textarea value={config.conversationGuidance ?? ""} maxLength={3000} rows={5} placeholder="Start with what brought them here. Follow their story, explore their interests, then give them room to ask a question before closing." onChange={e => patch({ conversationGuidance: e.target.value })} /></label>
+          <label>Conversation guidance<textarea value={config.conversationGuidance ?? ""} maxLength={3000} rows={12} placeholder="Start with what brought them here. Follow their story, explore their interests, then give them room to ask a question before closing." onChange={e => patch({ conversationGuidance: e.target.value })} /></label>
           <p>Describe how the conversation should progress, including topics, useful follow-ups and room for the applicant’s questions. The host can adapt when they share things out of order.</p>
           <label>Maximum applicant answers<input type="number" min={1} max={12} value={config.maxAnswers} onChange={e => patch({ maxAnswers: Number(e.target.value) })} /></label>
           <p>Includes the opening answer and follow-ups. This is a ceiling, not a target. Applicants can stop at any time.</p>
-          <label>Closing guidance<textarea value={config.closingGuidance ?? ""} maxLength={2000} rows={3} placeholder="Briefly acknowledge what they shared. If useful, give them room to add something before finishing." onChange={e => patch({ closingGuidance: e.target.value })} /></label>
-          <label>Closing message<textarea value={config.closingMessage ?? DEFAULT_PROJECT_CLOSING_MESSAGE} maxLength={500} rows={2} onChange={e => patch({ closingMessage: e.target.value })} /></label>
+          <label>Closing guidance<textarea value={config.closingGuidance ?? ""} maxLength={2000} rows={6} placeholder="Briefly acknowledge what they shared. If useful, give them room to add something before finishing." onChange={e => patch({ closingGuidance: e.target.value })} /></label>
+          <label>Closing message<textarea value={config.closingMessage ?? DEFAULT_PROJECT_CLOSING_MESSAGE} maxLength={500} rows={3} onChange={e => patch({ closingMessage: e.target.value })} /></label>
           <p>The host adds this final statement after a brief acknowledgement. Leave it empty to use the default thank-you. A request to stop ends the conversation immediately, without a final question. The host cannot promise bookings, decisions or messages to others.</p>
         </section>}
         {step === 3 && <section>
@@ -263,7 +279,7 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
         {preview?.status === "active" && !stale && <form onSubmit={e => { e.preventDefault(); void send(answer.trim() || JSON.stringify(selected)) }}>
           <fieldset className={styles.fields} disabled={busy || saving}>
             {preview.ui?.options?.length ? <div className={styles.choices} role="group" aria-label="Answer choices">{preview.ui.options.map(option => preview.ui?.inputType === "multiSelect" ? <label key={option} className={styles.check}><input type="checkbox" checked={selected.includes(option)} onChange={e => setSelected(previous => e.target.checked ? [...previous, option] : previous.filter(item => item !== option))} />{option}</label> : <button key={option} type="button" onClick={() => void send(option)}>{option}</button>)}</div> : null}
-            <label>Your answer<textarea rows={3} value={answer} maxLength={4000} onChange={e => setAnswer(e.target.value)} placeholder="You can also ask a question, correct a detail or say stop." /></label>
+            <label>Your answer<textarea rows={4} value={answer} maxLength={4000} onChange={e => setAnswer(e.target.value)} placeholder="You can also ask a question, correct a detail or say stop." /></label>
             <button type="submit" disabled={!answer.trim() && !selected.length}>Send answer</button>
           </fieldset>
         </form>}
@@ -275,9 +291,12 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
       </section>}
       <footer className={styles.actions}>
         {step > 0 && <button type="button" disabled={busy || saving} onClick={() => { setStep(previous => previous - 1); setError("") }}>Back</button>}
-        {step < 4 ? <button type="button" className={styles.primary} disabled={busy || saving} onClick={next}>Continue</button> : <button type="button" className={styles.primary} disabled={!preview || stale || busy || saving || !validated.ok || !validProjectName} onClick={() => void save()}>{saving ? "Saving…" : saveLabel}</button>}
+        {step < 4 && <button type="button" disabled={busy || saving} onClick={next}>Continue</button>}
+        <button type="button" className={styles.primary} disabled={busy || saving || (!!savedId && !hasUnsavedChanges && !savesPreview)} onClick={() => void save()}>{saving ? "Saving…" : saveLabel}</button>
+        <p role="status" className={styles.saveState}>{!savedId ? "Not saved yet" : hasUnsavedChanges ? "Unsaved changes" : savedMessage || "All changes saved"}</p>
       </footer>
-      {step === 4 && !preview && <p>Start a preview before saving your configuration.</p>}
+      {step === 4 && !preview && <p>A preview is optional. Try the conversation here before saving, or save now and test later.</p>}
+      {savedId && !project && <p><Link href={`/admin/organisations/${orgId}/projects/${savedId}`}>Open the project</Link></p>}
       {onAdvanced && <button type="button" className={styles.advanced} disabled={busy || saving} onClick={onAdvanced}>Set up guided onboarding or a ticket simulation</button>}
     </main>
   )

@@ -1,4 +1,4 @@
-.wizard { max-width: 880px; margin: 0 auto; padding: clamp(20px, 4vw, 48px); color: var(--foreground); }
+.wizard { max-width: 960px; margin: 0 auto; padding: clamp(20px, 4vw, 48px); color: var(--foreground); }
 .wizard h1 { font-size: clamp(24px, 3vw, 34px); font-weight: 500; letter-spacing: -0.03em; margin: 24px 0 12px; text-wrap: balance; }
 .wizard h2 { font-size: 20px; font-weight: 500; margin: 0 0 24px; }
 .wizard h3 { font-size: 16px; margin-top: 32px; }
@@ -13,7 +13,7 @@
 .fields label { display: grid; gap: 8px; margin: 20px 0; font-size: 14px; }
 .fields input:not([type=checkbox]), .fields textarea, .fields select { box-sizing: border-box; width: 100%; border: 1px solid var(--border); border-radius: var(--radius-control, 6px); background: var(--surface); color: inherit; padding: 12px; font: inherit; line-height: 1.5; }
 .fields input[type=number] { max-width: 120px; font-variant-numeric: tabular-nums; }
-.fields textarea { resize: vertical; }
+.fields textarea { resize: vertical; min-height: 96px; }
 .fields .check { display: flex; align-items: center; gap: 10px; min-height: 44px; }
 .check input { width: 18px; height: 18px; flex: 0 0 auto; accent-color: currentColor; }
 .wizard :is(button, input, textarea, select, a):focus-visible { outline: 2px solid var(--focus-ring, currentColor); outline-offset: 3px; }
@@ -70,3 +70,7 @@
 .evidenceItem blockquote p { color: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
 .transcript article { scroll-margin-top: 24px; }
 .transcript article:target { outline: 1px solid var(--foreground); outline-offset: 4px; }
+
+.actions { align-items: center; }
+.wizard .saveState { margin: 0 0 0 auto; font-size: 13px; }
+@media (max-width: 540px) { .wizard .saveState { margin: 0; flex-basis: 100%; } }
