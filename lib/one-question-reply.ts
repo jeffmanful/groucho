@@ -61,7 +61,9 @@ Examples:
 - Same applicant message. Draft: "How did your friend respond?" Verdict: pass. It is a single ordinary question grounded in their account.
 If no concrete violation applies, return pass and leave replacement empty. Do not rewrite an acceptable question just because another would be useful too. The applicant ${input.answeringApplicant ? "asked a direct question that deserves a brief answer" : "did not ask a direct question, so the draft should be a standalone follow-up"}. A Forum reason is available: ${input.forumReasonAvailable}. ${forcedTool ? "Call review_one_question_reply." : "Return the verdict, replacement and usesForumReason as JSON."}`
   let reply = input.reply
-  for (let attempt = 0; attempt < 2; attempt++) {
+  const seen = new Set([reply])
+  // A second repair can still be useful. Give it one independent check before falling back.
+  for (let attempt = 0; attempt < 3; attempt++) {
     const shapeIssue = oneQuestionReplyIssue(reply, input.answeringApplicant, input.registeredQuestion)
     const request = { model: input.model, max_tokens: 1200, system, messages: [{
       role: "user" as const, content: JSON.stringify({
@@ -83,8 +85,11 @@ If no concrete violation applies, return pass and leave replacement empty. Do no
         (!review.usesForumReason || input.forumReasonAvailable)) {
       return { reply, usesForumReason: review.usesForumReason }
     }
-    if (review.verdict !== "repair" || typeof review.replacement !== "string" || !review.replacement.trim()) break
-    reply = review.replacement.trim()
+    if (review.verdict !== "repair" || typeof review.replacement !== "string") break
+    const replacement = review.replacement.trim()
+    if (!replacement || seen.has(replacement)) break
+    seen.add(replacement)
+    reply = replacement
   }
   throw new Error("No validated one-question reply")
 }

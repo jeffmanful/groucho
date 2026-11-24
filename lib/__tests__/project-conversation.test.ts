@@ -117,7 +117,7 @@ describe("Forum Early Access one-question replies", () => {
     expect(mocks.database).not.toHaveBeenCalled()
   })
 
-  it("reviews a compound question with one question mark in saved execution and keeps a failed repair retryable", async () => {
+  it("keeps the answer and uses a direct fallback if the reviewer passes an invalid repair", async () => {
     const savedContext = { organisationId, projectId, apiKeyId: null, settings: normalizeProjectSettings(projectConversationSettings(earlyAccess)) }
     mocks.history = opening(earlyAccess)
     mocks.create
@@ -125,21 +125,52 @@ describe("Forum Early Access one-question replies", () => {
       .mockResolvedValueOnce(questionReview("repair", "What did you do? What did you say?"))
       .mockResolvedValueOnce(questionReview("pass"))
     const result = await postDemoConversation({ context: savedContext, sessionId: "early-access", message: "I went to a show." })
-    expect(result.status).toBe(503)
-    expect(await result.json()).toMatchObject({ retryable: true })
+    expect(result.status).toBe(200)
+    expect(await result.json()).toMatchObject({ message: "What else would you like to share?", status: "active" })
     expect(JSON.parse(mocks.create.mock.calls[1][0].messages[0].content)).not.toHaveProperty("shapeIssue")
-    expect(mocks.writes).toEqual([])
-
-    mocks.create
-      .mockResolvedValueOnce(reply("How was the sound at the packed venue?"))
-      .mockResolvedValueOnce(questionReview("repair", "What stood out during the show?"))
-      .mockResolvedValueOnce(questionReview("pass"))
-    const retried = await postDemoConversation({ context: savedContext, sessionId: "early-access", message: "I went to a show." })
-    expect(await retried.json()).toMatchObject({ message: "What stood out during the show?", status: "active" })
     expect(mocks.writes.map(({ role, content }) => ({ role, content }))).toEqual([
       { role: "user", content: "I went to a show." },
-      { role: "assistant", content: "What stood out during the show?" },
+      { role: "assistant", content: "What else would you like to share?" },
     ])
+  })
+
+  it("checks the second repair and recovers a grounded question without asking the applicant to retry", async () => {
+    const started = await (await POST(request({ action: "start", config: earlyAccess, projectId }), previewParams)).json()
+    mocks.create
+      .mockResolvedValueOnce(reply("How was the sound at the packed venue?"))
+      .mockResolvedValueOnce(questionReview("repair", "Thanks for sharing. What stood out?"))
+      .mockResolvedValueOnce(questionReview("repair", "What stood out during the show?"))
+      .mockResolvedValueOnce(questionReview("pass"))
+    const result = await (await POST(request({ action: "message", token: started.token, message: "I went to a show." }), previewParams)).json()
+    expect(result).toMatchObject({ message: "What stood out during the show?", status: "active" })
+    expect(verifyProjectPreview(result.token, organisationId, "member:author")?.transcript.slice(1).map(turn => turn.content)).toEqual([
+      "I went to a show.", "What stood out during the show?",
+    ])
+    expect(mocks.create).toHaveBeenCalledTimes(4)
+  })
+
+  it("holds the approved choice wording and options when a review is unavailable", async () => {
+    const configured: SignalProjectConversationConfig = { ...earlyAccess, signals: [{
+      id: "s_shows", name: "Live shows", understanding: "What type of shows they attend.", evidence: "", examples: [], explore: true,
+      question: "What kind of shows do you go to?", answerType: "singleSelect", options: ["In person", "Online"],
+    }] }
+    const started = await (await POST(request({ action: "start", config: configured, projectId }), previewParams)).json()
+    mocks.create.mockResolvedValueOnce(reply("What kind of shows do you go to?", { choiceKey: "s_shows", choiceIntroduction: "Thanks for sharing." }))
+      .mockRejectedValueOnce(new Error("Reviewer unavailable"))
+    const result = await (await POST(request({ action: "message", token: started.token, message: "I went to a show." }), previewParams)).json()
+    expect(result).toMatchObject({ message: "What kind of shows do you go to?", ui: { inputType: "singleSelect", options: ["In person", "Online"] } })
+  })
+
+  it("keeps a direct question active without claiming unverified facts if its repair repeats itself", async () => {
+    const started = await (await POST(request({ action: "start", config: earlyAccess, projectId }), previewParams)).json()
+    const draft = "The Forum has a confirmed venue and charges a fee."
+    mocks.create.mockResolvedValueOnce(reply(draft)).mockResolvedValueOnce(questionReview("repair", draft))
+    const result = await (await POST(request({ action: "message", token: started.token, message: "Is the Forum free?" }), previewParams)).json()
+    expect(result).toMatchObject({ message: "I couldn’t check that just now.", status: "active" })
+    expect(verifyProjectPreview(result.token, organisationId, "member:author")?.transcript.slice(1).map(turn => turn.content)).toEqual([
+      "Is the Forum free?", "I couldn’t check that just now.",
+    ])
+    expect(mocks.create).toHaveBeenCalledTimes(2)
   })
 
   it("allows one grounded Forum reason and repairs a second attempt without spending the allowance again", async () => {

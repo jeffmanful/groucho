@@ -14,7 +14,7 @@ import { supportsForcedToolChoice } from "@/lib/gatekeeper-models"
 import { queueSessionCompletion } from "@/lib/session-completion-jobs"
 import { logLlmUsage } from "@/lib/llm-usage"
 import { log } from "@/lib/logger"
-import { ONE_QUESTION_REPLY_RULES, ONE_QUESTION_REVIEW_MODEL, reviewOneQuestionReply } from "@/lib/one-question-reply"
+import { ONE_QUESTION_REPLY_RULES, ONE_QUESTION_REVIEW_MODEL, oneQuestionReplyIssue, reviewOneQuestionReply } from "@/lib/one-question-reply"
 import type { ProjectContext } from "@/lib/project-resolution"
 import { REQUEST_ID_HEADER } from "@/lib/request-trace"
 import { supabase } from "@/lib/supabase"
@@ -706,7 +706,7 @@ Review the current applicant answer against all signals. Return signalEvidence u
     ? config.resolveInteraction?.(proposal.interactionProposal, shows) ?? null
     : null
   const close = requestedClose
-  const activeChoice = !close && proposal.boundary === "none" ? choiceFor(proposal) : undefined
+  let activeChoice = !close && proposal.boundary === "none" ? choiceFor(proposal) : undefined
   if (requiresQuestion && !close && !firstBoundaryTurn && !activeChoice && !oneQuestion(rich?.question ?? proposal.reply).includes("?")) {
     log.error(operation("active_reply_question_missing"), {
       requestId: input.requestId, sessionId: input.sessionId, turnCount,
@@ -714,13 +714,6 @@ Review the current applicant answer against all signals. Return signalEvidence u
     return json({ error: "Groucho could not respond. Please try again." }, input.requestId, 503)
   }
   const activeRich = close ? null : rich
-  const ui = activeChoice
-    ? { ...DEFAULT_INTERACTION_SPEC, inputType: activeChoice.inputType ?? "singleSelect" as const, options: [...activeChoice.options] }
-    : activeRich?.kind === "reference"
-    ? { ...DEFAULT_INTERACTION_SPEC, inputType: "text" as const, referenceCards: activeRich.cards }
-    : activeRich?.kind === "choice"
-      ? { ...DEFAULT_INTERACTION_SPEC, inputType: "mediaChoice" as const, mediaChoice: activeRich.interaction }
-      : DEFAULT_INTERACTION_SPEC
   const boundaryStatement = proposal.reply.split(/\n\s*\n/)[0]
     .replace(/\s*[^.!?]*\?[\s\S]*$/, "").trim()
   const choiceReply = activeChoice && config.choiceIntroductions ? proposal.choiceIntroduction ?? "" : ""
@@ -751,11 +744,25 @@ Review the current applicant answer against all signals. Return signalEvidence u
       reply = reviewed.reply
       usedForumReason = reviewed.usesForumReason
     } catch (error) {
-      log.warn(operation("one_question_review_failed"), { requestId: input.requestId, sessionId: input.sessionId,
+      // Keep the draft private and the current answer. Only use server-approved or neutral copy.
+      if (!applicantQuestion && activeChoice && !oneQuestionReplyIssue(activeChoice.question, false)) {
+        reply = activeChoice.question
+      } else {
+        activeChoice = undefined
+        reply = applicantQuestion ? "I couldn’t check that just now." : "What else would you like to share?"
+      }
+      log.warn(operation("one_question_fallback"), { requestId: input.requestId, sessionId: input.sessionId,
+        fallback: applicantQuestion ? "direct_answer" : activeChoice ? "registered_choice" : "open_question",
         detail: error instanceof Error ? error.message : String(error) })
-      return json({ error: "Groucho could not respond. Please try again.", retryable: true }, input.requestId, 503)
     }
   }
+  const ui = activeChoice
+    ? { ...DEFAULT_INTERACTION_SPEC, inputType: activeChoice.inputType ?? "singleSelect" as const, options: [...activeChoice.options] }
+    : activeRich?.kind === "reference"
+    ? { ...DEFAULT_INTERACTION_SPEC, inputType: "text" as const, referenceCards: activeRich.cards }
+    : activeRich?.kind === "choice"
+      ? { ...DEFAULT_INTERACTION_SPEC, inputType: "mediaChoice" as const, mediaChoice: activeRich.interaction }
+      : DEFAULT_INTERACTION_SPEC
   const details = detailsFor(proposal)
   const completion = close && config.completionMessage
     ? { mode: config.completionMode ?? "simulation", complete: missingFor(proposal).length === 0, message: config.completionMessage }
