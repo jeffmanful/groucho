@@ -125,6 +125,19 @@ const EARLY_ACCESS: Scenario[] = [
     expect: { maxAnswers: 5 },
   },
   {
+    id: "solo-producer", description: "A solo producer early in a project who keeps music to themselves. Reproduces a preview run where Groucho asked who they had played an album to and who gets involved in their tracks.",
+    character: "You are a bedroom producer, friendly but a bit guarded. You make music alone and have not shared much with anyone yet. You answer honestly and briefly, and you can explain why you like the music you mention.",
+    opening: "I've had the new Skepta album on repeat, and I've been starting an instrumental project that mixes UK grime with drum and bass.",
+    answers: {
+      "What they make or do": ["I'm collecting sample references and trying out synth sounds for it. Nothing finished yet.", "Mostly evenings after work, on a laptop with headphones."],
+      "How music lives in their life": ["I haven't really played it to anyone. I listen on my own, mostly on the bus.", "I like how raw the production is. It makes me want to keep my own stuff rough."],
+      "Effort for others or a scene": ["Not much. I once made a beat for a mate's freestyle video, years ago."],
+      "Offer and ask": ["I could share sample packs I've made. I'd want feedback on whether my drums hit hard enough."],
+      "Basics": ["Producer, based in Manchester. Nothing public yet."],
+    },
+    fallback: ["Not really, no.", "I'm not sure.", "That's about it."],
+  },
+  {
     id: "deep-diver", description: "Engaged and talkative about one subject. Groucho should enjoy it, then move to other areas without an abrupt switch.",
     opening: "I've been obsessed with dub techno all week. I spent Sunday going through the whole Basic Channel catalogue and reading about how they cut their records.",
     answers: {

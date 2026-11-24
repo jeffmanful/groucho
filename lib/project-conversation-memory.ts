@@ -197,7 +197,7 @@ export type SelfCheckKind = "passed_over" | "rein_in" | "repeating" | "pivot" | 
 /** One steering note for the turn. allowBridge lets a strict reply style open with a short linking clause. */
 export type SelfCheck = { kind: SelfCheckKind; note: string; allowBridge: boolean }
 
-export const BRIDGE_ALLOWANCE = "On this turn the question sentence may begin with one short clause that acknowledges what they just shared or marks the change of subject, for example “Leaving the film for a moment, where are you based?”. Keep it to a few words, with no praise and no summary."
+export const BRIDGE_ALLOWANCE = "On this turn the question may start with a few words responding to what they just said, the way a person would. Never announce or mark a change of subject (no \"leaving that for a moment\", \"moving on\" or \"changing the subject\"), and no praise, summary or judgement of where they are or how far along they are."
 
 type CheckedSignal = { id: string; name: string; canAsk: boolean; asked: number }
 const overlaps = (a?: string, b?: string) => Boolean(a && b && (contains(a, b) || contains(b, a)))
