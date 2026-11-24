@@ -80,7 +80,7 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
     const snapshot = validated.config
     try {
       const data = await readResponse(await fetch(`/api/admin/organisations/${orgId}/conversation-preview`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "start", config: snapshot }),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "start", config: snapshot, projectId: project?.id }),
       }))
       setPreview(data); setTestedConfig(JSON.stringify(snapshot)); setTranscript([{ role: "assistant", content: data.message }]); setAnswer(""); setSelected([])
     } catch (e) { setError(e instanceof Error ? e.message : "Could not start preview.") }

@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@anthropic-ai/sdk", () => ({ default: class { messages = { create: mocks.create } } }))
 vi.mock("@/lib/llm-usage", () => ({ logLlmUsage: vi.fn() }))
 vi.mock("@/lib/session-completion-jobs", () => ({ queueSessionCompletion: mocks.queue }))
-vi.mock("@/lib/gatekeeper-models", () => ({ colorsThinConversationModel: () => "test-model", supportsForcedToolChoice: () => true }))
+vi.mock("@/lib/gatekeeper-models", () => ({ colorsThinConversationModel: () => "test-model", supportsForcedToolChoice: (model: string) => !model.startsWith("claude-sonnet-5") }))
 vi.mock("@/lib/admin-actor", () => ({ resolveAdminActor: async () => mocks.actor }))
 vi.mock("@/lib/org-access", () => ({
   requireOrgAdmin: async () => mocks.denied ? NextResponse.json({ error: "Forbidden" }, { status: 403 }) : null,
@@ -56,6 +56,11 @@ function reply(text: string, extra = {}) {
     reply: text, close: false, boundary: "none", boundaryQuestion: "", addsNewContext: true, choiceKey: "none", facts: [], signalEvidence: [], ...extra,
   } }] }
 }
+function questionReview(verdict: "pass" | "repair", replacement = "", usesForumReason = false) {
+  return { stop_reason: "end_turn", usage: {}, content: [{
+    type: "text", text: JSON.stringify({ verdict, replacement, usesForumReason }),
+  }] }
+}
 function opening(c: ProjectConversationConfig = config): ConversationTranscriptEntry[] {
   const runtime = projectConversationConfiguration(c)
   return [{ role: "assistant", content: projectConversationProfile(c).opening, metadata: { conversation_engine: runtime.marker, conversation_profile: runtime.id } }]
@@ -67,6 +72,98 @@ beforeEach(() => {
   mocks.history = opening(config)
 })
 afterEach(() => vi.unstubAllEnvs())
+
+describe("Forum Early Access one-question replies", () => {
+  const organisationId = "8f945897-31bf-4072-9aad-1c02e090e6dd"
+  const projectId = "570484ab-f1b4-467a-bf1e-75dedd09dbaa"
+  const previewParams = { params: Promise.resolve({ orgId: organisationId }) }
+  const earlyAccess = {
+    ...DEFAULT_SIGNAL_CONVERSATION,
+    openingQuestion: "What was the last show you went to?",
+    intent: "Learn what the visitor did around a recent show.",
+    projectContext: "The Forum is online. People share unfinished work here.",
+    closingMessage: "Thanks for chatting.",
+  }
+
+  it("repairs Philipp’s Tiefgarage replies through the wizard and handles a direct question, correction and stop", async () => {
+    const started = await (await POST(request({ action: "start", config: earlyAccess, projectId }), previewParams)).json()
+    const firstDraft = "Thirty people in a small bar in Hamburg sounds like a night where everyone in the room could hear the drums. After the set, what did you do or say to the band?"
+    const secondDraft = "Telling a friend the vocals were lost in the mix is the kind of honest note that helps a band the next time they play. Did he say anything back, or did you talk through what might change?"
+    mocks.create
+      .mockResolvedValueOnce(reply(firstDraft))
+      .mockResolvedValueOnce(questionReview("repair", "What did you do after the set?"))
+      .mockResolvedValueOnce(questionReview("pass"))
+      .mockResolvedValueOnce(reply(secondDraft))
+      .mockResolvedValueOnce(questionReview("repair", "What did he say when you told him?"))
+      .mockResolvedValueOnce(questionReview("pass"))
+      .mockResolvedValueOnce(reply("Yes, the Forum is online."))
+      .mockResolvedValueOnce(questionReview("pass"))
+      .mockResolvedValueOnce(reply("Thanks for clarifying.", { visitorIntent: "stop" }))
+    const first = await (await POST(request({ action: "message", token: started.token, message: "they're called Tiefgarage, kind of post-punk. it was at a small bar in Hamburg, maybe 30 people" }), previewParams)).json()
+    const second = await (await POST(request({ action: "message", token: first.token, message: "I told him the new song was the best one but the mix was too muddy, you couldn’t hear the vocals" }), previewParams)).json()
+    const direct = await (await POST(request({ action: "message", token: second.token, message: "Is the Forum online?" }), previewParams)).json()
+    const final = await (await POST(request({ action: "message", token: direct.token, message: "Small correction: it was in Altona. I’d like to stop now." }), previewParams)).json()
+    expect(first.message).toBe("What did you do after the set?")
+    expect(second.message).toBe("What did he say when you told him?")
+    expect(direct).toMatchObject({ message: "Yes, the Forum is online.", status: "active" })
+    expect(final).toMatchObject({ message: "Thanks for clarifying.\n\nThanks for chatting.", status: "completed" })
+    const transcript = verifyProjectPreview(final.token, organisationId, "member:author")?.transcript
+    expect(transcript?.filter(turn => turn.role === "assistant").map(turn => turn.content)).toEqual([
+      expect.stringContaining(earlyAccess.openingQuestion), first.message, second.message, direct.message, final.message,
+    ])
+    expect(JSON.parse(mocks.create.mock.calls[1][0].messages[0].content)).toMatchObject({ draft: firstDraft, shapeIssue: expect.any(String) })
+    expect(JSON.parse(mocks.create.mock.calls[4][0].messages[0].content).transcript).toContainEqual({ role: "assistant", content: first.message })
+    expect(mocks.create).toHaveBeenCalledTimes(9)
+    expect(mocks.database).not.toHaveBeenCalled()
+  })
+
+  it("reviews a compound question with one question mark in saved execution and keeps a failed repair retryable", async () => {
+    const savedContext = { organisationId, projectId, apiKeyId: null, settings: normalizeProjectSettings(projectConversationSettings(earlyAccess)) }
+    mocks.history = opening(earlyAccess)
+    mocks.create
+      .mockResolvedValueOnce(reply("What did you do or say to them?"))
+      .mockResolvedValueOnce(questionReview("repair", "What did you do? What did you say?"))
+      .mockResolvedValueOnce(questionReview("pass"))
+    const result = await postDemoConversation({ context: savedContext, sessionId: "early-access", message: "I went to a show." })
+    expect(result.status).toBe(503)
+    expect(await result.json()).toMatchObject({ retryable: true })
+    expect(JSON.parse(mocks.create.mock.calls[1][0].messages[0].content)).not.toHaveProperty("shapeIssue")
+    expect(mocks.writes).toEqual([])
+
+    mocks.create
+      .mockResolvedValueOnce(reply("How was the sound at the packed venue?"))
+      .mockResolvedValueOnce(questionReview("repair", "What stood out during the show?"))
+      .mockResolvedValueOnce(questionReview("pass"))
+    const retried = await postDemoConversation({ context: savedContext, sessionId: "early-access", message: "I went to a show." })
+    expect(await retried.json()).toMatchObject({ message: "What stood out during the show?", status: "active" })
+    expect(mocks.writes.map(({ role, content }) => ({ role, content }))).toEqual([
+      { role: "user", content: "I went to a show." },
+      { role: "assistant", content: "What stood out during the show?" },
+    ])
+  })
+
+  it("allows one grounded Forum reason and repairs a second attempt without spending the allowance again", async () => {
+    const started = await (await POST(request({ action: "start", config: earlyAccess, projectId }), previewParams)).json()
+    const withReason = "Since people share unfinished work here, what would you bring along?"
+    mocks.create
+      .mockResolvedValueOnce(reply(withReason))
+      .mockResolvedValueOnce(questionReview("pass", "", true))
+      .mockResolvedValueOnce(reply("Since people share unfinished work here, how far along is the recording?"))
+      .mockResolvedValueOnce(questionReview("repair", "How far along is the recording?"))
+      .mockResolvedValueOnce(questionReview("pass"))
+    const first = await (await POST(request({ action: "message", token: started.token, message: "I traded feedback with a band at a show." }), previewParams)).json()
+    const later = await (await POST(request({ action: "message", token: first.token, message: "A recording I've been making." }), previewParams)).json()
+    expect(first.message).toBe(withReason)
+    expect(later.message).toBe("How far along is the recording?")
+    expect(mocks.create.mock.calls[3][0].system).toContain("A Forum reason is available: false.")
+  })
+
+  it("scopes the policy to the identified project and organisation", () => {
+    expect(projectConversationConfiguration(earlyAccess, { organisationId, projectId }).oneQuestionReply).toBeDefined()
+    expect(projectConversationConfiguration(earlyAccess, { organisationId, projectId: "another-project" }).oneQuestionReply).toBeUndefined()
+    expect(projectConversationConfiguration(earlyAccess, { organisationId: "another-org", projectId }).oneQuestionReply).toBeUndefined()
+  })
+})
 
 describe("client-authored project conversation contract", () => {
   it("round trips all six controls, without requiring a global persona or dropping unrelated settings", () => {

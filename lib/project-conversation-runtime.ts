@@ -3,6 +3,12 @@ import { createHash } from "node:crypto"
 import type { ConversationConfiguration, ConversationChoice } from "@/lib/conversation-engine"
 import { colorsThinConversationModel } from "@/lib/gatekeeper-models"
 import { DEFAULT_PROJECT_CLOSING_MESSAGE, validateProjectConversation, projectConversationOpening, projectOpeningQuestion, signalQuestion, type ProjectConversationConfig } from "@/lib/project-conversation-config"
+import type { ProjectContext } from "@/lib/project-resolution"
+
+// Scope this rollout to the existing COLORS Early Access project, including its draft previews.
+export function isForumEarlyAccessProject(organisationId: string, projectId: unknown): projectId is string {
+  return organisationId === "8f945897-31bf-4072-9aad-1c02e090e6dd" && projectId === "570484ab-f1b4-467a-bf1e-75dedd09dbaa"
+}
 
 export function projectConversationRevision(config: ProjectConversationConfig) {
   const validated = validateProjectConversation(config)
@@ -44,7 +50,7 @@ Respect requests to stop. Set visitorIntent=stop when the visitor declines furth
 BASE REPLY DEFAULTS
 ${REPLY_DEFAULTS}`
 }
-export function projectConversationConfiguration(config: ProjectConversationConfig): ConversationConfiguration {
+export function projectConversationConfiguration(config: ProjectConversationConfig, project?: Pick<ProjectContext, "organisationId" | "projectId">): ConversationConfiguration {
   const profile = projectConversationProfile(config)
   const application = config.version === 2 && config.applicationReview === "colors_forum"
   return {
@@ -52,10 +58,13 @@ export function projectConversationConfiguration(config: ProjectConversationConf
     resolveOpeningConfiguration: application ? metadata => {
       const pinned = validateProjectConversation(metadata.project_conversation)
       if (!pinned.ok || pinned.config.version !== 2 || !pinned.config.applicationReview) return null
-      const runtime = projectConversationConfiguration(pinned.config)
+      const runtime = projectConversationConfiguration(pinned.config, project)
       return runtime.id === metadata.conversation_profile && runtime.marker === metadata.conversation_engine ? runtime : null
     } : undefined,
     authoredReplyStyle: true, choiceIntroductions: true, visitorIntent: true, maxAnswers: config.maxAnswers,
+    ...(project && isForumEarlyAccessProject(project.organisationId, project.projectId)
+      ? { oneQuestionReply: { approvedContext: config.version === 2 ? config.projectContext ?? "" : "" } }
+      : {}),
     closingMessage: config.version === 2 && config.closingMessage?.trim() || DEFAULT_PROJECT_CLOSING_MESSAGE,
     completionMessage: application ? undefined : "Conversation complete.", completionMode: "conversation",
     buildPrompt: ({ turnCount }) => projectConversationPrompt(config, turnCount),

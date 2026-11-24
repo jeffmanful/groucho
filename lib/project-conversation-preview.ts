@@ -4,6 +4,7 @@ import { validateProjectConversation, type ProjectConversationConfig } from "@/l
 
 export type ProjectConversationPreview = {
   organisationId: string
+  projectId?: string
   actor: string
   expiresAt: number
   config: ProjectConversationConfig

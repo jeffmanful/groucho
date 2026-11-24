@@ -14,6 +14,7 @@ import { supportsForcedToolChoice } from "@/lib/gatekeeper-models"
 import { queueSessionCompletion } from "@/lib/session-completion-jobs"
 import { logLlmUsage } from "@/lib/llm-usage"
 import { log } from "@/lib/logger"
+import { ONE_QUESTION_REPLY_RULES, ONE_QUESTION_REVIEW_MODEL, reviewOneQuestionReply } from "@/lib/one-question-reply"
 import type { ProjectContext } from "@/lib/project-resolution"
 import { REQUEST_ID_HEADER } from "@/lib/request-trace"
 import { supabase } from "@/lib/supabase"
@@ -177,6 +178,8 @@ export type ConversationConfiguration = {
   naturalConversation?: boolean
   /** Authored text may use its own length, structure and follow-up style. */
   authoredReplyStyle?: boolean
+  /** Review ordinary replies against the project's one-question and grounding rules. */
+  oneQuestionReply?: { approvedContext: string }
   /** Compose a brief acknowledgement with the exact registered question. */
   choiceIntroductions?: boolean
   visitorIntent?: boolean
@@ -291,6 +294,9 @@ export async function postConversation(input: {
   const choices = config.choices ?? {}
   const natural = config.naturalConversation === true
   const authoredStyle = config.authoredReplyStyle === true
+  const oneQuestionMode = config.oneQuestionReply
+  const forumReasonAvailable = Boolean(oneQuestionMode) && !history.some(entry =>
+    entry.role === "assistant" && record(entry.metadata).forum_question_reason === true)
   const requiresQuestion = !natural && !authoredStyle
   const activeText = requiresQuestion ? oneQuestion : (reply: string) => reply.trim()
   if (record(history[0].metadata).conversation_engine !== config.marker) {
@@ -494,6 +500,7 @@ export async function postConversation(input: {
     const base = {
       model, max_tokens: maxTokens,
       system: system + signalState + (config.replyGuidance ? "\n\n" + config.replyGuidance : "") + "\n\n" + instruction +
+        (oneQuestionMode ? `\n\n${ONE_QUESTION_REPLY_RULES}\nA Forum reason is ${forumReasonAvailable ? "available if useful" : "already used"}.` : "") +
         (config.signals?.length ? "\nIndependently of whether this reply continues or closes, update all signals supported by the CURRENT applicant answer. Apply corrections to earlier evidence with supersedes=true, replacing outdated summaries and sources. Do not drop new evidence or corrections because the applicant also wants to stop. Keep the spoken closing brief while returning the complete evidence updates." : "") +
         (forcedTool ? "" : "\n\nReturn the groucho_converse fields as one JSON object."),
       messages: [...conversation, { role: "user" as const, content: currentAnswer }],
@@ -584,7 +591,7 @@ export async function postConversation(input: {
   try {
     const forcedClosePossible = answerLimitReached || config.visitorIntent === true || !applicantQuestion &&
       (turnCount >= (config.softCloseAnswers ?? SOFT_CLOSE_ANSWERS) || turnCount >= emergencyLimit || (turnCount >= 3 && quietTurns >= 1))
-    const streamReply = forcedClosePossible ? undefined : input.onReplyDelta
+    const streamReply = forcedClosePossible || oneQuestionMode ? undefined : input.onReplyDelta
     proposal = await requestReply(operation("conversation"), answerLimitReached ? limitInstruction : applicantQuestion ? questionInstruction :
       stoppedByApplicant ? "The applicant wants to stop. Acknowledge that briefly and close without a question or decision." :
       turnCount >= emergencyLimit ? "The emergency conversation limit is reached. Acknowledge the latest point and close neutrally without a question or decision." :
@@ -720,7 +727,7 @@ Review the current applicant answer against all signals. Return signalEvidence u
   const composedChoice = activeChoice
     ? [choiceReply && choiceReply.length <= 500 && !choiceReply.includes("?") ? choiceReply : "", activeChoice.question].filter(Boolean).join("\n\n")
     : undefined
-  const reply = natural && !firstBoundaryTurn
+  let reply = natural && !firstBoundaryTurn
     ? activeChoice?.question ?? proposal.reply.trim()
     : close
     ? conversationalClosing(
@@ -731,6 +738,24 @@ Review the current applicant answer against all signals. Return signalEvidence u
     : firstBoundaryTurn
       ? `${boundaryStatement || config.consentStatement || DEFAULT_PRIVACY_STATEMENT} ${boundaryQuestion}`.trim()
       : activeText(composedChoice ?? activeRich?.question ?? proposal.reply)
+  let usedForumReason = false
+  if (oneQuestionMode && !close && proposal.boundary === "none") {
+    try {
+      const reviewed = await reviewOneQuestionReply({
+        model: ONE_QUESTION_REVIEW_MODEL, reply, answeringApplicant: applicantQuestion, registeredQuestion: activeChoice?.question,
+        forumReasonAvailable, approvedContext: oneQuestionMode.approvedContext, transcript: conversation, applicantMessage: currentAnswer,
+        onUsage: response => logLlmUsage({ operation: operation("one_question_review"), provider: "anthropic", model: ONE_QUESTION_REVIEW_MODEL, usage: response.usage,
+          providerResponseId: response.id, requestId: input.requestId, organisationId,
+          projectId: input.previewTranscript ? undefined : projectId, sessionId: input.previewTranscript ? undefined : input.sessionId }),
+      })
+      reply = reviewed.reply
+      usedForumReason = reviewed.usesForumReason
+    } catch (error) {
+      log.warn(operation("one_question_review_failed"), { requestId: input.requestId, sessionId: input.sessionId,
+        detail: error instanceof Error ? error.message : String(error) })
+      return json({ error: "Groucho could not respond. Please try again.", retryable: true }, input.requestId, 503)
+    }
+  }
   const details = detailsFor(proposal)
   const completion = close && config.completionMessage
     ? { mode: config.completionMode ?? "simulation", complete: missingFor(proposal).length === 0, message: config.completionMessage }
@@ -748,6 +773,7 @@ Review the current applicant answer against all signals. Return signalEvidence u
       boundary: proposal.boundary,
       conversation_progress: { ...(addsNewContext === undefined ? {} : { adds_new_context: addsNewContext }), ...(stopReason ? { stop_reason: stopReason } : {}) },
       conversation_model: model,
+      ...(usedForumReason ? { forum_question_reason: true } : {}),
       ...(rich ? { application_rich_interaction: {
         kind: rich.kind,
         purpose: rich.purpose,

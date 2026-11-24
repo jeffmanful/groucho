@@ -125,7 +125,7 @@ Call groucho_converse exactly once. Set close only when finished. Set addsNewCon
 
 export async function postDemoConversation(input: Omit<Parameters<typeof postConversation>[0], "configuration"> & { context: ProjectContext }) {
   const custom = readProjectConversation(input.context.settings.raw)
-  if (custom) return postConversation({ ...input, runCompletion: custom.version === 2 && custom.applicationReview ? input.runCompletion !== false : false, configuration: projectConversationConfiguration(custom) })
+  if (custom) return postConversation({ ...input, runCompletion: custom.version === 2 && custom.applicationReview ? input.runCompletion !== false : false, configuration: projectConversationConfiguration(custom, input.context) })
   const profile = demoConversationProfile(input.context.settings.raw) as DemoProfile | null
   const personaId = input.context.settings.raw.persona_id
   if (!profile || typeof personaId !== "string") return NextResponse.json({ error: "Demo conversation is not configured" }, { status: 503 })

@@ -6,7 +6,7 @@ import { isSameOriginMutation } from "@/lib/platform-admin-access"
 import { checkRateLimit } from "@/lib/rate-limit"
 import { postConversation, type ConversationTranscriptEntry } from "@/lib/conversation-engine"
 import { validateProjectConversation, projectConversationOpening, projectConversationSettings } from "@/lib/project-conversation-config"
-import { projectConversationConfiguration, projectConversationProfile } from "@/lib/project-conversation-runtime"
+import { isForumEarlyAccessProject, projectConversationConfiguration, projectConversationProfile } from "@/lib/project-conversation-runtime"
 import { signProjectPreview, verifyProjectPreview } from "@/lib/project-conversation-preview"
 import { normalizeProjectSettings } from "@/lib/project-settings"
 import { emptySignalEvidence } from "@/lib/project-conversation-evidence"
@@ -32,6 +32,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ org
       const validated = validateProjectConversation(body.config)
       if (!validated.ok) return json({ error: validated.error }, 400)
       const config = validated.config
+      const projectId = isForumEarlyAccessProject(orgId, body.projectId) ? body.projectId : undefined
       const runtime = projectConversationConfiguration(config)
       const message = projectConversationOpening(config)
       const profile = projectConversationProfile(config)
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ org
         conversation_engine: runtime.marker, conversation_profile: runtime.id, ...(profile.openingChoice ? { conversation_choice_key: profile.openingChoice } : {}), ui,
       } }]
       return json({ message, status: "active", ui, ...(config.version === 2 ? { signalEvidence: emptySignalEvidence(config.signals) } : {}), token: signProjectPreview({
-        organisationId: orgId, actor: actorId, expiresAt: Date.now() + 60 * 60_000, config, transcript, status: "active",
+        organisationId: orgId, ...(projectId ? { projectId } : {}), actor: actorId, expiresAt: Date.now() + 60 * 60_000, config, transcript, status: "active",
       }) })
     }
     if (body.action !== "message" || typeof body.token !== "string") return json({ error: "Start a preview first." }, 400)
@@ -50,9 +51,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ org
     if (preview.status !== "active") return json({ error: "This preview is complete. Start a new preview." }, 409)
     const message = typeof body.message === "string" ? body.message.trim() : ""
     if (!message || message.length > 4000) return json({ error: "Enter a message of up to 4,000 characters." }, 400)
+    const context = { organisationId: orgId, projectId: preview.projectId ?? "preview", apiKeyId: null, settings: normalizeProjectSettings(projectConversationSettings(preview.config)) }
     const response = await postConversation({
-      configuration: projectConversationConfiguration(preview.config),
-      context: { organisationId: orgId, projectId: "preview", apiKeyId: null, settings: normalizeProjectSettings(projectConversationSettings(preview.config)) },
+      configuration: projectConversationConfiguration(preview.config, context),
+      context,
       sessionId: randomUUID(), message, previewTranscript: preview.transcript, runCompletion: false, reviewAuthoredSettings: true,
     })
     const result = await response.json()
