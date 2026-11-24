@@ -11,7 +11,7 @@ Current configuration guide, reviewed 16 November 2026. A project belongs to one
 | Gatekeeper + `conversation_engine: conversation_v1`, `conversation_profile: project` and `project_conversation` | Client-created flow and project-owned persona; shared runtime, hard answer budget and conversation completion; no assessment or delivery jobs |
 | Gatekeeper + `conversation_engine: conversation_v1` and registered `conversation_profile` | Shared public-demo runtime, named fields/options and simulation completion |
 | Gatekeeper + `conversation_engine: colors_forum` | Newer COLORS conversation and separate assessment pipeline |
-| Gatekeeper without either setting | Supported standard gatekeeper and its legacy advisory terminal outcomes |
+| Gatekeeper without either setting | Retired original engine: new conversations return `410` (`engine_retired`); reconfigure in the conversation wizard. Historical sessions stay readable |
 | Onboarding + `flow_config.steps` | Ordered configured intake, optional follow-ups/LLM features |
 | Ticket access | Isolated synthetic operator workspace; settings forced test/dry-run |
 

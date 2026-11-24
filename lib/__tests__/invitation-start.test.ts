@@ -1,8 +1,13 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it, vi, beforeAll, afterAll } from "vitest"
 vi.mock("@/lib/supabase", () => ({ supabase: { from: vi.fn() } }))
 import { supabase } from "@/lib/supabase"
 import { startGatekeeperSession } from "@/lib/start-gatekeeper-session"
 import { normalizeProjectSettings } from "@/lib/project-settings"
+
+// These tests exercise the retired original engine, so they turn it back on. Removed with the engine.
+beforeAll(() => { process.env.GROUCHO_LEGACY_ENGINE = "enabled" })
+afterAll(() => { delete process.env.GROUCHO_LEGACY_ENGINE })
+
 describe("invitation-only starts", () => {
   it("rejects missing or malformed invitations before creating a session, including identity-free auto-starts", async () => {
     const settings = normalizeProjectSettings({ application_invitation_required: true, project_type: "gatekeeper" })

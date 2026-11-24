@@ -1,4 +1,5 @@
 import { colorsEngineRoute, postColorsEngineTurn } from "@/lib/colors-engine-routing"
+import { legacyEngineEnabled, retiredEngineBody } from "@/lib/retired-engine"
 import { COMMUNITY_APPLICATION_CONTEXT, ARTIST_APPLICATION_CONTEXT, ARTIST_APPLICATION_OPENING } from "@/lib/artist-application"
 import Anthropic from "@anthropic-ai/sdk"
 import { NextResponse } from "next/server"
@@ -866,6 +867,9 @@ export async function postSessionMessage(
       })
     }
   }
+
+  // Everything below is the retired original engine. It no longer starts or continues conversations.
+  if (!legacyEngineEnabled()) return traceJson(input, retiredEngineBody, { status: 410 })
 
   const openingMessage = applicationOpeningMessageForSignals(
     settings.applicationExperience.opening_message,

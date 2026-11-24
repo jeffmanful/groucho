@@ -8,11 +8,11 @@ Current implementation, reviewed 2 November 2026. Configuration and persisted se
 | --- | --- | --- | --- |
 | Public persona demos | Gatekeeper project, `conversation_engine: conversation_v1`, registered profile | `completed`, explicit simulation completion | Named details and restart; no assessment/decision/fulfilment jobs |
 | Newer COLORS applications | `conversation_engine: colors_forum`; protected COLORS demo selects the adapter explicitly | `completed`, neutral applicant closing | Real applications queue assessment/profile/suitability and configured decision/webhook processing; reviewer demos skip automatic jobs |
-| Standard gatekeeper | Gatekeeper without a newer-engine setting, or a compatible historical session | `passed`, `redirected`, `rejected` are advisory outcomes | Configured completion/profile processing and independent client decision policy |
+| Retired original gatekeeper | Gatekeeper with no `conversation_engine` setting | New starts and messages return `410` with code `engine_retired`; historical `passed`, `redirected` and `rejected` sessions stay readable | None. Reconfigure the project in the conversation wizard. `GROUCHO_LEGACY_ENGINE=enabled` turns the engine back on temporarily |
 | Onboarding | `project_type: onboarding`, configured steps | `passed` after the configured flow | Optional LLM/extraction work only when configured; not a suitability verdict |
 | Ticket-access sandbox | `project_type: ticket_access` | Synthetic operator activity | Test/dry-run simulation, not a ticketing integration |
 
-The newer public/COLORS paths share `lib/conversation-engine.ts`. COLORS uses its compatibility adapter; demos add individual backend profiles and active database personas. Existing standard gatekeeper and onboarding code remains supported for those flows. Do not use legacy score/terminal prompts as templates for new public demos.
+The newer public/COLORS paths share `lib/conversation-engine.ts`. COLORS uses its compatibility adapter; demos add individual backend profiles and active database personas. Onboarding code remains supported. The original gatekeeper engine is retired and is being removed in stages; its code stays only behind `GROUCHO_LEGACY_ENGINE=enabled` until then. Do not use legacy score/terminal prompts as templates for new public demos.
 
 ## Boundaries
 

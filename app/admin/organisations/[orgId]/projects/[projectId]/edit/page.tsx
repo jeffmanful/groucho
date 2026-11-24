@@ -1,7 +1,8 @@
 "use client"
 
 import { ConversationProjectWizard } from "@/components/admin/ConversationProjectWizard"
-import { readProjectConversation } from "@/lib/project-conversation-config"
+import { DEFAULT_SIGNAL_CONVERSATION, readProjectConversation } from "@/lib/project-conversation-config"
+import { usesRetiredEngine } from "@/lib/retired-engine"
 import { defaultPersonaOption, fetchPersonaOptions, personaUpdateUrl, type PersonaOption } from "@/lib/persona-options"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
@@ -281,6 +282,17 @@ export default function EditProjectPage() {
 
   const conversation = readProjectConversation(existingSettings)
   if (!loading && hydrated && !loadError && conversation) return <ConversationProjectWizard key={projectId} orgId={orgId} project={{ id: projectId, name: form.name, slug: form.slug, config: conversation }} />
+  // A project on the retired engine can no longer hold conversations. Rebuild it in the wizard;
+  // its earlier sessions and reports stay as they are.
+  if (!loading && hydrated && !loadError && usesRetiredEngine(existingSettings)) {
+    return <>
+      <div style={{ padding: "2rem 2rem 0", maxWidth: "40rem" }}>
+        <h1 style={{ fontSize: "1.1rem", marginBottom: "0.5rem" }}>Reconfigure {form.name}</h1>
+        <p style={{ opacity: 0.7, lineHeight: 1.5 }}>This project was set up on Groucho&rsquo;s original conversation engine, which has been retired, so it cannot start new conversations. Set it up again below to use it. Earlier conversations and reports stay available.</p>
+      </div>
+      <ConversationProjectWizard key={projectId} orgId={orgId} project={{ id: projectId, name: form.name, slug: form.slug, config: DEFAULT_SIGNAL_CONVERSATION }} />
+    </>
+  }
 
   if (loading) {
     return (
