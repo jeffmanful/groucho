@@ -7,8 +7,10 @@ import { DEFAULT_SIGNAL_CONVERSATION, DEFAULT_PROJECT_CLOSING_MESSAGE, isForumEa
 import { slugify, isValidProjectSlug } from "@/components/admin/project-setup-ui"
 import { useOrganisationSummary } from "@/components/admin/dashboard/OrganisationSummaryContext"
 import { ConversationSignalEditor } from "./ConversationSignalEditor"
-import { ConversationSignalEvidence } from "./ConversationSignalEvidence"
+import { ConversationSignalEvidence, ConversationSignalTurn } from "./ConversationSignalEvidence"
+import { SavedConversationPreviews } from "./SavedConversationPreviews"
 import type { SignalEvidenceMap } from "@/lib/project-conversation-evidence"
+import type { SignalTurn } from "@/lib/project-conversation-progress"
 import styles from "./conversation-project-wizard.module.css"
 
 type Preview = {
@@ -48,13 +50,15 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
   })
   const [preview, setPreview] = useState<Preview | null>(null)
   const [testedConfig, setTestedConfig] = useState("")
-  const [transcript, setTranscript] = useState<Array<{ role: string; content: string }>>([])
+  const [transcript, setTranscript] = useState<Array<{ role: string; content: string; signalTurn?: SignalTurn }>>([])
   const [answer, setAnswer] = useState("")
   const [selected, setSelected] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
   const [savedId, setSavedId] = useState(project?.id ?? "")
+  const [archivedToken, setArchivedToken] = useState("")
+  const [historyRevision, setHistoryRevision] = useState(0)
   const requestInFlight = useRef(false)
   const errorRef = useRef<HTMLParagraphElement>(null)
   useEffect(() => { if (error) errorRef.current?.focus() }, [error])
@@ -62,12 +66,17 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
   const currentConfig = validated.ok ? JSON.stringify(validated.config) : ""
   const previewConfig: SignalProjectConversationConfig = testedConfig ? JSON.parse(testedConfig) : config
   const stale = !!preview && currentConfig !== testedConfig
+  const canSavePreview = !!preview && transcript.some(entry => entry.role === "user") && preview.token !== archivedToken
+  const validProjectName = name.trim().length >= 2 && name.trim().length <= 64 && isValidProjectSlug(slug)
+  const saveLabel = savedId
+    ? canSavePreview ? "Save configuration and preview" : "Save configuration"
+    : canSavePreview ? "Create project and save preview" : "Create project"
   const replyStyle = projectConversationReplyStyle(config, { organisationId: orgId, projectId: project?.id })
   const hasDefaultReplyStyle = isForumEarlyAccessProject(orgId, project?.id)
   const patch = (value: Partial<SignalProjectConversationConfig>) => { setConfig(previous => ({ ...previous, ...value })); setError("") }
   function next() {
     setError("")
-    if (step === 0 && (name.trim().length < 2 || name.trim().length > 64 || !isValidProjectSlug(slug))) {
+    if (step === 0 && !validProjectName) {
       setError("Use a project name of 2–64 characters and a slug of 2–31 lowercase letters, numbers or hyphens."); return
     }
     // Validate only controls reached so far; later steps may still contain unfinished drafts.
@@ -89,7 +98,7 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
       const data = await readResponse(await fetch(`/api/admin/organisations/${orgId}/conversation-preview`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "start", config: snapshot, projectId: project?.id }),
       }))
-      setPreview(data); setTestedConfig(JSON.stringify(snapshot)); setTranscript([{ role: "assistant", content: data.message }]); setAnswer(""); setSelected([])
+      setPreview(data); setTestedConfig(JSON.stringify(snapshot)); setTranscript([{ role: "assistant", content: data.message, signalTurn: data.signalTurn }]); setAnswer(""); setSelected([])
     } catch (e) { setError(e instanceof Error ? e.message : "Could not start preview.") }
     finally { requestInFlight.current = false; setBusy(false) }
   }
@@ -101,14 +110,15 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "message", token: preview.token, message }),
       }))
       const display = preview.ui?.inputType === "multiSelect" && selected.length ? selected.join(", ") : message
-      setTranscript(previous => [...previous, { role: "user", content: display }, { role: "assistant", content: data.message }])
+      setTranscript(previous => [...previous, { role: "user", content: display }, { role: "assistant", content: data.message, signalTurn: data.signalTurn }])
       setPreview({ ...data, settingsConflict: data.settingsConflict ?? preview.settingsConflict }); setAnswer(""); setSelected([])
     } catch (e) { setError(e instanceof Error ? e.message : "Could not send your answer.") }
     finally { requestInFlight.current = false; setBusy(false) }
   }
   async function save() {
-    if (!validated.ok || !preview || stale || requestInFlight.current) return
-    setSaving(true); setError("")
+    if (!validated.ok || !validProjectName || !preview || stale || requestInFlight.current) return
+    requestInFlight.current = true; setSaving(true); setError("")
+    let settingsSaved = false
     try {
       const response = await fetch(`/api/admin/organisations/${orgId}/projects${savedId ? `/${savedId}` : ""}`, {
         method: savedId ? "PATCH" : "POST", headers: { "Content-Type": "application/json" },
@@ -119,10 +129,30 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
       })
       const data = await readResponse(response)
       setSavedId(data.id)
+      settingsSaved = true
       refreshOrganisation()
+      if (canSavePreview) await archivePreview(data.id, preview.token)
       router.push(`/admin/organisations/${orgId}/projects/${data.id}`)
       router.refresh()
-    } catch (e) { setError(e instanceof Error ? e.message : "Could not save the project."); setSaving(false) }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Could not save the project."
+      setError(settingsSaved ? `Configuration saved. ${message}` : message)
+      setSaving(false)
+    } finally { requestInFlight.current = false }
+  }
+  async function archivePreview(projectId: string, token: string) {
+    await readResponse(await fetch(`/api/admin/organisations/${orgId}/conversation-preview`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "save", projectId, token }),
+    }))
+    setArchivedToken(token)
+    setHistoryRevision(previous => previous + 1)
+  }
+  async function savePreview() {
+    if (!savedId || !preview || !canSavePreview || requestInFlight.current) return
+    requestInFlight.current = true; setSaving(true); setError("")
+    try { await archivePreview(savedId, preview.token) }
+    catch (e) { setError(e instanceof Error ? e.message : "Could not save the preview.") }
+    finally { requestInFlight.current = false; setSaving(false) }
   }
   return (
     <main className={styles.wizard}>
@@ -130,7 +160,7 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
       <header><h1>{project ? "Configure conversation" : "Create a conversation"}</h1><p>Define its purpose and character, then try the exact flow your visitors will use.</p></header>
       {config.applicationReview && <p>Application reporting and integrations remain enabled for saved conversations. This preview tests the conversation without creating an application or sending webhooks. Changes apply to new conversations; conversations already in progress keep their original configuration.</p>}
       <nav aria-label="Project setup" className={styles.steps}>
-        {["Purpose & context", "Persona", "Conversation flow", "Signals & examples", "Test & save"].map((label, index) => <button key={label} type="button" aria-current={step === index ? "step" : undefined} disabled={busy || saving || index > step} onClick={() => { setStep(index); setError("") }}>{label}</button>)}
+        {["Purpose & context", "Persona", "Conversation flow", "Signals & examples", "Test & save"].map((label, index) => <button key={label} type="button" aria-current={step === index ? "step" : undefined} disabled={busy || saving || (index > step && !(index === 4 && !!savedId && validated.ok && validProjectName))} onClick={() => { setStep(index); setError("") }}>{label}</button>)}
       </nav>
       {error && <p role="alert" ref={errorRef} tabIndex={-1} className={styles.error}>{error}</p>}
       <fieldset disabled={busy || saving} className={styles.fields}>
@@ -159,7 +189,7 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
           <p id="reply-style-description">{replyStyle === "direct"
             ? "Groucho checks that each ordinary follow-up is one grounded question. The check can add response time."
             : replyStyle === "acknowledge"
-              ? "Groucho briefly responds to what the applicant shared before asking a follow-up."
+              ? "Groucho starts with a brief reaction in the persona’s voice, then asks a follow-up. Replies are checked for repetition."
               : "Use the reply style in your persona instructions, or choose a style for this project."}</p>
         </section>}
         {step === 2 && <section>
@@ -177,12 +207,12 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
         </section>}
         {step === 3 && <section>
           <h2>Signals &amp; examples</h2>
-          <p>Signals guide what the host listens for. They do not set the order of the conversation. Unexplored signals remain unknown.</p>
+          <p>Signals guide what Groucho asks about and listens for. Groucho follows the conversation, asks up to two useful follow-ups per signal, and moves on when it has enough evidence or further questions would add little.</p>
           <ConversationSignalEditor signals={config.signals} onChange={signals => patch({ signals })} />
         </section>}
       </fieldset>
       {step === 4 && <section className={styles.preview}>
-        <h2>Test your conversation</h2><p>This preview uses your current configuration and the same engine as the saved project. Preview chats are temporary and do not create applications or send webhooks.</p>
+        <h2>Test your conversation</h2><p>This preview uses your current configuration and the same engine as the saved project. Save a test to keep its transcript, configuration and signal evidence for review.</p>
         <dl className={styles.summary}>
           <div><dt>Objective</dt><dd>{config.intent}</dd></div>
           <div><dt>Persona</dt><dd>{config.persona.name}</dd></div>
@@ -197,7 +227,10 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
         <button type="button" disabled={busy || saving} onClick={() => void startPreview()}>{busy ? "Preparing response…" : preview ? "Restart with current configuration" : "Start preview"}</button>
         {stale && <p role="status">Your configuration has changed. Restart the preview to test and save these changes.</p>}
         {preview?.settingsConflict && !stale && <p role="status"><strong>Possible settings conflict.</strong> {preview.settingsConflict}</p>}
-        {transcript.length > 0 && <div className={styles.transcript} role="log" aria-label="Preview conversation" aria-live="polite">{transcript.map((entry, index) => <article key={index} id={entry.role === "user" ? `preview-answer-${transcript.slice(0, index + 1).filter(item => item.role === "user").length}` : undefined}><strong>{entry.role === "assistant" ? previewConfig.persona.name : "You"}</strong><p>{entry.content}</p></article>)}</div>}
+        {transcript.length > 0 && <div className={styles.transcript} role="log" aria-label="Preview conversation" aria-live="polite">{transcript.map((entry, index) => <article key={index} id={entry.role === "user" ? `preview-answer-${transcript.slice(0, index + 1).filter(item => item.role === "user").length}` : undefined}>
+          <strong>{entry.role === "assistant" ? previewConfig.persona.name : "You"}</strong><p>{entry.content}</p>
+          <ConversationSignalTurn turn={entry.signalTurn} signals={previewConfig.signals} hasQuestion={/[?？]/.test(entry.content)} />
+        </article>)}</div>}
         {busy && <p role="status">Preparing response…</p>}
         {preview?.status === "active" && !stale && <form onSubmit={e => { e.preventDefault(); void send(answer.trim() || JSON.stringify(selected)) }}>
           <fieldset className={styles.fields} disabled={busy || saving}>
@@ -207,11 +240,14 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
           </fieldset>
         </form>}
         {preview?.status === "completed" && <p role="status">Preview complete.{preview.completion?.complete === false ? " Some signals remain partly understood or unexplored." : ""} Restart to try another conversation.</p>}
-        {preview && <ConversationSignalEvidence signals={previewConfig.signals} evidence={preview.signalEvidence} />}
+        {preview && <ConversationSignalEvidence signals={previewConfig.signals} evidence={preview.signalEvidence} turns={transcript.map(entry => entry.signalTurn)} completed={preview.status === "completed"} />}
+        {savedId && canSavePreview && <button type="button" disabled={busy || saving} onClick={() => void savePreview()}>Save preview</button>}
+        {preview && preview.token === archivedToken && <p role="status">Preview saved.</p>}
+        {savedId && <SavedConversationPreviews orgId={orgId} projectId={savedId} revision={historyRevision} />}
       </section>}
       <footer className={styles.actions}>
         {step > 0 && <button type="button" disabled={busy || saving} onClick={() => { setStep(previous => previous - 1); setError("") }}>Back</button>}
-        {step < 4 ? <button type="button" className={styles.primary} disabled={busy || saving} onClick={next}>Continue</button> : <button type="button" className={styles.primary} disabled={!preview || stale || busy || saving || !validated.ok} onClick={() => void save()}>{saving ? "Saving…" : project ? "Save configuration" : "Create project"}</button>}
+        {step < 4 ? <button type="button" className={styles.primary} disabled={busy || saving} onClick={next}>Continue</button> : <button type="button" className={styles.primary} disabled={!preview || stale || busy || saving || !validated.ok || !validProjectName} onClick={() => void save()}>{saving ? "Saving…" : saveLabel}</button>}
       </footer>
       {step === 4 && !preview && <p>Start a preview before saving your configuration.</p>}
       {onAdvanced && <button type="button" className={styles.advanced} disabled={busy || saving} onClick={onAdvanced}>Set up a qualification flow, guided onboarding or ticket simulation</button>}

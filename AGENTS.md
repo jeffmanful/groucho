@@ -1,8 +1,8 @@
-# Conversation quality gate
+# Conversation quality
 
-Before implementing any feature or fix, explicitly ask: **Will this change positively or negatively affect the conversation experience?** Record the expected effect and tradeoff in the working update or change description. Resolve negative effects before shipping. Conversation quality is a release requirement, not an optional polish step.
+For changes that materially affect what Groucho says or how it guides a conversation, define what a good and a poor outcome look like for this project, its audience and its purpose. Use the current settings and examples to make that judgment. Record meaningful tradeoffs in the working update or change description. Ask the user only when the context leaves an important tradeoff unresolved. Routine product and implementation decisions can proceed directly.
 
-For conversational changes, review complete conversations for continuity, warmth, curiosity, useful contribution, correct attribution and respectful handling of corrections. Mechanical checks alone are insufficient. Prefer fewer coherent controls to patches for individual phrases. Keep booking/date validation separate from conversational judgement.
+Before shipping conversational changes, review complete conversations against those outcomes. Consider continuity, useful contribution, correct attribution and respectful handling of corrections. Judge warmth, curiosity, pace and depth by what the project needs. Mechanical checks alone are insufficient. Prefer fewer coherent controls to patches for individual phrases. Keep booking and date validation separate from conversational judgment.
 
 <!-- BEGIN:nextjs-agent-rules -->
 
