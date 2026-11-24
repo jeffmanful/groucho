@@ -46,7 +46,9 @@ Issue a conversations-scoped key for applicant relays and a separate application
 
 ## Signal evidence and older configurations
 
-The four signal states are **Evidence found**, **Partly understood**, **Not explored** and **Declined to share**. Evidence found means an informative account was supplied, not that attendance, identity or suitability was verified. Unexplored evidence stays unknown; it does not establish a missing personal quality.
+The five signal states are **Evidence found**, **Partly understood**, **None identified**, **Not explored** and **Declined to share**. Evidence found means an informative account was supplied, not that attendance, identity or suitability was verified. None identified means the applicant answered that nothing applies (a plain no, nothing comes to mind, or not yet); Declined to share means they chose not to answer. Both settle the signal, so Groucho does not ask about it again. Unexplored evidence stays unknown; it does not establish a missing personal quality.
+
+With a reply style selected, the reply reviewer can end the conversation when no useful question remains, and the runtime closes rather than offering a generic continuation once every signal is settled or exhausted. The closing acknowledgement is reviewed against the closing guidance and reply style; that review can only remove material, and the configured final message always follows.
 
 Updates require registered signal IDs, applicant attribution and exact quotes from the current answer. Quotes link to one-based applicant answer numbers. Corrections replace superseded interpretations and sources. The runtime validates attribution labels and quote presence, not the semantic truth of an interpretation; complete-conversation review remains necessary. Signal conversations make a separate evidence review at closing so a short goodbye does not discard new context or a correction in the final applicant answer. This adds one model round trip at closing; a failure leaves the turn retryable rather than persisting an incomplete update. Example answers are never treated as applicant testimony or approved venue/event facts.
 

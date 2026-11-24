@@ -956,7 +956,8 @@ components:
       properties:
         status:
           type: string
-          enum: [evidence_found, partly_understood, not_explored, declined]
+          enum: [evidence_found, partly_understood, none_identified, not_explored, declined]
+          description: none_identified means the applicant answered that nothing applies; declined means they chose not to share.
         summary:
           type: string
         reason:

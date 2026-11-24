@@ -44,6 +44,8 @@
 .transcript article + article { border-top: 1px solid var(--border); }
 .transcript strong { font-weight: 500; font-size: 14px; }
 .transcript p { white-space: pre-wrap; overflow-wrap: anywhere; color: inherit; margin-bottom: 0; }
+.turnSignals { margin-top: 12px; border-inline-start: 2px solid var(--border); padding-inline-start: 12px; }
+.transcript .turnSignals p { font-size: 13px; color: var(--text-secondary); margin: 4px 0; }
 .error { border: 1px solid currentColor; padding: 12px 16px; }
 .wizard .advanced { padding: 0; border: 0; background: transparent; text-align: left; color: var(--text-secondary); font-size: 13px; }
 .preview details { margin-top: 24px; }

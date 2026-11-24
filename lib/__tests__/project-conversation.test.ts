@@ -2,12 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createHash } from "node:crypto"
 import { NextRequest, NextResponse } from "next/server"
 const mocks = vi.hoisted(() => ({
-  create: vi.fn(), queue: vi.fn(), writes: [] as Array<Record<string, unknown>>,
+  create: vi.fn(), review: vi.fn(), queue: vi.fn(), writes: [] as Array<Record<string, unknown>>,
   history: [] as Array<{ role: string; content: string; metadata: Record<string, unknown> }>,
   database: vi.fn(), actor: { kind: "member", userId: "author" } as { kind: "member"; userId: string } | null,
   denied: false, rateLimited: false,
+  previewRows: new Map<string, Record<string, unknown>>(), previewProject: null as { id: string; settings: unknown } | null,
 }))
-vi.mock("@anthropic-ai/sdk", () => ({ default: class { messages = { create: mocks.create } } }))
+// Evidence reviews run beside each reply, so they get their own queue rather than interleaving with reply mocks.
+const isEvidenceReview = (request: { tools?: Array<{ name?: string }>; system?: unknown }) =>
+  request.tools?.[0]?.name === "groucho_signal_evidence" || String(request.system).startsWith("You maintain evidence")
+vi.mock("@anthropic-ai/sdk", () => ({ default: class { messages = { create: (request: Parameters<typeof isEvidenceReview>[0]) => isEvidenceReview(request) ? mocks.review(request) : mocks.create(request) } } }))
 vi.mock("@/lib/llm-usage", () => ({ logLlmUsage: vi.fn() }))
 vi.mock("@/lib/session-completion-jobs", () => ({ queueSessionCompletion: mocks.queue }))
 vi.mock("@/lib/gatekeeper-models", () => ({ colorsThinConversationModel: () => "test-model", supportsForcedToolChoice: (model: string) => !model.startsWith("claude-sonnet-5") }))
@@ -20,6 +24,28 @@ vi.mock("@/lib/platform-admin-access", () => ({ isSameOriginMutation: (r: Reques
 vi.mock("@/lib/rate-limit", () => ({ checkRateLimit: () => ({ ok: !mocks.rateLimited }) }))
 vi.mock("@/lib/supabase", () => ({ supabase: { from: (...args: unknown[]) => {
   mocks.database(...args)
+  if (args[0] === "projects" || args[0] === "saved_project_conversation_previews") {
+    const filters = new Map<string, string>()
+    const rows = () => [...mocks.previewRows.values()].filter(row => row.project_id === filters.get("project_id"))
+    const query = {
+      select: () => query,
+      eq: (key: string, value: string) => { filters.set(key, value); return query },
+      order: () => query,
+      range: async (start: number, end: number) => ({ data: rows().slice(start, end + 1), error: null }),
+      maybeSingle: async () => ({
+        data: args[0] === "projects"
+          ? (filters.get("organisation_id") === "org" && mocks.previewProject?.id === filters.get("id") ? mocks.previewProject : null)
+          : rows().find(row => row.id === filters.get("id")) ?? null,
+        error: null,
+      }),
+      upsert: async (row: Record<string, unknown>) => {
+        const id = String(row.id)
+        if (!mocks.previewRows.has(id)) mocks.previewRows.set(id, row)
+        return { error: null }
+      },
+    }
+    return query
+  }
   const q = {
     select: () => q, eq: () => q, update: () => q,
     order: async () => ({ data: mocks.history, error: null }),
@@ -33,9 +59,11 @@ import { projectConversationConfiguration, projectConversationProfile } from "@/
 import { signProjectPreview, verifyProjectPreview } from "@/lib/project-conversation-preview"
 import { emptySignalEvidence, mergeSignalEvidence } from "@/lib/project-conversation-evidence"
 import { conversationSelections, postConversation, type ConversationTranscriptEntry } from "@/lib/conversation-engine"
+import { withoutClosingCourtesy } from "@/lib/closing-courtesy"
+import { projectSignalProgress } from "@/lib/project-conversation-progress"
 import { postDemoConversation, demoConversationProfile } from "@/lib/demo-conversation-profiles"
 import { normalizeProjectSettings, validateProjectSettings } from "@/lib/project-settings"
-import { POST } from "@/app/api/admin/organisations/[orgId]/conversation-preview/route"
+import { GET, POST } from "@/app/api/admin/organisations/[orgId]/conversation-preview/route"
 
 const config: ProjectConversationConfig = {
   ...DEFAULT_PROJECT_CONVERSATION, intent: "Help visitors describe what they want to make at our ceramics studio. No class catalogue or availability is supplied.",
@@ -56,9 +84,15 @@ function reply(text: string, extra = {}) {
     reply: text, close: false, boundary: "none", boundaryQuestion: "", addsNewContext: true, choiceKey: "none", facts: [], signalEvidence: [], ...extra,
   } }] }
 }
-function questionReview(verdict: "pass" | "repair", replacement = "", usesForumReason = false) {
+function evidenceReview(signalEvidence: unknown[]) {
+  return { stop_reason: "tool_use", usage: {}, content: [{ type: "tool_use", name: "groucho_signal_evidence", input: { signalEvidence } }] }
+}
+function closingReview(acknowledgement: string) {
+  return { stop_reason: "end_turn", usage: {}, content: [{ type: "text", text: JSON.stringify({ acknowledgement }) }] }
+}
+function questionReview(verdict: "pass" | "repair" | "close", replacement = "", usesForumReason = false, questionSignalId?: string) {
   return { stop_reason: "end_turn", usage: {}, content: [{
-    type: "text", text: JSON.stringify({ verdict, replacement, usesForumReason }),
+    type: "text", text: JSON.stringify({ verdict, replacement, usesForumReason, questionSignalId }),
   }] }
 }
 function opening(c: ProjectConversationConfig = config): ConversationTranscriptEntry[] {
@@ -67,11 +101,79 @@ function opening(c: ProjectConversationConfig = config): ConversationTranscriptE
 }
 beforeEach(() => {
   vi.stubEnv("SUPABASE_SERVICE_KEY", "test-preview-secret")
-  mocks.create.mockReset(); mocks.queue.mockReset(); mocks.database.mockReset(); mocks.writes = []
+  mocks.create.mockReset(); mocks.queue.mockReset()
+  mocks.review.mockReset(); mocks.review.mockResolvedValue(evidenceReview([]))
+  mocks.database.mockReset(); mocks.writes = []
   mocks.actor = { kind: "member", userId: "author" }; mocks.denied = false; mocks.rateLimited = false
   mocks.history = opening(config)
+  mocks.previewRows.clear()
+  mocks.previewProject = null
 })
 afterEach(() => vi.unstubAllEnvs())
+
+describe("saved project previews", () => {
+  const projectId = "74c55b42-9396-4a03-b278-32d8768b829f"
+  const otherProjectId = "074b242f-748e-4dc0-a04c-fb2f81093e40"
+  const applicantMessage = "I run the group online."
+  const assistantMessage = "What keeps people coming back?"
+  const historyRequest = (id = "") => new NextRequest(`https://example.test/api/preview?projectId=${projectId}${id ? `&previewId=${id}` : ""}`)
+
+  it("archives the signed configuration, transcript and evidence once and reopens them from history", async () => {
+    mocks.previewProject = { id: projectId, settings: projectConversationSettings(config) }
+    const started = await (await POST(request({ action: "start", projectId, config: signalConfig }), params)).json()
+    mocks.create.mockResolvedValueOnce(reply(assistantMessage, {
+      signalEvidence: [evidenceUpdate(applicantMessage, { status: "partly_understood" })],
+      questionSignalId: "s_community", settingsConflict: "Two settings describe different pacing.",
+    }))
+    const turn = await (await POST(request({ action: "message", token: started.token, message: applicantMessage }), params)).json()
+    const archive = request({ action: "save", projectId, token: turn.token, config, transcript: [{ role: "user", content: "Forged answer" }] })
+    const saved = await POST(archive, params)
+    expect(saved.status).toBe(200)
+    const { id } = await saved.json()
+    expect(await (await POST(request({ action: "save", projectId, token: turn.token }), params)).json()).toEqual({ id })
+    expect(mocks.previewRows.size).toBe(1)
+    const index = await GET(historyRequest(), params)
+    expect(index.status).toBe(200)
+    expect((await index.json()).savedPreviews).toMatchObject([{ id, answer_count: 1 }])
+    const reopened = await GET(historyRequest(id), params)
+    expect(reopened.status).toBe(200)
+    expect((await reopened.json()).savedPreview).toMatchObject({
+      config: { intent: signalConfig.intent },
+      transcript: [{ role: "assistant", content: started.message }, { role: "user", content: applicantMessage }, {
+        role: "assistant", content: assistantMessage, signalTurn: {
+          questionSignalId: "s_community", followUp: true, changes: [{ signalId: "s_community", status: "partly_understood" }],
+        },
+      }],
+      signal_evidence: turn.signalEvidence,
+      settings_conflict: "Two settings describe different pacing.",
+    })
+    expect(mocks.queue).not.toHaveBeenCalled()
+    expect(mocks.writes).toHaveLength(0)
+    expect((await GET(historyRequest(id), { params: Promise.resolve({ orgId: "other-org" }) })).status).toBe(404)
+    mocks.denied = true
+    expect((await GET(historyRequest(id), params)).status).toBe(403)
+  })
+
+  it("rejects copying a bound preview to a different project or saving another admin’s token", async () => {
+    const started = await (await POST(request({ action: "start", projectId, config }), params)).json()
+    expect((await POST(request({ action: "save", projectId: otherProjectId, token: started.token }), params)).status).toBe(409)
+    mocks.actor = { kind: "member", userId: "other" }
+    expect((await POST(request({ action: "save", projectId, token: started.token }), params)).status).toBe(409)
+    expect(mocks.previewRows.size).toBe(0)
+  })
+
+  it("attaches an unbound preview only after the project has saved its tested configuration", async () => {
+    const started = await (await POST(request({ action: "start", config }), params)).json()
+    mocks.create.mockResolvedValueOnce(reply("What would you like to make?"))
+    const turn = await (await POST(request({ action: "message", token: started.token, message: "A bowl." }), params)).json()
+    const archive = () => POST(request({ action: "save", projectId, token: turn.token }), params)
+    mocks.previewProject = { id: projectId, settings: projectConversationSettings(signalConfig) }
+    expect((await archive()).status).toBe(409)
+    mocks.previewProject = { id: projectId, settings: projectConversationSettings(config) }
+    expect((await POST(request({ action: "save", projectId, token: started.token }), params)).status).toBe(400)
+    expect((await archive()).status).toBe(200)
+  })
+})
 
 describe("Forum Early Access one-question replies", () => {
   const organisationId = "8f945897-31bf-4072-9aad-1c02e090e6dd"
@@ -81,43 +183,57 @@ describe("Forum Early Access one-question replies", () => {
     ...DEFAULT_SIGNAL_CONVERSATION,
     openingQuestion: "What was the last show you went to?",
     intent: "Learn what the visitor did around a recent show.",
+    persona: { name: "Groucho", instructions: "Ask about what they did. Never ask what it was like or what stood out." },
+    conversationGuidance: "Once an action is understood, move to a new signal. Never ask What else would you like to share?",
     projectContext: "The Forum is online. People share unfinished work here.",
     closingMessage: "Thanks for chatting.",
   }
 
-  it("repairs Philipp’s Tiefgarage replies through the wizard and handles a direct question, correction and stop", async () => {
+  it("repairs an attendance-only follow-up and handles an applicant’s change of subject", async () => {
     const started = await (await POST(request({ action: "start", config: earlyAccess, projectId }), previewParams)).json()
     const firstDraft = "Thirty people in a small bar in Hamburg sounds like a night where everyone in the room could hear the drums. After the set, what did you do or say to the band?"
     const secondDraft = "Telling a friend the vocals were lost in the mix is the kind of honest note that helps a band the next time they play. Did he say anything back, or did you talk through what might change?"
     mocks.create
       .mockResolvedValueOnce(reply(firstDraft))
-      .mockResolvedValueOnce(questionReview("repair", "What did you do after the set?"))
+      .mockResolvedValueOnce(questionReview("repair", "Did you get a chance to talk to anyone from the band?"))
       .mockResolvedValueOnce(questionReview("pass"))
       .mockResolvedValueOnce(reply(secondDraft))
-      .mockResolvedValueOnce(questionReview("repair", "What did he say when you told him?"))
+      .mockResolvedValueOnce(questionReview("repair", "What could you help other Forum members with?"))
       .mockResolvedValueOnce(questionReview("pass"))
       .mockResolvedValueOnce(reply("Yes, the Forum is online."))
+      .mockResolvedValueOnce(questionReview("repair", "Yes, the Forum is online. We can come back to what you’d like to contribute if you want."))
       .mockResolvedValueOnce(questionReview("pass"))
       .mockResolvedValueOnce(reply("Thanks for clarifying.", { visitorIntent: "stop" }))
+      .mockResolvedValueOnce(closingReview("Thanks for clarifying."))
     const first = await (await POST(request({ action: "message", token: started.token, message: "they're called Tiefgarage, kind of post-punk. it was at a small bar in Hamburg, maybe 30 people" }), previewParams)).json()
     const second = await (await POST(request({ action: "message", token: first.token, message: "I told him the new song was the best one but the mix was too muddy, you couldn’t hear the vocals" }), previewParams)).json()
     const direct = await (await POST(request({ action: "message", token: second.token, message: "Is the Forum online?" }), previewParams)).json()
     const final = await (await POST(request({ action: "message", token: direct.token, message: "Small correction: it was in Altona. I’d like to stop now." }), previewParams)).json()
-    expect(first.message).toBe("What did you do after the set?")
-    expect(second.message).toBe("What did he say when you told him?")
-    expect(direct).toMatchObject({ message: "Yes, the Forum is online.", status: "active" })
+    expect(first.message).toBe("Did you get a chance to talk to anyone from the band?")
+    expect(second.message).toBe("What could you help other Forum members with?")
+    expect(direct).toMatchObject({ message: "Yes, the Forum is online. We can come back to what you’d like to contribute if you want.", status: "active" })
     expect(final).toMatchObject({ message: "Thanks for clarifying.\n\nThanks for chatting.", status: "completed" })
     const transcript = verifyProjectPreview(final.token, organisationId, "member:author")?.transcript
     expect(transcript?.filter(turn => turn.role === "assistant").map(turn => turn.content)).toEqual([
       expect.stringContaining(earlyAccess.openingQuestion), first.message, second.message, direct.message, final.message,
     ])
-    expect(JSON.parse(mocks.create.mock.calls[1][0].messages[0].content)).toMatchObject({ draft: firstDraft, shapeIssue: expect.any(String) })
+    expect(JSON.parse(mocks.create.mock.calls[1][0].messages[0].content)).toMatchObject({
+      draft: firstDraft, shapeIssue: expect.any(String),
+      projectGuidance: { purpose: earlyAccess.intent, personaInstructions: earlyAccess.persona.instructions, conversationGuidance: earlyAccess.conversationGuidance },
+      approvedContext: earlyAccess.projectContext,
+    })
     expect(JSON.parse(mocks.create.mock.calls[4][0].messages[0].content).transcript).toContainEqual({ role: "assistant", content: first.message })
-    expect(mocks.create).toHaveBeenCalledTimes(9)
+    expect(mocks.create.mock.calls[0][0].system).toContain("establish whether they took part")
+    expect(mocks.create.mock.calls[7][0].system).toContain("the earlier topic can wait")
+    expect(JSON.parse(mocks.create.mock.calls[7][0].messages[0].content)).toMatchObject({
+      draft: "Yes, the Forum is online.", applicantMessage: "Is the Forum online?",
+      transcript: expect.arrayContaining([{ role: "assistant", content: second.message }]),
+    })
+    expect(mocks.create).toHaveBeenCalledTimes(11)
     expect(mocks.database).not.toHaveBeenCalled()
   })
 
-  it("keeps the answer and uses a direct fallback if the reviewer passes an invalid repair", async () => {
+  it("keeps the answer and offers a neutral continuation if no authored question is available", async () => {
     const savedContext = { organisationId, projectId, apiKeyId: null, settings: normalizeProjectSettings(projectConversationSettings(earlyAccess)) }
     mocks.history = opening(earlyAccess)
     mocks.create
@@ -126,11 +242,11 @@ describe("Forum Early Access one-question replies", () => {
       .mockResolvedValueOnce(questionReview("pass"))
     const result = await postDemoConversation({ context: savedContext, sessionId: "early-access", message: "I went to a show." })
     expect(result.status).toBe(200)
-    expect(await result.json()).toMatchObject({ message: "What else would you like to share?", status: "active" })
+    expect(await result.json()).toMatchObject({ message: "You can add another detail or say you’re done.", status: "active" })
     expect(JSON.parse(mocks.create.mock.calls[1][0].messages[0].content)).not.toHaveProperty("shapeIssue")
     expect(mocks.writes.map(({ role, content }) => ({ role, content }))).toEqual([
       { role: "user", content: "I went to a show." },
-      { role: "assistant", content: "What else would you like to share?" },
+      { role: "assistant", content: "You can add another detail or say you’re done." },
     ])
   })
 
@@ -139,12 +255,12 @@ describe("Forum Early Access one-question replies", () => {
     mocks.create
       .mockResolvedValueOnce(reply("How was the sound at the packed venue?"))
       .mockResolvedValueOnce(questionReview("repair", "Thanks for sharing. What stood out?"))
-      .mockResolvedValueOnce(questionReview("repair", "What stood out during the show?"))
+      .mockResolvedValueOnce(questionReview("repair", "Did you get a chance to talk with anyone at the show?"))
       .mockResolvedValueOnce(questionReview("pass"))
     const result = await (await POST(request({ action: "message", token: started.token, message: "I went to a show." }), previewParams)).json()
-    expect(result).toMatchObject({ message: "What stood out during the show?", status: "active" })
+    expect(result).toMatchObject({ message: "Did you get a chance to talk with anyone at the show?", status: "active" })
     expect(verifyProjectPreview(result.token, organisationId, "member:author")?.transcript.slice(1).map(turn => turn.content)).toEqual([
-      "I went to a show.", "What stood out during the show?",
+      "I went to a show.", "Did you get a chance to talk with anyone at the show?",
     ])
     expect(mocks.create).toHaveBeenCalledTimes(4)
   })
@@ -159,6 +275,29 @@ describe("Forum Early Access one-question replies", () => {
       .mockRejectedValueOnce(new Error("Reviewer unavailable"))
     const result = await (await POST(request({ action: "message", token: started.token, message: "I went to a show." }), previewParams)).json()
     expect(result).toMatchObject({ message: "What kind of shows do you go to?", ui: { inputType: "singleSelect", options: ["In person", "Online"] } })
+  })
+
+  it("advances to an untouched authored question on failure and never repeats it as a fallback", async () => {
+    const configured: SignalProjectConversationConfig = { ...earlyAccess, signals: [
+      { id: "s_action", name: "Recent action", understanding: "What they did around the show.", evidence: "", examples: [], explore: true,
+        question: "What did you do after the show?", answerType: "text", options: [] },
+      { id: "s_offer", name: "Contribution", understanding: "What they could help with.", evidence: "", examples: [], explore: true,
+        question: "What could you help other people here with?", answerType: "text", options: [] },
+    ] }
+    const started = await (await POST(request({ action: "start", config: configured, projectId }), previewParams)).json()
+    const message = "I helped my friend pack the drums after the show."
+    mocks.create.mockResolvedValueOnce(reply("What did you do after the show?", { signalEvidence: [evidenceUpdate(message, { signalId: "s_action" })] }))
+      .mockRejectedValueOnce(new Error("Reviewer unavailable"))
+      .mockResolvedValueOnce(reply("What stood out to you?"))
+      .mockRejectedValueOnce(new Error("Reviewer unavailable"))
+    const first = await (await POST(request({ action: "message", token: started.token, message }), previewParams)).json()
+    expect(first).toMatchObject({ message: "What could you help other people here with?", status: "active" })
+    expect(first.signalEvidence.s_action.sources).toEqual([{ quote: message, turn: 1 }])
+    expect(JSON.parse(mocks.create.mock.calls[1][0].messages[0].content).signalProgress).toMatchObject([
+      { name: "Recent action", status: "evidence_found" }, { name: "Contribution", status: "not_explored" },
+    ])
+    const later = await (await POST(request({ action: "message", token: first.token, message: "I’m not sure yet." }), previewParams)).json()
+    expect(later).toMatchObject({ message: "You can add another detail or say you’re done.", status: "active" })
   })
 
   it("keeps a direct question active without claiming unverified facts if its repair repeats itself", async () => {
@@ -193,6 +332,43 @@ describe("Forum Early Access one-question replies", () => {
     expect(projectConversationConfiguration(earlyAccess, { organisationId, projectId }).oneQuestionReply).toBeDefined()
     expect(projectConversationConfiguration(earlyAccess, { organisationId, projectId: "another-project" }).oneQuestionReply).toBeUndefined()
     expect(projectConversationConfiguration(earlyAccess, { organisationId: "another-org", projectId }).oneQuestionReply).toBeUndefined()
+  })
+
+  it("uses the reviewer's last checked rewrite instead of a generic continuation when attempts run out", async () => {
+    const started = await (await POST(request({ action: "start", config: earlyAccess, projectId }), previewParams)).json()
+    mocks.create.mockResolvedValueOnce(reply("Listening at home is a good start. What's been on repeat?"))
+      .mockResolvedValueOnce(questionReview("repair", "What did you last play for someone or go looking for more of?"))
+      .mockResolvedValueOnce(questionReview("repair", "Who did you last share some music with?"))
+      .mockResolvedValueOnce(questionReview("repair", "Where does music sit in what you do?"))
+    const result = await (await POST(request({ action: "message", token: started.token, message: "Mostly listening at home." }), previewParams)).json()
+    expect(result).toMatchObject({ message: "Where does music sit in what you do?", status: "active" })
+  })
+  it("ends the conversation when the reviewer finds no useful question left", async () => {
+    const started = await (await POST(request({ action: "start", config: earlyAccess, projectId }), previewParams)).json()
+    mocks.create.mockResolvedValueOnce(reply("Is there anything else you have done for a scene?")).mockResolvedValueOnce(questionReview("close"))
+    const result = await (await POST(request({ action: "message", token: started.token, message: "No." }), previewParams)).json()
+    expect(result).toMatchObject({ message: "Thanks for chatting.", status: "completed" })
+    expect(mocks.create).toHaveBeenCalledTimes(2)
+  })
+  it("removes closing commentary the closing guidance rules out and keeps the final message", async () => {
+    const guided = { ...earlyAccess, closingGuidance: "Do not reflect on, summarise or praise their answers." }
+    const started = await (await POST(request({ action: "start", config: guided, projectId }), previewParams)).json()
+    mocks.create.mockResolvedValueOnce(reply("Honest mix feedback is a useful thing to know about you. Thanks for chatting with me.", { visitorIntent: "stop" }))
+      .mockResolvedValueOnce(closingReview(""))
+    const result = await (await POST(request({ action: "message", token: started.token, message: "That's all, thanks." }), previewParams)).json()
+    expect(result).toMatchObject({ message: "Thanks for chatting.", status: "completed" })
+    const closingRequest = mocks.create.mock.calls[1][0]
+    expect(JSON.parse(closingRequest.messages[0].content)).toMatchObject({
+      draft: "Honest mix feedback is a useful thing to know about you.",
+      projectGuidance: { closingGuidance: guided.closingGuidance },
+    })
+  })
+  it("keeps the closing acknowledgement when its review tries to add material", async () => {
+    const started = await (await POST(request({ action: "start", config: earlyAccess, projectId }), previewParams)).json()
+    mocks.create.mockResolvedValueOnce(reply("Understood.", { visitorIntent: "stop" }))
+      .mockResolvedValueOnce(closingReview("Understood. You clearly care about the scene and would be a strong fit."))
+    const result = await (await POST(request({ action: "message", token: started.token, message: "I'd like to stop now." }), previewParams)).json()
+    expect(result).toMatchObject({ message: "Understood.\n\nThanks for chatting.", status: "completed" })
   })
 })
 
@@ -376,6 +552,58 @@ const signalConfig: SignalProjectConversationConfig = {
 }
 const evidenceUpdate = (quote: string, extra = {}) => ({ signalId: "s_community", status: "evidence_found", subject: "applicant", summary: "Regular involvement in a community gathering.", reason: "They describe their own participation and motivation.", quotes: [quote], supersedes: false, ...extra })
 
+describe("signal progression in project previews", () => {
+  const authored = () => ({
+    ...signalConfig,
+    replyStyle: "direct" as const,
+    openingQuestion: "What is something you have done with a group recently?",
+    signals: signalConfig.signals.map(signal => ({ ...signal, explore: true })),
+  })
+
+  it("shows the reviewed question’s actual target after an answer settles a different signal", async () => {
+    const started = await (await POST(request({ action: "start", config: authored() }), params)).json()
+    const message = "I paired up newcomers so no one arrived alone."
+    const draft = "What else did you do with the newcomers?"
+    const movedOn = "What would you like to get from this group?"
+    mocks.create.mockResolvedValueOnce(reply(draft, { questionSignalId: "s_community", signalEvidence: [evidenceUpdate(message)] }))
+      .mockResolvedValueOnce(questionReview("repair", movedOn, false, "s_hopes"))
+      .mockResolvedValueOnce(questionReview("pass", "", false, "s_hopes"))
+    const turn = await (await POST(request({ action: "message", token: started.token, message }), params)).json()
+    expect(turn).toMatchObject({ message: movedOn, signalTurn: {
+      questionSignalId: "s_hopes", followUp: false, changes: [{ signalId: "s_community", status: "evidence_found" }],
+    } })
+    expect(JSON.parse(mocks.create.mock.calls[1][0].messages[0].content).signalProgress).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "s_community", status: "evidence_found", canAsk: false }),
+    ]))
+  })
+
+  it("allows two deeper invitations and blocks a third while preserving incomplete evidence", async () => {
+    const started = await (await POST(request({ action: "start", config: authored() }), params)).json()
+    const retargeted = "What would you like to get from this group?"
+    const firstAnswer = "I help at an art group sometimes."
+    mocks.create.mockResolvedValueOnce(reply("What did you do the last time you went?", {
+      questionSignalId: "s_community", signalEvidence: [evidenceUpdate(firstAnswer, { status: "partly_understood" })],
+    })).mockResolvedValueOnce(questionReview("pass", "", false, "s_community"))
+      .mockResolvedValueOnce(reply("Who did you help there?", { questionSignalId: "s_community" }))
+      .mockResolvedValueOnce(questionReview("pass", "", false, "s_community"))
+      .mockResolvedValueOnce(reply("What did you help them with?", { questionSignalId: "s_community" }))
+      .mockResolvedValueOnce(questionReview("repair", retargeted, false, "s_hopes"))
+      .mockResolvedValueOnce(questionReview("pass", "", false, "s_hopes"))
+    const send = async (token: string, message: string) => (await POST(request({ action: "message", token, message }), params)).json()
+    const first = await send(started.token, firstAnswer)
+    const second = await send(first.token, "I helped out a bit.")
+    const third = await send(second.token, "I don't remember.")
+    expect(first.signalTurn).toMatchObject({ questionSignalId: "s_community", followUp: true })
+    expect(second.signalTurn).toMatchObject({ questionSignalId: "s_community", followUp: true })
+    expect(third).toMatchObject({ message: retargeted, signalTurn: { questionSignalId: "s_hopes", followUp: false, changes: [] }, signalEvidence: {
+      s_community: { status: "partly_understood" },
+    } })
+    expect(JSON.parse(mocks.create.mock.calls[5][0].messages[0].content).signalProgress).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "s_community", followUps: 2, canAsk: false }),
+    ]))
+  })
+})
+
 describe("signal configuration and compatibility", () => {
   it("preserves legacy application settings while enabling the existing COLORS review pipeline", () => {
     const application = { ...signalConfig, applicationReview: "colors_forum" as const }
@@ -402,7 +630,7 @@ describe("signal configuration and compatibility", () => {
     expect(projectConversationConfiguration(authored).closingMessage).toBe(authored.closingMessage)
   })
   it.each([
-    ["acknowledge", "Thanks for bringing someone into the group. What helped them join in?", "give one brief, grounded acknowledgement"],
+    ["acknowledge", "That can make a group easier to join. Did they get a chance to meet anyone else?", "lead with one brief reaction in the persona’s own voice"],
     ["direct", "What helped them join in?", "start with one grounded question"],
   ] as const)("saves %s and uses it in both the wizard preview and saved runtime", async (replyStyle, expectedReply, guidance) => {
     const authored = {
@@ -418,23 +646,30 @@ describe("signal configuration and compatibility", () => {
     const started = await (await POST(request({ action: "start", config: authored }), params)).json()
     expect(verifyProjectPreview(started.token, "org", "member:author")?.config).toMatchObject({ replyStyle })
     const message = "I invited a newcomer to join our group."
-    mocks.create.mockResolvedValueOnce(reply(expectedReply))
-    if (replyStyle === "direct") mocks.create.mockResolvedValueOnce(questionReview("pass"))
+    const draft = replyStyle === "acknowledge"
+      ? "Inviting a newcomer to the group sounds thoughtful. Did they get a chance to meet anyone else?"
+      : expectedReply
+    const mockModel = () => {
+      mocks.create.mockResolvedValueOnce(reply(draft))
+      if (replyStyle === "acknowledge") mocks.create.mockResolvedValueOnce(questionReview("repair", expectedReply))
+      mocks.create.mockResolvedValueOnce(questionReview("pass"))
+    }
+    mockModel()
     const preview = await (await POST(request({ action: "message", token: started.token, message }), params)).json()
     expect(preview).toMatchObject({ message: expectedReply, status: "active" })
     expect(mocks.create.mock.calls[0][0].system).toContain("The selected reply style takes precedence")
     expect(mocks.create.mock.calls[0][0].system).toContain(guidance)
-    expect(mocks.create).toHaveBeenCalledTimes(replyStyle === "direct" ? 2 : 1)
-    if (replyStyle === "direct") expect(mocks.create.mock.calls[1][0].output_config.format.schema.properties).toHaveProperty("verdict")
+    expect(mocks.create).toHaveBeenCalledTimes(replyStyle === "direct" ? 2 : 3)
+    expect(mocks.create.mock.calls[1][0].output_config.format.schema.properties).toHaveProperty("verdict")
+    if (replyStyle === "acknowledge") expect(mocks.create.mock.calls[1][0].system).toContain("Keep a useful grounded impression")
 
     mocks.create.mockClear()
     mocks.history = opening(authored)
-    mocks.create.mockResolvedValueOnce(reply(expectedReply))
-    if (replyStyle === "direct") mocks.create.mockResolvedValueOnce(questionReview("pass"))
+    mockModel()
     const live = await postDemoConversation({ context: { ...context, settings: normalizeProjectSettings(projectSettings.settings) }, sessionId: "saved", message })
     expect(await live.json()).toMatchObject({ message: expectedReply, status: "active" })
     expect(mocks.create.mock.calls[0][0].system).toContain(guidance)
-    expect(mocks.create).toHaveBeenCalledTimes(replyStyle === "direct" ? 2 : 1)
+    expect(mocks.create).toHaveBeenCalledTimes(replyStyle === "direct" ? 2 : 3)
   })
   it.each([
     { projectContext: "x".repeat(6001) }, { projectContext: 3 },
@@ -567,7 +802,7 @@ describe("complete signal conversations", () => {
   })
   it("keeps a closing turn retryable without persisting stale evidence when its evidence review fails", async () => {
     mocks.create.mockResolvedValueOnce(reply("We can stop here.", { visitorIntent: "stop" }))
-    mocks.create.mockRejectedValueOnce(new Error("Temporary evidence review failure"))
+    mocks.review.mockRejectedValueOnce(new Error("Temporary evidence review failure"))
     const response = await postConversation({ context, sessionId: "preview", message: "Please stop here.", previewTranscript: opening(signalConfig), configuration: projectConversationConfiguration(signalConfig) })
     expect(response.status).toBe(503)
     expect(await response.json()).toMatchObject({ retryable: true })
@@ -579,7 +814,7 @@ describe("complete signal conversations", () => {
     mocks.create.mockResolvedValueOnce(reply("What matters about that group?", { signalEvidence: [evidenceUpdate("I run the group online.")] }))
     const first = await (await postConversation({ context, sessionId: "preview", message: "I run the group online.", previewTranscript: history, configuration: projectConversationConfiguration(signalConfig) })).json()
     mocks.create.mockResolvedValueOnce(reply("Thanks for correcting that.", { visitorIntent: "stop", signalEvidence: [] }))
-    mocks.create.mockResolvedValueOnce(reply("Evidence reviewed.", { signalEvidence: [evidenceUpdate("I run the group in person, not online.", { supersedes: true, summary: "Runs an in-person group.", reason: "Their explicit correction replaces the online account." })] }))
+    mocks.review.mockResolvedValueOnce(evidenceReview([evidenceUpdate("I run the group in person, not online.", { supersedes: true, summary: "Runs an in-person group.", reason: "Their explicit correction replaces the online account." })]))
     const final = await (await postConversation({ context, sessionId: "preview", message: "I run the group in person, not online. Please stop here.", previewTranscript: first.previewTranscript, configuration: projectConversationConfiguration(signalConfig) })).json()
     expect(final.status).toBe("completed")
     expect(final.message).not.toContain("?")
@@ -612,7 +847,8 @@ describe("complete signal conversations", () => {
     expect(result.message).toBe(authored.closingMessage)
     expect(result.completion.complete).toBe(false)
     expect(result.signalEvidence.s_community.status).toBe("not_explored")
-    expect(mocks.create).toHaveBeenCalledTimes(2)
+    expect(mocks.create).toHaveBeenCalledTimes(1)
+    expect(mocks.review).toHaveBeenCalledTimes(1)
   })
   it("carries partial context, adds motivation, handles corrections and closes on a refusal to continue", async () => {
     let history = opening(signalConfig)
@@ -634,7 +870,6 @@ describe("complete signal conversations", () => {
     expect(corrected.signalEvidence.s_community.status).toBe("not_explored")
     expect(corrected.signalEvidence.s_community.sources).toHaveLength(1)
     mocks.create.mockResolvedValueOnce(reply("Of course, we can leave it there.", { visitorIntent: "stop" }))
-    mocks.create.mockResolvedValueOnce(reply("Evidence reviewed.", { signalEvidence: [] }))
     const final = await runSignalTurn("I would rather not say more.")
     expect(final.status).toBe("completed")
     expect(final.completion.complete).toBe(false)
@@ -647,7 +882,8 @@ describe("complete signal conversations", () => {
     const result = await response.json()
     expect(result.status).toBe("completed")
     expect(result.completion.complete).toBe(false)
-    expect(mocks.create).toHaveBeenCalledTimes(2)
+    expect(mocks.create).toHaveBeenCalledTimes(1)
+    expect(mocks.review).toHaveBeenCalledTimes(1)
   })
   it("enforces the hard limit while preserving unverified, uncollected signals as unknown", async () => {
     const limited = { ...signalConfig, maxAnswers: 1 }
@@ -664,12 +900,113 @@ describe("complete signal conversations", () => {
     mocks.history = opening(signalConfig)
     const live = await (await postDemoConversation({ context: liveContext, sessionId: "stored", message })).json()
     const liveRequests = mocks.create.mock.calls.map(call => call[0])
+    const liveReviews = mocks.review.mock.calls.map(call => call[0])
     const preview = await (await postConversation({ context: liveContext, sessionId: "preview", message, previewTranscript: opening(signalConfig), configuration: projectConversationConfiguration(signalConfig) })).json()
     const visible = { ...preview }; delete visible.previewTranscript
     expect(visible).toEqual(live)
-    expect(mocks.create.mock.calls.slice(2).map(call => call[0])).toEqual(liveRequests)
+    expect(mocks.create.mock.calls.slice(1).map(call => call[0])).toEqual(liveRequests)
+    expect(mocks.review.mock.calls.slice(1).map(call => call[0])).toEqual(liveReviews)
     expect(preview.signalEvidence.s_community.sources).toEqual([{ quote: message, turn: 1 }])
     expect(mocks.writes.at(-1)?.metadata).toMatchObject({ conversation_signal_evidence: preview.signalEvidence })
     expect(mocks.queue).not.toHaveBeenCalled()
+  })
+})
+
+describe("closing courtesy", () => {
+  const final = "Thanks for taking the time. The COLORS team reads every application personally."
+  it.each([
+    ["No problem, thanks for chatting with me today.", ""],
+    ["Thanks for talking with me, and for saying London.", ""],
+    ["Thanks for chatting with me today, I appreciate it.", ""],
+    ["Thanks for talking with me today. Take care.", ""],
+    ["Thanks, that gives me a clear picture of the radio work.", "That gives me a clear picture of the radio work."],
+    ["A short guide for newcomers is a useful thing to have. Thanks for sharing that, and I'll leave it there.", "A short guide for newcomers is a useful thing to have. I'll leave it there."],
+    ["Thanks for the correction, that feedback went to the bass player. Thanks for talking with me.", "Thanks for the correction, that feedback went to the bass player."],
+    ["Helping someone with a flyer for a first show sounds useful.", "Helping someone with a flyer for a first show sounds useful."],
+    ["The COLORS team will take it from here.", ""],
+    ["Thanks for the correction, and for the time you gave today.", "Thanks for the correction."],
+    ["Thanks for the correction, and thanks for talking with me today.", "Thanks for the correction."],
+    ["Understood. The COLORS team will be in touch.", "Understood."],
+  ])("leaves the thank-you to a final message that already gives one: %s", (acknowledgement, expected) => {
+    expect(withoutClosingCourtesy(acknowledgement, final)).toBe(expected)
+  })
+  it("keeps a correction acknowledgement even when it shares wording with the final message", () => {
+    expect(withoutClosingCourtesy("Thanks for the correction, it was the bass player.", "Thanks for the conversation.")).toBe("Thanks for the correction, it was the bass player.")
+  })
+  it("keeps the model's thanks when the final message has none", () => {
+    expect(withoutClosingCourtesy("Thanks for chatting with me today.", "The COLORS team reads every application personally.")).toBe("Thanks for chatting with me today.")
+  })
+  it("ends a stopped conversation with one thank-you", async () => {
+    const authored = { ...signalConfig, closingMessage: "Thanks for taking the time to chat." }
+    mocks.create.mockResolvedValueOnce(reply("No problem, thanks for chatting with me today.", { visitorIntent: "stop" }))
+    const result = await (await postConversation({ context, sessionId: "preview", message: "I'm done for now, thanks.", previewTranscript: opening(authored), configuration: projectConversationConfiguration(authored) })).json()
+    expect(result.status).toBe("completed")
+    expect(result.message).toBe("Thanks for taking the time to chat.")
+  })
+  it("tells the model which final message the server appends, including the default", () => {
+    const prompt = projectConversationConfiguration(signalConfig).buildPrompt({ turnCount: 1 } as never)
+    expect(prompt).toContain("FINAL MESSAGE")
+    expect(prompt).toContain("leave the thank-you and goodbye to it")
+  })
+})
+
+describe("per-turn signal evidence review", () => {
+  const overlapping: SignalProjectConversationConfig = {
+    ...signalConfig,
+    signals: [
+      { id: "s_make", name: "What they make or do", understanding: "Something they make, organise or show up for.", evidence: "A recent, concrete thing they did themselves.", examples: [], explore: true, question: "", answerType: "auto", options: [] },
+      { id: "s_others", name: "Effort for others or a scene", understanding: "Something they have done for someone else's work.", evidence: "A concrete instance of collaboration or helping someone, with who it was for.", examples: [], explore: true, question: "", answerType: "auto", options: [] },
+    ],
+  }
+  const message = "I put the running order together. Last month I also helped one of the hosts edit an interview for the show."
+  const quote = "Last month I also helped one of the hosts edit an interview for the show."
+  it("records an account under every signal it supports when the reply only captured one", async () => {
+    mocks.create.mockResolvedValueOnce(reply("What could you help other people with?", { questionSignalId: "s_make", signalEvidence: [evidenceUpdate(message, { signalId: "s_make" })] }))
+    mocks.review.mockResolvedValueOnce(evidenceReview([
+      evidenceUpdate(message, { signalId: "s_make" }),
+      evidenceUpdate(quote, { signalId: "s_others", summary: "Helped a co-host edit an interview.", reason: "Collaboration on someone else's work." }),
+    ]))
+    const response = await postConversation({ context, sessionId: "preview", message, previewTranscript: opening(overlapping), configuration: projectConversationConfiguration(overlapping) })
+    expect(response.status).toBe(200)
+    const result = await response.json()
+    expect(result.signalEvidence.s_make.status).toBe("evidence_found")
+    expect(result.signalEvidence.s_others).toMatchObject({ status: "evidence_found", sources: [{ quote, turn: 1 }] })
+    const reviewRequest = mocks.review.mock.calls[0][0]
+    expect(reviewRequest.system).toContain("against each signal separately")
+    expect(reviewRequest.system).toContain("the same quote may appear in several updates")
+  })
+  it("keeps an active turn available with the reply's evidence when the review fails", async () => {
+    mocks.create.mockResolvedValueOnce(reply("What could you help other people with?", { signalEvidence: [evidenceUpdate(message, { signalId: "s_make" })] }))
+    mocks.review.mockRejectedValueOnce(new Error("Temporary evidence review failure"))
+    const response = await postConversation({ context, sessionId: "preview", message, previewTranscript: opening(overlapping), configuration: projectConversationConfiguration(overlapping) })
+    expect(response.status).toBe(200)
+    const result = await response.json()
+    expect(result.status).toBe("active")
+    expect(result.signalEvidence.s_make.status).toBe("evidence_found")
+    expect(result.signalEvidence.s_others.status).toBe("not_explored")
+  })
+})
+
+describe("settling signals without a refusal", () => {
+  it("treats a plain no as settled rather than declined", () => {
+    const evidence = mergeSignalEvidence({}, [evidenceUpdate("No, I don't.", { status: "none_identified", summary: "Says they do not take part in a community.", reason: "A plain no answers the question." })], "No, I don't.", 1, signalConfig.signals)
+    expect(evidence.s_community).toMatchObject({ status: "none_identified", sources: [{ quote: "No, I don't.", turn: 1 }] })
+    const progress = projectSignalProgress(signalConfig.signals, evidence, new Map([["s_community", { asked: 1, followUps: 0 }]]))
+    expect(progress.find(signal => signal.id === "s_community")?.canAsk).toBe(false)
+  })
+  it("closes instead of offering a generic continuation when every signal is settled and the review fails", async () => {
+    const direct = { ...signalConfig, replyStyle: "direct" as const, closingMessage: "Thanks for taking the time." }
+    mocks.create.mockResolvedValueOnce(reply("What else would you like to share?")).mockRejectedValue(new Error("Review unavailable"))
+    mocks.review.mockResolvedValueOnce(evidenceReview([evidenceUpdate("I run the welcome table at our community garden.")]))
+    const response = await postConversation({ context, sessionId: "preview", message: "I run the welcome table at our community garden.", previewTranscript: opening(direct), configuration: projectConversationConfiguration(direct) })
+    const result = await response.json()
+    expect(result).toMatchObject({ status: "completed", message: "Thanks for taking the time." })
+    expect(result.completion.complete).toBe(true)
+  })
+  it("tells the evidence review that a negative answer is not a refusal", async () => {
+    mocks.create.mockResolvedValueOnce(reply("What do you enjoy about it?"))
+    await postConversation({ context, sessionId: "preview", message: "I go along sometimes.", previewTranscript: opening(signalConfig), configuration: projectConversationConfiguration(signalConfig) })
+    expect(mocks.review.mock.calls[0][0].system).toContain("A negative or uncertain answer is information, not a refusal.")
+    expect(mocks.review.mock.calls[0][0].tools[0].input_schema.properties.signalEvidence.items.properties.status.enum).toContain("none_identified")
   })
 })

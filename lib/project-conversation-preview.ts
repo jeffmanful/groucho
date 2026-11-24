@@ -10,6 +10,7 @@ export type ProjectConversationPreview = {
   config: ProjectConversationConfig
   transcript: ConversationTranscriptEntry[]
   status: "active" | "completed"
+  settingsConflict?: string
 }
 function secret() {
   const key = process.env.GROUCHO_PREVIEW_SIGNING_KEY || process.env.SUPABASE_SERVICE_KEY
