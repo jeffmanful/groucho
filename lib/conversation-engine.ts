@@ -467,7 +467,7 @@ export async function postConversation(input: {
   const openAreas = config.openConversation && config.signals?.length ? unexploredAreas(config.signals, priorSignalEvidence) : []
   let showAreas = config.openConversation === true && shouldShowAreas({ memory: workingMemoryBeforeTurn, unexplored: openAreas.length, turnCount, maxAnswers: config.maxAnswers })
   const signalState = config.openConversation && config.signals?.length
-    ? openConversationState({ signals: config.signals, evidence: priorSignalEvidence, memory: workingMemoryBeforeTurn, turnCount, maxAnswers: config.maxAnswers, showAreas })
+    ? openConversationState({ signals: config.signals, evidence: priorSignalEvidence, memory: workingMemoryBeforeTurn, turnCount, maxAnswers: config.maxAnswers, showAreas }) + selfCheckText
     : config.signals?.length ? `\n\nSIGNAL EVIDENCE SO FAR\n${JSON.stringify(priorSignalEvidence)}\nSIGNAL QUESTION HISTORY\n${JSON.stringify(projectSignalProgress(config.signals, priorSignalEvidence, signalCounts).map(({ id, asked, followUps, canAsk }) => ({ id, asked, followUps, canAsk })))}\nWORKING MEMORY\n${JSON.stringify(workingMemoryForPrompt(workingMemoryBeforeTurn, config.signals))}\nCONVERSATION PHASE: ${phase}. ${PHASE_GUIDANCE[phase]}${selfCheckText}\n${SIGNAL_PROGRESSION}\nUnexplored signals remain unknown. Follow the story and acknowledge corrections; never turn an example into a requirement.` : ""
   const fieldResponseTool = fields.length ? {
     ...conversationResponseTool,
@@ -559,6 +559,13 @@ export async function postConversation(input: {
     },
   } : previewResponseTool
 
+  const questionKey = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, "").replace(/\s+/g, " ").trim()
+  const questionsIn = (text: string) => text.trim().split(/(?<=[.!?？])\s+/).filter(sentence => /[?？]$/.test(sentence))
+  const askedOpenQuestions = new Set(config.openConversation
+    ? conversation.filter(entry => entry.role === "assistant").flatMap(entry => questionsIn(entry.content).map(questionKey))
+    : [])
+  const repeatsOpenQuestion = (text: string) => questionsIn(text).some(question => askedOpenQuestions.has(questionKey(question)))
+
   async function requestReply(operation: string, instruction: string, maxTokens = config.signals?.length ? 2200 : fields.length ? 1000 : 600,
     onReply?: (text: string) => void): Promise<ConversationReply> {
     const forcedTool = supportsForcedToolChoice(model)
@@ -584,6 +591,11 @@ export async function postConversation(input: {
         // Wait for the first sentence when a brand formatter may remove it.
         if (config.formatReply && !/[.!?]/.test(reply)) return
         const visible = activeText(config.formatReply?.(reply.trimStart()) ?? reply.trimStart())
+        if (askedOpenQuestions.size) {
+          const lastSentence = visible.split(/(?<=[.!?？])\s+/).at(-1) ?? ""
+          const unfinished = questionKey(lastSentence)
+          if (repeatsOpenQuestion(visible) || [...askedOpenQuestions].some(question => question.startsWith(unfinished))) return
+        }
         if (visible.length > shown.length && visible.startsWith(shown)) {
           shown = visible
           onReply(visible)
@@ -754,10 +766,11 @@ You were about to close. Before you do, consider these areas. Ask about one of t
       !reply.close && reply.boundary === "none" && signalTargetBlocked(choiceKeyFor(reply) ?? reply.questionSignalId, progressFor(evidenceFor(reply)))
     const invalidReply = (reply: ConversationReply) => closesBeforeReady(reply) || !stopReason && (applicantQuestion
       ? unusableQuestionReply(reply) : !reply.close && reply.boundary === "none" && !hasUsableTurn(reply))
-    const needsRepair = !visitorStopped && (invalidReply(proposal) || blockedSignalQuestion(proposal))
+    const needsRepair = !visitorStopped && (invalidReply(proposal) || blockedSignalQuestion(proposal) || !proposal.close && repeatsOpenQuestion(proposal.reply))
     if (needsRepair) {
       let usable = false
       let feedback = `\nRejected draft: ${JSON.stringify(proposal.reply)}. Details already understood: ${JSON.stringify(detailsFor(proposal))}.`
+      if (repeatsOpenQuestion(proposal.reply)) feedback += "\nYou already asked that question. Leave it alone and continue with a genuinely different question, answer the applicant, or close if nothing useful remains."
       if (blockedSignalQuestion(proposal)) feedback += `\nThat question targets a signal you should leave open or move past. Apply SIGNAL PROGRESSION. Use a useful open signal or close when no relevant thread remains. Current progress: ${JSON.stringify(progressFor(evidenceFor(proposal)))}.`
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
@@ -772,6 +785,10 @@ You were about to close. Before you do, consider these areas. Ask about one of t
           repaired.facts = [...(Array.isArray(proposal.facts) ? proposal.facts : []), ...(Array.isArray(repaired.facts) ? repaired.facts : [])]
           repaired.memory = [...(Array.isArray(proposal.memory) ? proposal.memory : []), ...(Array.isArray(repaired.memory) ? repaired.memory : [])]
           repaired.settingsConflict ??= proposal.settingsConflict
+          if (!repaired.close && repeatsOpenQuestion(repaired.reply)) {
+            feedback += "\nThe repair repeated an earlier question. Do not ask it again."
+            continue
+          }
           if (blockedSignalQuestion(repaired)) {
             feedback += `\nThe last repair still targeted an ineligible signal. Change to a relevant signal or leave it there.`
             continue
@@ -894,7 +911,7 @@ You were about to close. Before you do, consider these areas. Ask about one of t
         detail: error instanceof Error ? error.message : String(error) })
     }
   }
-  if (!close && proposal.boundary === "none" && signalProgress.length && signalTargetBlocked(questionSignalId, signalProgress)) {
+  if (!close && proposal.boundary === "none" && (repeatsOpenQuestion(reply) || signalProgress.length && signalTargetBlocked(questionSignalId, signalProgress))) {
     // The same limit applies to projects that follow their authored persona style.
     const directAnswer = applicantQuestion
       ? Array.from(new Intl.Segmenter("en", { granularity: "sentence" }).segment(reply))

@@ -34,6 +34,8 @@ export function mergeSignalEvidence(previous: unknown, updates: unknown, answer:
     // Reject the whole update when any proposed quote is unsupported; do not launder mixed evidence.
     if (!update.quotes.length || update.quotes.length > 3 || update.quotes.some(q => typeof q !== "string" || !q.trim() || q.length > 1000 || !answer.includes(q))) continue
     const old = result[update.signalId]
+    // A later answer can add partial context without undoing an established account.
+    if (old.status === "evidence_found" && !update.supersedes && update.status !== "evidence_found" && update.status !== "declined") continue
     const sources = [...(update.supersedes || update.status === "declined" ? [] : old.sources), ...update.quotes.map((quote: string) => ({ quote, turn }))]
     const unique = sources.filter((source, i) => sources.findIndex(s => s.quote === source.quote && s.turn === source.turn) === i).slice(-4)
     result[update.signalId] = { status: update.status as SignalEvidenceStatus, summary: update.summary.trim(), reason: update.reason.trim(), sources: unique }

@@ -775,6 +775,13 @@ describe("grounded signal evidence", () => {
     expect(result.s_community.status).toBe("declined")
     expect(result.s_community.summary).not.toMatch(/fail|reject|unsuitable/)
   })
+  it("keeps established evidence when a later answer adds only partial context", () => {
+    const quote = "I made my friend a playlist with a note on each track."
+    const first = mergeSignalEvidence({}, [evidenceUpdate(quote, { summary: "Made an annotated playlist for a friend." })], quote, 1, signalConfig.signals)
+    const later = "I'd like to make more playlists."
+    const result = mergeSignalEvidence(first, [evidenceUpdate(later, { status: "partly_understood", summary: "Would like to make more playlists." })], later, 2, signalConfig.signals)
+    expect(result.s_community).toEqual(first.s_community)
+  })
 })
 
 describe("complete signal conversations", () => {
@@ -1063,5 +1070,19 @@ describe("open conversation style", () => {
     expect(deltas.at(-1)).toBe(text)
     expect(final.body).toMatchObject({ message: text, status: "active", token: expect.any(String) })
     expect(mocks.create).not.toHaveBeenCalled()
+  })
+
+  it("repairs a repeated open question before showing it to the applicant", async () => {
+    const repeated = "What got you started on the zine?"
+    const replacement = "What have you put in it so far?"
+    const history: ConversationTranscriptEntry[] = [...opening(open), { role: "user", content: "I'm making a zine.", metadata: {} },
+      { role: "assistant", content: repeated, metadata: {} }]
+    mocks.stream.mockReturnValueOnce(streamedReply(repeated))
+    mocks.create.mockResolvedValueOnce(reply(replacement))
+    const deltas: string[] = []
+    const response = await postConversation({ context, sessionId: "preview", message: "It's about local bands.",
+      previewTranscript: history, configuration: projectConversationConfiguration(open), onReplyDelta: delta => deltas.push(delta) })
+    expect(deltas).toEqual([])
+    expect(await response.json()).toMatchObject({ message: replacement, status: "active" })
   })
 })
