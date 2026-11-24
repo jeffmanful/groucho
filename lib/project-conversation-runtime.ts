@@ -127,14 +127,26 @@ YOUR REPLY
 Write the reply the applicant will read. Set close=true when you are ending. Set buildsOnQuote to the exact words of theirs your question is about, copied from the transcript, or an empty string for a question about something new. Set questionSignalId to "none" unless you are asking about one of the areas your notes list as not yet covered. Leave signalEvidence as an empty list: a separate review records what you learn. Use choiceKey "none" unless you are offering a registered choice. Call groucho_converse exactly once.`
 }
 
+/** Reasoning for the open conversation's reply model. GROUCHO_OPEN_REPLY_REASONING overrides it for measurement. */
+function openReplyReasoning(): { replyReasoning?: "off" | "low" } {
+  const value = process.env.GROUCHO_OPEN_REPLY_REASONING?.trim()
+  return value === "off" || value === "low" ? { replyReasoning: value } : {}
+}
+
+/** Whether a configuration runs as an open conversation. */
+export function usesOpenConversation(config: ProjectConversationConfig) {
+  return config.version === 2 && config.conversationMode === "open"
+}
+
+/** `options.open` overrides the configured conversation style, for side-by-side evaluation. */
 export function projectConversationConfiguration(config: ProjectConversationConfig, project?: Pick<ProjectContext, "organisationId" | "projectId">, options: { open?: boolean } = {}): ConversationConfiguration {
   const profile = projectConversationProfile(config)
   const application = config.version === 2 && config.applicationReview === "colors_forum"
-  const open = options.open === true && config.version === 2
+  const open = (options.open ?? usesOpenConversation(config)) && config.version === 2
   const replyStyle = open ? undefined : projectConversationReplyStyle(config, project)
   return {
     ...profile, ...(config.version === 2 ? { signals: config.signals } : {}), marker: application ? "colors_thin_pilot_v1" : "groucho_conversation_v1", model: open ? OPEN_CONVERSATION_MODEL : colorsThinConversationModel(),
-    ...(open ? { openConversation: true, evidenceModel: colorsThinConversationModel() } : {}),
+    ...(open ? { openConversation: true, evidenceModel: colorsThinConversationModel(), ...openReplyReasoning() } : {}),
     purpose: config.intent,
     resolveOpeningConfiguration: application ? metadata => {
       const pinned = validateProjectConversation(metadata.project_conversation)

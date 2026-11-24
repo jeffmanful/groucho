@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createHash } from "node:crypto"
 import { NextRequest, NextResponse } from "next/server"
 const mocks = vi.hoisted(() => ({
-  create: vi.fn(), review: vi.fn(), queue: vi.fn(), writes: [] as Array<Record<string, unknown>>,
+  create: vi.fn(), stream: vi.fn(), review: vi.fn(), queue: vi.fn(), writes: [] as Array<Record<string, unknown>>,
   history: [] as Array<{ role: string; content: string; metadata: Record<string, unknown> }>,
   database: vi.fn(), actor: { kind: "member", userId: "author" } as { kind: "member"; userId: string } | null,
   denied: false, rateLimited: false,
@@ -11,10 +11,13 @@ const mocks = vi.hoisted(() => ({
 // Evidence reviews run beside each reply, so they get their own queue rather than interleaving with reply mocks.
 const isEvidenceReview = (request: { tools?: Array<{ name?: string }>; system?: unknown }) =>
   request.tools?.[0]?.name === "groucho_signal_evidence" || String(request.system).startsWith("You maintain evidence")
-vi.mock("@anthropic-ai/sdk", () => ({ default: class { messages = { create: (request: Parameters<typeof isEvidenceReview>[0]) => isEvidenceReview(request) ? mocks.review(request) : mocks.create(request) } } }))
+vi.mock("@anthropic-ai/sdk", () => ({ default: class { messages = {
+  create: (request: Parameters<typeof isEvidenceReview>[0]) => isEvidenceReview(request) ? mocks.review(request) : mocks.create(request),
+  stream: (request: unknown) => mocks.stream(request),
+} } }))
 vi.mock("@/lib/llm-usage", () => ({ logLlmUsage: vi.fn() }))
 vi.mock("@/lib/session-completion-jobs", () => ({ queueSessionCompletion: mocks.queue }))
-vi.mock("@/lib/gatekeeper-models", () => ({ colorsThinConversationModel: () => "test-model", supportsForcedToolChoice: (model: string) => !model.startsWith("claude-sonnet-5") }))
+vi.mock("@/lib/gatekeeper-models", () => ({ OPEN_CONVERSATION_MODEL: "test-open-model", colorsThinConversationModel: () => "test-model", supportsForcedToolChoice: (model: string) => !model.startsWith("claude-sonnet-5") }))
 vi.mock("@/lib/admin-actor", () => ({ resolveAdminActor: async () => mocks.actor }))
 vi.mock("@/lib/org-access", () => ({
   requireOrgAdmin: async () => mocks.denied ? NextResponse.json({ error: "Forbidden" }, { status: 403 }) : null,
@@ -64,6 +67,8 @@ import { projectSignalProgress } from "@/lib/project-conversation-progress"
 import { postDemoConversation, demoConversationProfile } from "@/lib/demo-conversation-profiles"
 import { normalizeProjectSettings, validateProjectSettings } from "@/lib/project-settings"
 import { GET, POST } from "@/app/api/admin/organisations/[orgId]/conversation-preview/route"
+import { readColorsThinStream } from "@/lib/colors-thin-stream"
+import { usesOpenConversation } from "@/lib/project-conversation-runtime"
 
 const config: ProjectConversationConfig = {
   ...DEFAULT_PROJECT_CONVERSATION, intent: "Help visitors describe what they want to make at our ceramics studio. No class catalogue or availability is supplied.",
@@ -1008,5 +1013,55 @@ describe("settling signals without a refusal", () => {
     await postConversation({ context, sessionId: "preview", message: "I go along sometimes.", previewTranscript: opening(signalConfig), configuration: projectConversationConfiguration(signalConfig) })
     expect(mocks.review.mock.calls[0][0].system).toContain("A negative or uncertain answer is information, not a refusal.")
     expect(mocks.review.mock.calls[0][0].tools[0].input_schema.properties.signalEvidence.items.properties.status.enum).toContain("none_identified")
+  })
+})
+
+describe("open conversation style", () => {
+  /** A MessageStream stand-in for a forced tool call: grows the reply, then returns the full message. */
+  function streamedReply(text: string) {
+    const listeners: Array<(partial: string, snapshot: unknown) => void> = []
+    return {
+      on(event: string, listener: (partial: string, snapshot: unknown) => void) { if (event === "inputJson") listeners.push(listener); return this },
+      async finalMessage() {
+        for (let end = 4; end < text.length; end += 4) listeners.forEach(listener => listener("", { reply: text.slice(0, end) }))
+        listeners.forEach(listener => listener("", { reply: text }))
+        return reply(text, { visitorIntent: "continue", questionSignalId: "none", buildsOnQuote: "" })
+      },
+    }
+  }
+  const open = { ...signalConfig, conversationMode: "open" as const }
+
+  it("is stored only when chosen and selects the open engine unless overridden", () => {
+    const validated = validateProjectConversation(open)
+    expect(validated.ok && validated.config.version === 2 && validated.config.conversationMode).toBe("open")
+    const guided = validateProjectConversation({ ...signalConfig, conversationMode: "guided" })
+    expect(guided.ok && guided.config.version === 2 && guided.config.conversationMode).toBeUndefined()
+    expect(validateProjectConversation({ ...signalConfig, conversationMode: "fast" }).ok).toBe(false)
+    expect(usesOpenConversation(open)).toBe(true)
+    expect(projectConversationConfiguration(open).openConversation).toBe(true)
+    expect(projectConversationConfiguration(open, undefined, { open: false }).openConversation).toBeUndefined()
+    expect(projectConversationConfiguration(signalConfig).openConversation).toBeUndefined()
+    expect(projectConversationConfiguration(open).replyReasoning).toBeUndefined()
+    vi.stubEnv("GROUCHO_OPEN_REPLY_REASONING", "off")
+    expect(projectConversationConfiguration(open).replyReasoning).toBe("off")
+    expect(projectConversationConfiguration(signalConfig).replyReasoning).toBeUndefined()
+  })
+
+  it("streams the reply in preview and ends with the usual body and token", async () => {
+    const started = await (await POST(request({ action: "start", config: open }), params)).json()
+    const text = "What drew you to running the group in the first place?"
+    mocks.stream.mockReturnValueOnce(streamedReply(text))
+    const streamed = new NextRequest("https://example.test/api/preview", { method: "POST",
+      headers: { origin: "https://example.test", accept: "text/event-stream" },
+      body: JSON.stringify({ action: "message", token: started.token, message: "I run a listening group online." }) })
+    const response = await POST(streamed, params)
+    expect(response.headers.get("content-type")).toContain("text/event-stream")
+    const deltas: string[] = []
+    const final = await readColorsThinStream(response, delta => deltas.push(delta))
+    expect(final.status).toBe(200)
+    expect(deltas.length).toBeGreaterThan(1)
+    expect(deltas.at(-1)).toBe(text)
+    expect(final.body).toMatchObject({ message: text, status: "active", token: expect.any(String) })
+    expect(mocks.create).not.toHaveBeenCalled()
   })
 })

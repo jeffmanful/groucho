@@ -56,6 +56,8 @@ export function renderReport(results: PilotResults): string {
     if (attempts.length) lines.push(`Questions towards a signal: ${attempts.length}. Built on the applicant's own words: ${percent(attempts.filter(attempt => attempt.buildsOn).length / attempts.length)}. Passed over by the applicant: ${attempts.filter(attempt => attempt.outcome === "passed_over").length}.`, "")
     const steers = turns.flatMap(turn => turn.signalTurn?.selfCheck ? [turn.signalTurn.selfCheck] : [])
     if (steers.length) lines.push(`Self-check steered ${steers.length} of ${turns.length} turns: ${[...new Set(steers)].map(kind => `${kind.replace(/_/g, " ")} ${steers.filter(item => item === kind).length}`).join(", ")}.`, "")
+    const firstText = turns.flatMap(turn => turn.firstTextMs === undefined ? [] : [turn.firstTextMs])
+    if (firstText.length) lines.push(`First reply text appeared after p50 ${seconds(percentile(firstText, 0.5))}, p95 ${seconds(percentile(firstText, 0.95))} (${firstText.length} of ${turns.length} turns streamed).`, "")
     if (turns.length) lines.push(`Turn latency p50 ${seconds(percentile(latencies, 0.5))}, p95 ${seconds(percentile(latencies, 0.95))}. Model calls per turn: ${(turns.reduce((sum, turn) => sum + turn.calls.length, 0) / turns.length).toFixed(1)}.`, "", ...models.map(model => `- ${model}`), "")
     lines.push("### Consistency across repeats", "", "| Scenario | Final signal states agree | Same question path | Same first question | Answers | Checks failed (hard/soft) |", "| --- | ---: | ---: | ---: | ---: | ---: |")
     for (const item of results.consistency.filter(entry => entry.flow === flow.slug)) {

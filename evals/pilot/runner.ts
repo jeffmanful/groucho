@@ -82,8 +82,10 @@ export async function runScenario(flow: PilotFlow, scenario: Scenario, repeat: n
     for (let attempt = 0; attempt <= RETRIES && !body; attempt++) {
       const requestId = `pilot-${randomUUID()}`
       const started = performance.now()
+      let firstText: number | undefined
       try {
-        const response = await postConversation({ configuration, context, sessionId: randomUUID(), message: answer, previewTranscript: transcript, runCompletion: false, requestId })
+        const response = await postConversation({ configuration, context, sessionId: randomUUID(), message: answer, previewTranscript: transcript, runCompletion: false, requestId,
+          onReplyDelta: () => { firstText ??= performance.now() } })
         const result = await response.json() as Record<string, unknown>
         if (response.ok) body = result
         else failure = `${response.status}: ${String(result.error)}`
@@ -91,6 +93,7 @@ export async function runScenario(flow: PilotFlow, scenario: Scenario, repeat: n
         failure = error instanceof Error ? error.message : String(error)
       }
       turn.latencyMs += Math.round(performance.now() - started)
+      if (body && firstText !== undefined) turn.firstTextMs = Math.round(firstText - started)
       turn.calls.push(...callsFor(requestId))
       if (!body) turn.retries++
     }

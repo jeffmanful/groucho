@@ -1,6 +1,7 @@
 /** Client-safe, versioned contract shared by authoring, preview and the runtime. */
 export type ProjectQuestionType = "text" | "singleSelect" | "multiSelect"
 export type ProjectReplyStyle = "acknowledge" | "direct"
+export type ProjectConversationMode = "open" | "guided"
 export type ProjectConversationQuestion = {
   id: string
   question: string
@@ -31,6 +32,11 @@ export type ProjectConversationSignal = {
 export type SignalProjectConversationConfig = Omit<LegacyProjectConversationConfig, "version" | "questions"> & {
   version: 2
   replyStyle?: ProjectReplyStyle
+  /**
+   * open: the host leads from a short brief and its notes, with no reply review (faster, and the
+   * reply streams). guided or absent: the reviewed engine with reply styles.
+   */
+  conversationMode?: ProjectConversationMode
   projectContext?: string
   conversationGuidance?: string
   closingGuidance?: string
@@ -79,6 +85,7 @@ export function validateProjectConversation(value: unknown): Result {
   if (o.version === 2) {
     if (o.replyStyle !== undefined && o.replyStyle !== "acknowledge" && o.replyStyle !== "direct") return { ok: false, error: "Choose a supported reply style." }
     if (o.applicationReview !== undefined && o.applicationReview !== "colors_forum") return { ok: false, error: "Unsupported application review pipeline." }
+    if (o.conversationMode !== undefined && o.conversationMode !== "open" && o.conversationMode !== "guided") return { ok: false, error: "Choose a supported conversation style." }
     const projectControls: Pick<SignalProjectConversationConfig, "projectContext" | "conversationGuidance" | "closingGuidance" | "closingMessage"> = {}
     for (const [key, label, limit] of [
       ["projectContext", "project context", 6000],
@@ -111,7 +118,7 @@ export function validateProjectConversation(value: unknown): Result {
       if (choice && (options.length < 2 || options.length > 12 || new Set(options).size !== options.length)) return { ok: false, error: `${label} needs 2–12 distinct options.` }
       signals.push({ id: signal.id, name: signal.name.trim(), understanding: signal.understanding.trim(), evidence: signal.evidence.trim(), examples: signal.examples.map((v: string) => v.trim()).filter(Boolean), explore: signal.explore, question: signal.question.trim(), answerType: signal.answerType as ProjectConversationSignal["answerType"], options: choice ? options : [] })
     }
-    return { ok: true, config: { version: 2, openingMessage: o.openingMessage.trim(), openingQuestion: o.openingQuestion.trim(), maxAnswers: Number(o.maxAnswers), intent: o.intent.trim(), persona: { name: persona.name.trim(), instructions: persona.instructions.trim() }, ...(o.replyStyle === undefined ? {} : { replyStyle: o.replyStyle }), ...projectControls, ...(o.applicationReview === "colors_forum" ? { applicationReview: "colors_forum" as const } : {}), signals } }
+    return { ok: true, config: { version: 2, openingMessage: o.openingMessage.trim(), openingQuestion: o.openingQuestion.trim(), maxAnswers: Number(o.maxAnswers), intent: o.intent.trim(), persona: { name: persona.name.trim(), instructions: persona.instructions.trim() }, ...(o.replyStyle === undefined ? {} : { replyStyle: o.replyStyle }), ...(o.conversationMode === "open" ? { conversationMode: "open" as const } : {}), ...projectControls, ...(o.applicationReview === "colors_forum" ? { applicationReview: "colors_forum" as const } : {}), signals } }
   }
   if (!Array.isArray(o.questions) || o.questions.length > 12) return { ok: false, error: "Use up to 12 questions." }
   const ids = new Set<string>()
