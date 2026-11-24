@@ -1,15 +1,29 @@
 import type { ProjectConversationSignal } from "@/lib/project-conversation-config"
 import type { SignalEvidenceMap, SignalEvidenceStatus } from "@/lib/project-conversation-evidence"
+import type { AnswerRelation, SelfCheckKind } from "@/lib/project-conversation-memory"
 
 export const MAX_SIGNAL_FOLLOW_UPS = 2
 export const SETTLED_SIGNAL_STATUSES: readonly SignalEvidenceStatus[] = ["evidence_found", "none_identified", "declined"]
 export const NO_SIGNAL_TARGET = "none"
-export const SIGNAL_PROGRESSION = `Use signal evidence from the current answer before deciding what to ask next. A question should have one clear purpose. Identify the signal it would help understand, even if the wording refers to an earlier topic. Once the answer meets a signal's evidence criteria, move to another relevant signal. For example, after someone says they shared an album with their radio co-hosts, ask about their role on the show or an example of helping someone rather than asking what happened to the album. An adjacent detail is useful only if it would specifically clarify a remaining signal. A relevant unasked question can open a signal. After that, use at most ${MAX_SIGNAL_FOLLOW_UPS} deeper attempts across the conversation and only if they ask for a distinct, useful detail. When an answer is uncertain, a fresh lower-pressure invitation is enough if it would genuinely help. Move on sooner when the applicant is uncomfortable, has declined, has said nothing applies or the thread has stopped yielding useful information. Accept short, modest answers and leave gaps open. Never repeat or reword a question to exhaust an allowance. Respect the project's pacing, the applicant's questions and requests to stop. If no relevant question remains, close naturally. Set questionSignalId to the configured signal the visible question would explore. Use "none" for a genuine warm-up, a clarification of your wording, a response to the applicant that does not seek signal evidence, or a closing. Never use "none" to continue probing a settled or exhausted topic.`
+/** Questions per signal: ideally one connected question, then at most one plainer retry. */
+export const MAX_SIGNAL_ATTEMPTS = 2
+export const SIGNAL_PROGRESSION = `Signals are the background purpose of this conversation. They keep your questions relevant; they are not a list to work through and they do not set the order. Use signal evidence from the current answer before deciding what to ask next.
+Choose the next question like this. First look at what the applicant has actually said: the current answer and the open threads. Find something there that, if they said more about it, would help understand a signal that is still open or only partly understood, and ask about that in their terms. For example, if someone says they have had a record on all week and an open signal is about how they act on music they care about, ask who they last played it to, not a fresh question about sharing music. That is a connected question: set buildsOnQuote to the exact words of theirs it starts from. A detail attached to an unrelated signal question to make it sound connected is not a connection; if their words would not genuinely lead there, ask something else.
+Only when nothing they have said leads towards an open signal, ask about that signal plainly and leave buildsOnQuote empty. Plain questions suit basic facts and the landing phase.
+A question should have one clear purpose. Once an answer meets a signal's evidence criteria, leave that signal. Each signal gets at most ${MAX_SIGNAL_ATTEMPTS} questions across the conversation: ideally one connected question, then at most one plainer retry later, only if they passed over the first or it left the signal partly understood. When a question is passed over, take what they did share and do not repeat or reword it on the next turn. Accept short, modest answers and leave gaps open. Move on sooner when the applicant is uncomfortable, has declined or has said nothing applies.
+The aim is to have asked well, not to obtain an answer. A signal that has been fairly asked about is done even if nothing came back. Respect the project's pacing, the applicant's questions and requests to stop. When every signal has evidence or has been fairly asked about, close naturally.
+Set questionSignalId to the configured signal the visible question would help understand. Use "none" for a genuine warm-up, a clarification of your wording, a response to the applicant that does not seek signal evidence, or a closing. Never use "none" to continue probing a settled or exhausted topic.`
 
 export type SignalTurn = {
   questionSignalId: string | null
   followUp: boolean
   changes: { signalId: string; status: SignalEvidenceStatus; summary: string }[]
+  /** The applicant's words this question started from. Absent for a plain question. */
+  buildsOn?: string
+  /** How the applicant's answer on this turn related to the previous question. */
+  answerRelation?: AnswerRelation
+  /** The steering note the engine gave itself on this turn, if any. */
+  selfCheck?: SelfCheckKind
 }
 
 type TrackedEntry = { role: string; content: string; metadata: Record<string, unknown> }
@@ -33,7 +47,7 @@ export function projectSignalProgress(signals: readonly ProjectConversationSigna
     const status = evidence[signal.id]?.status ?? "not_explored"
     const nextIsFollowUp = asked > 0 || status === "partly_understood"
     // A plain "no" settles the question as firmly as a refusal; neither invites another attempt.
-    const canAsk = signal.explore && !SETTLED_SIGNAL_STATUSES.includes(status) && followUps < MAX_SIGNAL_FOLLOW_UPS
+    const canAsk = signal.explore && !SETTLED_SIGNAL_STATUSES.includes(status) && followUps < MAX_SIGNAL_FOLLOW_UPS && asked < MAX_SIGNAL_ATTEMPTS
     return { id: signal.id, name: signal.name, goal: signal.understanding, evidence: signal.evidence, explore: signal.explore, status, asked, followUps, nextIsFollowUp, canAsk }
   })
 }

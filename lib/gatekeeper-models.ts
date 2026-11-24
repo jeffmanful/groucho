@@ -18,6 +18,9 @@ export function gatekeeperConversationModel(
 /** Mo favours conversation continuity over the lower-cost default. */
 export const MO_CONVERSATION_MODEL = "claude-sonnet-5-5"
 
+/** The open conversation variant leaves each move to the model, so it uses the stronger one. */
+export const OPEN_CONVERSATION_MODEL = "claude-sonnet-5-5"
+
 export const DEFAULT_COLORS_THIN_CONVERSATION_MODEL = "claude-haiku-5-5"
 
 export function colorsThinConversationModel(
