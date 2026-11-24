@@ -189,7 +189,7 @@ describe("Forum Early Access one-question replies", () => {
     expect(mocks.create.mock.calls[3][0].system).toContain("A Forum reason is available: false.")
   })
 
-  it("scopes the policy to the identified project and organisation", () => {
+  it("keeps Direct active for the legacy Early Access configuration only", () => {
     expect(projectConversationConfiguration(earlyAccess, { organisationId, projectId }).oneQuestionReply).toBeDefined()
     expect(projectConversationConfiguration(earlyAccess, { organisationId, projectId: "another-project" }).oneQuestionReply).toBeUndefined()
     expect(projectConversationConfiguration(earlyAccess, { organisationId: "another-org", projectId }).oneQuestionReply).toBeUndefined()
@@ -402,9 +402,45 @@ describe("signal configuration and compatibility", () => {
     expect(projectConversationConfiguration(authored).closingMessage).toBe(authored.closingMessage)
   })
   it.each([
+    ["acknowledge", "Thanks for bringing someone into the group. What helped them join in?", "give one brief, grounded acknowledgement"],
+    ["direct", "What helped them join in?", "start with one grounded question"],
+  ] as const)("saves %s and uses it in both the wizard preview and saved runtime", async (replyStyle, expectedReply, guidance) => {
+    const authored = {
+      ...signalConfig,
+      replyStyle,
+      persona: { ...signalConfig.persona, instructions: "Use a different reply format from the project." },
+    }
+    const projectSettings = validateProjectSettings(projectConversationSettings(authored))
+    if (!projectSettings.ok) throw new Error(projectSettings.error)
+    expect(readProjectConversation(projectSettings.settings)).toMatchObject({ replyStyle })
+    expect(projectConversationProfile(authored).id).not.toBe(projectConversationProfile(signalConfig).id)
+
+    const started = await (await POST(request({ action: "start", config: authored }), params)).json()
+    expect(verifyProjectPreview(started.token, "org", "member:author")?.config).toMatchObject({ replyStyle })
+    const message = "I invited a newcomer to join our group."
+    mocks.create.mockResolvedValueOnce(reply(expectedReply))
+    if (replyStyle === "direct") mocks.create.mockResolvedValueOnce(questionReview("pass"))
+    const preview = await (await POST(request({ action: "message", token: started.token, message }), params)).json()
+    expect(preview).toMatchObject({ message: expectedReply, status: "active" })
+    expect(mocks.create.mock.calls[0][0].system).toContain("The selected reply style takes precedence")
+    expect(mocks.create.mock.calls[0][0].system).toContain(guidance)
+    expect(mocks.create).toHaveBeenCalledTimes(replyStyle === "direct" ? 2 : 1)
+    if (replyStyle === "direct") expect(mocks.create.mock.calls[1][0].output_config.format.schema.properties).toHaveProperty("verdict")
+
+    mocks.create.mockClear()
+    mocks.history = opening(authored)
+    mocks.create.mockResolvedValueOnce(reply(expectedReply))
+    if (replyStyle === "direct") mocks.create.mockResolvedValueOnce(questionReview("pass"))
+    const live = await postDemoConversation({ context: { ...context, settings: normalizeProjectSettings(projectSettings.settings) }, sessionId: "saved", message })
+    expect(await live.json()).toMatchObject({ message: expectedReply, status: "active" })
+    expect(mocks.create.mock.calls[0][0].system).toContain(guidance)
+    expect(mocks.create).toHaveBeenCalledTimes(replyStyle === "direct" ? 2 : 1)
+  })
+  it.each([
     { projectContext: "x".repeat(6001) }, { projectContext: 3 },
     { conversationGuidance: "x".repeat(3001) }, { closingGuidance: null },
     { closingMessage: "Anything else?" }, { closingMessage: "x".repeat(501) },
+    { replyStyle: "unknown" }, { replyStyle: null },
   ])("rejects invalid project flow controls %j", patch => {
     expect(validateProjectConversation({ ...signalConfig, ...patch }).ok).toBe(false)
   })

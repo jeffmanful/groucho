@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { DEFAULT_SIGNAL_CONVERSATION, DEFAULT_PROJECT_CLOSING_MESSAGE, projectOpeningQuestion, upgradeProjectConversation, validateProjectConversation, projectConversationSettings, type ProjectConversationConfig, type SignalProjectConversationConfig } from "@/lib/project-conversation-config"
+import { DEFAULT_SIGNAL_CONVERSATION, DEFAULT_PROJECT_CLOSING_MESSAGE, isForumEarlyAccessProject, projectConversationReplyStyle, projectOpeningQuestion, upgradeProjectConversation, validateProjectConversation, projectConversationSettings, type ProjectConversationConfig, type ProjectReplyStyle, type SignalProjectConversationConfig } from "@/lib/project-conversation-config"
 import { slugify, isValidProjectSlug } from "@/components/admin/project-setup-ui"
 import { useOrganisationSummary } from "@/components/admin/dashboard/OrganisationSummaryContext"
 import { ConversationSignalEditor } from "./ConversationSignalEditor"
@@ -25,6 +25,11 @@ type Props = {
   project?: { id: string; name: string; slug: string; config: ProjectConversationConfig }
   onAdvanced?: () => void
 }
+const replyStyleLabels = {
+  acknowledge: "Acknowledge answers",
+  direct: "Go straight to one question",
+} satisfies Record<ProjectReplyStyle, string>
+
 async function readResponse(response: Response) {
   const result = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(result.error || "Something went wrong. Please retry.")
@@ -57,6 +62,8 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
   const currentConfig = validated.ok ? JSON.stringify(validated.config) : ""
   const previewConfig: SignalProjectConversationConfig = testedConfig ? JSON.parse(testedConfig) : config
   const stale = !!preview && currentConfig !== testedConfig
+  const replyStyle = projectConversationReplyStyle(config, { organisationId: orgId, projectId: project?.id })
+  const hasDefaultReplyStyle = isForumEarlyAccessProject(orgId, project?.id)
   const patch = (value: Partial<SignalProjectConversationConfig>) => { setConfig(previous => ({ ...previous, ...value })); setError("") }
   function next() {
     setError("")
@@ -141,7 +148,19 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
           <p>Define who hosts the conversation. Its purpose and flow belong to this project.</p>
           <label>Persona name<input value={config.persona.name} maxLength={80} onChange={e => patch({ persona: { ...config.persona, name: e.target.value } })} /></label>
           <label>Persona instructions<textarea value={config.persona.instructions} maxLength={6000} rows={6} onChange={e => patch({ persona: { ...config.persona, instructions: e.target.value } })} /></label>
-          <p>Set the host’s voice and reply style. Your instructions take precedence over Groucho’s defaults. The preview can flag a possible conflict between your settings.</p>
+          <p>Set the host’s voice. The preview can flag a possible conflict between your settings.</p>
+          <label>Reply style
+            <select aria-describedby="reply-style-description" value={replyStyle ?? ""} onChange={event => patch({ replyStyle: (event.target.value || undefined) as ProjectReplyStyle | undefined })}>
+              {!hasDefaultReplyStyle && <option value="">Follow persona instructions</option>}
+              <option value="acknowledge">{replyStyleLabels.acknowledge}</option>
+              <option value="direct">{replyStyleLabels.direct}</option>
+            </select>
+          </label>
+          <p id="reply-style-description">{replyStyle === "direct"
+            ? "Groucho checks that each ordinary follow-up is one grounded question. The check can add response time."
+            : replyStyle === "acknowledge"
+              ? "Groucho briefly responds to what the applicant shared before asking a follow-up."
+              : "Use the reply style in your persona instructions, or choose a style for this project."}</p>
         </section>}
         {step === 2 && <section>
           <h2>Conversation flow</h2>
@@ -167,6 +186,7 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
         <dl className={styles.summary}>
           <div><dt>Objective</dt><dd>{config.intent}</dd></div>
           <div><dt>Persona</dt><dd>{config.persona.name}</dd></div>
+          <div><dt>Reply style</dt><dd>{replyStyle ? replyStyleLabels[replyStyle] : "Follow persona instructions"}</dd></div>
           <div><dt>Opening question</dt><dd>{projectOpeningQuestion(config)}</dd></div>
           <div><dt>Flow</dt><dd>{config.conversationGuidance || "Follow the applicant’s story and explore relevant signals naturally."}</dd></div>
           <div><dt>Answer limit</dt><dd>{config.maxAnswers}</dd></div>

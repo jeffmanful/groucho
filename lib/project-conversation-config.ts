@@ -1,5 +1,6 @@
 /** Client-safe, versioned contract shared by authoring, preview and the runtime. */
 export type ProjectQuestionType = "text" | "singleSelect" | "multiSelect"
+export type ProjectReplyStyle = "acknowledge" | "direct"
 export type ProjectConversationQuestion = {
   id: string
   question: string
@@ -29,6 +30,7 @@ export type ProjectConversationSignal = {
 }
 export type SignalProjectConversationConfig = Omit<LegacyProjectConversationConfig, "version" | "questions"> & {
   version: 2
+  replyStyle?: ProjectReplyStyle
   projectContext?: string
   conversationGuidance?: string
   closingGuidance?: string
@@ -39,6 +41,17 @@ export type SignalProjectConversationConfig = Omit<LegacyProjectConversationConf
 }
 export const DEFAULT_PROJECT_CLOSING_MESSAGE = "Thank you for taking the time to chat."
 export type ProjectConversationConfig = LegacyProjectConversationConfig | SignalProjectConversationConfig
+type ProjectConversationIdentity = { organisationId: string; projectId?: string }
+
+// Keep the original Early Access rollout active on configurations saved before reply styles.
+export function isForumEarlyAccessProject(organisationId: string, projectId: unknown): projectId is string {
+  return organisationId === "8f945897-31bf-4072-9aad-1c02e090e6dd" && projectId === "570484ab-f1b4-467a-bf1e-75dedd09dbaa"
+}
+
+export function projectConversationReplyStyle(config: ProjectConversationConfig, project?: ProjectConversationIdentity): ProjectReplyStyle | undefined {
+  const style = config.version === 2 ? config.replyStyle : undefined
+  return style ?? (project && isForumEarlyAccessProject(project.organisationId, project.projectId) ? "direct" : undefined)
+}
 export const DEFAULT_PROJECT_CONVERSATION: LegacyProjectConversationConfig = {
   version: 1,
   openingMessage: "Hello. Thanks for taking a little time to chat.",
@@ -64,6 +77,7 @@ export function validateProjectConversation(value: unknown): Result {
   const persona = o.persona as Record<string, unknown> | null
   if (!persona || !validText(persona.name, 80) || !validText(persona.instructions, 6000)) return { ok: false, error: "Add a persona name (up to 80 characters) and instructions (up to 6,000 characters)." }
   if (o.version === 2) {
+    if (o.replyStyle !== undefined && o.replyStyle !== "acknowledge" && o.replyStyle !== "direct") return { ok: false, error: "Choose a supported reply style." }
     if (o.applicationReview !== undefined && o.applicationReview !== "colors_forum") return { ok: false, error: "Unsupported application review pipeline." }
     const projectControls: Pick<SignalProjectConversationConfig, "projectContext" | "conversationGuidance" | "closingGuidance" | "closingMessage"> = {}
     for (const [key, label, limit] of [
@@ -97,7 +111,7 @@ export function validateProjectConversation(value: unknown): Result {
       if (choice && (options.length < 2 || options.length > 12 || new Set(options).size !== options.length)) return { ok: false, error: `${label} needs 2–12 distinct options.` }
       signals.push({ id: signal.id, name: signal.name.trim(), understanding: signal.understanding.trim(), evidence: signal.evidence.trim(), examples: signal.examples.map((v: string) => v.trim()).filter(Boolean), explore: signal.explore, question: signal.question.trim(), answerType: signal.answerType as ProjectConversationSignal["answerType"], options: choice ? options : [] })
     }
-    return { ok: true, config: { version: 2, openingMessage: o.openingMessage.trim(), openingQuestion: o.openingQuestion.trim(), maxAnswers: Number(o.maxAnswers), intent: o.intent.trim(), persona: { name: persona.name.trim(), instructions: persona.instructions.trim() }, ...projectControls, ...(o.applicationReview === "colors_forum" ? { applicationReview: "colors_forum" as const } : {}), signals } }
+    return { ok: true, config: { version: 2, openingMessage: o.openingMessage.trim(), openingQuestion: o.openingQuestion.trim(), maxAnswers: Number(o.maxAnswers), intent: o.intent.trim(), persona: { name: persona.name.trim(), instructions: persona.instructions.trim() }, ...(o.replyStyle === undefined ? {} : { replyStyle: o.replyStyle }), ...projectControls, ...(o.applicationReview === "colors_forum" ? { applicationReview: "colors_forum" as const } : {}), signals } }
   }
   if (!Array.isArray(o.questions) || o.questions.length > 12) return { ok: false, error: "Use up to 12 questions." }
   const ids = new Set<string>()

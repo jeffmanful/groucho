@@ -5,8 +5,8 @@ import { requireOrgAdmin, unauthorized } from "@/lib/org-access"
 import { isSameOriginMutation } from "@/lib/platform-admin-access"
 import { checkRateLimit } from "@/lib/rate-limit"
 import { postConversation, type ConversationTranscriptEntry } from "@/lib/conversation-engine"
-import { validateProjectConversation, projectConversationOpening, projectConversationSettings } from "@/lib/project-conversation-config"
-import { isForumEarlyAccessProject, projectConversationConfiguration, projectConversationProfile } from "@/lib/project-conversation-runtime"
+import { isForumEarlyAccessProject, validateProjectConversation, projectConversationOpening, projectConversationSettings } from "@/lib/project-conversation-config"
+import { projectConversationConfiguration, projectConversationProfile } from "@/lib/project-conversation-runtime"
 import { signProjectPreview, verifyProjectPreview } from "@/lib/project-conversation-preview"
 import { normalizeProjectSettings } from "@/lib/project-settings"
 import { emptySignalEvidence } from "@/lib/project-conversation-evidence"
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ org
       if (!validated.ok) return json({ error: validated.error }, 400)
       const config = validated.config
       const projectId = isForumEarlyAccessProject(orgId, body.projectId) ? body.projectId : undefined
-      const runtime = projectConversationConfiguration(config)
+      const runtime = projectConversationConfiguration(config, { organisationId: orgId, projectId: projectId ?? "preview" })
       const message = projectConversationOpening(config)
       const profile = projectConversationProfile(config)
       const choice = profile.openingChoice ? profile.choices[profile.openingChoice] : undefined
