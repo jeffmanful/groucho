@@ -90,6 +90,7 @@ async function handle(req: NextRequest, { params }: RouteContext) {
     requestId,
     modelOverride: selectableColorsThinModel(body?.conversationModel),
     runCompletion: false,
+    reviewAuthoredSettings: true,
   }
   if (wantsColorsThinStream(req.headers.get("accept"))) {
     return colorsThinEventStream((onReplyDelta) => postColorsThinConversation({ ...turn, onReplyDelta }))

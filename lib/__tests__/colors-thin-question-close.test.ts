@@ -144,6 +144,24 @@ describe("thin pilot close after an applicant question", () => {
     )
   }
 
+  it("preserves the authored reply through a correction and a request to stop", async () => {
+    const personaPrompt = "Do not recap the applicant’s answer. You can ask two short questions or respond without asking one."
+    const firstReply = "What do you want people to notice first? How do you decide what to leave out?"
+    const correctionReply = "Thanks for the correction. We can leave it there."
+    const closing = toolReply(correctionReply, false, true)
+    Object.assign(closing.content[0].input, { visitorIntent: "stop" })
+    createMock.mockResolvedValueOnce(toolReply(firstReply, false, true))
+      .mockResolvedValueOnce(closing)
+    const input = { context, sessionId: "session-1", personaPrompt, applicant, runCompletion: false }
+    const first = await postColorsThinConversation({ ...input, message: "I make flyers for a night friends run in Leipzig." })
+    expect(await first.json()).toMatchObject({ message: firstReply, status: "active" })
+    state.history.push(...state.inserted.map((entry, index) => ({ ...entry, id: `saved-${index}`, metadata: entry.metadata ?? {} })))
+    const final = await postColorsThinConversation({ ...input, message: "Actually it’s in Halle. Can we leave it there?" })
+    expect(await final.json()).toMatchObject({ message: `${correctionReply}\n\nThanks for talking.`, status: "completed" })
+    expect(createMock).toHaveBeenCalledTimes(2)
+    expect(queueMock).not.toHaveBeenCalled()
+  })
+
   it("closes repeated no-progress answers instead of persisting another probe", async () => {
     priorSettledAnswers()
     createMock.mockResolvedValueOnce(toolReply("What would make feedback useful?", false, false))

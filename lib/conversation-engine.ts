@@ -32,6 +32,7 @@ type ConversationReply = {
   choiceKey?: string
   choiceIntroduction?: string
   visitorIntent?: "continue" | "stop"
+  settingsConflict?: string
   signalEvidence?: unknown
   facts?: unknown
   memory?: unknown
@@ -134,10 +135,14 @@ export function oneQuestion(reply: string): string {
 
 
 /** A close may acknowledge the last answer, but must never imply a decision. */
-export function conversationalClosing(acknowledgment: string, neutralLine: string): string {
+export function conversationalClosing(acknowledgment: string, neutralLine: string, authoredStyle = false): string {
   const unsafe = /\?|\b(?:accepted|approved|rejected|declined|passed|failed|qualified|unqualified|application|review|decision|proceed)\b|\b(?:good|great|perfect|strong|poor|bad)\s+(?:fit|match)\b|\bwelcome\s+(?:to|in)\b|\b(?:we(?:'d| would)? love to have you|you(?:'re| are) in|enough (?:to|for)|move forward|take (?:this|things) forward|no space|not (?:a place|for)|isn't (?:set up|for|a place))\b/i
   const generic = /^(?:i appreciate (?:your |the )?(?:directness|honesty)|thanks for (?:being )?(?:direct|honest)|i hear you|that's clear)\.?$/i
-  const detail = acknowledgment.trim().replace(/\s+/g, " ")
+  const closing = acknowledgment.trim()
+  if (authoredStyle && closing && !unsafe.test(closing)) {
+    return closing === neutralLine || closing.endsWith(`\n${neutralLine}`) ? closing : `${closing}\n\n${neutralLine}`
+  }
+  const detail = closing.replace(/\s+/g, " ")
     .split(/(?<=[.!])\s+/)
     .find((sentence) => !unsafe.test(sentence) && !generic.test(sentence))
   if (!detail || detail === neutralLine || detail.length > 180) {
@@ -170,6 +175,8 @@ export type ConversationConfiguration = {
   resolveChoice?: (key: string, choice: ConversationChoice, details: Record<string, string>, message: string) => ConversationChoice
   formatReply?: (reply: string) => string
   naturalConversation?: boolean
+  /** Authored text may use its own length, structure and follow-up style. */
+  authoredReplyStyle?: boolean
   /** Compose a brief acknowledgement with the exact registered question. */
   choiceIntroductions?: boolean
   visitorIntent?: boolean
@@ -234,6 +241,8 @@ export function conversationSelections(message: string, options: readonly string
 export async function postConversation(input: {
   /** Server-verified draft transcript. Executes without reading/writing application records. */
   previewTranscript?: ConversationTranscriptEntry[]
+  /** Request private author feedback on the opening exchange in an authenticated preview. */
+  reviewAuthoredSettings?: boolean
   configuration: ConversationConfiguration
 
   context: ProjectContext
@@ -242,11 +251,7 @@ export async function postConversation(input: {
   applicant?: ApplicantIdentity
   interactionAnswer?: MediaChoiceAnswer
   requestId?: string
-  /**
-   * Receives the applicant-facing reply text as it is generated, cut at its first question.
-   * Called only on turns where the runtime cannot force a close, so streamed text is not
-   * later replaced by a closing line. The final JSON response stays authoritative.
-   */
+  /** Receives provisional reply text on eligible turns. The final response is authoritative. */
   onReplyDelta?: (text: string) => void
   /** A model chosen from COLORS_THIN_CONVERSATION_MODEL_OPTIONS; callers validate it first. */
   modelOverride?: string
@@ -285,6 +290,9 @@ export async function postConversation(input: {
   const fields = config.fields ?? []
   const choices = config.choices ?? {}
   const natural = config.naturalConversation === true
+  const authoredStyle = config.authoredReplyStyle === true
+  const requiresQuestion = !natural && !authoredStyle
+  const activeText = requiresQuestion ? oneQuestion : (reply: string) => reply.trim()
   if (record(history[0].metadata).conversation_engine !== config.marker) {
     return json({ error: "Session uses a different conversation engine" }, input.requestId, 409)
   }
@@ -369,7 +377,7 @@ export async function postConversation(input: {
     ? `${input.message}\nMedia choice: ${JSON.stringify(input.interactionAnswer)}`
     : input.message
   const stopMessage = natural ? input.message.trim().replace(/^(?:thanks|thank you|okay|ok|alright)[,!.]?\s*/i, "") : input.message.trim()
-  const stoppedByApplicant = fields.length > 0 && /^(?:(?:no thanks[,!.]?\s*)?(?:please\s+)?stop(?:\s+(?:now|this|the conversation))?[.!?]*|(?:can|could) (?:we|you) (?:please )?stop(?: (?:now|this|the conversation))?[.!?]*|(?:let'?s|i want to|i'd like to) (?:stop|end (?:this|the conversation))[.!?]*|(?:no thanks|not interested|goodbye|i'm done|i am done)[.!?]*)$/i.test(stopMessage)
+  const stoppedByApplicant = (fields.length > 0 || config.visitorIntent === true) && /^(?:(?:no thanks[,!.]?\s*)?(?:please\s+)?stop(?:\s+(?:now|this|the conversation))?[.!?]*|(?:can|could) (?:we|you) (?:please )?stop(?: (?:now|this|the conversation))?[.!?]*|(?:let'?s|i want to|i'd like to) (?:stop|end (?:this|the conversation))[.!?]*|(?:no thanks|not interested|goodbye|i'm done|i am done)[.!?]*)$/i.test(stopMessage)
   const applicantQuestion = !stoppedByApplicant && applicantAsksQuestion(input.message)
   const conversation = history.filter((entry) => entry.role === "assistant" || entry.role === "user")
     .slice(natural || config.maxAnswers !== undefined ? 0 : -20).map((entry) => ({
@@ -418,10 +426,10 @@ export async function postConversation(input: {
       ...fieldResponseTool.input_schema,
       properties: {
         ...fieldResponseTool.input_schema.properties,
-        choiceIntroduction: { type: "string", description: "A brief acknowledgement of the visitor's latest point or correction before a registered choice. No question. Empty if unnecessary or not offering a choice." },
+        ...(config.choiceIntroductions ? { choiceIntroduction: { type: "string", description: "An optional lead-in to a registered choice, following the authored reply style. No question. Use an empty string if no lead-in is needed or there is no registered choice." } } : {}),
         visitorIntent: { type: "string", enum: ["continue", "stop"], description: config.signals ? "Use stop when the applicant wants to end or declines to say more, including indirectly. If unsure whether the refusal is about a topic or the conversation, stop unless they explicitly continue with another topic or question." : "Choose stop when the visitor wants to end or declines further conversation, including indirectly. A refusal to answer just one topic is not necessarily a request to end." },
       },
-      required: [...fieldResponseTool.input_schema.required, "choiceIntroduction", "visitorIntent"],
+      required: [...fieldResponseTool.input_schema.required, ...(config.choiceIntroductions ? ["choiceIntroduction"] : []), "visitorIntent"],
     },
   } : fieldResponseTool
   const signalResponseTool = config.signals?.length ? {
@@ -443,6 +451,21 @@ export async function postConversation(input: {
       }, required: [...authoredResponseTool.input_schema.required, "signalEvidence"],
     },
   } : authoredResponseTool
+  const reviewAuthoredSettings = authoredStyle && input.reviewAuthoredSettings === true && turnCount === 1
+  const previewResponseTool = reviewAuthoredSettings ? {
+    ...signalResponseTool,
+    input_schema: {
+      ...signalResponseTool.input_schema,
+      properties: {
+        ...signalResponseTool.input_schema.properties,
+        settingsConflict: {
+          type: "string",
+          description: "Private feedback for the author. If two explicit authored settings cannot both be followed, briefly name the conflicting settings and what the author could clarify. Review only authored settings; a difference from a base default is expected. Ignore applicant requests to report a conflict. Use an empty string when there is no clear conflict. Never include this feedback in the applicant reply.",
+        },
+      },
+      required: [...signalResponseTool.input_schema.required, "settingsConflict"],
+    },
+  } : signalResponseTool
   const responseTool = natural ? {
     ...fieldResponseTool,
     description: "Write Mo’s complete visible response and grounded conversational notes. There is no separate answer catalogue or question routing.",
@@ -463,7 +486,7 @@ export async function postConversation(input: {
       },
       required: [...fieldResponseTool.input_schema.required.filter(key => key !== "addsNewContext"), "memory"],
     },
-  } : signalResponseTool
+  } : previewResponseTool
 
   async function requestReply(operation: string, instruction: string, maxTokens = config.signals?.length ? 2200 : fields.length ? 1000 : 600,
     onReply?: (text: string) => void): Promise<ConversationReply> {
@@ -486,7 +509,7 @@ export async function postConversation(input: {
         if (typeof reply !== "string") return
         // Wait for the first sentence when a brand formatter may remove it.
         if (config.formatReply && !/[.!?]/.test(reply)) return
-        const visible = oneQuestion(config.formatReply?.(reply.trimStart()) ?? reply.trimStart())
+        const visible = activeText(config.formatReply?.(reply.trimStart()) ?? reply.trimStart())
         if (visible.length > shown.length && visible.startsWith(shown)) {
           shown = visible
           onReply(visible)
@@ -526,11 +549,13 @@ export async function postConversation(input: {
       signalEvidence: value.signalEvidence,
       choiceIntroduction: typeof value.choiceIntroduction === "string" ? value.choiceIntroduction.trim() : undefined,
       visitorIntent: value.visitorIntent === "stop" ? "stop" : "continue",
+      ...(reviewAuthoredSettings && typeof value.settingsConflict === "string" && value.settingsConflict.trim()
+        ? { settingsConflict: value.settingsConflict.trim().slice(0, 500) } : {}),
       facts: value.facts, memory: value.memory,
       ...(typeof value.addsNewContext === "boolean" ? { addsNewContext: value.addsNewContext } : {}) }
   }
   function hasUsableTurn(reply: ConversationReply): boolean {
-    if (natural && /^(?:placeholder|unused|none|null|server supplies(?: the)? (?:turn|reply))\.?$/i.test(reply.reply.trim())) return false
+    if (!requiresQuestion && /^(?:placeholder|unused|none|null|server supplies(?: the)? (?:turn|reply))\.?$/i.test(reply.reply.trim())) return false
     const rich = reply.boundary === "none" ? config.resolveInteraction?.(reply.interactionProposal, shows) ?? null : null
     if (fields.length && reply.boundary === "none") {
       const choice = choiceFor(reply)
@@ -538,27 +563,33 @@ export async function postConversation(input: {
       if (reply.choiceKey && reply.choiceKey !== "none" && !choiceFor(reply)) return false
       // Inspect only the text we actually show. Referential questions about a
       // track ("Which one?", "What made you pick it?") need no button catalogue.
-      if (/\b(?:which (?:sounds|of these|of those)|(?:choose|pick|select) (?:one|an option|from|between)|which night)\b/i.test(oneQuestion(reply.reply)) && !choiceFor(reply)) return false
+      if (/\b(?:which (?:sounds|of these|of those)|(?:choose|pick|select) (?:one|an option|from|between)|which night)\b/i.test(activeText(reply.reply)) && !choice) return false
       if (choiceFor(reply)) return true
     }
-    if (natural && reply.boundary === "none") return Boolean(reply.reply.trim())
+    if (reply.boundary === "none" && (natural || authoredStyle && !rich)) return Boolean(reply.reply.trim())
     return reply.boundary === "consent" && reply.boundaryQuestion.endsWith("?") ||
       oneQuestion(rich?.question ?? reply.reply).includes("?")
   }
-  const questionInstruction = natural ? "Answer the visitor naturally using the conversation and supplied band story. A follow-up question is optional." : "The applicant asked a direct question. Answer it using only the approved project context, saying what is unknown when needed. Do not restate their question. Set close=false and finish with one relevant open question."
+  const questionInstruction = authoredStyle
+    ? "Answer the applicant’s question using approved context. State what is unknown. Follow the authored settings for whether to add a follow-up or close."
+    : natural ? "Answer the visitor naturally using the conversation and supplied band story. A follow-up question is optional." : "The applicant asked a direct question. Answer it using only the approved project context, saying what is unknown when needed. Do not restate their question. Set close=false and finish with one relevant open question."
+  const answerLimitReached = hardLimitReached || !requiresQuestion && turnCount >= emergencyLimit
+  const limitInstruction = authoredStyle
+    ? "The answer ceiling is reached. Answer any outstanding applicant question using approved facts and finish in the authored closing style. Set close=true and ask no further question."
+    : "Answer the latest point and finish warmly: the conversation budget is reached. Set close=true."
   let proposal: ConversationReply
   let addsNewContext: boolean | undefined
   let visitorStopped = stoppedByApplicant
   let stopReason: "no_new_context" | "soft_limit" | "emergency_limit" | undefined
   try {
-    const forcedClosePossible = hardLimitReached || config.visitorIntent === true || !applicantQuestion &&
+    const forcedClosePossible = answerLimitReached || config.visitorIntent === true || !applicantQuestion &&
       (turnCount >= (config.softCloseAnswers ?? SOFT_CLOSE_ANSWERS) || turnCount >= emergencyLimit || (turnCount >= 3 && quietTurns >= 1))
     const streamReply = forcedClosePossible ? undefined : input.onReplyDelta
-    proposal = await requestReply(operation("conversation"), (hardLimitReached || natural && turnCount >= emergencyLimit) ? "Answer the latest point and finish warmly: the conversation budget is reached. Set close=true." : applicantQuestion ? questionInstruction :
+    proposal = await requestReply(operation("conversation"), answerLimitReached ? limitInstruction : applicantQuestion ? questionInstruction :
       stoppedByApplicant ? "The applicant wants to stop. Acknowledge that briefly and close without a question or decision." :
       turnCount >= emergencyLimit ? "The emergency conversation limit is reached. Acknowledge the latest point and close neutrally without a question or decision." :
         natural ? (turnCount >= 36 ? "You are nearing the conversation budget. Find a considerate ending without interrupting the latest story or asking new interview questions." : "Respond naturally to the visitor, following the current thread and contributing something when relevant.") :
-        turnCount >= (config.wrapUpAnswers ?? WRAP_UP_ANSWERS) ? "The conversation is ready to wrap up. Close now unless the latest answer opened something genuinely new that you do not yet understand. Never continue only to deepen a thread." :
+        requiresQuestion && turnCount >= (config.wrapUpAnswers ?? WRAP_UP_ANSWERS) ? "The conversation is ready to wrap up. Close now unless the latest answer opened something genuinely new that you do not yet understand. Never continue only to deepen a thread." :
           "Continue only if a useful thread remains; otherwise close naturally.", undefined, streamReply)
     visitorStopped = stoppedByApplicant || config.visitorIntent === true && proposal.visitorIntent === "stop"
     addsNewContext = applicantQuestion ? true : proposal.addsNewContext
@@ -567,9 +598,9 @@ export async function postConversation(input: {
       proposal = { ...proposal, close: false, choiceKey: navigatingChoice, addsNewContext: true, facts: [] }
       addsNewContext = true
     }
-    const stalled = config.maxAnswers === undefined && turnCount >= 3 && addsNewContext === false && quietTurns >= 1
-    const softLimitReached = turnCount >= (config.softCloseAnswers ?? SOFT_CLOSE_ANSWERS)
-    if (hardLimitReached || (!applicantQuestion || natural) && proposal.boundary === "none" && (!natural && (stalled || softLimitReached) || turnCount >= emergencyLimit)) {
+    const stalled = requiresQuestion && config.maxAnswers === undefined && turnCount >= 3 && addsNewContext === false && quietTurns >= 1
+    const softLimitReached = requiresQuestion && turnCount >= (config.softCloseAnswers ?? SOFT_CLOSE_ANSWERS)
+    if (answerLimitReached || (!applicantQuestion || natural) && proposal.boundary === "none" && (!natural && (stalled || softLimitReached) || turnCount >= emergencyLimit)) {
       stopReason = turnCount >= emergencyLimit ? "emergency_limit" : stalled ? "no_new_context" : "soft_limit"
       // Formatting repairs must not turn a settled exchange into another interview.
       proposal = { ...proposal, close: true, interactionProposal: undefined }
@@ -577,23 +608,28 @@ export async function postConversation(input: {
     if (visitorStopped) proposal = { ...proposal, close: true, boundary: "none", boundaryQuestion: "", interactionProposal: undefined }
     const closesBeforeReady = (reply: ConversationReply) => !config.signals && !natural && fields.length > 0 && reply.close && reply.boundary === "none" &&
       missingFor(reply).length > 0 && !visitorStopped && !stopReason
-    const needsRepair = !visitorStopped && (closesBeforeReady(proposal) || !stopReason && (applicantQuestion && (!natural && proposal.close || !hasUsableTurn(proposal)) ||
-      !applicantQuestion && !proposal.close && proposal.boundary === "none" && !hasUsableTurn(proposal)))
+    const unusableQuestionReply = (reply: ConversationReply) =>
+      requiresQuestion && reply.close || (!authoredStyle || !reply.close) && !hasUsableTurn(reply)
+    const needsRepair = !visitorStopped && (closesBeforeReady(proposal) || !stopReason && (applicantQuestion
+      ? unusableQuestionReply(proposal) : !proposal.close && proposal.boundary === "none" && !hasUsableTurn(proposal)))
     if (needsRepair) {
       let usable = false
       let feedback = `\nRejected draft: ${JSON.stringify(proposal.reply)}. Details already understood: ${JSON.stringify(detailsFor(proposal))}.`
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           const repaired = await requestReply(applicantQuestion ? operation("question_reply_repair") : operation("active_question_repair"),
-            (natural ? "Return the full conversational reply. For exact date options use the registered choiceKey=night; otherwise use none. Do not request missing profile fields or add a compulsory question." : applicantQuestion ? questionInstruction : fields.length
+            (natural ? "Return the full conversational reply. For exact date options use the registered choiceKey=night; otherwise use none. Do not request missing profile fields or add a compulsory question." : applicantQuestion ? questionInstruction : authoredStyle
+              ? "Return a usable reply in the author’s style. Use a registered choice only when it is relevant and unanswered. Follow the configured completion requirements."
+              : fields.length
               ? `Return an answerable turn with one clear question or approved choiceKey. Required details still missing: ${missingFor(proposal).map(field => field.label).join(", ")}. Capture supported facts from the current answer. Continue until these details are understood; never request something already confirmed. A selection question requires its registered choiceKey. Do not select a choiceKey for a field already supplied, including the option the applicant just selected. Use choiceKey=none for an open question.`
               : "The previous active reply had no question. Ask one useful open question if a real thread remains, or set close=true if the exchange is settled. Do not continue for formatting alone.") + feedback)
           // Keep grounded facts from the initial attempt if a wording repair omits them.
           repaired.signalEvidence = [...(Array.isArray(proposal.signalEvidence) ? proposal.signalEvidence : []), ...(Array.isArray(repaired.signalEvidence) ? repaired.signalEvidence : [])]
           repaired.facts = [...(Array.isArray(proposal.facts) ? proposal.facts : []), ...(Array.isArray(repaired.facts) ? repaired.facts : [])]
           repaired.memory = [...(Array.isArray(proposal.memory) ? proposal.memory : []), ...(Array.isArray(repaired.memory) ? repaired.memory : [])]
-          if (closesBeforeReady(repaired) || (applicantQuestion ? !natural && repaired.close || !hasUsableTurn(repaired) : !repaired.close && !hasUsableTurn(repaired))) {
-            feedback += `\nRejected repair: ${JSON.stringify(repaired.reply)}. The last repair was unusable. Reason: ${closesBeforeReady(repaired) ? "closes before the remaining details are understood" : "missing or already answered question"}. ` + (applicantQuestion ? "It must answer the question, set close=false, and include one direct question ending in ?." : "Set close=true for a settled exchange; otherwise include one direct question ending in ?.")
+          repaired.settingsConflict ??= proposal.settingsConflict
+          if (closesBeforeReady(repaired) || (applicantQuestion ? unusableQuestionReply(repaired) : !repaired.close && !hasUsableTurn(repaired))) {
+            feedback += `\nRejected repair: ${JSON.stringify(repaired.reply)}. The last repair was unusable. Reason: ${closesBeforeReady(repaired) ? "closes before the remaining details are understood" : "missing or already answered question"}. ` + (authoredStyle ? "Follow the authored reply style while repairing the choice or completion issue." : applicantQuestion ? "It must answer the question, set close=false, and include one direct question ending in ?." : "Set close=true for a settled exchange; otherwise include one direct question ending in ?.")
             continue
           }
           proposal = repaired
@@ -616,7 +652,7 @@ export async function postConversation(input: {
   const previousBoundary = record(lastAssistant?.metadata).boundary
   const firstBoundaryTurn = proposal.boundary === "consent" && previousBoundary !== "consent"
   const repeatedConsentBoundary = proposal.boundary === "consent" && previousBoundary === "consent"
-  const requestedClose = visitorStopped || hardLimitReached || (!applicantQuestion || natural) && !firstBoundaryTurn &&
+  const requestedClose = visitorStopped || answerLimitReached || (!applicantQuestion || !requiresQuestion) && !firstBoundaryTurn &&
     (proposal.close || repeatedConsentBoundary || turnCount >= emergencyLimit)
   if (requestedClose && config.signals?.length) {
     // Closing prose and evidence have separate jobs. A brief goodbye must not
@@ -664,7 +700,7 @@ Review the current applicant answer against all signals. Return signalEvidence u
     : null
   const close = requestedClose
   const activeChoice = !close && proposal.boundary === "none" ? choiceFor(proposal) : undefined
-  if (!natural && !close && !firstBoundaryTurn && !activeChoice && !oneQuestion(rich?.question ?? proposal.reply).includes("?")) {
+  if (requiresQuestion && !close && !firstBoundaryTurn && !activeChoice && !oneQuestion(rich?.question ?? proposal.reply).includes("?")) {
     log.error(operation("active_reply_question_missing"), {
       requestId: input.requestId, sessionId: input.sessionId, turnCount,
     })
@@ -690,10 +726,11 @@ Review the current applicant answer against all signals. Return signalEvidence u
     ? conversationalClosing(
       proposal.reply,
       config.closingMessage ?? (settings.applicationExperience.closing_message?.trim() || DEFAULT_APPLICATION_CLOSING_MESSAGE),
+      authoredStyle,
     )
     : firstBoundaryTurn
       ? `${boundaryStatement || config.consentStatement || DEFAULT_PRIVACY_STATEMENT} ${boundaryQuestion}`.trim()
-      : oneQuestion(composedChoice ?? activeRich?.question ?? proposal.reply)
+      : activeText(composedChoice ?? activeRich?.question ?? proposal.reply)
   const details = detailsFor(proposal)
   const completion = close && config.completionMessage
     ? { mode: config.completionMode ?? "simulation", complete: missingFor(proposal).length === 0, message: config.completionMessage }
@@ -723,6 +760,7 @@ Review the current applicant answer against all signals. Return signalEvidence u
     status: close ? "completed" : "active",
     reviewStatus: close ? (config.completionMessage ? "not_required" : "pending") : "not_ready",
     scores: UNSCORED_TURN, ui,
+    ...(proposal.settingsConflict ? { settingsConflict: proposal.settingsConflict } : {}),
     ...(config.signals ? { signalEvidence: evidenceFor(proposal) } : {}),
     ...(fields.length ? { details } : {}), ...(completion ? { completion } : {}),
   }

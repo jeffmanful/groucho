@@ -130,6 +130,8 @@ describe("isolated draft preview", () => {
     const result = await response.json()
     expect(result.previewTranscript).toBeUndefined()
     expect(mocks.create.mock.calls[0][0].system).toContain(config.intent)
+    expect(mocks.create.mock.calls[0][0].system).toContain(config.persona.instructions)
+    expect(mocks.create.mock.calls[0][0].system).toContain("Leave it empty when the question can stand on its own.")
     expect(mocks.create.mock.calls[0][0].system).not.toContain("Replacement")
     expect(verifyProjectPreview(result.token, "org", "member:author")?.transcript).toHaveLength(3)
     expect(mocks.database).not.toHaveBeenCalled(); expect(mocks.queue).not.toHaveBeenCalled()
@@ -142,6 +144,21 @@ describe("isolated draft preview", () => {
     expect((await response.json()).token).toBeUndefined()
     expect(verifyProjectPreview(started.token, "org", "member:author")?.transcript).toHaveLength(1)
     expect(mocks.database).not.toHaveBeenCalled()
+  })
+  it("shows a possible authored conflict to the preview author without adding it to the conversation", async () => {
+    const started = await (await POST(request({ action: "start", config }), params)).json()
+    const settingsConflict = "The persona asks for both a recap and no paraphrasing."
+    mocks.create.mockResolvedValueOnce(reply("What would you like to make?", { settingsConflict }))
+      .mockResolvedValueOnce(reply("Take your time.", { settingsConflict }))
+    const first = await (await POST(request({ action: "message", token: started.token, message: "I want to try pottery." }), params)).json()
+    expect(first).toMatchObject({ message: "What would you like to make?", settingsConflict })
+    const saved = verifyProjectPreview(first.token, "org", "member:author")
+    expect(JSON.stringify(saved?.transcript)).not.toContain(settingsConflict)
+    expect(mocks.create.mock.calls[0][0].tools[0].input_schema.properties).toHaveProperty("settingsConflict")
+    const later = await (await POST(request({ action: "message", token: first.token, message: "I’m still thinking." }), params)).json()
+    expect(later).toMatchObject({ message: "Take your time.", status: "active" })
+    expect(later).not.toHaveProperty("settingsConflict")
+    expect(mocks.create.mock.calls[1][0].tools[0].input_schema.properties).not.toHaveProperty("settingsConflict")
   })
   it("uses the identical prompt, options and visible response in preview and the saved project's runtime", async () => {
     mocks.create.mockResolvedValue(reply("Have you tried pottery before?", { choiceKey: "q_experience" }))
@@ -406,17 +423,20 @@ describe("complete signal conversations", () => {
     expect(final.signalEvidence.s_community.summary).toBe("Runs an in-person group.")
   })
   it("uses project guidance and context identically in preview and saved execution", async () => {
-    const authored = { ...signalConfig, projectContext: "Gatherings are online and free. No schedule has been announced.", conversationGuidance: "Start with their interests; leave room for a question before closing.", closingGuidance: "Briefly acknowledge what they shared.", closingMessage: "Thank you for exploring this community." }
+    const authored = { ...signalConfig, persona: { ...signalConfig.persona, instructions: "Answer a direct question without adding a follow-up." }, projectContext: "Gatherings are online and free. No schedule has been announced.", conversationGuidance: "Start with their interests; leave room for a question before closing.", closingGuidance: "Briefly acknowledge what they shared.", closingMessage: "Thank you for exploring this community." }
     const liveContext = { ...context, settings: normalizeProjectSettings(projectConversationSettings(authored)) }
     mocks.history = opening(authored)
-    mocks.create.mockResolvedValue(reply("No schedule has been announced. What would you like to explore?"))
+    mocks.create.mockResolvedValue(reply("No schedule has been announced."))
     const message = "When are the gatherings?"
     const live = await (await postDemoConversation({ context: liveContext, sessionId: "stored", message })).json()
     const liveRequest = mocks.create.mock.calls[0][0]
     const preview = await (await postConversation({ context: liveContext, sessionId: "preview", message, previewTranscript: opening(authored), configuration: projectConversationConfiguration(authored) })).json()
     const visible = { ...preview }; delete visible.previewTranscript
     expect(visible).toEqual(live)
+    expect(live).toMatchObject({ message: "No schedule has been announced.", status: "active" })
     expect(mocks.create.mock.calls[1][0]).toEqual(liveRequest)
+    expect(liveRequest.tools[0].input_schema.properties).not.toHaveProperty("settingsConflict")
+    expect(liveRequest.system).toContain(authored.persona.instructions)
     for (const value of [authored.projectContext, authored.conversationGuidance, authored.closingGuidance, authored.closingMessage]) expect(liveRequest.system).toContain(value)
     expect(mocks.queue).not.toHaveBeenCalled()
   })

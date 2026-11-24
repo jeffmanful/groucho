@@ -53,7 +53,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ org
     const response = await postConversation({
       configuration: projectConversationConfiguration(preview.config),
       context: { organisationId: orgId, projectId: "preview", apiKeyId: null, settings: normalizeProjectSettings(projectConversationSettings(preview.config)) },
-      sessionId: randomUUID(), message, previewTranscript: preview.transcript, runCompletion: false,
+      sessionId: randomUUID(), message, previewTranscript: preview.transcript, runCompletion: false, reviewAuthoredSettings: true,
     })
     const result = await response.json()
     if (!response.ok) return json(result, response.status)

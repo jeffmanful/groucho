@@ -24,6 +24,7 @@ export function postColorsThinConversation(input: Omit<Parameters<typeof postCon
     marker: COLORS_THIN_PILOT_MARKER,
     model: colorsThinConversationModel(),
     operationPrefix: "colors_thin",
+    ...(personaPrompt?.trim() ? { authoredReplyStyle: true, visitorIntent: true } : {}),
     loadMedia: () => fetchLatestColorsShows(4),
     consentQuestion: DEFAULT_CONSENT_QUESTION,
     consentStatement: DEFAULT_CONSENT_STATEMENT,

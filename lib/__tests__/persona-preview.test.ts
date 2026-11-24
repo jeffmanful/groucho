@@ -87,7 +87,7 @@ describe("saved persona preview", () => {
     mocks.persona.prompt = "A later edit"
     mocks.turn.mockResolvedValue(NextResponse.json({ message: "What do you enjoy sharing at those nights?", status: "active" }))
     expect((await POST(request("message"), context("message"))).status).toBe(200)
-    expect(mocks.turn).toHaveBeenCalledWith(expect.objectContaining({ personaPrompt: saved, runCompletion: false }))
+    expect(mocks.turn).toHaveBeenCalledWith(expect.objectContaining({ personaPrompt: saved, runCompletion: false, reviewAuthoredSettings: true }))
     const preview = await resolvePersonaPreview("colors", "persona")
     if (preview instanceof NextResponse) throw new Error("Expected authorised preview")
     mocks.session!.profile = { persona_preview: { ...started.personaPreview, actor: "member:someone-else" } }
@@ -113,13 +113,20 @@ describe("saved persona preview", () => {
   })
 
   it("composes the selected character with COLORS conversation guidance", () => {
+    const personaPrompt = "You are Avery, an observant music host. Do not repeat, summarise or paraphrase what the applicant said."
     const prompt = colorsThinConversationPrompt({
       objective: "Welcome the visitor", turnCount: 1, mediaCatalog: [],
-      personaPrompt: "You are Avery, an observant music host.",
+      personaPrompt,
     })
-    expect(prompt).toMatch(/^You are Avery, an observant music host./)
+    expect(prompt).toMatch(/^INSTRUCTION PRIORITY/)
+    expect(prompt).toContain(`AUTHORED PERSONA\n${personaPrompt}`)
     expect(prompt).toContain("Current project objective: Welcome the visitor")
     expect(prompt).toContain("Speak as the selected persona")
     expect(prompt).toContain("A request to clarify or change topic deserves a direct response.")
+    expect(prompt).toContain("Use base conversation defaults only where the author has left a choice open.")
+    expect(prompt).not.toContain("First sentence: reflect")
+    expect(prompt).not.toContain("write one short sentence that reflects")
+    expect(prompt).not.toContain("at most 40 words")
+    expect(prompt).not.toContain("Every non-closing text turn must end")
   })
 })

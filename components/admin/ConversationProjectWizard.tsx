@@ -18,6 +18,7 @@ type Preview = {
   details?: Record<string, string>
   signalEvidence?: SignalEvidenceMap
   completion?: { complete: boolean; message: string }
+  settingsConflict?: string
 }
 type Props = {
   orgId: string
@@ -94,7 +95,7 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
       }))
       const display = preview.ui?.inputType === "multiSelect" && selected.length ? selected.join(", ") : message
       setTranscript(previous => [...previous, { role: "user", content: display }, { role: "assistant", content: data.message }])
-      setPreview(data); setAnswer(""); setSelected([])
+      setPreview({ ...data, settingsConflict: data.settingsConflict ?? preview.settingsConflict }); setAnswer(""); setSelected([])
     } catch (e) { setError(e instanceof Error ? e.message : "Could not send your answer.") }
     finally { requestInFlight.current = false; setBusy(false) }
   }
@@ -140,7 +141,7 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
           <p>Define who hosts the conversation. Its purpose and flow belong to this project.</p>
           <label>Persona name<input value={config.persona.name} maxLength={80} onChange={e => patch({ persona: { ...config.persona, name: e.target.value } })} /></label>
           <label>Persona instructions<textarea value={config.persona.instructions} maxLength={6000} rows={6} onChange={e => patch({ persona: { ...config.persona, instructions: e.target.value } })} /></label>
-          <p>Describe voice, warmth, pace and boundaries. A short example reply can help. This persona belongs to this project.</p>
+          <p>Set the host’s voice and reply style. Your instructions take precedence over Groucho’s defaults. The preview can flag a possible conflict between your settings.</p>
         </section>}
         {step === 2 && <section>
           <h2>Conversation flow</h2>
@@ -175,6 +176,7 @@ export function ConversationProjectWizard({ orgId, project, onAdvanced }: Props)
         <p>As you test, notice whether the opening fits, follow-ups feel useful, corrections are respected and the ending feels natural. Then check what the host learned below.</p>
         <button type="button" disabled={busy || saving} onClick={() => void startPreview()}>{busy ? "Preparing response…" : preview ? "Restart with current configuration" : "Start preview"}</button>
         {stale && <p role="status">Your configuration has changed. Restart the preview to test and save these changes.</p>}
+        {preview?.settingsConflict && !stale && <p role="status"><strong>Possible settings conflict.</strong> {preview.settingsConflict}</p>}
         {transcript.length > 0 && <div className={styles.transcript} role="log" aria-label="Preview conversation" aria-live="polite">{transcript.map((entry, index) => <article key={index} id={entry.role === "user" ? `preview-answer-${transcript.slice(0, index + 1).filter(item => item.role === "user").length}` : undefined}><strong>{entry.role === "assistant" ? previewConfig.persona.name : "You"}</strong><p>{entry.content}</p></article>)}</div>}
         {busy && <p role="status">Preparing response…</p>}
         {preview?.status === "active" && !stale && <form onSubmit={e => { e.preventDefault(); void send(answer.trim() || JSON.stringify(selected)) }}>

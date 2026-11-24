@@ -1398,6 +1398,7 @@ export function DoorCheckExperience({
     useState<MediaChoiceAnswer | null>(null)
   const [showSlowResponse, setShowSlowResponse] = useState(false)
   const [streamingReply, setStreamingReply] = useState<string | null>(null)
+  const [personaSettingsConflict, setPersonaSettingsConflict] = useState<string | null>(null)
   // Tester-selected conversation model for the COLORS demo, remembered in this browser only.
   // Read once on the client; the select only renders once the settings panel is opened.
   const [conversationModel, setConversationModel] = useState<ColorsThinConversationModelId>(() => {
@@ -2053,6 +2054,9 @@ export function DoorCheckExperience({
       }
 
       const data = streamedFinal ? streamedFinal.body as Awaited<ReturnType<typeof res.json>> : await res.json()
+      if (personaPreview && typeof data.settingsConflict === "string") {
+        setPersonaSettingsConflict(data.settingsConflict)
+      }
       const nextMessage: Message = {
         id: crypto.randomUUID(),
         role: "bot",
@@ -2810,6 +2814,13 @@ export function DoorCheckExperience({
                 spacerClassName="shrink-0"
               >
                 <MessageScroller.Item className={cn("h-0 shrink-0", !isGatekeeperPreview && "mt-auto")} />
+                {personaPreview && personaSettingsConflict && (
+                  <MessageScroller.Item>
+                    <p role="status" className="rounded-md border border-white/20 px-4 py-3 text-sm text-white">
+                      <strong>Possible settings conflict.</strong> {personaSettingsConflict}
+                    </p>
+                  </MessageScroller.Item>
+                )}
                 {currentStep && !concluded && !isGatekeeperPreview && (
                   <MessageScroller.Item messageId={`step-${currentStep.id}`}>
                     <p
