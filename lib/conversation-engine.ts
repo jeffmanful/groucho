@@ -14,6 +14,7 @@ import { supportsForcedToolChoice } from "@/lib/gatekeeper-models"
 import { queueSessionCompletion } from "@/lib/session-completion-jobs"
 import { logLlmUsage } from "@/lib/llm-usage"
 import { log } from "@/lib/logger"
+import { BRIDGE_ALLOWANCE, openAreasNote, openConversationState, shouldShowAreas, unexploredAreas, conversationSelfCheck, conversationPhase, groundedQuote, PHASE_GUIDANCE, readWorkingMemory, recordAnswer, recordQuestion, WORKING_MEMORY_REVIEW, workingMemoryForPrompt, ANSWER_RELATIONS, type AnswerRelation } from "@/lib/project-conversation-memory"
 import { ONE_QUESTION_REPLY_RULES, ONE_QUESTION_REVIEW_MODEL, oneQuestionReplyIssue, reviewClosingAcknowledgement, reviewOneQuestionReply, type OneQuestionProjectGuidance } from "@/lib/one-question-reply"
 import { makeSignalTurn, NO_SIGNAL_TARGET, projectSignalProgress, SETTLED_SIGNAL_STATUSES, SIGNAL_PROGRESSION, signalQuestionCounts, signalTargetBlocked } from "@/lib/project-conversation-progress"
 import type { ProjectContext } from "@/lib/project-resolution"
@@ -38,6 +39,7 @@ type ConversationReply = {
   settingsConflict?: string
   signalEvidence?: unknown
   questionSignalId?: string
+  buildsOnQuote?: string
   facts?: unknown
   memory?: unknown
 }
@@ -170,6 +172,15 @@ export type ConversationConfiguration = {
   id: string
   marker: string
   model: string
+  /**
+   * Open conversation: the model leads from a short brief and the engine's notes. Per-move rules
+   * (question caps, progression order, reply format review) are off; hard limits stay in code.
+   */
+  openConversation?: boolean
+  /** The project's purpose, used by the evidence review to judge how relevant a thread is. */
+  purpose?: string
+  /** Model for the per-turn evidence review. Defaults to the conversation model. */
+  evidenceModel?: string
   buildPrompt: (input: { applicationAudience: "community" | "artist"; hasApplicantDetails: boolean; turnCount: number; shows: unknown[] }) => string
   loadMedia?: () => Promise<unknown[]>
   resolveInteraction?: (proposal: unknown, items: unknown[]) => ApplicationRichInteraction | null
@@ -343,10 +354,24 @@ export async function postConversation(input: {
   const evidenceBeforeTurn = record(lastAssistant?.metadata).conversation_signal_evidence
   // A dedicated evidence review runs beside the reply on every signal turn; its updates are applied last.
   let reviewedEvidence: unknown[] = []
+  // Working memory: open threads to build on and a record of what was asked. Stored with the latest reply.
+  const workingMemoryBeforeTurn = readWorkingMemory(record(lastAssistant?.metadata).conversation_working_memory)
+  let answerRelation: AnswerRelation | undefined
+  let reviewedThreads: unknown
+  let reviewedFinishedThreads: unknown
+  const askedSignalId = record(record(lastAssistant?.metadata).conversation_signal_turn).questionSignalId
+  // "Nothing applies" and "I'd rather not say" answer a question, so they can only settle the signal
+  // that was just asked about. A filler reply to one question must not close a different signal.
+  const answersTheQuestion = (update: unknown) => {
+    const { status, signalId } = record(update)
+    return (status !== "none_identified" && status !== "declined") || signalId === askedSignalId
+  }
   const evidenceFor = (reply: Pick<ConversationReply, "signalEvidence">) => mergeSignalEvidence(evidenceBeforeTurn,
-    [...(Array.isArray(reply.signalEvidence) ? reply.signalEvidence : []), ...reviewedEvidence], input.message, turnCount, config.signals ?? [])
+    [...(Array.isArray(reply.signalEvidence) ? reply.signalEvidence : []), ...reviewedEvidence].filter(answersTheQuestion), input.message, turnCount, config.signals ?? [])
   const signalCounts = signalQuestionCounts(history, config.openingSignalId)
   const progressFor = (evidence: ReturnType<typeof evidenceFor>) => projectSignalProgress(config.signals ?? [], evidence, signalCounts)
+    // In an open conversation only the author's listen-only setting stops a question about an area.
+    .map(signal => config.openConversation ? { ...signal, canAsk: signal.explore } : signal)
   const missingFor = (reply: ConversationReply): ConversationField[] => config.signals
     ? config.signals.filter(signal => signal.explore && !SETTLED_SIGNAL_STATUSES.includes(evidenceFor(reply)[signal.id].status)).map(signal => ({ key: signal.id, label: signal.name }))
     : fields.filter(field => field.required && !detailsFor(reply)[field.key])
@@ -421,7 +446,24 @@ export async function postConversation(input: {
   })
   const system = characterPrompt + (natural ? `\n\nCONVERSATION STATE\nGrounded notes: ${JSON.stringify(memoryBeforeTurn ?? [])}. Notes distinguish the visitor from other people; corrections supersede earlier assumptions. The full transcript follows.\nVisitor preferences, for display only: ${JSON.stringify(detailsBeforeTurn)}. These are for continuity and the ticket display, not an interview script.\nRecord new facts only about the visitor with subject=visitor and an exact sourceQuote from their CURRENT message. Another person’s listening, past attendance or motives must not populate visitor fields. Record people, explicit negatives, corrections and unfinished threads in memory using the appropriate subject and an exact sourceQuote from a visitor message in the transcript. You may retain an earlier visitor statement when it remains relevant; never use Mo’s own words as evidence about the visitor. Preserve new explicit negatives and corrections in memory even when a display field also reflects them. Copy sourceQuote verbatim, including spelling and punctuation. Only add useful new notes; do not copy all existing notes. Thread notes describe what is unfinished or resolved, without inventing an outcome.\nOptional display fields: ${JSON.stringify(fields)}. Approved choices: ${JSON.stringify(choices)}. Use choiceKey=night when offering exact show dates; otherwise none. Travel origin and exact show night are needed to complete a ticket preference. Learn these naturally as you lead towards a choice; the other fields are optional. The visitor can stop or decline at any time with an incomplete preference.\nReturn your complete natural reply. You may contribute without a question, answer a question without appending another, and continue a useful story. Set close=true only when the visitor clearly wants to end the chat, or they have settled a tour preference and indicated they are finished. A pause, short answer, intention to listen later or your own observation does not end the session. A selected date can finish the ticket task, but does not end a story still in progress.` : `\n\nPrevious consecutive answers without new context: ${quietTurns}. A genuine applicant question always deserves an answer. Do not re-probe something they have already said they cannot explain.` +
     (fields.length ? `\nConfirmed conversation details: ${JSON.stringify(detailsBeforeTurn)}. Preserve these facts; do not ask for them again.\nCapture new details only with a sourceQuote copied exactly from the CURRENT applicant answer. Approved fields: ${JSON.stringify(fields)}. Use the exact approved value for enumerated fields.\nApproved choices: ${JSON.stringify(choices)}. When asking a registered choice question, set choiceKey to its key. Never invent options or ask a choice question without a choiceKey. Otherwise use none. Do not close before the required details are known unless the applicant wants to stop, a boundary ends the exchange, or the runtime instructs a close. ${config.completionMode === "conversation" ? "No external actions or deliveries are configured for this conversation." : "No reservations, approvals or codes are issued by this simulation."}` : ""))
-  const signalState = config.signals?.length ? `\n\nSIGNAL EVIDENCE SO FAR\n${JSON.stringify(priorSignalEvidence)}\nSIGNAL QUESTION HISTORY\n${JSON.stringify(projectSignalProgress(config.signals, priorSignalEvidence, signalCounts).map(({ id, asked, followUps, canAsk }) => ({ id, asked, followUps, canAsk })))}\n${SIGNAL_PROGRESSION}\nUnexplored signals remain unknown. Follow the story and acknowledge corrections; never turn an example into a requirement.` : ""
+  const phase = conversationPhase(turnCount, config.maxAnswers, projectSignalProgress(config.signals ?? [], priorSignalEvidence, signalCounts).filter(signal => signal.canAsk && signal.asked === 0).length)
+  // Turns before this one in which no signal evidence changed. The current answer is not reviewed yet.
+  let quietSignalTurns = 0
+  for (const entry of previousProgress) {
+    const changes = record(record(entry.metadata).conversation_signal_turn).changes
+    if (!Array.isArray(changes) || changes.length) break
+    quietSignalTurns += 1
+  }
+  const directStyle = oneQuestionMode?.style === "direct"
+  const selfCheckBeforeReply = config.signals?.length ? conversationSelfCheck({ memory: workingMemoryBeforeTurn,
+    progress: projectSignalProgress(config.signals, priorSignalEvidence, signalCounts), turnCount, maxAnswers: config.maxAnswers, quietTurns: quietSignalTurns }) : undefined
+  const selfCheckText = `\nSELF-CHECK\n${selfCheckBeforeReply ? `${selfCheckBeforeReply.note}${directStyle && selfCheckBeforeReply.allowBridge ? ` ${BRIDGE_ALLOWANCE}` : ""}\n` : ""}If the current answer does not address your last question, work with what they did share and do not repeat or reword the question now.${directStyle ? ` In that case only, ${BRIDGE_ALLOWANCE.charAt(0).toLowerCase()}${BRIDGE_ALLOWANCE.slice(1)}` : " You may note the change of subject lightly."}`
+  // Open conversation: signals stay out of the host's view until it is time to change subject.
+  const openAreas = config.openConversation && config.signals?.length ? unexploredAreas(config.signals, priorSignalEvidence) : []
+  let showAreas = config.openConversation === true && shouldShowAreas({ memory: workingMemoryBeforeTurn, unexplored: openAreas.length, turnCount, maxAnswers: config.maxAnswers })
+  const signalState = config.openConversation && config.signals?.length
+    ? openConversationState({ signals: config.signals, evidence: priorSignalEvidence, memory: workingMemoryBeforeTurn, turnCount, maxAnswers: config.maxAnswers, showAreas })
+    : config.signals?.length ? `\n\nSIGNAL EVIDENCE SO FAR\n${JSON.stringify(priorSignalEvidence)}\nSIGNAL QUESTION HISTORY\n${JSON.stringify(projectSignalProgress(config.signals, priorSignalEvidence, signalCounts).map(({ id, asked, followUps, canAsk }) => ({ id, asked, followUps, canAsk })))}\nWORKING MEMORY\n${JSON.stringify(workingMemoryForPrompt(workingMemoryBeforeTurn, config.signals))}\nCONVERSATION PHASE: ${phase}. ${PHASE_GUIDANCE[phase]}${selfCheckText}\n${SIGNAL_PROGRESSION}\nUnexplored signals remain unknown. Follow the story and acknowledge corrections; never turn an example into a requirement.` : ""
   const fieldResponseTool = fields.length ? {
     ...conversationResponseTool,
     input_schema: {
@@ -461,6 +503,7 @@ export async function postConversation(input: {
       properties: {
         ...authoredResponseTool.input_schema.properties,
         questionSignalId: { type: "string", enum: [NO_SIGNAL_TARGET, ...config.signals.map(s => s.id)], description: "The signal the visible question explores, or none when it does not seek signal evidence." },
+        buildsOnQuote: { type: "string", description: "The exact words from an applicant answer that the visible question starts from, copied verbatim. Use an empty string for a plain question that does not build on something they said, or when the reply asks nothing." },
         signalEvidence: { type: "array", description: "Review each signal separately against the current applicant answer. Update every signal supported or corrected, including on the final turn. The same quote can support more than one signal when it independently meets each signal's criteria. A correction replaces superseded evidence even when the applicant also stops. Only quote the applicant's own account. Empty only when no signal changed.", items: {
           type: "object", properties: {
             signalId: { type: "string", enum: config.signals.map(s => s.id) },
@@ -471,7 +514,7 @@ export async function postConversation(input: {
             supersedes: { type: "boolean" },
           }, required: ["signalId", "status", "subject", "summary", "reason", "quotes", "supersedes"],
         } },
-      }, required: [...authoredResponseTool.input_schema.required, "signalEvidence", "questionSignalId"],
+      }, required: [...authoredResponseTool.input_schema.required, "signalEvidence", "questionSignalId", "buildsOnQuote"],
     },
   } : authoredResponseTool
   const reviewAuthoredSettings = authoredStyle && input.reviewAuthoredSettings === true && turnCount === 1
@@ -518,7 +561,7 @@ export async function postConversation(input: {
       model, max_tokens: maxTokens,
       system: system + signalState + (config.replyGuidance ? "\n\n" + config.replyGuidance : "") + "\n\n" + instruction +
         (oneQuestionMode?.style === "direct" ? `\n\n${ONE_QUESTION_REPLY_RULES}\nA Forum reason is ${forumReasonAvailable ? "available if useful" : "already used"}.` : "") +
-        (config.signals?.length ? "\nIndependently of whether this reply continues or closes, update all signals supported by the CURRENT applicant answer. Apply corrections to earlier evidence with supersedes=true, replacing outdated summaries and sources. Do not drop new evidence or corrections because the applicant also wants to stop. Keep the spoken closing brief while returning the complete evidence updates." : "") +
+        (config.signals?.length && !config.openConversation ? "\nIndependently of whether this reply continues or closes, update all signals supported by the CURRENT applicant answer. Apply corrections to earlier evidence with supersedes=true, replacing outdated summaries and sources. Do not drop new evidence or corrections because the applicant also wants to stop. Keep the spoken closing brief while returning the complete evidence updates." : "") +
         (forcedTool ? "" : "\n\nReturn the groucho_converse fields as one JSON object."),
       messages: [...conversation, { role: "user" as const, content: currentAnswer }],
     }
@@ -562,7 +605,8 @@ export async function postConversation(input: {
         throw new Error("Conversation tool response malformed")
       }
     }
-    if (typeof value.reply !== "string" || !value.reply.trim() || typeof value.close !== "boolean" ||
+    // A closing reply may be empty: the configured final message is appended after it.
+    if (typeof value.reply !== "string" || (!value.reply.trim() && value.close !== true) || typeof value.close !== "boolean" ||
       !["none", "consent", "safety"].includes(String(value.boundary)) || typeof value.boundaryQuestion !== "string") {
       throw new Error("Conversation tool response malformed")
     }
@@ -572,6 +616,7 @@ export async function postConversation(input: {
       choiceKey: typeof value.choiceKey === "string" ? value.choiceKey : undefined,
       signalEvidence: value.signalEvidence,
       questionSignalId: typeof value.questionSignalId === "string" ? value.questionSignalId : undefined,
+      buildsOnQuote: typeof value.buildsOnQuote === "string" ? value.buildsOnQuote : undefined,
       choiceIntroduction: typeof value.choiceIntroduction === "string" ? value.choiceIntroduction.trim() : undefined,
       visitorIntent: value.visitorIntent === "stop" ? "stop" : "continue",
       ...(reviewAuthoredSettings && typeof value.settingsConflict === "string" && value.settingsConflict.trim()
@@ -602,35 +647,46 @@ export async function postConversation(input: {
   const limitInstruction = authoredStyle
     ? "The answer ceiling is reached. Answer any outstanding applicant question using approved facts and finish in the authored closing style. Set close=true and ask no further question."
     : "Answer the latest point and finish warmly: the conversation budget is reached. Set close=true."
-  async function reviewSignalEvidence(): Promise<unknown[]> {
-    const schema = { type: "object", properties: { signalEvidence: (signalResponseTool.input_schema.properties as Record<string, unknown>).signalEvidence }, required: ["signalEvidence"] }
+  async function reviewSignalEvidence(): Promise<{ updates: unknown[]; answerRelation?: unknown; threads?: unknown; finishedThreadIds?: unknown }> {
+    const schema = { type: "object", properties: { signalEvidence: (signalResponseTool.input_schema.properties as Record<string, unknown>).signalEvidence,
+      answerRelation: { type: "string", enum: [...ANSWER_RELATIONS] },
+      threads: { type: "array", items: { type: "object", properties: {
+        detail: { type: "string" }, quote: { type: "string" },
+        relatedSignalIds: { type: "array", items: { type: "string", enum: (config.signals ?? []).map(s => s.id) } },
+        relevance: { type: "string", enum: ["high", "medium", "low"] }, whyItMatters: { type: "string" },
+      }, required: ["detail", "quote", "relatedSignalIds", "relevance", "whyItMatters"] } },
+      finishedThreadIds: { type: "array", items: { type: "string" } },
+    }, required: ["signalEvidence", "answerRelation", "threads", "finishedThreadIds"] }
     const tool = { name: SIGNAL_EVIDENCE_REVIEW_TOOL, description: "Return grounded evidence updates only. This is evidence review, not a conversation reply.", input_schema: schema }
-    const forcedTool = supportsForcedToolChoice(model)
+    const evidenceModel = config.evidenceModel ?? model
+    const forcedTool = supportsForcedToolChoice(evidenceModel)
     const request = {
-      model, max_tokens: 2200,
+      model: evidenceModel, max_tokens: 2200,
       system: `You maintain evidence about an applicant. You are not the host and do not write a reply.
 Signals: ${JSON.stringify(config.signals)}
 Evidence before the current answer: ${JSON.stringify(evidenceBeforeTurn ?? {})}
+Project purpose, for judging relevance: ${JSON.stringify(config.purpose ?? "")}
+Threads the applicant has raised that are not yet talked through: ${JSON.stringify(workingMemoryBeforeTurn.threads.filter(thread => !thread.finishedAt).map(thread => ({ id: thread.id, said: thread.quote, askedAbout: Boolean(thread.asks) })))}
 Review the current applicant answer against each signal separately. For every signal in turn, decide whether this answer adds information that meets that signal's understanding and evidence description, whether or not another signal also fits. One account often supports several signals: a single action can show what the applicant does and also what they did for someone else or how music figures in their life. Return an update for every signal the answer supports; the same quote may appear in several updates. Do not assign an account only to the signal it fits best.
-Return signalEvidence updates for new information, refusals and corrections. A correction must replace every affected earlier summary, reason and source with supersedes=true, even if the applicant also stops. Keep valid prior context in the updated summary but quote only exact substrings of the current answer. Do not quote earlier answers, examples or assistant words. Other people's experiences are not applicant evidence. Set subject=applicant only for the applicant's own account or explicit correction. Use evidence_found for an informative account, partly_understood for relevant incomplete context, none_identified when the applicant answers that nothing applies (a plain no, nothing comes to mind, or not yet), not_explored for retracted evidence, and declined only when the applicant chooses not to share or answer. A negative or uncertain answer is information, not a refusal. A stop alone is not evidence of participation or contribution. Return an empty array only if no signal changed. ${forcedTool ? `Call ${SIGNAL_EVIDENCE_REVIEW_TOOL} exactly once.` : "Return one JSON object with signalEvidence."}`,
+Return signalEvidence updates for new information, refusals and corrections. A correction must replace every affected earlier summary, reason and source with supersedes=true, even if the applicant also stops. Keep valid prior context in the updated summary but quote only exact substrings of the current answer. Do not quote earlier answers, examples or assistant words. Other people's experiences are not applicant evidence. Set subject=applicant only for the applicant's own account or explicit correction. Use evidence_found for an informative account, partly_understood for relevant incomplete context, none_identified when the applicant answers that nothing applies (a plain no, nothing comes to mind, or not yet), not_explored for retracted evidence, and declined only when the applicant chooses not to share or answer. A negative or uncertain answer is information, not a refusal. A stop alone is not evidence of participation or contribution. Return an empty array only if no signal changed. ${forcedTool ? `Call ${SIGNAL_EVIDENCE_REVIEW_TOOL} exactly once.` : "Return one JSON object with signalEvidence, answerRelation and threads."}\n${WORKING_MEMORY_REVIEW}`,
       messages: [...conversation, { role: "user" as const, content: input.message }],
     }
     const client = new Anthropic({ maxRetries: 1, timeout: 45000 })
     const response = await client.messages.create((forcedTool
       ? { ...request, tools: [tool], tool_choice: { type: "tool", name: tool.name } }
       : { ...request, output_config: { format: { type: "json_schema", schema: strictJsonSchema(schema) } } }) as Anthropic.MessageCreateParamsNonStreaming)
-    await logLlmUsage({ operation: operation("signal_evidence_review"), provider: "anthropic", model, usage: response.usage, providerResponseId: response.id, requestId: input.requestId, organisationId, projectId: input.previewTranscript ? undefined : projectId, sessionId: input.previewTranscript ? undefined : input.sessionId })
+    await logLlmUsage({ operation: operation("signal_evidence_review"), provider: "anthropic", model: evidenceModel, usage: response.usage, providerResponseId: response.id, requestId: input.requestId, organisationId, projectId: input.previewTranscript ? undefined : projectId, sessionId: input.previewTranscript ? undefined : input.sessionId })
     if (response.stop_reason === "max_tokens" || response.stop_reason === "refusal") throw new Error("Evidence review was incomplete")
     const call = response.content.find(block => block.type === "tool_use" && block.name === tool.name)
     const reviewed = forcedTool
       ? call?.type === "tool_use" ? record(call.input) : {}
       : record(JSON.parse(response.content.flatMap(block => block.type === "text" ? [block.text] : []).join("")))
     if (!Array.isArray(reviewed.signalEvidence)) throw new Error("Evidence review response missing")
-    return reviewed.signalEvidence
+    return { updates: reviewed.signalEvidence, answerRelation: reviewed.answerRelation, threads: reviewed.threads, finishedThreadIds: reviewed.finishedThreadIds }
   }
   // Started before the reply so both model calls run concurrently.
   const evidenceReview = config.signals?.length
-    ? reviewSignalEvidence().then(updates => ({ updates }), (error: unknown) => ({ error: error instanceof Error ? error.message : String(error) }))
+    ? reviewSignalEvidence().then(result => result, (error: unknown) => ({ error: error instanceof Error ? error.message : String(error) }))
     : undefined
   let evidenceReviewFailure: string | undefined
   let proposal: ConversationReply
@@ -648,12 +704,24 @@ Return signalEvidence updates for new information, refusals and corrections. A c
         requiresQuestion && turnCount >= (config.wrapUpAnswers ?? WRAP_UP_ANSWERS) ? "The conversation is ready to wrap up. Close now unless the latest answer opened something genuinely new that you do not yet understand. Never continue only to deepen a thread." :
           "Continue only if a useful thread remains; otherwise close naturally.", undefined, streamReply)
     const evidenceResult = await evidenceReview
-    if (evidenceResult && "updates" in evidenceResult) reviewedEvidence = evidenceResult.updates
+    if (evidenceResult && "updates" in evidenceResult) {
+      reviewedEvidence = evidenceResult.updates
+      answerRelation = ANSWER_RELATIONS.find(relation => relation === evidenceResult.answerRelation)
+      reviewedThreads = evidenceResult.threads
+      reviewedFinishedThreads = evidenceResult.finishedThreadIds
+    }
     else if (evidenceResult) {
       evidenceReviewFailure = evidenceResult.error
       log.warn(operation("signal_evidence_review_failed"), { requestId: input.requestId, sessionId: input.sessionId, detail: evidenceResult.error })
     }
     visitorStopped = stoppedByApplicant || config.visitorIntent === true && proposal.visitorIntent === "stop"
+    // Closing is an informed choice only once the host has seen the areas that have not come up.
+    if (config.openConversation && !showAreas && openAreas.length && proposal.close && !visitorStopped && !answerLimitReached && !applicantQuestion) {
+      showAreas = true
+      const informed = await requestReply(operation("open_areas_before_close"), `${openAreasNote(openAreas)}
+You were about to close. Before you do, consider these areas. Ask about one of them if it would add something useful; just ask, without announcing a change of subject. Close only if none would.`)
+      proposal = { ...informed, signalEvidence: proposal.signalEvidence }
+    }
     addsNewContext = applicantQuestion ? true : proposal.addsNewContext
     // A catalogue navigation action changes the visible choices, never the selected field.
     if (navigatingChoice && proposal.boundary === "none" && !stoppedByApplicant) {
@@ -672,7 +740,7 @@ Return signalEvidence updates for new information, refusals and corrections. A c
       missingFor(reply).length > 0 && !visitorStopped && !stopReason
     const unusableQuestionReply = (reply: ConversationReply) =>
       requiresQuestion && reply.close || (!authoredStyle || !reply.close) && !hasUsableTurn(reply)
-    const blockedSignalQuestion = (reply: ConversationReply) => !oneQuestionMode && !!config.signals?.length &&
+    const blockedSignalQuestion = (reply: ConversationReply) => !oneQuestionMode && !config.openConversation && !!config.signals?.length &&
       !reply.close && reply.boundary === "none" && signalTargetBlocked(choiceKeyFor(reply) ?? reply.questionSignalId, progressFor(evidenceFor(reply)))
     const invalidReply = (reply: ConversationReply) => closesBeforeReady(reply) || !stopReason && (applicantQuestion
       ? unusableQuestionReply(reply) : !reply.close && reply.boundary === "none" && !hasUsableTurn(reply))
@@ -770,6 +838,12 @@ Return signalEvidence updates for new information, refusals and corrections. A c
   const finalEvidence = evidenceFor(proposal)
   const signalProgress = progressFor(finalEvidence)
   let questionSignalId = activeChoiceKey ?? proposal.questionSignalId
+  let buildsOnQuote = proposal.buildsOnQuote
+  const memoryAfterAnswer = config.signals?.length ? recordAnswer(workingMemoryBeforeTurn, { relation: answerRelation, threads: reviewedThreads, finishedThreadIds: reviewedFinishedThreads, answer: input.message, turn: turnCount, signals: config.signals }) : undefined
+  // Run the self-check again now that the evidence review has read the current answer.
+  const learnedThisTurn = Object.values(finalEvidence).some(item => item.sources.some(source => source.turn === turnCount))
+  const selfCheck = memoryAfterAnswer ? conversationSelfCheck({ memory: memoryAfterAnswer, progress: signalProgress, turnCount, maxAnswers: config.maxAnswers,
+    quietTurns: learnedThisTurn ? 0 : quietSignalTurns + 1 }) : undefined
   // When every signal is settled or exhausted, a generic continuation only delays the ending.
   const nothingLeftToAsk = signalProgress.length > 0 && !signalProgress.some(signal => signal.canAsk)
   let lateClose = false
@@ -784,7 +858,8 @@ Return signalEvidence updates for new information, refusals and corrections. A c
         model: ONE_QUESTION_REVIEW_MODEL, reply, answeringApplicant: applicantQuestion, registeredQuestion: activeChoice?.question,
         replyStyle: oneQuestionMode.style,
         forumReasonAvailable, approvedContext: oneQuestionMode.approvedContext, projectGuidance: oneQuestionMode.projectGuidance,
-        signalProgress, questionSignalId,
+        signalProgress, questionSignalId, buildsOnQuote, selfCheck,
+        workingMemory: config.signals?.length ? { ...workingMemoryForPrompt(workingMemoryBeforeTurn, config.signals), phase } : undefined,
         transcript: conversation, applicantMessage: currentAnswer,
         onUsage: response => logLlmUsage({ operation: operation("one_question_review"), provider: "anthropic", model: ONE_QUESTION_REVIEW_MODEL, usage: response.usage,
           providerResponseId: response.id, requestId: input.requestId, organisationId,
@@ -795,6 +870,7 @@ Return signalEvidence updates for new information, refusals and corrections. A c
         reply = reviewed.reply
         usedForumReason = reviewed.usesForumReason
         questionSignalId = reviewed.questionSignalId
+        buildsOnQuote = reviewed.buildsOnQuote
       }
     } catch (error) {
       const followUp = applicantQuestion ? undefined : eligibleFallback
@@ -850,9 +926,19 @@ Return signalEvidence updates for new information, refusals and corrections. A c
       }
     }
   }
-  const signalTurn = signalProgress.length ? makeSignalTurn(
+  const baseSignalTurn = signalProgress.length ? makeSignalTurn(
     !close && proposal.boundary === "none" && (activeChoice || /[?？]/.test(reply)) ? questionSignalId : undefined, signalProgress, finalEvidence, turnCount,
   ) : undefined
+  // A question counts as connected only when it starts from words the applicant actually used.
+  const asksQuestion = !close && proposal.boundary === "none" && (Boolean(activeChoice) || /[?？]/.test(reply))
+  const buildsOn = asksQuestion
+    ? groundedQuote(buildsOnQuote, [...history.filter(entry => entry.role === "user").map(entry => String(entry.content)), input.message]) : undefined
+  const signalTurn = baseSignalTurn ? { ...baseSignalTurn, ...(buildsOn ? { buildsOn } : {}), ...(answerRelation ? { answerRelation } : {}), ...(selfCheck && !close ? { selfCheck: selfCheck.kind } : {}) } : undefined
+  let workingMemory = memoryAfterAnswer
+  if (workingMemory && asksQuestion) {
+    workingMemory = recordQuestion(workingMemory, { signalId: signalTurn?.questionSignalId ?? undefined, question: reply, buildsOn, turn: turnCount })
+  }
+  if (workingMemory && showAreas && workingMemory.areasShownAt === undefined) workingMemory = { ...workingMemory, areasShownAt: turnCount }
   const ui = activeChoice
     ? { ...DEFAULT_INTERACTION_SPEC, inputType: activeChoice.inputType ?? "singleSelect" as const, options: [...activeChoice.options] }
     : activeRich?.kind === "reference"
@@ -870,6 +956,7 @@ Return signalEvidence updates for new information, refusals and corrections. A c
       conversation_profile: config.id,
       ...(config.signals ? { conversation_signal_evidence: finalEvidence } : {}),
       ...(signalTurn ? { conversation_signal_turn: signalTurn } : {}),
+      ...(workingMemory ? { conversation_working_memory: workingMemory } : {}),
       ...(fields.length ? { conversation_details: details } : {}),
       ...(natural ? { conversation_memory: memoryFor(proposal) } : {}),
       ...(activeChoiceKey ? { conversation_choice_key: activeChoiceKey } : {}),

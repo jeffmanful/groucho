@@ -50,3 +50,8 @@ next-env.d.ts
 
 # Synthetic load-test reports
 /loadtests/results/
+
+# Pilot harness run artifacts
+/output/pilot/
+# Saved project configurations pulled from the database for the pilot harness
+/evals/pilot/flows/

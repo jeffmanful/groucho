@@ -27,6 +27,9 @@
     "changeset:version": "changeset version",
     "release": "pnpm run sdk:build && changeset publish",
     "import:presale": "node --import tsx scripts/import-presale.ts",
+    "pilot:pull": "node --env-file=.env.local --import tsx evals/pilot/pull-configs.ts",
+    "pilot:run": "RUN_PILOT_HARNESS=1 node --env-file=.env.local node_modules/vitest/vitest.mjs run evals/pilot/pilot-harness.test.ts",
+    "pilot:stub": "RUN_PILOT_HARNESS=1 PILOT_STUB=1 node node_modules/vitest/vitest.mjs run evals/pilot/pilot-harness.test.ts",
     "loadtest:culture": "node --import tsx loadtests/culture/run.ts",
     "loadtest:culture:100": "node --import tsx loadtests/culture/run.ts --users 100",
     "loadtest:culture:200": "node --import tsx loadtests/culture/run.ts --users 200"
