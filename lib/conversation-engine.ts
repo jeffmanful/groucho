@@ -14,8 +14,8 @@ import { supportsForcedToolChoice } from "@/lib/gatekeeper-models"
 import { queueSessionCompletion } from "@/lib/session-completion-jobs"
 import { logLlmUsage } from "@/lib/llm-usage"
 import { log } from "@/lib/logger"
-import { ONE_QUESTION_REPLY_RULES, ONE_QUESTION_REVIEW_MODEL, oneQuestionReplyIssue, reviewOneQuestionReply, type OneQuestionProjectGuidance } from "@/lib/one-question-reply"
-import { makeSignalTurn, NO_SIGNAL_TARGET, projectSignalProgress, SIGNAL_PROGRESSION, signalQuestionCounts, signalTargetBlocked } from "@/lib/project-conversation-progress"
+import { ONE_QUESTION_REPLY_RULES, ONE_QUESTION_REVIEW_MODEL, oneQuestionReplyIssue, reviewClosingAcknowledgement, reviewOneQuestionReply, type OneQuestionProjectGuidance } from "@/lib/one-question-reply"
+import { makeSignalTurn, NO_SIGNAL_TARGET, projectSignalProgress, SETTLED_SIGNAL_STATUSES, SIGNAL_PROGRESSION, signalQuestionCounts, signalTargetBlocked } from "@/lib/project-conversation-progress"
 import type { ProjectContext } from "@/lib/project-resolution"
 import { REQUEST_ID_HEADER } from "@/lib/request-trace"
 import { supabase } from "@/lib/supabase"
@@ -348,7 +348,7 @@ export async function postConversation(input: {
   const signalCounts = signalQuestionCounts(history, config.openingSignalId)
   const progressFor = (evidence: ReturnType<typeof evidenceFor>) => projectSignalProgress(config.signals ?? [], evidence, signalCounts)
   const missingFor = (reply: ConversationReply): ConversationField[] => config.signals
-    ? config.signals.filter(signal => signal.explore && !["evidence_found", "declined"].includes(evidenceFor(reply)[signal.id].status)).map(signal => ({ key: signal.id, label: signal.name }))
+    ? config.signals.filter(signal => signal.explore && !SETTLED_SIGNAL_STATUSES.includes(evidenceFor(reply)[signal.id].status)).map(signal => ({ key: signal.id, label: signal.name }))
     : fields.filter(field => field.required && !detailsFor(reply)[field.key])
   const choiceKeyFor = (reply: ConversationReply): string | undefined => {
     const key = reply.choiceKey && reply.choiceKey !== "none" ? reply.choiceKey
@@ -464,7 +464,7 @@ export async function postConversation(input: {
         signalEvidence: { type: "array", description: "Review each signal separately against the current applicant answer. Update every signal supported or corrected, including on the final turn. The same quote can support more than one signal when it independently meets each signal's criteria. A correction replaces superseded evidence even when the applicant also stops. Only quote the applicant's own account. Empty only when no signal changed.", items: {
           type: "object", properties: {
             signalId: { type: "string", enum: config.signals.map(s => s.id) },
-            status: { type: "string", enum: ["evidence_found", "partly_understood", "not_explored", "declined"] },
+            status: { type: "string", enum: ["evidence_found", "partly_understood", "none_identified", "not_explored", "declined"] },
             subject: { type: "string", enum: ["applicant", "other"] },
             summary: { type: "string" }, reason: { type: "string" },
             quotes: { type: "array", items: { type: "string" } },
@@ -612,7 +612,7 @@ export async function postConversation(input: {
 Signals: ${JSON.stringify(config.signals)}
 Evidence before the current answer: ${JSON.stringify(evidenceBeforeTurn ?? {})}
 Review the current applicant answer against each signal separately. For every signal in turn, decide whether this answer adds information that meets that signal's understanding and evidence description, whether or not another signal also fits. One account often supports several signals: a single action can show what the applicant does and also what they did for someone else or how music figures in their life. Return an update for every signal the answer supports; the same quote may appear in several updates. Do not assign an account only to the signal it fits best.
-Return signalEvidence updates for new information, refusals and corrections. A correction must replace every affected earlier summary, reason and source with supersedes=true, even if the applicant also stops. Keep valid prior context in the updated summary but quote only exact substrings of the current answer. Do not quote earlier answers, examples or assistant words. Other people's experiences are not applicant evidence. Set subject=applicant only for the applicant's own account or explicit correction. Use evidence_found for an informative account, partly_understood for relevant incomplete context, not_explored for retracted evidence, declined for a refusal to share. A stop alone is not evidence of participation or contribution. Return an empty array only if no signal changed. ${forcedTool ? `Call ${SIGNAL_EVIDENCE_REVIEW_TOOL} exactly once.` : "Return one JSON object with signalEvidence."}`,
+Return signalEvidence updates for new information, refusals and corrections. A correction must replace every affected earlier summary, reason and source with supersedes=true, even if the applicant also stops. Keep valid prior context in the updated summary but quote only exact substrings of the current answer. Do not quote earlier answers, examples or assistant words. Other people's experiences are not applicant evidence. Set subject=applicant only for the applicant's own account or explicit correction. Use evidence_found for an informative account, partly_understood for relevant incomplete context, none_identified when the applicant answers that nothing applies (a plain no, nothing comes to mind, or not yet), not_explored for retracted evidence, and declined only when the applicant chooses not to share or answer. A negative or uncertain answer is information, not a refusal. A stop alone is not evidence of participation or contribution. Return an empty array only if no signal changed. ${forcedTool ? `Call ${SIGNAL_EVIDENCE_REVIEW_TOOL} exactly once.` : "Return one JSON object with signalEvidence."}`,
       messages: [...conversation, { role: "user" as const, content: input.message }],
     }
     const client = new Anthropic({ maxRetries: 1, timeout: 45000 })
@@ -742,7 +742,8 @@ Return signalEvidence updates for new information, refusals and corrections. A c
   const rich = !requestedClose && proposal.boundary === "none"
     ? config.resolveInteraction?.(proposal.interactionProposal, shows) ?? null
     : null
-  const close = requestedClose
+  let close = requestedClose
+  const closingLine = config.closingMessage ?? (settings.applicationExperience.closing_message?.trim() || DEFAULT_APPLICATION_CLOSING_MESSAGE)
   let activeChoice = !close && proposal.boundary === "none" ? choiceFor(proposal) : undefined
   let activeChoiceKey = activeChoice ? choiceKeyFor(proposal) : undefined
   if (requiresQuestion && !close && !firstBoundaryTurn && !activeChoice && !oneQuestion(rich?.question ?? proposal.reply).includes("?")) {
@@ -761,11 +762,7 @@ Return signalEvidence updates for new information, refusals and corrections. A c
   let reply = natural && !firstBoundaryTurn
     ? activeChoice?.question ?? proposal.reply.trim()
     : close
-    ? conversationalClosing(
-      proposal.reply,
-      config.closingMessage ?? (settings.applicationExperience.closing_message?.trim() || DEFAULT_APPLICATION_CLOSING_MESSAGE),
-      authoredStyle,
-    )
+    ? conversationalClosing(proposal.reply, closingLine, authoredStyle)
     : firstBoundaryTurn
       ? `${boundaryStatement || config.consentStatement || DEFAULT_PRIVACY_STATEMENT} ${boundaryQuestion}`.trim()
       : activeText(composedChoice ?? activeRich?.question ?? proposal.reply)
@@ -773,6 +770,9 @@ Return signalEvidence updates for new information, refusals and corrections. A c
   const finalEvidence = evidenceFor(proposal)
   const signalProgress = progressFor(finalEvidence)
   let questionSignalId = activeChoiceKey ?? proposal.questionSignalId
+  // When every signal is settled or exhausted, a generic continuation only delays the ending.
+  const nothingLeftToAsk = signalProgress.length > 0 && !signalProgress.some(signal => signal.canAsk)
+  let lateClose = false
   const eligibleFallback = oneQuestionMode?.approvedFollowUps.find(candidate =>
     (!signalProgress.length || signalProgress.some(signal => signal.id === candidate.id && signal.canAsk)) &&
     (finalEvidence[candidate.id]?.status ?? "not_explored") === "not_explored" && !detailsFor(proposal)[candidate.id] &&
@@ -790,11 +790,15 @@ Return signalEvidence updates for new information, refusals and corrections. A c
           providerResponseId: response.id, requestId: input.requestId, organisationId,
           projectId: input.previewTranscript ? undefined : projectId, sessionId: input.previewTranscript ? undefined : input.sessionId }),
       })
-      reply = reviewed.reply
-      usedForumReason = reviewed.usesForumReason
-      questionSignalId = reviewed.questionSignalId
+      if (reviewed.close) lateClose = true
+      else {
+        reply = reviewed.reply
+        usedForumReason = reviewed.usesForumReason
+        questionSignalId = reviewed.questionSignalId
+      }
     } catch (error) {
       const followUp = applicantQuestion ? undefined : eligibleFallback
+      if (!followUp && !applicantQuestion && nothingLeftToAsk) lateClose = true
       activeChoiceKey = followUp && Object.hasOwn(choices, followUp.id) ? followUp.id : undefined
       activeChoice = activeChoiceKey ? choices[activeChoiceKey] : undefined
       reply = followUp?.question ?? (applicantQuestion ? "I couldn’t check that just now." : "You can add another detail or say you’re done.")
@@ -810,10 +814,41 @@ Return signalEvidence updates for new information, refusals and corrections. A c
       ? Array.from(new Intl.Segmenter("en", { granularity: "sentence" }).segment(reply))
         .filter(({ segment }) => !/[?？]/.test(segment)).map(({ segment }) => segment).join("").trim()
       : ""
+    if (!applicantQuestion && nothingLeftToAsk) lateClose = true
     reply = directAnswer || (applicantQuestion ? "I couldn’t check that just now." : "You can add another detail or say you’re done.")
     activeChoice = undefined
     activeChoiceKey = undefined
     questionSignalId = undefined
+  }
+  if (lateClose) {
+    activeChoice = undefined
+    activeChoiceKey = undefined
+    questionSignalId = undefined
+    if (evidenceReviewFailure) {
+      // Without a completed evidence review the ending could store stale evidence; keep the turn open.
+      reply = "You can add another detail or say you’re done."
+    } else {
+      close = true
+      reply = conversationalClosing("", closingLine, authoredStyle)
+      log.info(operation("closed_without_useful_question"), { requestId: input.requestId, sessionId: input.sessionId, turnCount })
+    }
+  } else if (close && oneQuestionMode && authoredStyle && !firstBoundaryTurn) {
+    const acknowledgement = withoutClosingCourtesy(proposal.reply, closingLine)
+    if (acknowledgement) {
+      try {
+        const reviewed = await reviewClosingAcknowledgement({
+          model: ONE_QUESTION_REVIEW_MODEL, acknowledgement, finalMessage: closingLine, replyStyle: oneQuestionMode.style,
+          answeringApplicant: applicantQuestion, approvedContext: oneQuestionMode.approvedContext, projectGuidance: oneQuestionMode.projectGuidance,
+          transcript: conversation, applicantMessage: currentAnswer,
+          onUsage: response => logLlmUsage({ operation: operation("closing_review"), provider: "anthropic", model: ONE_QUESTION_REVIEW_MODEL, usage: response.usage,
+            providerResponseId: response.id, requestId: input.requestId, organisationId,
+            projectId: input.previewTranscript ? undefined : projectId, sessionId: input.previewTranscript ? undefined : input.sessionId }),
+        })
+        reply = conversationalClosing(reviewed, closingLine, authoredStyle)
+      } catch (error) {
+        log.warn(operation("closing_review_failed"), { requestId: input.requestId, sessionId: input.sessionId, detail: error instanceof Error ? error.message : String(error) })
+      }
+    }
   }
   const signalTurn = signalProgress.length ? makeSignalTurn(
     !close && proposal.boundary === "none" && (activeChoice || /[?？]/.test(reply)) ? questionSignalId : undefined, signalProgress, finalEvidence, turnCount,

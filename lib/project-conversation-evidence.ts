@@ -1,6 +1,6 @@
 import type { ProjectConversationSignal } from "@/lib/project-conversation-config"
 
-export type SignalEvidenceStatus = "evidence_found" | "partly_understood" | "not_explored" | "declined"
+export type SignalEvidenceStatus = "evidence_found" | "partly_understood" | "none_identified" | "not_explored" | "declined"
 export type SignalEvidence = {
   status: SignalEvidenceStatus
   summary: string
@@ -9,7 +9,7 @@ export type SignalEvidence = {
 }
 export type SignalEvidenceMap = Record<string, SignalEvidence>
 export const SIGNAL_EVIDENCE_LABELS: Record<SignalEvidenceStatus, string> = {
-  evidence_found: "Evidence found", partly_understood: "Partly understood", not_explored: "Not explored", declined: "Declined to share",
+  evidence_found: "Evidence found", partly_understood: "Partly understood", none_identified: "None identified", not_explored: "Not explored", declined: "Declined to share",
 }
 export function emptySignalEvidence(signals: readonly ProjectConversationSignal[]): SignalEvidenceMap {
   return Object.fromEntries(signals.map(signal => [signal.id, { status: "not_explored", summary: "", reason: "", sources: [] }]))

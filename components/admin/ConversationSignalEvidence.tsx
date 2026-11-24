@@ -28,6 +28,7 @@ export function ConversationSignalEvidence({ signals, evidence, anchorPrefix = "
         {item?.reason && <div><h5>Why it is relevant</h5><p>{item.reason}</p></div>}
         {(!item || item.status === "not_explored") && <p>This signal remains unknown. Do not treat missing evidence as a negative judgment.</p>}
         {item?.status === "partly_understood" && <p>There is some context here. Other details remain unclear.</p>}
+        {item?.status === "none_identified" && <p>The applicant answered, but nothing applied or came to mind. This is not a refusal to share.</p>}
         {item?.status === "declined" && <p>The applicant chose not to share more. That choice is respected.</p>}
         {open && (!signal.explore ? <p>Listens for volunteered evidence.</p>
           : attempts >= MAX_SIGNAL_FOLLOW_UPS ? <p>Left open after two follow-ups.</p>

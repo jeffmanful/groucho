@@ -471,8 +471,11 @@ export interface components {
         };
         /** @description Grounded interpretation of an applicant account. It is not independent verification or an acceptance decision. */
         ConversationSignalEvidence: {
-            /** @enum {string} */
-            status: "evidence_found" | "partly_understood" | "not_explored" | "declined";
+            /**
+             * @description none_identified means the applicant answered that nothing applies; declined means they chose not to share.
+             * @enum {string}
+             */
+            status: "evidence_found" | "partly_understood" | "none_identified" | "not_explored" | "declined";
             summary: string;
             reason: string;
             sources: {
