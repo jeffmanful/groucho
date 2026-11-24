@@ -42,13 +42,13 @@ export function ConversationSignalEditor({ signals, onChange }: Props) {
             </summary>
             <div className={styles.signalFields}>
               <label>Signal name<input value={signal.name} maxLength={100} placeholder="Community participation" onChange={e => update(signal.id, { name: e.target.value })} /></label>
-              <label>What do you want to understand?<textarea value={signal.understanding} maxLength={1000} rows={3} placeholder="How they show up, contribute or build relationships in a community." onChange={e => update(signal.id, { understanding: e.target.value })} /></label>
-              <label>What makes an answer informative? (optional)<textarea value={signal.evidence} maxLength={2000} rows={3} placeholder="What they do, where or with whom, and why it matters to them. Other forms of contribution are welcome." onChange={e => update(signal.id, { evidence: e.target.value })} /></label>
+              <label>What do you want to understand?<textarea value={signal.understanding} maxLength={1000} rows={5} placeholder="How they show up, contribute or build relationships in a community." onChange={e => update(signal.id, { understanding: e.target.value })} /></label>
+              <label>What makes an answer informative? (optional)<textarea value={signal.evidence} maxLength={2000} rows={6} placeholder="What they do, where or with whom, and why it matters to them. Other forms of contribution are welcome." onChange={e => update(signal.id, { evidence: e.target.value })} /></label>
               <h4>Example answers (optional)</h4>
               <p>Examples are illustrations, not requirements. Include different valid experiences, such as informal support or online communities. Naming a place adds detail, not independent verification.</p>
               {signal.examples.map((example, exampleIndex) => (
                 <div className={styles.example} key={exampleIndex}>
-                  <label>Example {exampleIndex + 1}<textarea value={example} maxLength={1000} rows={3} placeholder={exampleIndex === 0 ? "I go to the listening night at Cedar Hall most Thursdays. I enjoy welcoming people who are new to the area." : "I help an online group welcome new members. I check in with people who seem unsure about joining in."} onChange={e => update(signal.id, { examples: signal.examples.map((item, i) => i === exampleIndex ? e.target.value : item) })} /></label>
+                  <label>Example {exampleIndex + 1}<textarea value={example} maxLength={1000} rows={4} placeholder={exampleIndex === 0 ? "I go to the listening night at Cedar Hall most Thursdays. I enjoy welcoming people who are new to the area." : "I help an online group welcome new members. I check in with people who seem unsure about joining in."} onChange={e => update(signal.id, { examples: signal.examples.map((item, i) => i === exampleIndex ? e.target.value : item) })} /></label>
                   <button type="button" onClick={() => update(signal.id, { examples: signal.examples.filter((_, i) => i !== exampleIndex) })}>Remove example {exampleIndex + 1}</button>
                 </div>
               ))}
@@ -56,7 +56,7 @@ export function ConversationSignalEditor({ signals, onChange }: Props) {
               <details className={styles.optionalControls}>
                 <summary>Question &amp; answer controls (optional)</summary>
                 <p>Use these when wording or format matters. Groucho can skip the question if the applicant already shared the information.</p>
-                <label>Exact question (optional)<textarea value={signal.question} maxLength={500} rows={2} placeholder="Leave blank for Groucho to choose the wording." onChange={e => update(signal.id, { question: e.target.value })} /></label>
+                <label>Exact question (optional)<textarea value={signal.question} maxLength={500} rows={3} placeholder="Leave blank for Groucho to choose the wording." onChange={e => update(signal.id, { question: e.target.value })} /></label>
                 <label>Answer type (optional)<select value={signal.answerType} onChange={e => update(signal.id, { answerType: e.target.value as ProjectConversationSignal["answerType"] })}>
                   <option value="auto">Let Groucho choose</option><option value="text">Open text</option><option value="singleSelect">Choose one</option><option value="multiSelect">Choose several</option>
                 </select></label>

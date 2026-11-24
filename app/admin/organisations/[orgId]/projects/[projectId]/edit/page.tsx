@@ -290,7 +290,7 @@ export default function EditProjectPage() {
         <h1 style={{ fontSize: "1.1rem", marginBottom: "0.5rem" }}>Reconfigure {form.name}</h1>
         <p style={{ opacity: 0.7, lineHeight: 1.5 }}>This project was set up on Groucho&rsquo;s original conversation engine, which has been retired, so it cannot start new conversations. Set it up again below to use it. Earlier conversations and reports stay available.</p>
       </div>
-      <ConversationProjectWizard key={projectId} orgId={orgId} project={{ id: projectId, name: form.name, slug: form.slug, config: DEFAULT_SIGNAL_CONVERSATION }} />
+      <ConversationProjectWizard key={projectId} orgId={orgId} unsaved project={{ id: projectId, name: form.name, slug: form.slug, config: DEFAULT_SIGNAL_CONVERSATION }} />
     </>
   }
 
