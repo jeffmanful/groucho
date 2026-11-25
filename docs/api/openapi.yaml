@@ -1017,6 +1017,9 @@ components:
           description: Client-authored version-2 signal states, keyed by configured signal ID. Unexplored signals remain unknown. Corrections replace superseded interpretations.
           additionalProperties:
             $ref: "#/components/schemas/ConversationSignalEvidence"
+        signalEvidencePending:
+          type: boolean
+          description: Present and true when an open-style conversation continues and this turn's evidence review is still being saved. `signalEvidence` then reflects the applicant's earlier answers; the next turn and the closing turn include this answer.
         completion:
           $ref: "#/components/schemas/DemoConversationCompletion"
 

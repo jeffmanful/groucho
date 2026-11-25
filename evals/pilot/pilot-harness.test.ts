@@ -19,8 +19,8 @@ vi.mock("@/lib/llm-usage", async importOriginal => {
   const original = await importOriginal<typeof import("@/lib/llm-usage")>()
   return { ...original, logLlmUsage: async (input: import("@/lib/llm-usage").LlmUsageLogInput) => {
     if (!input.requestId) return
-    const usage = (input.usage ?? {}) as { input_tokens?: number; output_tokens?: number }
-    const call: ModelCall = { operation: input.operation, model: input.model, inputTokens: usage.input_tokens ?? 0, outputTokens: usage.output_tokens ?? 0, costUsd: original.estimateLlmCostUsd(input.model, input.usage) }
+    const usage = (input.usage ?? {}) as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number }
+    const call: ModelCall = { operation: input.operation, model: input.model, inputTokens: usage.input_tokens ?? 0, outputTokens: usage.output_tokens ?? 0, cacheReadTokens: usage.cache_read_input_tokens ?? 0, endedAt: performance.now(), costUsd: original.estimateLlmCostUsd(input.model, input.usage) }
     state.calls.set(input.requestId, [...(state.calls.get(input.requestId) ?? []), call])
   } }
 })

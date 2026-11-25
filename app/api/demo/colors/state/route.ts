@@ -1,16 +1,13 @@
 import { applicantIdentityFromRow } from "@/lib/applicant-identity"
 import { NextRequest, NextResponse } from "next/server"
-import { colorsDemoProject } from "@/lib/colors-demo-access"
-import { demoSession } from "@/lib/colors-demo-token"
+import { authorizeColorsDemo } from "@/lib/shared-colors-demo"
 import { supabase } from "@/lib/supabase"
 
 export async function GET(req: NextRequest) {
-  const sessionId = req.nextUrl.searchParams.get("sessionId")?.trim() || ""
-  if (!(await demoSession(req, sessionId))) {
-    return NextResponse.json({ error: "Unauthorized demo session" }, { status: 401 })
-  }
-  const project = await colorsDemoProject()
-  if (!project) return NextResponse.json({ error: "COLORS Forum demo is not configured" }, { status: 503 })
+  const clientId = req.nextUrl.searchParams.get("sessionId")?.trim() || ""
+  const access = await authorizeColorsDemo(req, "session", clientId)
+  if (access instanceof NextResponse) return access
+  const { project, sessionId } = access
   const { data: session } = await supabase.from("sessions")
     .select("id, status, applicant_email, applicant_name, applicant_details, application_audience")
     .eq("session_id", sessionId)

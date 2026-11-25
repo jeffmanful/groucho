@@ -76,6 +76,7 @@ export function OrgProjects() {
           {project.projectType === "gatekeeper" ? (
             <Link className={styles.rowAction} href={`${base}/applications?project=${project.id}`}>Applications</Link>
           ) : null}
+          {summary?.canManage && project.demoAvailable ? <Link className={styles.rowAction} href={`${href}/demo`}>Demo</Link> : null}
           {summary?.canManage ? <Link className={styles.rowAction} href={`${href}/edit`}>Edit project</Link> : null}
           {project.projectType !== "ticket_access" ? (
             <Link className={styles.rowAction} href={href}>Integrations</Link>

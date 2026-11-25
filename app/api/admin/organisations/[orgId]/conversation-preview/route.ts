@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createHash, randomUUID } from "node:crypto"
+import { createHash } from "node:crypto"
 import { resolveAdminActor } from "@/lib/admin-actor"
 import { requireOrgAdmin, unauthorized } from "@/lib/org-access"
 import { isSameOriginMutation } from "@/lib/platform-admin-access"
 import { checkRateLimit } from "@/lib/rate-limit"
-import { postConversation, type ConversationTranscriptEntry } from "@/lib/conversation-engine"
-import { readProjectConversation, validateProjectConversation, projectConversationOpening, projectConversationReplyStyle, projectConversationSettings } from "@/lib/project-conversation-config"
-import { projectConversationConfiguration, projectConversationProfile, projectConversationRevision } from "@/lib/project-conversation-runtime"
+import { readProjectConversation, validateProjectConversation, projectConversationReplyStyle } from "@/lib/project-conversation-config"
+import { projectConversationRevision } from "@/lib/project-conversation-runtime"
+import { replyToProjectPreview, startProjectPreview } from "@/lib/project-conversation-preview-runtime"
 import { signProjectPreview, verifyProjectPreview } from "@/lib/project-conversation-preview"
 import { colorsThinEventStream, wantsColorsThinStream } from "@/lib/colors-thin-stream"
-import { normalizeProjectSettings } from "@/lib/project-settings"
-import { emptySignalEvidence } from "@/lib/project-conversation-evidence"
-import { DEFAULT_INTERACTION_SPEC } from "@/lib/gatekeeper-interaction-spec"
 import { supabase } from "@/lib/supabase"
 
 const json = (body: unknown, status = 200) => NextResponse.json(body, { status, headers: { "Cache-Control": "private, no-store" } })
@@ -80,19 +77,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ org
       if (!validated.ok) return json({ error: validated.error }, 400)
       const config = validated.config
       const projectId = typeof body.projectId === "string" && projectUuid.test(body.projectId) ? body.projectId.toLowerCase() : undefined
-      const runtime = projectConversationConfiguration(config, { organisationId: orgId, projectId: projectId ?? "preview" })
-      const message = projectConversationOpening(config)
-      const profile = projectConversationProfile(config)
-      const choice = profile.openingChoice ? profile.choices[profile.openingChoice] : undefined
-      const signalTurn = config.version === 2 && config.signals.length ? { questionSignalId: profile.openingSignalId ?? null, followUp: false, changes: [] } : undefined
-      const ui = { ...DEFAULT_INTERACTION_SPEC, ...(choice ? { inputType: choice.inputType ?? "singleSelect", options: [...choice.options] } : {}) }
-      const transcript: ConversationTranscriptEntry[] = [{ role: "assistant", content: message, metadata: {
-        conversation_engine: runtime.marker, conversation_profile: runtime.id, ...(profile.openingChoice ? { conversation_choice_key: profile.openingChoice } : {}),
-        ...(signalTurn ? { conversation_signal_turn: signalTurn } : {}), ui,
-      } }]
-      return json({ message, status: "active", ui, ...(signalTurn ? { signalTurn } : {}), ...(config.version === 2 ? { signalEvidence: emptySignalEvidence(config.signals) } : {}), token: signProjectPreview({
-        organisationId: orgId, ...(projectId ? { projectId } : {}), actor: actorId, expiresAt: Date.now() + 60 * 60_000, config, transcript, status: "active",
-      }) })
+      const { preview, visible } = startProjectPreview(config, orgId, actorId, projectId)
+      return json({ ...visible, token: signProjectPreview(preview) })
     }
     if ((body.action !== "message" && body.action !== "save") || typeof body.token !== "string") return json({ error: "Start a preview first." }, 400)
     const preview = verifyProjectPreview(body.token, orgId, actorId)
@@ -132,21 +118,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ org
     if (preview.status !== "active") return json({ error: "This preview is complete. Start a new preview." }, 409)
     const message = typeof body.message === "string" ? body.message.trim() : ""
     if (!message || message.length > 4000) return json({ error: "Enter a message of up to 4,000 characters." }, 400)
-    const context = { organisationId: orgId, projectId: preview.projectId ?? "preview", apiKeyId: null, settings: normalizeProjectSettings(projectConversationSettings(preview.config)) }
     const turn = async (onReplyDelta?: (text: string) => void) => {
-      const response = await postConversation({
-        configuration: projectConversationConfiguration(preview.config, context),
-        context,
-        sessionId: randomUUID(), message, previewTranscript: preview.transcript, runCompletion: false, reviewAuthoredSettings: true, onReplyDelta,
-      })
-      const result = await response.json()
-      if (!response.ok) return json(result, response.status)
-      const { previewTranscript, ...visible } = result
-      const signalTurn = (previewTranscript as ConversationTranscriptEntry[]).at(-1)?.metadata.conversation_signal_turn
-      return json({ ...visible, ...(signalTurn ? { signalTurn } : {}), token: signProjectPreview({
-        ...preview, transcript: previewTranscript, status: result.status,
-        settingsConflict: visible.settingsConflict ?? preview.settingsConflict,
-      }) })
+      const result = await replyToProjectPreview(preview, message, { onReplyDelta, reviewAuthoredSettings: true })
+      if (!result.ok) return json(result.body, result.status)
+      return json({ ...result.visible, token: signProjectPreview(result.preview) })
     }
     // The reply streams as it is written when the client asks; the final event carries the usual body.
     if (wantsColorsThinStream(req.headers.get("accept"))) return colorsThinEventStream(turn)

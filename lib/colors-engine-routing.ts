@@ -6,6 +6,7 @@ import type { MediaChoiceAnswer } from "@/lib/gatekeeper-interaction-spec"
 import type { ProjectContext } from "@/lib/project-resolution"
 import { startGatekeeperSession } from "@/lib/start-gatekeeper-session"
 import { supabase } from "@/lib/supabase"
+import { after } from "next/server"
 import { CONVERSATION_ENGINE_MARKER, usesReusableConversationEngine, postDemoConversation } from "@/lib/demo-conversation-profiles"
 import { readProjectConversation } from "@/lib/project-conversation-config"
 
@@ -76,7 +77,7 @@ export async function postColorsEngineTurn(input: {
       if (!started.ok) return started
     }
     const custom = readProjectConversation(input.context.settings.raw)
-    return postDemoConversation({ ...input, applicant: input.applicant ?? undefined, runCompletion: !!(custom?.version === 2 && custom.applicationReview) })
+    return postDemoConversation({ ...input, applicant: input.applicant ?? undefined, runCompletion: !!(custom?.version === 2 && custom.applicationReview), defer: after })
   }
   if (input.route === "start-colors") {
     const started = await startGatekeeperSession({

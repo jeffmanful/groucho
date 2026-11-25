@@ -22,11 +22,17 @@ export function ProjectOverview() {
   const { project, href } = useOrganisationProject()
   const { data, error, loading } = useProjectOverview()
   const base = `/admin/organisations/${orgId}`
+  const projectPath = project ? `${base}/projects/${project.id}` : null
   return (
     <div className={styles.page}>
       <header className={dashboard.header}>
         <div><h1 className={styles.title}>Project overview</h1><p className={dashboard.subtitle}>{project?.name}</p></div>
-        {summary?.canManage && project ? <Link className={dashboard.primary} href={`${base}/projects/${project.id}/edit`}>Edit project</Link> : null}
+        {summary?.canManage && projectPath ? (
+          <div className={styles.actions}>
+            <Link className={dashboard.primary} href={`${projectPath}/edit`}>Edit project</Link>
+            {project?.demoAvailable && <Link className={dashboard.secondary} href={`${projectPath}/demo`}>Demo project</Link>}
+          </div>
+        ) : null}
       </header>
       <ProjectObjective />
       {!data && !error ? <div className={dashboard.skeleton} style={{ height: 280 }} role="status" aria-label="Loading cohort progress and applications" /> : null}

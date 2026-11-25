@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { parseApplicantIdentity } from "@/lib/applicant-identity"
-import { colorsDemoProject } from "@/lib/colors-demo-access"
+import { authorizeColorsDemo } from "@/lib/shared-colors-demo"
 import {
   DEMO_SESSION_COOKIE,
-  demoTester,
   issueDemoToken,
 } from "@/lib/colors-demo-token"
 import { startGatekeeperSession } from "@/lib/start-gatekeeper-session"
@@ -11,19 +10,21 @@ import { getOrCreateRequestId } from "@/lib/request-trace"
 import { COLORS_THIN_PILOT_MARKER } from "@/lib/colors-thin-conversation"
 
 export async function POST(req: NextRequest) {
-  const tester = await demoTester(req)
-  if (!tester) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const body = await req.json().catch(() => null)
-  const sessionId = typeof body?.sessionId === "string" ? body.sessionId.trim() : ""
-  if (!/^[0-9a-f-]{36}$/i.test(sessionId)) {
+  const clientId = typeof body?.sessionId === "string" ? body.sessionId.trim() : ""
+  if (!/^[0-9a-f-]{36}$/i.test(clientId)) {
     return NextResponse.json({ error: "Invalid session" }, { status: 400 })
   }
+  const access = await authorizeColorsDemo(req, "start", clientId)
+  if (access instanceof NextResponse) return access
+  const { project, tester, link, sessionId } = access
   const applicant = parseApplicantIdentity(body?.applicant)
   if (!applicant.ok || !applicant.value) {
     return NextResponse.json({ error: !applicant.ok ? applicant.error : "Applicant email is required" }, { status: 400 })
   }
-  const project = await colorsDemoProject()
-  if (!project) return NextResponse.json({ error: "COLORS Forum demo is not configured" }, { status: 503 })
+  if (link && Boolean(applicant.value.artist) !== (link.variant === "artist")) {
+    return NextResponse.json({ error: "This link is for a different demo walkthrough." }, { status: 400 })
+  }
   const response = await startGatekeeperSession({
     sessionId,
     applicantIdentity: applicant.value,
@@ -33,8 +34,9 @@ export async function POST(req: NextRequest) {
     // Every COLORS application now runs on the newer conversation engine.
     conversationEngine: COLORS_THIN_PILOT_MARKER,
     demoSession: true,
+    sharedDemoPreview: Boolean(link),
   })
-  if (!response.ok) return response
+  if (!response.ok || !tester) return response
   const token = await issueDemoToken({
     kind: "session", email: tester.email, access: tester.access, sessionId, issuedAt: Date.now(),
   })

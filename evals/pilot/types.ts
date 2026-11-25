@@ -49,7 +49,7 @@ export type Scenario = {
   }
 }
 
-export type ModelCall = { operation: string; model: string; inputTokens: number; outputTokens: number; costUsd: number | null }
+export type ModelCall = { operation: string; model: string; inputTokens: number; outputTokens: number; cacheReadTokens?: number; endedAt?: number; costUsd: number | null }
 
 export type PilotTurn = {
   answerNumber: number
@@ -64,6 +64,8 @@ export type PilotTurn = {
   latencyMs: number
   /** Time until the first streamed reply text, when the reply streamed. */
   firstTextMs?: number
+  /** When the reply model finished: what a saved open-style session's applicant waits for, since its evidence is saved afterwards. */
+  replyReadyMs?: number
   calls: ModelCall[]
   retries: number
   model?: string

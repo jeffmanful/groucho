@@ -510,6 +510,8 @@ export interface components {
             signalEvidence?: {
                 [key: string]: components["schemas"]["ConversationSignalEvidence"];
             };
+            /** @description Present and true when an open-style conversation continues and this turn's evidence review is still being saved. `signalEvidence` then reflects the applicant's earlier answers; the next turn and the closing turn include this answer. */
+            signalEvidencePending?: boolean;
             completion?: components["schemas"]["DemoConversationCompletion"];
         };
         /** @description Standard gatekeeper/onboarding response. Newer shared-engine replies use SharedConversationResponse. */

@@ -94,7 +94,11 @@ export async function runScenario(flow: PilotFlow, scenario: Scenario, repeat: n
       }
       turn.latencyMs += Math.round(performance.now() - started)
       if (body && firstText !== undefined) turn.firstTextMs = Math.round(firstText - started)
-      turn.calls.push(...callsFor(requestId))
+      const calls = callsFor(requestId)
+      // The last reply-model call ending is when a saved session can answer while its evidence review is saved afterwards.
+      const replyEnded = Math.max(...calls.filter(call => call.operation !== "conversation_signal_evidence_review" && call.endedAt !== undefined).map(call => call.endedAt!))
+      if (body && Number.isFinite(replyEnded)) turn.replyReadyMs = Math.round(replyEnded - started)
+      turn.calls.push(...calls)
       if (!body) turn.retries++
     }
     if (!body) {

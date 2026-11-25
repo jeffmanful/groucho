@@ -183,7 +183,11 @@ export type ConversationConfiguration = {
    * Reasoning for the reply model. "off" sends thinking `between_tools`, which runs no thinking on a
    * request without tool calls; "low" lowers effort. Omitted: the model's defaults.
    */
-  replyReasoning?: "off" | "low"
+  replyReasoning?: "off" | "low" | "medium"
+  /** Cache the character prompt, which must not change between turns. */
+  cachePrompt?: boolean
+  /** Open conversation only: false leaves signal evidence entirely to the separate evidence review. */
+  replyEvidence?: boolean
   /** Model for the per-turn evidence review. Defaults to the conversation model. */
   evidenceModel?: string
   buildPrompt: (input: { applicationAudience: "community" | "artist"; hasApplicantDetails: boolean; turnCount: number; shows: unknown[] }) => string
@@ -267,6 +271,15 @@ export function conversationSelections(message: string, options: readonly string
   return matches.length === 1 ? matches[0] : null
 }
 
+/** Marks an assistant message whose evidence review is still being saved after the response. */
+export const EVIDENCE_PENDING_KEY = "conversation_evidence_pending"
+const EVIDENCE_WAIT_ATTEMPTS = 30
+const EVIDENCE_WAIT_MS = 500
+function evidencePending(history: ConversationTranscriptEntry[] | null | undefined) {
+  const last = [...history ?? []].reverse().find(entry => entry.role === "assistant")
+  return record(last?.metadata)[EVIDENCE_PENDING_KEY] === true
+}
+
 export async function postConversation(input: {
   /** Server-verified draft transcript. Executes without reading/writing application records. */
   previewTranscript?: ConversationTranscriptEntry[]
@@ -292,6 +305,11 @@ export async function postConversation(input: {
    * so test conversations never reach the client's webhooks.
    */
   runCompletion?: boolean
+  /**
+   * Runs work after the response is sent (Next's `after`). When given, an open conversation that
+   * continues answers as soon as the reply is ready and saves the turn's evidence review afterwards.
+   */
+  defer?: (task: () => Promise<void>) => void
 }): Promise<NextResponse> {
   const { organisationId, projectId, settings } = input.context
   let config = input.configuration
@@ -310,10 +328,17 @@ export async function postConversation(input: {
     return json({ error: "Applicant identity does not match this session" }, input.requestId, 409)
   }
 
-  const { data: history, error: historyError } = input.previewTranscript ? { data: input.previewTranscript, error: null } : await supabase.from("messages")
+  const loadHistory = async () => input.previewTranscript ? { data: input.previewTranscript, error: null } : await supabase.from("messages")
     .select("id, role, content, metadata")
     .eq("session_id", session.id)
     .order("sent_at", { ascending: true })
+  let { data: history, error: historyError } = await loadHistory()
+  // The previous turn may still be saving its evidence review. Wait for it rather than build on stale notes.
+  for (let wait = 0; wait < EVIDENCE_WAIT_ATTEMPTS && !historyError && evidencePending(history); wait++) {
+    await new Promise(resolve => setTimeout(resolve, EVIDENCE_WAIT_MS))
+    ;({ data: history, error: historyError } = await loadHistory())
+  }
+  if (!historyError && evidencePending(history)) log.warn("conversation_evidence_still_pending", { requestId: input.requestId, sessionId: input.sessionId })
   if (historyError || !history?.length) return json({ error: "Transcript unavailable" }, input.requestId, 503)
   if (!input.previewTranscript) config = config.resolveOpeningConfiguration?.(record(history[0].metadata)) ?? config
   const fields = config.fields ?? []
@@ -501,15 +526,8 @@ export async function postConversation(input: {
       required: [...fieldResponseTool.input_schema.required, ...(config.choiceIntroductions ? ["choiceIntroduction"] : []), "visitorIntent"],
     },
   } : fieldResponseTool
-  const signalResponseTool = config.signals?.length ? {
-    ...authoredResponseTool,
-    input_schema: {
-      ...authoredResponseTool.input_schema,
-      properties: {
-        ...authoredResponseTool.input_schema.properties,
-        questionSignalId: { type: "string", enum: [NO_SIGNAL_TARGET, ...config.signals.map(s => s.id)], description: "The signal the visible question explores, or none when it does not seek signal evidence." },
-        buildsOnQuote: { type: "string", description: "The exact words from an applicant answer that the visible question starts from, copied verbatim. Use an empty string for a plain question that does not build on something they said, or when the reply asks nothing." },
-        signalEvidence: { type: "array", description: "Review each signal separately against the current applicant answer. Update every signal supported or corrected, including on the final turn. The same quote can support more than one signal when it independently meets each signal's criteria. A correction replaces superseded evidence even when the applicant also stops. Only quote the applicant's own account. Empty only when no signal changed.", items: {
+  // Shared by the reply (where it records evidence) and the separate evidence review.
+  const signalEvidenceSchema = config.signals?.length ? { type: "array", description: "Review each signal separately against the current applicant answer. Update every signal supported or corrected, including on the final turn. The same quote can support more than one signal when it independently meets each signal's criteria. A correction replaces superseded evidence even when the applicant also stops. Only quote the applicant's own account. Empty only when no signal changed.", items: {
           type: "object", properties: {
             signalId: { type: "string", enum: config.signals.map(s => s.id) },
             status: { type: "string", enum: ["evidence_found", "partly_understood", "none_identified", "not_explored", "declined"] },
@@ -518,8 +536,18 @@ export async function postConversation(input: {
             quotes: { type: "array", items: { type: "string" } },
             supersedes: { type: "boolean" },
           }, required: ["signalId", "status", "subject", "summary", "reason", "quotes", "supersedes"],
-        } },
-      }, required: [...authoredResponseTool.input_schema.required, "signalEvidence", "questionSignalId", "buildsOnQuote"],
+        } } : undefined
+  const withReplyEvidence = !(config.openConversation && config.replyEvidence === false)
+  const signalResponseTool = config.signals?.length ? {
+    ...authoredResponseTool,
+    input_schema: {
+      ...authoredResponseTool.input_schema,
+      properties: {
+        ...authoredResponseTool.input_schema.properties,
+        questionSignalId: { type: "string", enum: [NO_SIGNAL_TARGET, ...config.signals.map(s => s.id)], description: "The signal the visible question explores, or none when it does not seek signal evidence." },
+        buildsOnQuote: { type: "string", description: "The exact words from an applicant answer that the visible question starts from, copied verbatim. Use an empty string for a plain question that does not build on something they said, or when the reply asks nothing." },
+        ...withReplyEvidence ? { signalEvidence: signalEvidenceSchema } : {},
+      }, required: [...authoredResponseTool.input_schema.required, ...withReplyEvidence ? ["signalEvidence"] : [], "questionSignalId", "buildsOnQuote"],
     },
   } : authoredResponseTool
   const reviewAuthoredSettings = authoredStyle && input.reviewAuthoredSettings === true && turnCount === 1
@@ -569,18 +597,23 @@ export async function postConversation(input: {
   async function requestReply(operation: string, instruction: string, maxTokens = config.signals?.length ? 2200 : fields.length ? 1000 : 600,
     onReply?: (text: string) => void): Promise<ConversationReply> {
     const forcedTool = supportsForcedToolChoice(model)
+    const fullSystem = system + signalState + (config.replyGuidance ? "\n\n" + config.replyGuidance : "") + "\n\n" + instruction +
+      (oneQuestionMode?.style === "direct" ? `\n\n${ONE_QUESTION_REPLY_RULES}\nA Forum reason is ${forumReasonAvailable ? "available if useful" : "already used"}.` : "") +
+      (config.signals?.length && !config.openConversation ? "\nIndependently of whether this reply continues or closes, update all signals supported by the CURRENT applicant answer. Apply corrections to earlier evidence with supersedes=true, replacing outdated summaries and sources. Do not drop new evidence or corrections because the applicant also wants to stop. Keep the spoken closing brief while returning the complete evidence updates." : "") +
+      (forcedTool ? "" : "\n\nReturn the groucho_converse fields as one JSON object.")
     const base = {
       model, max_tokens: maxTokens,
-      system: system + signalState + (config.replyGuidance ? "\n\n" + config.replyGuidance : "") + "\n\n" + instruction +
-        (oneQuestionMode?.style === "direct" ? `\n\n${ONE_QUESTION_REPLY_RULES}\nA Forum reason is ${forumReasonAvailable ? "available if useful" : "already used"}.` : "") +
-        (config.signals?.length && !config.openConversation ? "\nIndependently of whether this reply continues or closes, update all signals supported by the CURRENT applicant answer. Apply corrections to earlier evidence with supersedes=true, replacing outdated summaries and sources. Do not drop new evidence or corrections because the applicant also wants to stop. Keep the spoken closing brief while returning the complete evidence updates." : "") +
-        (forcedTool ? "" : "\n\nReturn the groucho_converse fields as one JSON object."),
+      // The character prompt is identical on every turn, so it is cached; the turn's state follows it.
+      system: config.cachePrompt ? [
+        { type: "text" as const, text: characterPrompt, cache_control: { type: "ephemeral" as const } },
+        { type: "text" as const, text: fullSystem.slice(characterPrompt.length) },
+      ] : fullSystem,
       messages: [...conversation, { role: "user" as const, content: currentAnswer }],
     }
     const request = forcedTool
       ? { ...base, tools: [responseTool], tool_choice: { type: "tool" as const, name: responseTool.name } }
       : { ...base, output_config: { format: { type: "json_schema" as const, schema: strictJsonSchema(responseTool.input_schema) },
-        ...(config.replyReasoning === "low" ? { effort: "low" as const } : {}) },
+        ...(config.replyReasoning === "low" || config.replyReasoning === "medium" ? { effort: config.replyReasoning } : {}) },
         ...(config.replyReasoning === "off" ? { thinking: { type: "between_tools" } } : {}) }
     const client = new Anthropic({ maxRetries: 1, timeout: 45000 })
     let response: Anthropic.Message
@@ -667,7 +700,7 @@ export async function postConversation(input: {
     ? "The answer ceiling is reached. Answer any outstanding applicant question using approved facts and finish in the authored closing style. Set close=true and ask no further question."
     : "Answer the latest point and finish warmly: the conversation budget is reached. Set close=true."
   async function reviewSignalEvidence(): Promise<{ updates: unknown[]; answerRelation?: unknown; threads?: unknown; finishedThreadIds?: unknown }> {
-    const schema = { type: "object", properties: { signalEvidence: (signalResponseTool.input_schema.properties as Record<string, unknown>).signalEvidence,
+    const schema = { type: "object", properties: { signalEvidence: signalEvidenceSchema,
       answerRelation: { type: "string", enum: [...ANSWER_RELATIONS] },
       threads: { type: "array", items: { type: "object", properties: {
         detail: { type: "string" }, quote: { type: "string" },
@@ -708,6 +741,25 @@ Return signalEvidence updates for new information, refusals and corrections. A c
     ? reviewSignalEvidence().then(result => result, (error: unknown) => ({ error: error instanceof Error ? error.message : String(error) }))
     : undefined
   let evidenceReviewFailure: string | undefined
+  // A continuing open conversation needs this turn's review only on the next turn, so with `defer`
+  // it is saved after the response. Closing turns always wait: the ending stores the final evidence.
+  const canDeferEvidence = Boolean(input.defer && !input.previewTranscript && config.openConversation && evidenceReview)
+  let evidenceApplied = !evidenceReview
+  async function applyEvidenceReview() {
+    if (evidenceApplied) return
+    evidenceApplied = true
+    const evidenceResult = await evidenceReview
+    if (evidenceResult && "updates" in evidenceResult) {
+      reviewedEvidence = evidenceResult.updates
+      answerRelation = ANSWER_RELATIONS.find(relation => relation === evidenceResult.answerRelation)
+      reviewedThreads = evidenceResult.threads
+      reviewedFinishedThreads = evidenceResult.finishedThreadIds
+    }
+    else if (evidenceResult) {
+      evidenceReviewFailure = evidenceResult.error
+      log.warn(operation("signal_evidence_review_failed"), { requestId: input.requestId, sessionId: input.sessionId, detail: evidenceResult.error })
+    }
+  }
   let proposal: ConversationReply
   let addsNewContext: boolean | undefined
   let visitorStopped = stoppedByApplicant
@@ -725,17 +777,7 @@ Return signalEvidence updates for new information, refusals and corrections. A c
         natural ? (turnCount >= 36 ? "You are nearing the conversation budget. Find a considerate ending without interrupting the latest story or asking new interview questions." : "Respond naturally to the visitor, following the current thread and contributing something when relevant.") :
         requiresQuestion && turnCount >= (config.wrapUpAnswers ?? WRAP_UP_ANSWERS) ? "The conversation is ready to wrap up. Close now unless the latest answer opened something genuinely new that you do not yet understand. Never continue only to deepen a thread." :
           "Continue only if a useful thread remains; otherwise close naturally.", undefined, streamReply)
-    const evidenceResult = await evidenceReview
-    if (evidenceResult && "updates" in evidenceResult) {
-      reviewedEvidence = evidenceResult.updates
-      answerRelation = ANSWER_RELATIONS.find(relation => relation === evidenceResult.answerRelation)
-      reviewedThreads = evidenceResult.threads
-      reviewedFinishedThreads = evidenceResult.finishedThreadIds
-    }
-    else if (evidenceResult) {
-      evidenceReviewFailure = evidenceResult.error
-      log.warn(operation("signal_evidence_review_failed"), { requestId: input.requestId, sessionId: input.sessionId, detail: evidenceResult.error })
-    }
+    if (!canDeferEvidence) await applyEvidenceReview()
     visitorStopped = stoppedByApplicant || config.visitorIntent === true && proposal.visitorIntent === "stop"
     // Closing is an informed choice only once the host has seen the areas that have not come up.
     if (config.openConversation && !showAreas && openAreas.length && proposal.close && !visitorStopped && !answerLimitReached && !applicantQuestion) {
@@ -819,6 +861,7 @@ You were about to close. Before you do, consider these areas. Ask about one of t
   const repeatedConsentBoundary = proposal.boundary === "consent" && previousBoundary === "consent"
   const requestedClose = visitorStopped || answerLimitReached || (!applicantQuestion || !requiresQuestion) && !firstBoundaryTurn &&
     (proposal.close || repeatedConsentBoundary || turnCount >= emergencyLimit)
+  if (requestedClose) await applyEvidenceReview()
   if (requestedClose && evidenceReviewFailure) {
     // Closing prose and evidence have separate jobs. A brief goodbye must not
     // cause corrections in the last applicant answer to disappear from storage.
@@ -923,6 +966,7 @@ You were about to close. Before you do, consider these areas. Ask about one of t
     activeChoiceKey = undefined
     questionSignalId = undefined
   }
+  if (lateClose) await applyEvidenceReview()
   if (lateClose) {
     activeChoice = undefined
     activeChoiceKey = undefined
@@ -953,19 +997,30 @@ You were about to close. Before you do, consider these areas. Ask about one of t
       }
     }
   }
-  const baseSignalTurn = signalProgress.length ? makeSignalTurn(
-    !close && proposal.boundary === "none" && (activeChoice || /[?？]/.test(reply)) ? questionSignalId : undefined, signalProgress, finalEvidence, turnCount,
-  ) : undefined
   // A question counts as connected only when it starts from words the applicant actually used.
   const asksQuestion = !close && proposal.boundary === "none" && (Boolean(activeChoice) || /[?？]/.test(reply))
   const buildsOn = asksQuestion
     ? groundedQuote(buildsOnQuote, [...history.filter(entry => entry.role === "user").map(entry => String(entry.content)), input.message]) : undefined
-  const signalTurn = baseSignalTurn ? { ...baseSignalTurn, ...(buildsOn ? { buildsOn } : {}), ...(answerRelation ? { answerRelation } : {}), ...(selfCheck && !close ? { selfCheck: selfCheck.kind } : {}) } : undefined
-  let workingMemory = memoryAfterAnswer
-  if (workingMemory && asksQuestion) {
-    workingMemory = recordQuestion(workingMemory, { signalId: signalTurn?.questionSignalId ?? undefined, question: reply, buildsOn, turn: turnCount })
+  /** What this turn stores about the signals and working memory, from the evidence review applied so far. */
+  const recordedSignalState = () => {
+    const evidence = evidenceFor(proposal)
+    const progress = progressFor(evidence)
+    const memoryAfter = config.signals?.length ? recordAnswer(workingMemoryBeforeTurn, { relation: answerRelation, threads: reviewedThreads, finishedThreadIds: reviewedFinishedThreads, answer: input.message, turn: turnCount, signals: config.signals }) : undefined
+    const learned = Object.values(evidence).some(item => item.sources.some(source => source.turn === turnCount))
+    const check = memoryAfter ? conversationSelfCheck({ memory: memoryAfter, progress, turnCount, maxAnswers: config.maxAnswers, quietTurns: learned ? 0 : quietSignalTurns + 1 }) : undefined
+    const baseTurn = progress.length ? makeSignalTurn(asksQuestion ? questionSignalId : undefined, progress, evidence, turnCount) : undefined
+    const turn = baseTurn ? { ...baseTurn, ...(buildsOn ? { buildsOn } : {}), ...(answerRelation ? { answerRelation } : {}), ...(check && !close ? { selfCheck: check.kind } : {}) } : undefined
+    let memory = memoryAfter
+    if (memory && asksQuestion) memory = recordQuestion(memory, { signalId: turn?.questionSignalId ?? undefined, question: reply, buildsOn, turn: turnCount })
+    if (memory && showAreas && memory.areasShownAt === undefined) memory = { ...memory, areasShownAt: turnCount }
+    return {
+      ...(config.signals ? { conversation_signal_evidence: evidence } : {}),
+      ...(turn ? { conversation_signal_turn: turn } : {}),
+      ...(memory ? { conversation_working_memory: memory } : {}),
+    }
   }
-  if (workingMemory && showAreas && workingMemory.areasShownAt === undefined) workingMemory = { ...workingMemory, areasShownAt: turnCount }
+  const deferEvidence = canDeferEvidence && !evidenceApplied
+  const storedSignalState = recordedSignalState()
   const ui = activeChoice
     ? { ...DEFAULT_INTERACTION_SPEC, inputType: activeChoice.inputType ?? "singleSelect" as const, options: [...activeChoice.options] }
     : activeRich?.kind === "reference"
@@ -981,9 +1036,8 @@ You were about to close. Before you do, consider these areas. Ask about one of t
   const assistantMetadata = {
       conversation_engine: config.marker,
       conversation_profile: config.id,
-      ...(config.signals ? { conversation_signal_evidence: finalEvidence } : {}),
-      ...(signalTurn ? { conversation_signal_turn: signalTurn } : {}),
-      ...(workingMemory ? { conversation_working_memory: workingMemory } : {}),
+      ...storedSignalState,
+      ...(deferEvidence ? { [EVIDENCE_PENDING_KEY]: true } : {}),
       ...(fields.length ? { conversation_details: details } : {}),
       ...(natural ? { conversation_memory: memoryFor(proposal) } : {}),
       ...(activeChoiceKey ? { conversation_choice_key: activeChoiceKey } : {}),
@@ -1006,7 +1060,8 @@ You were about to close. Before you do, consider these areas. Ask about one of t
     reviewStatus: close ? (config.completionMessage ? "not_required" : "pending") : "not_ready",
     scores: UNSCORED_TURN, ui,
     ...(proposal.settingsConflict ? { settingsConflict: proposal.settingsConflict } : {}),
-    ...(config.signals ? { signalEvidence: finalEvidence } : {}),
+    ...(config.signals ? { signalEvidence: storedSignalState.conversation_signal_evidence } : {}),
+    ...(deferEvidence ? { signalEvidencePending: true } : {}),
     ...(fields.length ? { details } : {}), ...(completion ? { completion } : {}),
   }
   if (input.previewTranscript) return json({ ...responseBody, previewTranscript: [
@@ -1049,18 +1104,35 @@ You were about to close. Before you do, consider these areas. Ask about one of t
       return json({ error: "Conversation could not be closed" }, input.requestId, 503)
     }
   }
-  const { error: assistantError } = await supabase.from("messages").insert({
+  const assistantRow = {
     session_id: session.id,
     organisation_id: organisationId,
     project_id: projectId,
     role: "assistant",
     content: reply,
     metadata: assistantMetadata,
-  })
-  if (assistantError) {
+  }
+  const { data: savedAssistant, error: assistantError } = deferEvidence
+    ? await supabase.from("messages").insert(assistantRow).select("id").single()
+    : { ...await supabase.from("messages").insert(assistantRow), data: null }
+  if (assistantError || deferEvidence && !savedAssistant) {
     if (close) await supabase.from("sessions").update({ status: "active" }).eq("id", session.id)
     await supabase.from("messages").delete().eq("id", savedUser.id)
     return json({ error: "Reply could not be saved" }, input.requestId, 503)
+  }
+  if (deferEvidence && savedAssistant) {
+    input.defer!(async () => {
+      await applyEvidenceReview()
+      // On a failed review the notes stay as they were before this answer; the next turn continues from them.
+      if (evidenceReviewFailure) log.error(operation("deferred_evidence_review_failed"), { requestId: input.requestId, sessionId: input.sessionId, detail: evidenceReviewFailure })
+      const settled: Record<string, unknown> = { ...assistantMetadata }
+      delete settled[EVIDENCE_PENDING_KEY]
+      const { error } = await supabase.from("messages").update({ metadata: { ...settled, ...recordedSignalState() } }).eq("id", savedAssistant.id)
+      if (!error) return
+      log.error(operation("deferred_evidence_save_failed"), { requestId: input.requestId, sessionId: input.sessionId, detail: error.message })
+      // Never leave the next turn waiting on a save that will not come.
+      await supabase.from("messages").update({ metadata: settled }).eq("id", savedAssistant.id)
+    })
   }
   if (close && !config.completionMessage && input.runCompletion !== false) {
     await queueSessionCompletion({
