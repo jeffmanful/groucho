@@ -142,6 +142,7 @@ export function ProjectIntegrations({ projectId }: { projectId: string }) {
 
       <nav className={styles.tabs} aria-label="Project">
         <Link className={styles.tab} href={`${orgBase}/projects/${projectId}/edit`}>Edit project</Link>
+        {canManage && project?.demoAvailable ? <Link className={styles.tab} href={`${orgBase}/projects/${projectId}/demo`}>Demo</Link> : null}
         <span className={styles.tabActive} aria-current="page">Integrations</span>
         <Link className={styles.tab} href={`${orgBase}/integrations/conversations?project=${projectId}`}>Conversation diagnostics</Link>
         <Link className={styles.tab} href={`${orgBase}/advanced?project=${projectId}`}>Advanced</Link>

@@ -1,0 +1,71 @@
+.page {
+  max-width: 760px;
+  display: grid;
+  gap: 24px;
+  justify-items: start;
+}
+
+.page h1 {
+  margin-bottom: 0;
+}
+
+.transcript,
+.page form {
+  width: 100%;
+  min-width: 0;
+}
+
+.transcript {
+  display: grid;
+  gap: 16px;
+}
+
+.transcript article,
+.fields textarea {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  background: var(--surface);
+}
+
+.transcript article p {
+  margin-top: 6px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+
+.fields {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+
+.fields textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.choices label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  gap: 6px;
+}
+
+.page button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.page :is(button, textarea, input):focus-visible {
+  outline: 2px solid var(--foreground);
+  outline-offset: 3px;
+}

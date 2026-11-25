@@ -81,6 +81,14 @@ The invite response includes a one-time `token`; the invite URL is:
 
 When the invitee accepts, Groucho creates the `organisation_members` row and marks the invitation as accepted.
 
+## Sharing project demos
+
+Organisation admins can open **Projects → Demo** on a project with a supported walkthrough, create a share link, or email an invitation. A link opens one walkthrough without requiring a Groucho account. Anyone who has the link can use it until it expires after 14 days or an admin revokes it. Create separate links when you need to revoke access for guests independently.
+
+Projects with authored Groucho conversations or built-in conversation simulations can share those experiences. COLORS application projects offer community and artist walkthroughs with a sample reviewer report. Demo activity stays outside the live applicant queue and skips automated decisions and webhooks.
+
+The link table requires the project demo links migration. Email invitations use the same Resend sender and application origin as organisation invitations.
+
 ## Updating An Organisation
 
 Org admins can patch name and slug:

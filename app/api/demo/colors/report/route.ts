@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { colorsDemoProject } from "@/lib/colors-demo-access"
-import { demoSession } from "@/lib/colors-demo-token"
+import { authorizeColorsDemo } from "@/lib/shared-colors-demo"
 import {
   DetailedReportGenerationError,
   generateDetailedReviewerReport,
@@ -71,10 +70,10 @@ function preliminaryReportForRetry(
   }
 }
 
-async function load(req: NextRequest, sessionId: string) {
-  if (!(await demoSession(req, sessionId))) return { error: "Unauthorized demo session", status: 401 } as const
-  const project = await colorsDemoProject()
-  if (!project) return { error: "COLORS Forum demo is not configured", status: 503 } as const
+async function load(req: NextRequest, clientId: string) {
+  const access = await authorizeColorsDemo(req, "session", clientId)
+  if (access instanceof NextResponse) return access
+  const { project, sessionId } = access
   const { data: session, error: sessionError } = await supabase
     .from("sessions")
     .select("id, status")
@@ -101,12 +100,13 @@ async function load(req: NextRequest, sessionId: string) {
   const baseReport = normaliseReviewerReport(metadata.reviewer_report) ??
     (thinPilot ? pendingColorsReport(rows) : null)
   if (!baseReport) return { error: "Report evidence unavailable", status: 503 } as const
-  return { session, project, rows, lastAssistant, metadata, baseReport, thinPilot } as const
+  return { session, project, rows, lastAssistant, metadata, baseReport, thinPilot, sessionId } as const
 }
 
 export async function GET(req: NextRequest) {
-  const sessionId = req.nextUrl.searchParams.get("sessionId")?.trim() || ""
-  const loaded = await load(req, sessionId)
+  const clientId = req.nextUrl.searchParams.get("sessionId")?.trim() || ""
+  const loaded = await load(req, clientId)
+  if (loaded instanceof NextResponse) return loaded
   if ("error" in loaded) return NextResponse.json({ error: loaded.error }, { status: loaded.status })
   const { metadata, baseReport, rows, thinPilot } = loaded
   if (metadata.colors_demo_report_status === "ready" && baseReport.detailed_opinion) {
@@ -130,10 +130,11 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
-  const sessionId = typeof body?.sessionId === "string" ? body.sessionId.trim() : ""
-  const loaded = await load(req, sessionId)
+  const clientId = typeof body?.sessionId === "string" ? body.sessionId.trim() : ""
+  const loaded = await load(req, clientId)
+  if (loaded instanceof NextResponse) return loaded
   if ("error" in loaded) return NextResponse.json({ error: loaded.error }, { status: loaded.status })
-  const { session, project, rows, lastAssistant, metadata, baseReport, thinPilot } = loaded
+  const { session, project, rows, lastAssistant, metadata, baseReport, thinPilot, sessionId } = loaded
   const preliminaryReport = preliminaryReportForRetry(baseReport, rows)
   if (metadata.colors_demo_report_status === "ready" && isCurrentReport(baseReport, rows)) {
     return NextResponse.json({ status: "ready", report: baseReport })

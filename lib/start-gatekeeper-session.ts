@@ -62,6 +62,7 @@ export type StartGatekeeperSessionInput = {
   demoSession?: boolean
   /** Server-authorised preview snapshot, kept out of application reporting. */
   personaPreview?: { actor: string; id: string; name: string; version: number; prompt: string }
+  sharedDemoPreview?: boolean
   invitationToken?: string
 }
 
@@ -98,6 +99,8 @@ export async function startGatekeeperSession(
     return traceJson(input, retiredEngineBody, { status: 410 })
   }
   const { organisationId, projectId, apiKeyId } = context
+  // The existing preview marker keeps these runs out of the application queue and public session access.
+  const isolatedPreview = input.personaPreview ?? (input.sharedDemoPreview ? { source: "project_demo" } : null)
   if (projectSettings.raw.application_invitation_required === true) {
     try {
       const invitation = await resolveApplicationInvitation(projectId, input.invitationToken)
@@ -162,7 +165,7 @@ export async function startGatekeeperSession(
     .maybeSingle()
 
   if (existing) {
-    if (existing.profile?.persona_preview && !input.personaPreview) {
+    if (existing.profile?.persona_preview && !isolatedPreview) {
       return traceJson(input, { error: "Continue this preview from the dashboard." }, { status: 403 })
     }
     if (isConcludedSessionStatus(existing.status)) {
@@ -230,7 +233,7 @@ export async function startGatekeeperSession(
       organisation_id: organisationId,
       project_id: projectId,
       ...applicantIdentityPayload(applicantIdentity),
-      ...(input.personaPreview ? { profile: { persona_preview: input.personaPreview } } : {}),
+      ...(isolatedPreview ? { profile: { persona_preview: isolatedPreview } } : {}),
     })
     .select("id")
     .single()
@@ -245,7 +248,7 @@ export async function startGatekeeperSession(
       .eq("session_id", sessionId)
       .eq("project_id", projectId)
       .maybeSingle()
-    if (raced?.profile?.persona_preview && !input.personaPreview) {
+    if (raced?.profile?.persona_preview && !isolatedPreview) {
       return traceJson(input, { error: "Continue this preview from the dashboard." }, { status: 403 })
     }
     if (raced && !isConcludedSessionStatus(raced.status)) {
@@ -308,7 +311,7 @@ export async function startGatekeeperSession(
       ...(demoProfile ? { conversation_profile: demoProfile.id, ...(!readProjectConversation(projectSettings.raw) ? { demo_simulation: true } : {}), ...(demoProfile.openingChoice ? { conversation_choice_key: demoProfile.openingChoice } : {}) } : {}),
       ...(projectConversation?.version === 2 && projectConversation.applicationReview ? { project_conversation: projectConversation } : {}),
       ...(input.demoSession ? { colors_demo_session: true } : {}),
-      ...(input.personaPreview ? { persona_preview: true } : {}),
+      ...(isolatedPreview ? { persona_preview: true } : {}),
       ...(colorsForumV1 ? { application_rubric_version: COLORS_FORUM_V1_RUBRIC } : {}),
       ui: openingInteraction,
       ...(openingSignal

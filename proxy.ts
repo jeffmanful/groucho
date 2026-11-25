@@ -17,7 +17,7 @@ const PUBLIC_PATHS = [
   "/signup",
   "/api/organisations/signup",
 ]
-const STATIC_PREFIXES = ["/_next/", "/favicon.ico"]
+const STATIC_PREFIXES = ["/_next/", "/favicon.ico", "/fonts/", "/doorcheck/colors/"]
 const REQUEST_ID_HEADER = "x-request-id"
 
 type ProxyAuthClient = {
@@ -131,6 +131,15 @@ export async function proxy(req: NextRequest) {
 
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p)))
     return NextResponse.next()
+
+  if (pathname.startsWith("/demo/project/") || pathname === "/api/demo/project" ||
+    (pathname.startsWith("/api/demo/colors/") && req.headers.has("x-groucho-project-demo"))) {
+    // Each demo handler validates the project link before loading project details or sessions.
+    const response = nextWithRequestId(req)
+    response.headers.set("Referrer-Policy", "no-referrer")
+    response.headers.set("Cache-Control", "private, no-store")
+    return response
+  }
 
   if ((pathname === "/demo/colors" && !req.nextUrl.searchParams.has("personaId") && !req.nextUrl.searchParams.has("orgId")) || pathname.startsWith("/api/demo/colors/")) {
     const tester = await verifyDemoToken(

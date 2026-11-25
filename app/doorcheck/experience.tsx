@@ -1197,6 +1197,7 @@ function ColorsTranscript({
   showSlowResponse,
   streamingReply,
   personaPreview = false,
+  hideIntroCopy = false,
 }: {
   applicantEmail: string
   colorsInteractionPhase: ColorsInteractionPhase
@@ -1205,6 +1206,7 @@ function ColorsTranscript({
   showSlowResponse: boolean
   streamingReply: string | null
   personaPreview?: boolean
+  hideIntroCopy?: boolean
 }) {
   const firstApplicationMessageId = applicantEmail
     ? messages.find((message) => message.role === "bot")?.id
@@ -1253,7 +1255,7 @@ function ColorsTranscript({
                   />
                 </div>
               ) : null}
-              {isIntroduction ? (
+              {isIntroduction && !hideIntroCopy ? (
                 <div className="colors-chat-intro-copy">
                   <p>
                     The COLORS Forum is a place for our community to discuss,
@@ -1339,15 +1341,25 @@ export function DoorCheckExperience({
   demoMode,
   intakeMode = "community",
   personaPreview,
+  sharedDemo,
 }: {
+  sharedDemo?: { id: string; token: string }
   demoMode?: "colors"
   personaPreview?: { apiBase: string; storageKey: string; version: number }
   intakeMode?: "email" | "community" | "artist"
 }) {
   const isColorsDemo = demoMode === "colors"
+  const isColorsConversationDemo = isColorsDemo && !personaPreview
   const demoApi = personaPreview?.apiBase ?? "/api/demo/colors"
+  const sharedDemoToken = sharedDemo?.token
+  const demoFetch = useCallback((url: string, init?: RequestInit) => {
+    if (!sharedDemoToken) return fetch(url, init)
+    const headers = new Headers(init?.headers)
+    headers.set("x-groucho-project-demo", sharedDemoToken)
+    return fetch(url, { ...init, headers })
+  }, [sharedDemoToken])
   const applicationSessionKey = intakeMode === "email" ? SESSION_KEY : `${SESSION_KEY}:${intakeMode}`
-  const colorsSessionKey = personaPreview ? `persona-preview:${personaPreview.storageKey}:${intakeMode}` : intakeMode === "email" ? COLORS_DEMO_SESSION_KEY : `${COLORS_DEMO_SESSION_KEY}:${intakeMode}${intakeMode === "artist" ? ":thin-v1" : ""}`
+  const colorsSessionKey = sharedDemo ? `shared-project-demo:${sharedDemo.id}` : personaPreview ? `persona-preview:${personaPreview.storageKey}:${intakeMode}` : intakeMode === "email" ? COLORS_DEMO_SESSION_KEY : `${COLORS_DEMO_SESSION_KEY}:${intakeMode}${intakeMode === "artist" ? ":thin-v1" : ""}`
   const [intakeApplicant, setIntakeApplicant] = useState<ApplicantIdentity | null>(null)
   const supabase = useMemo(() => createDoorcheckSupabase(), [])
   const [messages, setMessages] = useState<Message[]>(personaPreview ? [] : EMAIL_CAPTURE_MESSAGES)
@@ -1560,7 +1572,7 @@ export function DoorCheckExperience({
         setSessionId(sid)
         return
       }
-      void fetch(`${demoApi}/state?sessionId=${encodeURIComponent(sid)}`, {
+      void demoFetch(`${demoApi}/state?sessionId=${encodeURIComponent(sid)}`, {
         credentials: "same-origin",
       }).then(async (response) => {
         if (!response.ok) return
@@ -1581,7 +1593,7 @@ export function DoorCheckExperience({
       }).catch(() => {}).finally(() => setSessionId(sid))
     })
     return () => window.cancelAnimationFrame(frame)
-  }, [isColorsDemo, colorsSessionKey, applicationSessionKey, demoApi])
+  }, [isColorsDemo, colorsSessionKey, applicationSessionKey, demoApi, demoFetch])
 
   useEffect(() => {
     if (isColorsDemo) return
@@ -1597,11 +1609,11 @@ export function DoorCheckExperience({
   }, [isColorsDemo])
 
   useEffect(() => {
-    fetch(isColorsDemo ? `${demoApi}/project` : "/api/doorcheck/projects")
+    demoFetch(isColorsDemo ? `${demoApi}/project` : "/api/doorcheck/projects")
       .then((r) => r.json())
       .then((raw: ProjectOption[] | { project: ProjectOption }) => {
         const data = isColorsDemo && !Array.isArray(raw) ? [raw.project] : raw
-        if (!Array.isArray(data)) return
+        if (!Array.isArray(data) || !data[0]) return
         setProjects(data)
         const saved = localStorage.getItem(PROJECT_KEY)?.trim()
         const savedProject = saved ? data.find((p) => p.id === saved) : null
@@ -1610,7 +1622,7 @@ export function DoorCheckExperience({
           data.find((p) => p.name.toLowerCase() === "forum application") ??
           null
         const pick =
-          (isColorsDemo ? preferredForumProject?.id ?? "" : null) ??
+          (isColorsDemo ? data[0]?.id ?? "" : null) ??
           (savedProject && savedProject.slug !== "default"
             ? savedProject.id
             : null) ??
@@ -1625,14 +1637,14 @@ export function DoorCheckExperience({
         }
       })
       .catch(() => {})
-  }, [isColorsDemo, demoApi])
+  }, [isColorsDemo, demoApi, demoFetch])
 
   const requestDemoReport = useCallback(async (sid: string, generate = true) => {
     setDemoReportState("loading")
     setDemoReportError(null)
     try {
       for (let attempt = 0; attempt < 30; attempt += 1) {
-        const response = await fetch(
+        const response = await demoFetch(
           generate && attempt === 0
             ? "/api/demo/colors/report"
             : `/api/demo/colors/report?sessionId=${encodeURIComponent(sid)}`,
@@ -1671,7 +1683,7 @@ export function DoorCheckExperience({
       setDemoReportState("failed")
       setDemoReportError(error instanceof Error ? error.message : "The sample report could not be generated.")
     }
-  }, [colorsSessionKey])
+  }, [colorsSessionKey, demoFetch])
 
   useEffect(() => {
     if (personaPreview || !isColorsDemo || !concluded || !sessionId || reviewerReport?.detailed_opinion || demoReportState === "failed") return
@@ -1692,7 +1704,7 @@ export function DoorCheckExperience({
       bootstrapInFlightRef.current = true
       setBootstrapping(true)
       try {
-        const res = await fetch(isColorsDemo ? `${demoApi}/start` : "/api/onboarding/start", {
+        const res = await demoFetch(isColorsDemo ? `${demoApi}/start` : "/api/onboarding/start", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "same-origin",
@@ -1768,7 +1780,7 @@ export function DoorCheckExperience({
         setBootstrapping(false)
       }
     },
-    [commitBootstrapResponse, isColorsDemo, intakeApplicant, demoApi, personaPreview],
+    [commitBootstrapResponse, isColorsDemo, intakeApplicant, demoApi, demoFetch, personaPreview],
   )
 
   function applyProjectSelection(projectId: string) {
@@ -1995,7 +2007,7 @@ export function DoorCheckExperience({
     try {
       const personaId = selectedPersonaId || undefined
       const projectId = selectedProjectId || undefined
-      let res = await fetch(isColorsDemo ? `${demoApi}/message` : "/api/chat", {
+      let res = await demoFetch(isColorsDemo ? `${demoApi}/message` : "/api/chat", {
         method: "POST",
         // The COLORS demo accepts a streamed reply; the route only streams for the newer engine
         // and otherwise answers with ordinary JSON, which is handled below as before.
@@ -2162,7 +2174,7 @@ export function DoorCheckExperience({
     } catch (err) {
       if (isColorsDemo && sessionId) {
         try {
-          const stateResponse = await fetch(
+          const stateResponse = await demoFetch(
             `${demoApi}/state?sessionId=${encodeURIComponent(sessionId)}`,
             { credentials: "same-origin" },
           )
@@ -2254,7 +2266,7 @@ export function DoorCheckExperience({
   }
 
   function restart() {
-    if (personaPreview) {
+    if (personaPreview || sharedDemo) {
       localStorage.removeItem(colorsSessionKey)
       window.location.reload()
       return
@@ -2499,7 +2511,12 @@ export function DoorCheckExperience({
   }
 
   if (intakeMode !== "email" && !applicantEmail) {
-    return <main className="min-h-dvh bg-black px-6 py-12 text-white"><section className="groucho-root mx-auto w-full"><h1 className="mb-3 text-2xl">{intakeMode === "artist" ? "Apply as an artist" : "Start your application"}</h1><p className="groucho-muted mb-6">{intakeMode === "artist" ? "A few details first. Then we’ll talk about your music and what you’d like to find in the COLORS Forum." : "A few details first, to help with future communication and onboarding. Then we’ll start the conversation."}</p><ApplicantIntakeForm audience={intakeMode} disabled={bootstrapping} onSubmit={(applicant) => {
+    return <main className="min-h-dvh bg-black px-6 py-12 text-white" style={sharedDemo ? { minHeight: "calc(100dvh - var(--shared-demo-header-height))" } : undefined}><section className="groucho-root mx-auto w-full">
+      {!sharedDemo && <>
+        <h1 className="mb-3 text-2xl">{intakeMode === "artist" ? "Apply as an artist" : "Start your application"}</h1>
+        <p className="groucho-muted mb-6">{intakeMode === "artist" ? "A few details first. Then we’ll talk about your music and what you’d like to find in the COLORS Forum." : "A few details first, to help with future communication and onboarding. Then we’ll start the conversation."}</p>
+      </>}
+      <ApplicantIntakeForm audience={intakeMode} disabled={bootstrapping} onSubmit={(applicant) => {
       const sid = resetSession(isColorsDemo ? colorsSessionKey : applicationSessionKey)
       setSessionId(sid)
       setIntakeApplicant(applicant)
@@ -2524,8 +2541,9 @@ export function DoorCheckExperience({
           "relative flex h-[100dvh] min-h-0 flex-col overflow-hidden",
           isGatekeeperPreview && "doorcheck-stage",
           isColorsProject && "colors-doorcheck",
+          isColorsConversationDemo && "colors-doorcheck--demo",
         )}
-        style={personaPreview ? { height: "calc(100dvh - 56px)" } : undefined}
+        style={personaPreview ? { height: "calc(100dvh - 56px)" } : sharedDemo ? { height: "calc(100dvh - var(--shared-demo-header-height))" } : undefined}
         data-scene={isGatekeeperPreview ? doorcheckScene.id : undefined}
       >
         {isGatekeeperPreview ? (
@@ -2622,7 +2640,7 @@ export function DoorCheckExperience({
                 <span className="hidden sm:inline">{isSpeaking ? "Stop" : "Listen"}</span>
               </button>
             ) : null}
-            {isColorsProject ? (
+            {isColorsProject && !sharedDemo ? (
               <div ref={settingsRef} className="pointer-events-auto relative">
                 <button
                   ref={settingsTriggerRef}
@@ -2753,7 +2771,7 @@ export function DoorCheckExperience({
                 </AnimatePresence>
               </div>
             ) : null}
-          <button
+          {!sharedDemo && <button
             type="button"
             onClick={() => void signOut()}
             disabled={signingOut}
@@ -2763,22 +2781,23 @@ export function DoorCheckExperience({
             )}
           >
             {signingOut ? "Signing out…" : "Sign out"}
-          </button>
+          </button>}
           </div>
         </header>
         <main
           className={cn(
             "contents",
             isColorsProject && "colors-conversation-shell",
+            isColorsConversationDemo && "colors-conversation-shell--demo",
             isColorsProject && !applicantEmail && !pendingResume &&
               messages.length === 1 && messages[0]?.id === "applicant-email" &&
               "colors-conversation-shell--opening",
           )}
-          aria-label={isColorsProject ? "COLORS Forum application" : undefined}
+          aria-label={isColorsProject ? selectedProject?.name ?? "COLORS Forum application" : undefined}
         >
-          {isColorsProject ? (
+          {isColorsProject && !isColorsConversationDemo ? (
             <div className="colors-chat-panel-label" aria-hidden="true">
-              COLORS Forum application
+              {isColorsDemo ? selectedProject?.name : "COLORS Forum application"}
             </div>
           ) : null}
           <MessageScroller.Provider
@@ -2813,7 +2832,7 @@ export function DoorCheckExperience({
                 )}
                 spacerClassName="shrink-0"
               >
-                <MessageScroller.Item className={cn("h-0 shrink-0", !isGatekeeperPreview && "mt-auto")} />
+                {!isColorsConversationDemo && <MessageScroller.Item className={cn("h-0 shrink-0", !isGatekeeperPreview && "mt-auto")} />}
                 {personaPreview && personaSettingsConflict && (
                   <MessageScroller.Item>
                     <p role="status" className="rounded-md border border-white/20 px-4 py-3 text-sm text-white">
@@ -2840,36 +2859,33 @@ export function DoorCheckExperience({
                   className="mx-auto w-full max-w-lg rounded-2xl border border-white/12 bg-black/45 p-5 shadow-[0_18px_55px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-md sm:p-6"
                   aria-labelledby="doorcheck-resume-title"
                 >
-                  <p className="text-[0.66rem] uppercase tracking-[0.16em] text-white/45">
-                    Welcome back
-                  </p>
                   <h1
                     ref={resumeTitleRef}
                     id="doorcheck-resume-title"
                     tabIndex={-1}
-                    className="mt-2 text-balance text-2xl font-normal text-white outline-none sm:text-3xl"
+                    className="text-balance text-xl font-normal text-white outline-none sm:text-2xl"
                   >
                     Continue your conversation?
                   </h1>
-                  <p className="mt-3 max-w-md text-pretty text-sm leading-relaxed text-white/58 sm:text-base">
+                  <p className="mt-2 max-w-md text-pretty text-xs leading-relaxed text-white/58 sm:text-sm">
                     We found an unfinished conversation. Pick up from the last
                     question, or begin again with a fresh conversation.
                   </p>
-                  <div className="mt-6 flex flex-wrap gap-2">
+                  <div className="mt-5 flex flex-wrap gap-2">
                     <button
                       type="button"
                       onClick={() => {
                         commitBootstrapResponse(pendingResume)
                         setPendingResume(null)
                       }}
-                      className="min-h-11 rounded-lg bg-white px-5 py-2.5 text-sm text-black transition-[opacity,transform] duration-150 ease-out hover:opacity-90 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                      className="min-h-11 rounded-lg bg-white px-5 py-2.5 text-xs text-black transition-[opacity,transform] duration-150 ease-out hover:opacity-90 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
                     >
                       Continue
                     </button>
                     <button
                       type="button"
                       onClick={startOverFromResume}
-                      className="min-h-11 rounded-lg border border-white/15 bg-transparent px-5 py-2.5 text-sm text-white/78 transition-[border-color,color,transform] duration-150 ease-out hover:border-white/30 hover:text-white active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                      className="min-h-11 rounded-lg border border-white/15 bg-transparent px-5 py-2.5 text-xs text-white/78 transition-[border-color,color,transform] duration-150 ease-out hover:border-white/30 hover:text-white active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
                     >
                       Start over
                     </button>
@@ -2879,6 +2895,7 @@ export function DoorCheckExperience({
             ) : isColorsProject ? (
               <ColorsTranscript
                 personaPreview={Boolean(personaPreview)}
+                hideIntroCopy={isColorsConversationDemo}
                 applicantEmail={applicantEmail}
                 colorsInteractionPhase={colorsInteractionPhase}
                 commitHandoff={commitColorsHandoff}
@@ -3421,7 +3438,9 @@ export function DoorCheckExperience({
                     placeholder={
                       voiceInput.listening
                         ? "Listening…"
-                        : loading && !isColorsProject
+                        : isColorsConversationDemo
+                          ? undefined
+                          : loading && !isColorsProject
                           ? `${personaName} is replying…`
                           : (isColorsProject ? "Write something…" : stepHint?.trim()) ||
                             (selectedProject?.projectType === "onboarding"
@@ -3968,6 +3987,10 @@ export function DoorCheckExperience({
         .colors-doorcheck-media__visual img {
           filter: grayscale(1) saturate(0) contrast(1.14) brightness(0.72);
         }
+        .colors-doorcheck--demo .colors-doorcheck-media__visual img {
+          filter: grayscale(1) contrast(1.14) brightness(0.72) blur(8px);
+          transform: scale(1.05);
+        }
         .colors-doorcheck-media__veil {
           background:
             radial-gradient(circle at 50% 46%, rgb(0 0 0 / 0.24), rgb(0 0 0 / 0.78) 76%),
@@ -4007,6 +4030,12 @@ export function DoorCheckExperience({
             inset 0 1px 0 rgb(255 255 255 / 0.035);
           backdrop-filter: blur(18px) saturate(0.7);
         }
+        .colors-conversation-shell--demo {
+          border: 0;
+          background: linear-gradient(180deg, rgb(16 16 16 / 0.5), rgb(8 8 8 / 0.68));
+          box-shadow: 0 24px 80px rgb(0 0 0 / 0.3);
+          backdrop-filter: blur(26px) saturate(0.75);
+        }
         .colors-conversation-shell.colors-conversation-shell--opening {
           height: min(16rem, calc(100dvh - 10rem));
           min-height: 0;
@@ -4039,6 +4068,9 @@ export function DoorCheckExperience({
           padding: 0.25rem 0 0.75rem;
           gap: 1.35rem;
           justify-content: flex-start;
+        }
+        .colors-conversation-shell--demo .colors-chat-content {
+          padding-block: clamp(1rem, 3vh, 1.6rem) 0.75rem;
         }
         .colors-chat-turn {
           flex: 0 0 auto;

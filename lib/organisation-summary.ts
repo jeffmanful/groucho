@@ -1,3 +1,4 @@
+import { projectDemoWalkthroughs } from "@/lib/project-demo-links"
 // What an organisation's dashboard pages show: its projects, review workload, personas and members.
 import type { AdminActor } from "@/lib/admin-actor"
 import { median } from "@/lib/application-queue"
@@ -14,6 +15,7 @@ export type ProjectSummary = {
   projectType: "gatekeeper" | "onboarding" | "ticket_access"
   environment: "live" | "test" | null
   archived: boolean
+  demoAvailable: boolean
   personaId: string | null
   personaName: string | null
   conversations30d: number
@@ -58,7 +60,7 @@ function settingsOf(raw: unknown): Record<string, unknown> {
 }
 
 async function countSessions(projectId: string, extra?: { since?: string; status?: string }): Promise<number> {
-  let query = supabase.from("sessions").select("id", { count: "exact", head: true }).eq("project_id", projectId)
+  let query = supabase.from("sessions").select("id", { count: "exact", head: true }).eq("project_id", projectId).is("profile->persona_preview", null)
   if (extra?.since) query = query.gte("created_at", extra.since)
   if (extra?.status) query = query.eq("status", extra.status)
   const { count, error } = await query
@@ -71,6 +73,7 @@ async function lastActivity(projectId: string): Promise<string | null> {
     .from("sessions")
     .select("updated_at")
     .eq("project_id", projectId)
+    .is("profile->persona_preview", null)
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle()
@@ -185,6 +188,7 @@ export async function buildOrganisationSummary(
       projectType: parseProjectType(settings),
       environment: environment === "live" ? "live" : environment === "test" ? "test" : null,
       archived: settings.archived === true,
+      demoAvailable: projectDemoWalkthroughs(project, organisation.name).variants.length > 0,
       personaId,
       personaName: personaId ? personaName.get(personaId) ?? null : null,
       ...counts[index],
