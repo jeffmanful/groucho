@@ -1,5 +1,21 @@
 # @groucho-gatekeeper/sdk
 
+## 0.2.0
+
+### Minor Changes
+
+- 25054e7: Add optional artist intake to Gatekeeper and GatekeeperV2, plus the reusable ArtistIntakeForm. Collect name, city and age with email, and optional artist name, social links and music streaming links. Keep artist application attempts separate from email-only attempts in session storage and carry structured applicant details through the API contract.
+
+  Use the same expanded intake for normal community applications by default, retaining their community conversation. Store and hand off contact/onboarding details separately from the artist audience. Hosts needing legacy intake must opt into `intakeMode="email"`.
+
+  Expose neutral evidence limits separately from material decision gaps in reviewer reports.
+
+- e0eea09: Ask users whether to continue an active session or start over with a fresh session id before restoring the saved conversation. Improve response waits with delayed reassurance, answer-preserving retry, and a softer outgoing-question transition.
+- 635870f: Add createGrouchoApplicantRelay for browser-bound session ownership and private assessment filtering. Keep reports, profiles, suitability, decisions and access secrets out of applicant responses. GatekeeperV2 can opt into restoreSession to recover saved intake and the actual neutral close after refresh without creating a second application. Hosts can supply a validated invitation grant to bind all reads and writes to one assigned conversation; `lockApplicantEmail` keeps invited intake recipients fixed.
+- 7d987bb: Treat the `completed` session outcome as terminal in `Gatekeeper`, `GatekeeperV2` and `isTerminalOutcome`. The newer COLORS conversation engine finishes conversations with `completed` instead of passed/redirected/rejected, and sends a neutral placeholder for per-turn `scores`; its suitability score and reviewer report follow on the completed session and webhook. Hosts running COLORS projects must upgrade before those projects are switched to the newer engine.
+- b5bd181: Add `signalEvidencePending` to shared-engine message responses. Open-style conversations now reply as soon as the reply is written and save that answer's evidence review straight afterwards. A continuing turn may return `signalEvidencePending: true`, with `signalEvidence` covering the applicant's earlier answers. The next turn and the closing turn include this answer.
+- a11abfe: Add the `none_identified` signal evidence status. It marks a signal the applicant answered with "nothing applies" (a plain no, nothing comes to mind, or not yet), as distinct from `declined`, which now means only that they chose not to share.
+
 ## Unreleased
 
 ### Added
