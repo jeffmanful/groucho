@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createHash } from "node:crypto"
 import { NextRequest, NextResponse } from "next/server"
 const mocks = vi.hoisted(() => ({
-  create: vi.fn(), stream: vi.fn(), review: vi.fn(), queue: vi.fn(), writes: [] as Array<Record<string, unknown>>,
+  create: vi.fn(), stream: vi.fn(), review: vi.fn(), queue: vi.fn(), writes: [] as Array<Record<string, unknown>>, updates: [] as Array<Record<string, unknown>>,
   history: [] as Array<{ role: string; content: string; metadata: Record<string, unknown> }>,
   database: vi.fn(), actor: { kind: "member", userId: "author" } as { kind: "member"; userId: string } | null,
   denied: false, rateLimited: false,
@@ -50,7 +50,7 @@ vi.mock("@/lib/supabase", () => ({ supabase: { from: (...args: unknown[]) => {
     return query
   }
   const q = {
-    select: () => q, eq: () => q, update: () => q,
+    select: () => q, eq: () => q, update: (row: Record<string, unknown>) => { mocks.updates.push(row); return q },
     order: async () => ({ data: mocks.history, error: null }),
     maybeSingle: async () => ({ data: { id: "session", status: "active", applicant_email: null }, error: null }),
     insert: (row: Record<string, unknown>) => { mocks.writes.push(row); return { error: null, select: () => ({ single: async () => ({ data: { id: "user" }, error: null }) }) } },
@@ -61,7 +61,7 @@ import { DEFAULT_PROJECT_CONVERSATION, validateProjectConversation, projectConve
 import { projectConversationConfiguration, projectConversationProfile } from "@/lib/project-conversation-runtime"
 import { signProjectPreview, verifyProjectPreview } from "@/lib/project-conversation-preview"
 import { emptySignalEvidence, mergeSignalEvidence } from "@/lib/project-conversation-evidence"
-import { conversationSelections, postConversation, type ConversationTranscriptEntry } from "@/lib/conversation-engine"
+import { conversationSelections, EVIDENCE_PENDING_KEY, postConversation, type ConversationTranscriptEntry } from "@/lib/conversation-engine"
 import { withoutClosingCourtesy } from "@/lib/closing-courtesy"
 import { projectSignalProgress } from "@/lib/project-conversation-progress"
 import { postDemoConversation, demoConversationProfile } from "@/lib/demo-conversation-profiles"
@@ -108,7 +108,7 @@ beforeEach(() => {
   vi.stubEnv("SUPABASE_SERVICE_KEY", "test-preview-secret")
   mocks.create.mockReset(); mocks.queue.mockReset()
   mocks.review.mockReset(); mocks.review.mockResolvedValue(evidenceReview([]))
-  mocks.database.mockReset(); mocks.writes = []
+  mocks.database.mockReset(); mocks.writes = []; mocks.updates = []
   mocks.actor = { kind: "member", userId: "author" }; mocks.denied = false; mocks.rateLimited = false
   mocks.history = opening(config)
   mocks.previewRows.clear()
@@ -555,6 +555,7 @@ const signalConfig: SignalProjectConversationConfig = {
   signals: [{ id: "s_community", name: "Community participation", understanding: "How they show up or contribute in a community.", evidence: "Their involvement and why it matters. A name can add detail but is not proof.", examples: ["I organise dinners at Cedar Hall.", "I help welcome members to an online group."], explore: true, question: "", answerType: "auto", options: [] },
     { id: "s_hopes", name: "Hopes for joining", understanding: "What they hope to find or contribute.", evidence: "Their own hopes, including uncertainty.", examples: [], explore: false, question: "", answerType: "auto", options: [] }],
 }
+const record = (value: unknown) => (value ?? {}) as Record<string, unknown>
 const evidenceUpdate = (quote: string, extra = {}) => ({ signalId: "s_community", status: "evidence_found", subject: "applicant", summary: "Regular involvement in a community gathering.", reason: "They describe their own participation and motivation.", quotes: [quote], supersedes: false, ...extra })
 
 describe("signal progression in project previews", () => {
@@ -1049,6 +1050,12 @@ describe("open conversation style", () => {
     expect(projectConversationConfiguration(open, undefined, { open: false }).openConversation).toBeUndefined()
     expect(projectConversationConfiguration(signalConfig).openConversation).toBeUndefined()
     expect(projectConversationConfiguration(open).replyReasoning).toBeUndefined()
+    expect(projectConversationConfiguration(open)).toMatchObject({ cachePrompt: true, replyEvidence: false })
+    expect(projectConversationConfiguration(signalConfig).cachePrompt).toBeUndefined()
+    vi.stubEnv("GROUCHO_PROMPT_CACHE", "off")
+    expect(projectConversationConfiguration(open).cachePrompt).toBe(false)
+    vi.stubEnv("GROUCHO_OPEN_REPLY_REASONING", "medium")
+    expect(projectConversationConfiguration(open).replyReasoning).toBe("medium")
     vi.stubEnv("GROUCHO_OPEN_REPLY_REASONING", "off")
     expect(projectConversationConfiguration(open).replyReasoning).toBe("off")
     expect(projectConversationConfiguration(signalConfig).replyReasoning).toBeUndefined()
@@ -1070,6 +1077,13 @@ describe("open conversation style", () => {
     expect(deltas.at(-1)).toBe(text)
     expect(final.body).toMatchObject({ message: text, status: "active", token: expect.any(String) })
     expect(mocks.create).not.toHaveBeenCalled()
+    // The unchanging character prompt is cached, and evidence is left to the separate review.
+    const sent = mocks.stream.mock.calls.at(-1)![0]
+    expect(sent.system[0]).toMatchObject({ type: "text", cache_control: { type: "ephemeral" } })
+    expect(sent.system[1].text).toContain("This is answer 1")
+    expect(sent.system[0].text).not.toContain("This is answer")
+    expect(sent.tools[0].input_schema.properties).not.toHaveProperty("signalEvidence")
+    expect(sent.tools[0].input_schema.required).not.toContain("signalEvidence")
   })
 
   it("repairs a repeated open question before showing it to the applicant", async () => {
@@ -1084,5 +1098,65 @@ describe("open conversation style", () => {
       previewTranscript: history, configuration: projectConversationConfiguration(open), onReplyDelta: delta => deltas.push(delta) })
     expect(deltas).toEqual([])
     expect(await response.json()).toMatchObject({ message: replacement, status: "active" })
+  })
+
+  describe("saved sessions", () => {
+    const update = { ...evidenceUpdate("I run a listening group online."), signalId: open.signals[0].id }
+    beforeEach(() => { mocks.history = opening(open) })
+
+    it("answers before the evidence review finishes and saves it afterwards", async () => {
+      let finishReview!: (value: unknown) => void
+      mocks.review.mockReturnValueOnce(new Promise(resolve => { finishReview = resolve }))
+      mocks.create.mockResolvedValueOnce(reply("What drew you to running it?"))
+      const deferred: Array<() => Promise<void>> = []
+      const response = await postConversation({ context, sessionId: "saved", message: "I run a listening group online.",
+        configuration: projectConversationConfiguration(open), defer: task => { deferred.push(task) } })
+      const body = await response.json()
+      expect(body).toMatchObject({ message: "What drew you to running it?", status: "active", signalEvidencePending: true })
+      expect(body.signalEvidence[open.signals[0].id].status).toBe("not_explored")
+      const saved = mocks.writes.find(row => row.role === "assistant")!
+      expect(saved.metadata).toMatchObject({ [EVIDENCE_PENDING_KEY]: true })
+      expect(deferred).toHaveLength(1)
+      finishReview(evidenceReview([update]))
+      await deferred[0]()
+      const settled = mocks.updates.at(-1)!.metadata as Record<string, unknown>
+      expect(settled).not.toHaveProperty(EVIDENCE_PENDING_KEY)
+      expect(record(settled.conversation_signal_evidence)[open.signals[0].id]).toMatchObject({ status: "evidence_found" })
+      expect(settled.conversation_working_memory).toBeDefined()
+      // The review asks for evidence even though the open reply no longer carries it.
+      const reviewSchema = mocks.review.mock.calls[0][0].tools[0].input_schema
+      expect(reviewSchema.required).toContain("signalEvidence")
+      expect(reviewSchema.properties.signalEvidence.items.properties.status.enum).toContain("evidence_found")
+    })
+
+    it("waits for the evidence review on a closing turn", async () => {
+      mocks.review.mockResolvedValueOnce(evidenceReview([update]))
+      // An early close is reconsidered once against the uncovered areas; both drafts close.
+      mocks.create.mockResolvedValue(reply("", { close: true }))
+      const deferred: Array<() => Promise<void>> = []
+      const body = await (await postConversation({ context, sessionId: "saved", message: "I run a listening group online.",
+        configuration: projectConversationConfiguration(open), defer: task => { deferred.push(task) } })).json()
+      expect(body.status).toBe("completed")
+      expect(body).not.toHaveProperty("signalEvidencePending")
+      expect(body.signalEvidence[open.signals[0].id].status).toBe("evidence_found")
+      expect(deferred).toEqual([])
+    })
+
+    it("waits for the previous turn's evidence before replying", async () => {
+      const pending = [...opening(open), { role: "user", content: "I run a listening group online.", metadata: {} },
+        { role: "assistant", content: "What drew you to running it?", metadata: { ...opening(open)[0].metadata, [EVIDENCE_PENDING_KEY]: true } }]
+      const settled = pending.map((entry, index) => index === 2 ? { ...entry, metadata: opening(open)[0].metadata } : entry)
+      let loads = 0
+      Object.defineProperty(mocks, "history", { configurable: true, get: () => loads++ === 0 ? pending : settled, set: () => {} })
+      try {
+        mocks.create.mockResolvedValueOnce(reply("How did it start?"))
+        const body = await (await postConversation({ context, sessionId: "saved", message: "A friend asked me to.",
+          configuration: projectConversationConfiguration(open), defer: () => {} })).json()
+        expect(body.message).toBe("How did it start?")
+        expect(loads).toBe(2)
+      } finally {
+        Object.defineProperty(mocks, "history", { configurable: true, writable: true, value: opening(config) })
+      }
+    })
   })
 })

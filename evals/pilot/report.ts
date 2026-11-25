@@ -58,6 +58,8 @@ export function renderReport(results: PilotResults): string {
     if (steers.length) lines.push(`Self-check steered ${steers.length} of ${turns.length} turns: ${[...new Set(steers)].map(kind => `${kind.replace(/_/g, " ")} ${steers.filter(item => item === kind).length}`).join(", ")}.`, "")
     const firstText = turns.flatMap(turn => turn.firstTextMs === undefined ? [] : [turn.firstTextMs])
     if (firstText.length) lines.push(`First reply text appeared after p50 ${seconds(percentile(firstText, 0.5))}, p95 ${seconds(percentile(firstText, 0.95))} (${firstText.length} of ${turns.length} turns streamed).`, "")
+    const replyReady = turns.flatMap(turn => turn.replyReadyMs === undefined ? [] : [turn.replyReadyMs])
+    if (replyReady.length) lines.push(`Reply text complete after p50 ${seconds(percentile(replyReady, 0.5))}, p95 ${seconds(percentile(replyReady, 0.95))}.`, "")
     if (turns.length) lines.push(`Turn latency p50 ${seconds(percentile(latencies, 0.5))}, p95 ${seconds(percentile(latencies, 0.95))}. Model calls per turn: ${(turns.reduce((sum, turn) => sum + turn.calls.length, 0) / turns.length).toFixed(1)}.`, "", ...models.map(model => `- ${model}`), "")
     lines.push("### Consistency across repeats", "", "| Scenario | Final signal states agree | Same question path | Same first question | Answers | Checks failed (hard/soft) |", "| --- | ---: | ---: | ---: | ---: | ---: |")
     for (const item of results.consistency.filter(entry => entry.flow === flow.slug)) {
